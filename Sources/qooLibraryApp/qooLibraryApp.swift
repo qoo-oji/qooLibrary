@@ -24,7 +24,8 @@ struct QooLibraryApp: App {
                 )
                 .background(Tokens.Colors.paneBackground)
             } right: {
-                PlaceholderPane(title: "詳細情報", subtitle: "1-10 で実装")
+                // 1-10（詳細情報ペイン）の実装まで、1-2 の実機検証 UI を仮置きする。
+                SandboxVerificationView()
             }
             .frame(minWidth: 900, minHeight: 560)
         }

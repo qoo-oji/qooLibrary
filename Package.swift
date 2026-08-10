@@ -94,6 +94,13 @@ targets.append(
 )
 
 targets.append(
+    .testTarget(
+        name: "QooInfrastructureTests",
+        dependencies: ["QooInfrastructure"]
+    )
+)
+
+targets.append(
     // MARK: - Spikes (technical verification, kept per 16章 §16.6)
     // T-13 (zip/7z half): proves libarchive can be driven from Swift via
     // the CLibarchive wrapper to list and extract an archive.
