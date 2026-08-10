@@ -4,10 +4,10 @@ macOS 用のマンガ・同人誌ライブラリ管理アプリ（Swift / SwiftU
 ファイル名・フォルダ構成からラベルを自動抽出し、Finder 代替のファイル管理・
 ライブラリ管理・取り込みワークフローを提供する。
 
-> **現在の状態: フェーズ 0（基盤検証）着手中。** アプリ本体（SwiftUI 実行可能形態）
-> はまだ存在しない。現時点で存在するのは、実装の土台となる SwiftPM パッケージ
-> （`QooKit` / `QooPersistence` / `QooInfrastructure` / `QooApplication`）と、
-> アーカイブライブラリ（libarchive・UnRAR）の組み込み検証のみ。
+> **現在の状態: フェーズ 1（ファイルマネージャー）着手中。** アプリ本体
+> （`qooLibraryApp`）は起動でき、デザイントークンが配線された空の 3 ペイン
+> ウインドウを表示する（1-1 完了）。フォルダツリー・ファイル一覧・ファイル
+> 操作などの実機能はまだ無い。
 
 ## 設計仕様書
 
@@ -31,8 +31,22 @@ swift test
 `QooPersistence`/`QooInfrastructure` → `QooKit`）に固定されており、CI の
 静的検査で強制している（`Scripts/` 参照）。
 
-SwiftUI アプリ本体（`qooLibraryApp` / `qooLibrary.xcodeproj`、App Sandbox・
-entitlement を含む）はフェーズ 1 で追加する。
+### アプリ本体（qooLibraryApp）
+
+`qooLibrary.xcodeproj` は手で編集せず、[XcodeGen](https://github.com/yonaskolb/XcodeGen)
+で `project.yml` から生成する（`.gitignore` 対象。ThirdParty の xcframework と
+同じく、生成物はコミットしない）。
+
+```sh
+brew install xcodegen   # 初回のみ
+Scripts/build-libarchive.sh
+Scripts/build-unrar.sh
+xcodegen generate
+xcodebuild -project qooLibrary.xcodeproj -scheme qooLibraryApp -configuration Debug build
+```
+
+`project.yml` を変更したら `xcodegen generate` で再生成すること。App Sandbox
+entitlement は `Sources/qooLibraryApp/qooLibrary.entitlements`。
 
 ### libarchive の組み込み
 

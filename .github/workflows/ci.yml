@@ -56,6 +56,24 @@ jobs:
       - name: swift test
         run: swift test
 
+  # qooLibraryApp: 実際の Xcode アプリターゲット [1-1]。project.yml から
+  # XcodeGen で生成する（.xcodeproj 自体は git-ignore、Package.swift の
+  # xcframework 群と同じ「生成物はコミットしない」方針）。
+  app-build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build libarchive
+        run: Scripts/build-libarchive.sh
+      - name: Build UnRAR
+        run: Scripts/build-unrar.sh
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate qooLibrary.xcodeproj
+        run: xcodegen generate
+      - name: xcodebuild
+        run: xcodebuild -project qooLibrary.xcodeproj -scheme qooLibraryApp -configuration Debug build
+
   # LC-05: THIRD-PARTY-NOTICES.md の更新漏れ検出。
   license:
     if: github.event_name == 'pull_request'

@@ -1,0 +1,51 @@
+# XcodeGen spec for qooLibrary.xcodeproj. Regenerate after editing with:
+#   xcodegen generate
+#
+# The .xcodeproj itself is git-ignored (regenerated from this file), matching
+# the philosophy already used for vendored ThirdParty binaries: a generated
+# artifact that's reproducible from source is not committed. This also keeps
+# project-file conflicts out of code review — edit project.yml, not pbxproj.
+name: qooLibrary
+options:
+  bundleIdPrefix: com.qoolibrary
+  deploymentTarget:
+    macOS: "15.0"
+  createIntermediateGroups: true
+
+packages:
+  qooLibraryPackage:
+    path: .
+
+targets:
+  qooLibraryApp:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/qooLibraryApp
+      - path: Resources/DesignTokens.json
+        buildPhase: resources
+    dependencies:
+      - package: qooLibraryPackage
+        product: QooKit
+      - package: qooLibraryPackage
+        product: QooPersistence
+      - package: qooLibraryPackage
+        product: QooInfrastructure
+      - package: qooLibraryPackage
+        product: QooApplication
+    settings:
+      base:
+        PRODUCT_NAME: qooLibrary
+        PRODUCT_BUNDLE_IDENTIFIER: com.qoolibrary.app
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "6.0"
+        MACOSX_DEPLOYMENT_TARGET: "15.0"
+        CODE_SIGN_ENTITLEMENTS: Sources/qooLibraryApp/qooLibrary.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_NSHumanReadableCopyright: "Copyright © 2026 Kosuke Nishimura. MIT licensed (Sources/); see THIRD-PARTY-NOTICES.md for vendored components."
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
+        INFOPLIST_KEY_NSPrincipalClass: NSApplication
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_STYLE: Automatic

@@ -4,16 +4,27 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
 
 ## 0. 現在の状態
 
-**フェーズ 0（基盤検証）ほぼ完了。** `docs/Specifications/17_実装ロードマップ.md` §17.2 の 0-1（libarchive・UnRAR の組み込み検証）、0-2（RAR カバレッジ差分の暫定測定）、0-4（プロジェクト骨格）が完了している。
+**フェーズ 0（基盤検証）完了。フェーズ 1（ファイルマネージャー）着手済み（1-1 完了）。**
+
+### フェーズ 0（`17_実装ロードマップ.md` §17.2、全項目完了）
 
 - `Package.swift`（`QooKit`/`QooPersistence`/`QooInfrastructure`/`QooApplication` + `CLibarchive` + `QooUnrarBridge` + `QooKitTests`）が存在し、`swift build` / `swift test` がグリーン。`PERMISSIVE_ONLY_BUILD=1 swift build` も動作する。
 - `Scripts/build-libarchive.sh` / `Scripts/build-unrar.sh` でそれぞれ libarchive・UnRAR をソースからビルドし、`ThirdParty/{libarchive,unrar}/*.xcframework`（arm64+x86_64 ユニバーサル）を生成する。システムの dylib にはリンクしない [LC-15][B-02][LC-11]。
 - UnRAR は Objective-C++ ラッパー `Sources/QooUnrarBridge/QooUnrarBridge.mm` 経由でのみ呼ぶ [B-03]。`PERMISSIVE_ONLY_BUILD` ではこのターゲット自体が `Package.swift` から除外される。
-- `Spikes/LibarchiveSpike`（zip/7z の zip 半分）・`Spikes/UnrarSpike`（RAR）で一覧・展開が実際に動作することを確認済み。`Spikes/compare-rar-coverage.sh` で libarchive 同梱の RAR テスト corpus 109 件による UnRAR/libarchive のカバレッジ比較も実施済み（詳細・注意点は `Spikes/README.md`）。
+- `Spikes/LibarchiveSpike`・`Spikes/UnrarSpike` で zip・RAR の一覧・展開を確認済み。実 `.rar`/`.cbr`（ユーザー提供、122 件）での T-12 再測定と、実ファイル名（2,957 件）に基づく 0-3 の知見も完了（`Spikes/README.md`、`Spikes/real-data-findings.md`）。**実ファイル名・実データそのものはリポジトリに一切含めない**運用にした（ユーザーの明示的な指示）。
 - 静的検査 `Scripts/check-fileops-isolation.swift`（B-10）・`check-layer-dependencies.swift`（B-11）・`check-json-completeness.swift`（B-13, 現状はプレースホルダ）と CI（`.github/workflows/ci.yml`）を用意した。
-- **未着手**: 7z サンプルでの検証、実 `.cbr` サンプルでの T-12 再測定（ユーザーの実ファイルが必要）、ゴールデンサンプル収集（0-3、同じくユーザーの実ファイル名が必要）、`qooLibraryApp`（SwiftUI アプリ本体・`qooLibrary.xcodeproj`・App Sandbox entitlement）はフェーズ 1 で着手する。
 - **既知の懸念（要フォローアップ）**: libarchive 3.8.9 は特定の壊れた RAR 入力（use-after-free の回帰テストファイル）でクラッシュする（エラーを返さず異常終了）。`SecureExtractor`（09章 §9.3）実装時に対処を検討する必要がある。詳細は `Spikes/README.md` の T-12 節。
-- 各 `Sources/*/*.swift` の中身はまだプレースホルダ（モジュール依存関係を検証するための最小限のマーカー型のみ）で、ドメインロジック・SwiftData モデル・UI は一切実装していない。
+
+### フェーズ 1（`17_実装ロードマップ.md` §17.3、1-1 完了・1-2 以降未着手）
+
+- **1-1 プロジェクト基盤が完了。** `qooLibrary.xcodeproj` は `project.yml` から `xcodegen generate` で生成する（**git-ignore 対象、手で pbxproj を編集しない**。ThirdParty の xcframework と同じ「生成物はコミットしない」方針）。ローカルの SwiftPM パッケージ（`QooKit`/`QooPersistence`/`QooInfrastructure`/`QooApplication`）を local package dependency として参照し、実機で起動確認済み。
+- App Sandbox entitlement（`Sources/qooLibraryApp/qooLibrary.entitlements`、SB-01/SB-02 相当）を付与済み。
+- デザイントークン: `Resources/DesignTokens.json`（spacing/radius/fontSize/iconSize、単一ソース [UI-01]）を `Sources/qooLibraryApp/DesignSystem/Tokens.swift` が実行時に読み込む。色は `Sources/qooLibraryApp/Assets.xcassets` の Color Set 経由（ライト/ダーク対応、コード中に HEX 直書きしない [DT2-03]）。
+- 共通コンポーネント: `ThreePaneWindow`/`TwoPaneWindow`（`PaneWindows.swift`）、`QooDialogFooter`、`QooProgressPresenter` を実装（UI-02〜UI-04, UI-09）。`LabelChip`/`QooErrorView`/`RenamePreviewTable`/`FieldBreakdownView` はドメイン型（`Label`、`FieldSpan`、`UserPresentableError`）が無いため未着手。
+- `Sources/CLibarchive/shim.c`: Xcode のビルドシステム（`swift build` と違い）はソースファイルを持たないターゲットで `<Target>.o` を要求してリンクに失敗するため、空の C ファイルを追加して回避した。同種の headers-only ターゲットを追加する際はこのパターンを踏襲する。
+- CI に `app-build` ジョブを追加（`brew install xcodegen && xcodegen generate && xcodebuild`）。
+- **未着手**（1-2 以降）: Security-Scoped Bookmark・FS 適合検証、メインウインドウの実装（フォルダツリー・ファイル一覧・詳細情報は現状プレースホルダ）、`FileOperationService`、ドラッグ＆ドロップ、圧縮展開 UI、Undo 基盤、環境設定、通知基盤、診断ログ等。
+- 各 `Sources/{QooKit,QooPersistence,QooInfrastructure,QooApplication}/*.swift` の中身はまだプレースホルダ（モジュール依存関係を検証するための最小限のマーカー型のみ）で、ドメインロジック・SwiftData モデルは一切実装していない。
 
 作業を始める際は、対象領域の仕様書（下記 §2 の一覧）を該当箇所だけ `Read` してから着手する。仕様書は合計 18 ファイルあり、全部を毎回読み込む必要はない。要件定義書本体は `docs/Requirements/qooLibrary_要件定義書_v2.8.md` にある（約 2,900 行）。矛盾したときの優先順位は §1 参照。
 
@@ -154,25 +165,25 @@ Swift 6 言語モード、`StrictConcurrency` 有効。
 
 ## 6. 実装の進め方
 
-`17_実装ロードマップ.md` に従い、フェーズを飛ばさない。現時点ではフェーズ 0（基盤検証）の途中（§0 参照）。
+`17_実装ロードマップ.md` に従い、フェーズを飛ばさない。現時点ではフェーズ 1（ファイルマネージャー）の途中（§0 参照）。
 
 ```
-フェーズ0 基盤検証        T-13/T-12 の技術検証、ゴールデンサンプル収集開始、プロジェクト骨格 ← 進行中
-フェーズ1 ファイルマネージャー  Finder 代替として日常使用できる状態
+フェーズ0 基盤検証        T-13/T-12 の技術検証、ゴールデンサンプル収集開始、プロジェクト骨格 ← 完了
+フェーズ1 ファイルマネージャー  Finder 代替として日常使用できる状態             ← 進行中（1-1 完了）
 フェーズ2 ライブラリマネージャー ラベル管理が実用レベル
 フェーズ3 テンポラリフォルダ   取り込み〜投入のワークフロー完結
 ```
 
-フェーズ 0 の残り（`17_実装ロードマップ.md` §17.2）:
+フェーズ 1（`17_実装ロードマップ.md` §17.3）:
 
-| # | 作業 | 状態 |
+| # | 内容 | 状態 |
 |---|---|---|
-| 0-1 | libarchive / UnRAR の組み込み検証 [T-13] | 完了。zip/7z（libarchive、7z はサンプル未検証）と RAR（UnRAR）の両方で一覧・展開を確認 |
-| 0-2 | RAR カバレッジ差分の測定 [T-12] | 暫定完了。libarchive 同梱の RAR テスト corpus（109 件、実 `.cbr` ではない）で比較。実 `.cbr` での再測定が要フォローアップ |
-| 0-3 | ゴールデンサンプルの収集開始 [MT-27][DP-09] | 未着手。ユーザーの実ファイル名 500 件以上が必要 |
-| 0-4 | プロジェクト骨格の作成 | 完了。`swift build`/`swift test`/CI がグリーン |
+| 1-1 | プロジェクト基盤（レイヤ構成、デザイントークン、共通コンポーネント） | 完了 |
+| 1-2 | サンドボックス + Security-Scoped Bookmark 基盤、FS 適合検証 | 未着手 |
+| 1-3 | メインウインドウ 3 ペイン、タブ・複数ウインドウ、状態の 3 分類 | 未着手 |
+| 1-4〜1-15 | フォルダツリー、ファイル操作、D&D、圧縮展開、Undo、環境設定、通知基盤 等 | 未着手 |
 
-- フェーズ 1 の 4 制約（DP-01 Undo 基盤 / DP-05 FileOps 集約 / DP-07 mainContext 構成 / DP-08 通知基盤）は機能追加より先に固める。後付けは大規模改修になる。
+- フェーズ 1 の 4 制約（DP-01 Undo 基盤 / DP-05 FileOps 集約 / DP-07 mainContext 構成 / DP-08 通知基盤）は機能追加より先に固める。後付けは大規模改修になる。1-1 はこれらより前段の土台（プロジェクト構成・デザイントークン）であり、4 制約自体はまだ手を付けていない。
 - フェーズ 2 の最初に `VersionedSchema` を導入する。パーサ（`QooKit`）は永続化と並行実装できるため早期着手を推奨。
 - 各フェーズの DoD（完了条件、17 章に記載）を満たさないまま次フェーズへ進まない。
 

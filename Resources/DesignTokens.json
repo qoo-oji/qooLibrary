@@ -1,0 +1,6 @@
+{
+  "spacing": { "xs": 4, "s": 8, "m": 12, "l": 16, "xl": 24, "xxl": 32 },
+  "radius": { "s": 4, "m": 6, "l": 10, "pill": 999 },
+  "fontSize": { "caption": 11, "body": 13, "title3": 15, "title2": 17, "title1": 22 },
+  "iconSize": { "min": 48, "max": 256, "defaultValue": 96, "step": 8 }
+}
