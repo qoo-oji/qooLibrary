@@ -96,7 +96,7 @@ targets.append(
 targets.append(
     .testTarget(
         name: "QooInfrastructureTests",
-        dependencies: ["QooInfrastructure"]
+        dependencies: ["QooInfrastructure", "CLibarchive"]
     )
 )
 

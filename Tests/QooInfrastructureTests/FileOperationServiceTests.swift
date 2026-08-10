@@ -68,6 +68,25 @@ import Testing
         #expect(FileManager.default.fileExists(atPath: destDir.appendingPathComponent("a.txt").path))
     }
 
+    @Test func promoteFromStagingMovesTopLevelChildrenOnly() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let staging = root.appendingPathComponent("staging")
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+        let destDir = root.appendingPathComponent("dest")
+        try FileManager.default.createDirectory(at: destDir, withIntermediateDirectories: true)
+
+        try write("page1", to: staging.appendingPathComponent("page001.jpg"))
+        try FileManager.default.createDirectory(at: staging.appendingPathComponent("sub"), withIntermediateDirectories: true)
+        try write("page2", to: staging.appendingPathComponent("sub/page002.jpg"))
+
+        let receipts = try await service.promoteFromStaging(staging, to: destDir)
+
+        #expect(receipts.count == 2) // ステージング直下の2項目（page001.jpg, sub/）
+        #expect(FileManager.default.fileExists(atPath: destDir.appendingPathComponent("page001.jpg").path))
+        #expect(FileManager.default.fileExists(atPath: destDir.appendingPathComponent("sub/page002.jpg").path))
+    }
+
     @Test func renameChangesTheFileName() async throws {
         let root = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: root) }

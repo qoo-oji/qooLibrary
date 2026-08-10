@@ -38,6 +38,21 @@ public actor FileOperationService {
         }
     }
 
+    /// 展開のステージングディレクトリ直下の項目を最終位置へ移送する [EX-04]。
+    /// `SecureExtractor` がすべての安全検証（EX-10〜EX-24）を終えた**後**に
+    /// 呼ぶことが前提。ステージングディレクトリ自体の削除はここでは行わない
+    /// （呼び出し側の責務、`SecureExtractor` 参照）。
+    public func promoteFromStaging(
+        _ staging: URL, to destination: URL, options: OpOptions = .init()
+    ) async throws -> [OpReceipt] {
+        let items = try FileManager.default.contentsOfDirectory(
+            at: staging, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
+        )
+        return try await transfer(items, to: destination, options: options, kind: .promoteFromStaging) { source, target in
+            try FileManager.default.moveItem(at: source, to: target)
+        }
+    }
+
     @discardableResult
     public func rename(_ item: URL, to newName: String, options: OpOptions = .init()) async throws -> OpReceipt {
         let target = item.deletingLastPathComponent().appendingPathComponent(newName)

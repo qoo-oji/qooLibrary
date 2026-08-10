@@ -15,7 +15,7 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
 - 静的検査 `Scripts/check-fileops-isolation.swift`（B-10）・`check-layer-dependencies.swift`（B-11）・`check-json-completeness.swift`（B-13, 現状はプレースホルダ）と CI（`.github/workflows/ci.yml`）を用意した。
 - **既知の懸念（要フォローアップ）**: libarchive 3.8.9 は特定の壊れた RAR 入力（use-after-free の回帰テストファイル）でクラッシュする（エラーを返さず異常終了）。`SecureExtractor`（09章 §9.3）実装時に対処を検討する必要がある。詳細は `Spikes/README.md` の T-12 節。
 
-### フェーズ 1（`17_実装ロードマップ.md` §17.3、1-1〜1-6 完了・1-7 以降未着手）
+### フェーズ 1（`17_実装ロードマップ.md` §17.3、1-1〜1-6 完了・1-7 着手中・1-8 以降未着手）
 
 - **1-1 プロジェクト基盤が完了。** `qooLibrary.xcodeproj` は `project.yml` から `xcodegen generate` で生成する（**git-ignore 対象、手で pbxproj を編集しない**。ThirdParty の xcframework と同じ「生成物はコミットしない」方針）。ローカルの SwiftPM パッケージ（`QooKit`/`QooPersistence`/`QooInfrastructure`/`QooApplication`）を local package dependency として参照し、実機で起動確認済み。
 - App Sandbox entitlement（`Sources/qooLibraryApp/qooLibrary.entitlements`）を付与済み。`codesign -d --entitlements :-` で署名済みバイナリに実際に反映されていることを確認済み [SB-01]。
@@ -68,7 +68,17 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
     - D&D 対応で List 標準のクリック選択を手動処理に置き換えた副作用で、Cmd/Shift クリックでの複数選択も失われていた → 手動で Cmd（トグル）・Shift（範囲選択、起点を `selectionAnchor` で保持）を再実装。
     - `WindowState.reloadToken` がウインドウ単位だったため、あるウインドウでの D&D 完了後、別ウインドウで同じフォルダを表示していてもそちらは自動更新されなかった。実機検証中、これが原因で「ウインドウ間で反対方向にドラッグすると何も起きない（実際は移動に成功していたが表示が古かった）→ 同じ行をもう一度ドラッグして実体の無いファイルへのアクセスとなりエラー」という事象が発生し、原因特定に至った → `reloadToken` を `WindowState`（ウインドウ単位）から `SessionState.shared`（セッション全体で 1 つ）に移し、全ウインドウ・全ペインが同じシグナルを見るように変更。
   - **SwiftUI の既知の未解決バグに遭遇し、macOS 26 の新 API で回避した**: `.onDrag`/`.draggable(_:)` は macOS の `List` で複数選択をまとめてドラッグできない（Apple Developer Forums、Feedback FB10128110、2023年7月報告、未修正）。デバッグログで実測したところ、複数選択中でも実際にドラッグされた 1 行分の `.onDrag` しか呼ばれず、SwiftUI が他の選択行を自動的に束ねてはくれないことを確認した。オープンソースの macOS ファイルマネージャー（Nimble Commander・Double Commander・folderium 等）を調査したところ、SwiftUI の `List` を使うもの（folderium）はペイン間の複数ファイル転送を D&D ではなくツールバーボタン（選択全体が対象）で行っており、AppKit 直下のもの（Nimble Commander）は自前の `NSTableView` サブクラス + `pasteboardWriterForRow:` で複数行ドラッグを実現していた。つまり SwiftUI の枠内でこの問題を回避する一般的な方法は無い。最終的に **macOS 26 で追加された `draggable(containerItemID:)` + `dragContainer(for:itemID:in:)` + `dragContainerSelection(_:)`**（`SwiftUI.swiftinterface` で確認、`@available(macOS 26.0, *)`、iOS 側は unavailable）を採用し、最小対応 OS を引き上げることで正攻法で解決した。
-- **未着手**（1-7 以降）: 圧縮展開 UI、Undo 基盤、環境設定（表示密度等の可変設定を含む）、通知基盤、診断ログ、右ペインの詳細情報（現状 1-2 の検証 UI が仮置き）、ラベルフィルタ（左ペイン下半分、現状プレースホルダ）、フォルダ登録（1-13）等。
+- **1-7 は「展開エンジン（セキュリティ含む）＋ライセンス表記一式」まで着手済み。圧縮（AR-10/11）・コンテキストメニュー UI（AR-20〜23）・文字化けプレビュー UI（EN-01/02）は未着手のため、フェーズ 1 のロードマップ表ではまだ「完了」にしていない。**
+  - `Sources/QooKit/Model/AppLimits.swift`: 定数集約の第一号（`AppLimits.Extraction`、EX-21 の既定値）[4章 命名規約]。
+  - `Sources/QooKit/Model/Archive/`: `ArchiveFormat`（`cbz`/`cb7`/`cbr` エイリアス込み）、`ArchiveEntry`/`ArchiveListing`、`ExtractOptions`/`ExtractLimits`/`ExtractResult`/`RejectionReason`/`ExtractError`、`ArchiveNameEncodingHeuristic`（§9.2 UTF-8 / CP932 判定ロジックのみ。**展開前プレビュー UI [EN-01][EN-02] と実バックエンドへの統合（libarchive から生バイト列のパス名を取り出す設定）は未着手** — 現状バックエンドは libarchive 自身のデフォルトのパス名デコードに任せている）。
+  - `Sources/QooInfrastructure/FileOps/Archive/`: `ArchiveReading` プロトコル、`LibarchiveBackend`（zip/7z/tarGz、`PERMISSIVE_ONLY_BUILD` では RAR も）、`UnrarBackend`（RAR、`#if !PERMISSIVE_ONLY_BUILD`）、`ArchiveBackendRegistry`、`EntryPathValidation`（EX-10〜EX-15 の共通パス検証）、`SecureExtractor`（司令塔、EX-01〜EX-24）。**FileOps 隔離検査（B-10）の対象外ディレクトリに意図的に置いている** — ステージング（ユーザー非可視のアプリ内部領域）への書き込みは期待変更台帳・Undo の対象外のため `FileOperationService` を経由しない設計判断（`VolumeEligibilityChecker` と同じ理由・パターン）。ユーザーに見える最終位置への移送だけは `FileOperationService.promoteFromStaging`（新規追加、`OperationKind.promoteFromStaging`）を必ず経由する。
+  - **libarchive 経由（zip/7z/tarGz）は実バイト数によるリアルタイムの展開爆弾対策ができる**（`archive_read_data` のストリーミングループ内で都度チェック）。**UnRAR 経由（RAR）はできない** — `QooUnrarBridge` の `qoo_unrar_extract_all` がエントリ単位のストリーミング取得やキャンセルに対応しない一括 API のため。RAR は代わりに、①展開前の一覧取得でパス検証し不正なエントリが 1 件でもあればアーカイブ全体を拒否（部分展開はできない）、②展開後にステージング全体の実サイズを検証し超過していれば破棄、という事後チェックにしている。より踏み込んだ対応（UnRAR の `UCM_PROCESSDATA` コールバックを使ったバイト単位の中断）が必要になれば `QooUnrarBridge.mm` の拡張を検討する（自作ラッパーなので改変は問題ない）。
+  - `Sources/qooLibraryApp/About/AboutView.swift` + `qooLibraryApp.swift`: `Window(id: "about")` シーンと「qooLibrary について」メニュー項目を追加し、UnRAR（著作者 Alexander Roshal/RARLAB、RAR 互換アーカイバ開発への使用禁止）と libarchive（BSD-2-Clause）の帰属表示を掲載 [LC-25]。**実機で表示確認済み。**
+  - `SecureExtractor.cleanupResidualStaging()` を `qooLibraryApp.init()` から起動時に一度だけ呼ぶ（異常終了後の残存ステージング削除 [RB-07][EX-03]）。`Scene` は `.task` を持てないため `init()` 内の `Task { }` から呼んでいる。
+  - `QooKitTests`（12件、`ArchiveNameEncodingHeuristicTests`/`ArchiveFormatTests`）・`QooInfrastructureTests`（新規 23 件、`LibarchiveBackendTests`/`SecureExtractorTests`/`FileOperationServiceTests` 追加分）で検証。**`Tests/QooInfrastructureTests/ArchiveFixtureBuilder.swift`** が libarchive の書き込み API で直接 zip フィクスチャを組み立てる（`zip` コマンド経由だとパストラバーサル等の不正なエントリ名が正規化されてしまい再現できないため）。パストラバーサル・絶対パス・シンボリックリンク・エントリ数上限・展開後サイズ上限・圧縮率上限のいずれも実際に作った不正な zip で拒否/中断を確認済み。UnRAR 経由（実 RAR ファイル）の自動テストは無し（フェーズ 0 と同じ理由、実 RAR ファイルはユーザー提供のみでリポジトリに含められない）。
+  - **実装中に見つけて直した実装バグ**: `SecureExtractor.extract()` が成功時にステージングディレクトリを削除しないまま放置していた（`promoteFromStaging` は中身だけを移送し、空になった殻のディレクトリ自体は消さない）。「成功時は削除しない」という早すぎる最適化のフラグ変数が原因で、`extractDoesNotLeaveResidualStagingOnSuccess` テストが実際に空ディレクトリの蓄積を検出して発覚。成功・失敗を問わずステージングを必ず削除するよう修正（テストで実測検証済み）。
+  - **最小対応 OS を macOS 26 に上げたことの副産物として** `Window`/`openWindow` などの比較的新しい SwiftUI シーン API が使えるようになり、About ウインドウの実装が単純になった。
+- **未着手**（1-7 残り・1-8 以降）: 圧縮（AR-10/11）、圧縮・展開のコンテキストメニュー UI（AR-20〜23）、文字化け判定のプレビュー UI と実バックエンド統合（EN-01/02/04）、Undo 基盤、環境設定（表示密度等の可変設定を含む）、通知基盤、診断ログ、右ペインの詳細情報（現状 1-2 の検証 UI が仮置き）、ラベルフィルタ（左ペイン下半分、現状プレースホルダ）、フォルダ登録（1-13）等。
 - 各 `Sources/{QooKit,QooPersistence,QooApplication}/*.swift` の中身はまだプレースホルダ（モジュール依存関係を検証するための最小限のマーカー型のみ）で、ドメインロジック・SwiftData モデルは一切実装していない。`QooInfrastructure` はサンドボックス／FS 検証のみ実装済み。
 
 作業を始める際は、対象領域の仕様書（下記 §2 の一覧）を該当箇所だけ `Read` してから着手する。仕様書は合計 18 ファイルあり、全部を毎回読み込む必要はない。要件定義書本体は `docs/Requirements/qooLibrary_要件定義書_v2.8.md` にある（約 2,900 行）。矛盾したときの優先順位は §1 参照。
@@ -229,7 +239,8 @@ Swift 6 言語モード、`StrictConcurrency` 有効。
 | 1-4 | フォルダツリー（ボリューム／テンポラリ／ライブラリの 3 グループ） | 完了 |
 | 1-5 | 基本ファイル操作・衝突処理。`FileOperationService` への集約 | 完了 |
 | 1-6 | ドラッグ＆ドロップ（DD-01〜DD-03, DD-05） | 完了 |
-| 1-7〜1-15 | 圧縮展開、Undo、環境設定、通知基盤 等 | 未着手 |
+| 1-7 | 圧縮・展開、文字化け対策、展開時のセキュリティ、ライセンス表記一式 | 着手中（展開エンジン＋ライセンス表記まで完了、圧縮・コンテキストメニューUI・文字化けプレビューUIは未着手） |
+| 1-8〜1-15 | キーボードショートカット、Undo、環境設定、通知基盤 等 | 未着手 |
 
 - フェーズ 1 の 4 制約（DP-01 Undo 基盤 / DP-05 FileOps 集約 / DP-07 mainContext 構成 / DP-08 通知基盤）は機能追加より先に固める。後付けは大規模改修になる。1-1 はこれらより前段の土台（プロジェクト構成・デザイントークン）であり、4 制約自体はまだ手を付けていない。
 - フェーズ 2 の最初に `VersionedSchema` を導入する。パーサ（`QooKit`）は永続化と並行実装できるため早期着手を推奨。

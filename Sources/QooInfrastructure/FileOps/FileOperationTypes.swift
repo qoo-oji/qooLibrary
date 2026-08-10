@@ -3,6 +3,8 @@ import QooKit
 
 public enum OperationKind: Sendable, Equatable {
     case createDirectory, copy, move, rename, trash, deletePermanently, restoreFromTrash
+    /// 展開のステージングディレクトリから最終位置への移送 [EX-04]。
+    case promoteFromStaging
 }
 
 public enum ConflictPolicy: Sendable, Equatable {

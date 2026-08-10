@@ -13,9 +13,38 @@ import SwiftUI
 /// [11章 §11.4 状態の 3 分類]。
 @main
 struct QooLibraryApp: App {
+    init() {
+        // 異常終了後に残ったステージングディレクトリを削除する
+        // [RB-07][EX-03]。`Scene` は `.task` を持てないため `init()` から
+        // 起動時に一度だけ実行する。
+        Task {
+            await SecureExtractor.cleanupResidualStaging()
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             MainWindowView()
+        }
+        .commands {
+            CommandGroup(replacing: .appInfo) {
+                AboutMenuButton()
+            }
+        }
+
+        Window("qooLibrary について", id: "about") {
+            AboutView()
+        }
+        .windowResizability(.contentSize)
+    }
+}
+
+private struct AboutMenuButton: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("qooLibrary について") {
+            openWindow(id: "about")
         }
     }
 }
