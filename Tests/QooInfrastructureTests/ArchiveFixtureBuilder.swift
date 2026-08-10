@@ -8,16 +8,25 @@ import Foundation
 enum ArchiveFixtureBuilder {
     struct Entry {
         let pathname: String
+        /// 非 nil の場合、`pathname` の代わりにこの生バイト列をそのまま
+        /// エントリ名として書き込む（Swift の `String` → C 文字列変換は常に
+        /// UTF-8 になるため、意図的に他エンコーディングのバイト列を持つ
+        /// エントリを作るにはこちらを使う）[AR-02 の文字化けテスト用]。
+        let rawPathnameBytes: Data?
         let contents: Data
         let isSymlink: Bool
         let symlinkTarget: String?
 
         static func file(_ pathname: String, contents: Data) -> Entry {
-            Entry(pathname: pathname, contents: contents, isSymlink: false, symlinkTarget: nil)
+            Entry(pathname: pathname, rawPathnameBytes: nil, contents: contents, isSymlink: false, symlinkTarget: nil)
+        }
+
+        static func fileWithRawPathname(_ rawPathnameBytes: Data, contents: Data) -> Entry {
+            Entry(pathname: "", rawPathnameBytes: rawPathnameBytes, contents: contents, isSymlink: false, symlinkTarget: nil)
         }
 
         static func symlink(_ pathname: String, target: String) -> Entry {
-            Entry(pathname: pathname, contents: Data(), isSymlink: true, symlinkTarget: target)
+            Entry(pathname: pathname, rawPathnameBytes: nil, contents: Data(), isSymlink: true, symlinkTarget: target)
         }
     }
 
@@ -41,7 +50,17 @@ enum ArchiveFixtureBuilder {
             }
             defer { archive_entry_free(entryPtr) }
 
-            archive_entry_set_pathname(entryPtr, entry.pathname)
+            if let rawBytes = entry.rawPathnameBytes {
+                var nullTerminated = Array(rawBytes)
+                nullTerminated.append(0)
+                nullTerminated.withUnsafeBufferPointer { buffer in
+                    buffer.baseAddress!.withMemoryRebound(to: CChar.self, capacity: nullTerminated.count) { cString in
+                        archive_entry_set_pathname(entryPtr, cString)
+                    }
+                }
+            } else {
+                archive_entry_set_pathname(entryPtr, entry.pathname)
+            }
             archive_entry_set_perm(entryPtr, 0o644)
 
             if entry.isSymlink {

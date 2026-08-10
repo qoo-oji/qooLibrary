@@ -21,14 +21,19 @@ public struct QooProgressPresenter: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: Tokens.spacing.s) {
+        VStack(alignment: .center, spacing: Tokens.spacing.s) {
             Text(title)
                 .font(.system(size: Tokens.fontSize.body))
+                .multilineTextAlignment(.center)
             if let progress {
                 ProgressView(value: progress)
             } else {
+                // 不定進捗の spinner は幅が小さく、`VStack(alignment: .leading)`
+                // のままだと左に寄って見た目が不自然になる（実機検証で発覚）。
+                // 横幅いっぱいの中央に置く。
                 ProgressView()
                     .controlSize(.small)
+                    .frame(maxWidth: .infinity, alignment: .center)
             }
             if let detail {
                 Text(detail)

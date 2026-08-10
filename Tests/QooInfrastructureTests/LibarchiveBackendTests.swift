@@ -20,6 +20,56 @@ import Testing
         #expect(await !backend.canRead(URL(fileURLWithPath: "/tmp/book.txt")))
     }
 
+    /// 実機検証で発見した回帰: UTF-8 フラグの立っていない zip 内の
+    /// Shift_JIS（CP932）ファイル名が、libarchive の生バイト列をそのまま
+    /// `String(cString:)` していたせいで U+FFFD の連続に化けていた。
+    @Test func listEntriesDecodesShiftJISNamesWithoutUTF8Flag() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let archiveURL = root.appendingPathComponent("manga.zip")
+
+        let japaneseName = "第1巻 サンプル.jpg"
+        guard let shiftJISBytes = japaneseName.data(using: .shiftJIS) else {
+            Issue.record("Shift_JIS へのエンコードに失敗した")
+            return
+        }
+        try ArchiveFixtureBuilder.makeZip(at: archiveURL, entries: [
+            .fileWithRawPathname(shiftJISBytes, contents: Data("cover".utf8)),
+        ])
+
+        let listing = try await LibarchiveBackend.shared.listEntries(archiveURL)
+
+        #expect(listing.detectedEncoding == .shiftJIS)
+        #expect(listing.entries.first?.pathname == japaneseName)
+    }
+
+    @Test func extractDecodesShiftJISNamesOnDisk() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let archiveURL = root.appendingPathComponent("manga.zip")
+
+        let japaneseName = "第1巻 サンプル.jpg"
+        guard let shiftJISBytes = japaneseName.data(using: .shiftJIS) else {
+            Issue.record("Shift_JIS へのエンコードに失敗した")
+            return
+        }
+        try ArchiveFixtureBuilder.makeZip(at: archiveURL, entries: [
+            .fileWithRawPathname(shiftJISBytes, contents: Data("cover".utf8)),
+        ])
+
+        // `SecureExtractor` を経由せず `LibarchiveBackend` 単体で確認する
+        // ため、`listEntries` の判定結果を手動で `options.encoding` に渡す
+        // （`SecureExtractor` が普段代行している配線）。
+        let listing = try await LibarchiveBackend.shared.listEntries(archiveURL)
+        let staging = root.appendingPathComponent("staging", isDirectory: true)
+        var options = ExtractOptions(destination: staging)
+        options.encoding = listing.detectedEncoding
+
+        _ = try await LibarchiveBackend.shared.extract(archiveURL, to: staging, options: options)
+
+        #expect(FileManager.default.fileExists(atPath: staging.appendingPathComponent(japaneseName).path))
+    }
+
     @Test func listEntriesReturnsAllEntries() async throws {
         let root = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: root) }

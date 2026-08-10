@@ -28,8 +28,13 @@ public struct ArchiveEntry: Sendable, Equatable {
 /// エントリ一覧の結果 [9.1 節]。
 public struct ArchiveListing: Sendable, Equatable {
     public let entries: [ArchiveEntry]
+    /// エントリ名の判定に使われたエンコーディング [AR-02][9.2 節]。zip/7z の
+    /// UTF-8 フラグ未設定時は `ArchiveNameEncodingHeuristic` の判定結果、
+    /// それ以外（フラグ設定済み・rar・tar.gz）は常に `.utf8`。
+    public let detectedEncoding: String.Encoding
 
-    public init(entries: [ArchiveEntry]) {
+    public init(entries: [ArchiveEntry], detectedEncoding: String.Encoding = .utf8) {
         self.entries = entries
+        self.detectedEncoding = detectedEncoding
     }
 }

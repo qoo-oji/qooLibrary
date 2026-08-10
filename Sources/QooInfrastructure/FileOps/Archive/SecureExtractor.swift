@@ -57,7 +57,15 @@ public actor SecureExtractor {
             throw ExtractError.insufficientFreeSpace(required: declaredTotal, available: available)
         }
 
-        let result = try await backend.extract(archiveURL, to: staging, options: options)
+        // `listEntries` が既にエンコーディングを判定済み [AR-02]。呼び出し側が
+        // 明示的に指定していなければその結果を使い、`extract` 側での再判定
+        // （＝アーカイブの再走査）を避ける。
+        var extractOptions = options
+        if extractOptions.encoding == nil {
+            extractOptions.encoding = listing.detectedEncoding
+        }
+
+        let result = try await backend.extract(archiveURL, to: staging, options: extractOptions)
         if Task.isCancelled { throw ExtractError.cancelled } // [EX-24]
 
         _ = try await fileOps.promoteFromStaging(
