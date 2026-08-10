@@ -7,9 +7,10 @@ on:
 
 jobs:
   # 01_プロジェクト構成とビルド.md §1.2: Release / Release-Permissive の 2 構成。
-  # UnRAR は未組み込みのため、現時点では両構成とも同じ依存関係でビルドされる
-  # (PERMISSIVE_ONLY_BUILD の swiftSettings.define だけが異なる)。UnRAR 追加後、
-  # 既定構成のみ CUnrar への依存が付く。
+  # 既定構成 (permissive=false) は libarchive + UnRAR の両方が必要。
+  # PERMISSIVE_ONLY_BUILD (permissive=true) は UnRAR 関連ターゲットが
+  # Package.swift から除外されるため、Scripts/build-unrar.sh は実行しない
+  # ([Sources/QooUnrarBridge] 節、Package.swift 参照)。
   build:
     runs-on: macos-latest
     strategy:
@@ -19,6 +20,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build libarchive
         run: Scripts/build-libarchive.sh
+      - name: Build UnRAR
+        if: ${{ !matrix.permissive }}
+        run: Scripts/build-unrar.sh
       - name: swift build (default)
         if: ${{ !matrix.permissive }}
         run: swift build
@@ -47,6 +51,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build libarchive
         run: Scripts/build-libarchive.sh
+      - name: Build UnRAR
+        run: Scripts/build-unrar.sh
       - name: swift test
         run: swift test
 
