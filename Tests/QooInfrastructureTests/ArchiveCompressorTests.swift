@@ -4,9 +4,11 @@ import Testing
 @testable import QooInfrastructure
 @testable import QooKit
 
-// `SecureExtractor.stagingRoot()` を共有するため直列実行する
-// （`SecureExtractorTests` と同じ理由）。
-@Suite(.serialized) struct ArchiveCompressorTests {
+/// 各テストが自分専用の一時ディレクトリを `stagingRoot` として注入する
+/// （`SecureExtractorTests` と同じ理由 — 実際のアプリコンテナ配下の共有
+/// ディレクトリを直接使うと、他のテストスイートと並行実行された際に
+/// 競合して不安定になる）。
+@Suite struct ArchiveCompressorTests {
     private func makeTempDir() throws -> URL {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("qoo-compressor-test-\(UUID().uuidString)", isDirectory: true)
@@ -21,8 +23,11 @@ import Testing
         try Data("hello".utf8).write(to: source)
         let destinationFolder = root.appendingPathComponent("dest")
         try FileManager.default.createDirectory(at: destinationFolder, withIntermediateDirectories: true)
+        let stagingRoot = root.appendingPathComponent("staging", isDirectory: true)
 
-        let zipURL = try await ArchiveCompressor().compress([source], destinationName: "page001", in: destinationFolder)
+        let zipURL = try await ArchiveCompressor(stagingRoot: stagingRoot).compress(
+            [source], destinationName: "page001", in: destinationFolder
+        )
 
         #expect(zipURL.lastPathComponent == "page001.zip")
         #expect(FileManager.default.fileExists(atPath: zipURL.path))
@@ -43,8 +48,9 @@ import Testing
         try Data("b".utf8).write(to: sourceFolder.appendingPathComponent("sub/b.jpg"))
         let destinationFolder = root.appendingPathComponent("dest")
         try FileManager.default.createDirectory(at: destinationFolder, withIntermediateDirectories: true)
+        let stagingRoot = root.appendingPathComponent("staging", isDirectory: true)
 
-        let zipURL = try await ArchiveCompressor().compress(
+        let zipURL = try await ArchiveCompressor(stagingRoot: stagingRoot).compress(
             [sourceFolder], destinationName: "MyBook", in: destinationFolder
         )
 
@@ -72,8 +78,11 @@ import Testing
         try Data("x".utf8).write(to: source)
         let destinationFolder = root.appendingPathComponent("dest")
         try FileManager.default.createDirectory(at: destinationFolder, withIntermediateDirectories: true)
+        let stagingRoot = root.appendingPathComponent("staging", isDirectory: true)
 
-        let zipURL = try await ArchiveCompressor().compress([source], destinationName: "book", in: destinationFolder)
+        let zipURL = try await ArchiveCompressor(stagingRoot: stagingRoot).compress(
+            [source], destinationName: "book", in: destinationFolder
+        )
 
         let listing = try await LibarchiveBackend.shared.listEntries(zipURL)
         let decodedPathname = listing.entries.first?.pathname ?? ""
@@ -89,8 +98,11 @@ import Testing
         let destinationFolder = root.appendingPathComponent("dest")
         try FileManager.default.createDirectory(at: destinationFolder, withIntermediateDirectories: true)
         try Data("existing".utf8).write(to: destinationFolder.appendingPathComponent("a.zip"))
+        let stagingRoot = root.appendingPathComponent("staging", isDirectory: true)
 
-        let zipURL = try await ArchiveCompressor().compress([source], destinationName: "a", in: destinationFolder)
+        let zipURL = try await ArchiveCompressor(stagingRoot: stagingRoot).compress(
+            [source], destinationName: "a", in: destinationFolder
+        )
 
         #expect(zipURL.lastPathComponent == "a 2.zip")
         #expect(try String(contentsOf: destinationFolder.appendingPathComponent("a.zip"), encoding: .utf8) == "existing")
@@ -103,16 +115,15 @@ import Testing
         try Data("x".utf8).write(to: source)
         let destinationFolder = root.appendingPathComponent("dest")
         try FileManager.default.createDirectory(at: destinationFolder, withIntermediateDirectories: true)
+        let stagingRoot = root.appendingPathComponent("staging", isDirectory: true)
 
-        let before = (try? FileManager.default.contentsOfDirectory(
-            at: SecureExtractor.stagingRoot(), includingPropertiesForKeys: nil
+        _ = try await ArchiveCompressor(stagingRoot: stagingRoot).compress(
+            [source], destinationName: "a", in: destinationFolder
+        )
+
+        let remaining = (try? FileManager.default.contentsOfDirectory(
+            at: stagingRoot, includingPropertiesForKeys: nil
         ).count) ?? 0
-
-        _ = try await ArchiveCompressor().compress([source], destinationName: "a", in: destinationFolder)
-
-        let after = (try? FileManager.default.contentsOfDirectory(
-            at: SecureExtractor.stagingRoot(), includingPropertiesForKeys: nil
-        ).count) ?? 0
-        #expect(after == before)
+        #expect(remaining == 0)
     }
 }

@@ -10,9 +10,14 @@ public actor ArchiveCompressor {
     public static let shared = ArchiveCompressor()
 
     private let fileOps: FileOperationService
+    /// テスト用に差し替え可能（既定は実際のアプリコンテナ配下）。
+    /// `SecureExtractor` と同じ理由（他スイートとの並行実行時の共有
+    /// ディレクトリ競合を避ける）。
+    private let stagingRoot: URL
 
-    public init(fileOps: FileOperationService = .shared) {
+    public init(fileOps: FileOperationService = .shared, stagingRoot: URL = SecureExtractor.defaultStagingRoot()) {
         self.fileOps = fileOps
+        self.stagingRoot = stagingRoot
     }
 
     /// `items` を `destinationName`.zip として `destinationFolder` に作る。
@@ -29,7 +34,7 @@ public actor ArchiveCompressor {
             throw ExtractError.backendFailure("no items to compress")
         }
 
-        let stagingDir = SecureExtractor.stagingRoot().appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let stagingDir = stagingRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: stagingDir, withIntermediateDirectories: true)
         defer {
             try? FileManager.default.removeItem(at: stagingDir) // [EX-03] 相当、ユーザー非可視の一時領域

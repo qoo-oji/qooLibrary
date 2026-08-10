@@ -4,14 +4,13 @@ import Testing
 @testable import QooInfrastructure
 @testable import QooKit
 
-/// `SecureExtractor` はステージングを ``SecureExtractor/stagingRoot()``
-/// （アプリコンテナ配下）に作るため、実テンプディレクトリを直接指定できない。
-/// ここではその制約を踏まえ、実際にアプリコンテナ配下へステージングを作り、
-/// 展開先だけをテンプディレクトリにして検証する。
-// `SecureExtractor.stagingRoot()` はアプリコンテナ配下の共有ディレクトリの
-// ため、テストを並行実行すると互いのステージング作成/削除が干渉する。
-// このスイートだけ直列実行にする。
-@Suite(.serialized) struct SecureExtractorTests {
+/// `SecureExtractor` はステージングを実際のアプリコンテナ配下（既定の
+/// `SecureExtractor.defaultStagingRoot()`）に作るが、テストでは各テストが
+/// 自分専用の一時ディレクトリを `stagingRoot` として注入する。共有の実
+/// ディレクトリを使うと、他のテストスイート（`ArchiveCompressorTests` 等）
+/// と並行実行された際に「実行前後の件数比較」が競合して不安定になる
+/// （CI で実際に発生した）。
+@Suite struct SecureExtractorTests {
     private func makeTempDir() throws -> URL {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("qoo-secure-extractor-test-\(UUID().uuidString)", isDirectory: true)
@@ -29,8 +28,9 @@ import Testing
         ])
         let destination = root.appendingPathComponent("dest")
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        let stagingRoot = root.appendingPathComponent("staging", isDirectory: true)
 
-        let extractor = SecureExtractor()
+        let extractor = SecureExtractor(stagingRoot: stagingRoot)
         let result = try await extractor.extract(archiveURL, options: ExtractOptions(destination: destination))
 
         #expect(result.extractedCount == 2)
@@ -45,17 +45,16 @@ import Testing
         try ArchiveFixtureBuilder.makeZip(at: archiveURL, entries: [.file("a.txt", contents: Data("x".utf8))])
         let destination = root.appendingPathComponent("dest")
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        let stagingRoot = root.appendingPathComponent("staging", isDirectory: true)
 
-        let before = (try? FileManager.default.contentsOfDirectory(
-            at: SecureExtractor.stagingRoot(), includingPropertiesForKeys: nil
+        _ = try await SecureExtractor(stagingRoot: stagingRoot).extract(
+            archiveURL, options: ExtractOptions(destination: destination)
+        )
+
+        let remaining = (try? FileManager.default.contentsOfDirectory(
+            at: stagingRoot, includingPropertiesForKeys: nil
         ).count) ?? 0
-
-        _ = try await SecureExtractor().extract(archiveURL, options: ExtractOptions(destination: destination))
-
-        let after = (try? FileManager.default.contentsOfDirectory(
-            at: SecureExtractor.stagingRoot(), includingPropertiesForKeys: nil
-        ).count) ?? 0
-        #expect(after == before) // 昇格が成功したのでステージングは残らない
+        #expect(remaining == 0) // 昇格が成功したのでステージングは残らない
     }
 
     @Test func extractCleansUpStagingWhenLimitExceeded() async throws {
@@ -67,22 +66,19 @@ import Testing
         ])
         let destination = root.appendingPathComponent("dest")
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        let stagingRoot = root.appendingPathComponent("staging", isDirectory: true)
 
         var options = ExtractOptions(destination: destination)
         options.limits.maxUncompressedBytes = 1_000
 
-        let before = (try? FileManager.default.contentsOfDirectory(
-            at: SecureExtractor.stagingRoot(), includingPropertiesForKeys: nil
-        ).count) ?? 0
-
         await #expect(throws: ExtractError.expansionLimitExceeded(limit: 1_000)) {
-            try await SecureExtractor().extract(archiveURL, options: options)
+            try await SecureExtractor(stagingRoot: stagingRoot).extract(archiveURL, options: options)
         }
 
-        let after = (try? FileManager.default.contentsOfDirectory(
-            at: SecureExtractor.stagingRoot(), includingPropertiesForKeys: nil
+        let remaining = (try? FileManager.default.contentsOfDirectory(
+            at: stagingRoot, includingPropertiesForKeys: nil
         ).count) ?? 0
-        #expect(after == before) // 失敗時にステージングを残さない [EX-24]
+        #expect(remaining == 0) // 失敗時にステージングを残さない [EX-24]
         // 展開先にも中途半端な書き込みが残っていないこと。
         #expect((try? FileManager.default.contentsOfDirectory(atPath: destination.path).isEmpty) == true)
     }
@@ -94,14 +90,21 @@ import Testing
         try "hello".write(to: notAnArchive, atomically: true, encoding: .utf8)
         let destination = root.appendingPathComponent("dest")
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        let stagingRoot = root.appendingPathComponent("staging", isDirectory: true)
 
         await #expect(throws: ExtractError.unsupportedFormat) {
-            try await SecureExtractor().extract(notAnArchive, options: ExtractOptions(destination: destination))
+            try await SecureExtractor(stagingRoot: stagingRoot).extract(
+                notAnArchive, options: ExtractOptions(destination: destination)
+            )
         }
     }
 
+    /// `cleanupResidualStaging()` は常に実際のアプリコンテナ配下
+    /// （`defaultStagingRoot()`）を対象にする、唯一この振る舞いを検証する
+    /// テスト。特定の UUID 名のディレクトリの有無だけを見るため、他の
+    /// テストと共有ディレクトリを取り合っても競合しない。
     @Test func cleanupResidualStagingRemovesLeftoverDirectories() async throws {
-        let leftover = SecureExtractor.stagingRoot().appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let leftover = SecureExtractor.defaultStagingRoot().appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: leftover, withIntermediateDirectories: true)
         try "leftover".write(to: leftover.appendingPathComponent("stale.txt"), atomically: true, encoding: .utf8)
 

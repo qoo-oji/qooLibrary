@@ -19,9 +19,16 @@ public actor SecureExtractor {
     public static let shared = SecureExtractor()
 
     private let fileOps: FileOperationService
+    /// テスト用に差し替え可能（既定は実際のアプリコンテナ配下）。共有の
+    /// `stagingRoot()` をテストが直接使うと、他のテストスイートと並行実行
+    /// された際に同じ実ディレクトリを取り合って不安定になる（CI で実際に
+    /// 発生した）ため、インスタンスごとに独立したディレクトリを注入できる
+    /// ようにしている。
+    private let stagingRoot: URL
 
-    public init(fileOps: FileOperationService = .shared) {
+    public init(fileOps: FileOperationService = .shared, stagingRoot: URL = SecureExtractor.defaultStagingRoot()) {
         self.fileOps = fileOps
+        self.stagingRoot = stagingRoot
     }
 
     /// アーカイブを展開し、`options.destination` へ移送する。失敗時・
@@ -35,7 +42,7 @@ public actor SecureExtractor {
             throw ExtractError.unsupportedFormat
         }
 
-        let staging = Self.stagingRoot().appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let staging = stagingRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
         // 成功時は `promoteFromStaging` が中身を移送済みで空の殻だけが残り、
         // 失敗時は展開途中の中身が残っている。どちらにせよステージング自体は
@@ -78,7 +85,7 @@ public actor SecureExtractor {
     // MARK: - ステージング [EX-01][EX-03][CL-01]
 
     /// アプリコンテナ配下（サンドボックス外を汚さない）。
-    static func stagingRoot() -> URL {
+    public static func defaultStagingRoot() -> URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         return base
@@ -87,8 +94,11 @@ public actor SecureExtractor {
     }
 
     /// 異常終了後の次回起動時に残存ステージングを削除する [RB-07][EX-03]。
+    /// 常に実際のアプリコンテナ配下（`defaultStagingRoot()`）が対象。
+    /// テスト用の `stagingRoot` 差し替えとは無関係（起動時に一度だけ呼ばれる
+    /// グローバルな後始末のため）。
     public static func cleanupResidualStaging() async {
-        let root = stagingRoot()
+        let root = defaultStagingRoot()
         guard let children = try? FileManager.default.contentsOfDirectory(
             at: root, includingPropertiesForKeys: nil
         ) else { return }
