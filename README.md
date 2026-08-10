@@ -7,7 +7,7 @@ macOS 用のマンガ・同人誌ライブラリ管理アプリ（Swift / SwiftU
 > **現在の状態: フェーズ 0（基盤検証）着手中。** アプリ本体（SwiftUI 実行可能形態）
 > はまだ存在しない。現時点で存在するのは、実装の土台となる SwiftPM パッケージ
 > （`QooKit` / `QooPersistence` / `QooInfrastructure` / `QooApplication`）と、
-> アーカイブライブラリ（libarchive）の組み込み検証のみ。
+> アーカイブライブラリ（libarchive・UnRAR）の組み込み検証のみ。
 
 ## 設計仕様書
 
@@ -48,10 +48,21 @@ Scripts/build-libarchive.sh
 
 ### RAR / UnRAR
 
-現時点では未組み込み（フェーズ 0 の技術検証項目として別途着手予定）。
-組み込み後は既定ビルドで UnRAR を使用し、`PERMISSIVE_ONLY_BUILD`
-構成では UnRAR を除外して libarchive の RAR リーダーにフォールバックする
-（機能差については `THIRD-PARTY-NOTICES.md` を参照）。
+`ThirdParty/unrar/` に UnRAR（RARLAB 製、MIT ではない専用ライセンス。
+`THIRD-PARTY-NOTICES.md` 参照）をソースからビルドして同梱する。既定ビルド
+はこれを使う。
+
+```sh
+Scripts/build-unrar.sh
+```
+
+初回ビルド前に一度実行しておくこと（`Scripts/build-libarchive.sh` と同様、
+生成物は `.gitignore` 対象）。
+
+`PERMISSIVE_ONLY_BUILD=1 swift build` では UnRAR 関連ターゲットが
+`Package.swift` から丸ごと除外され、`Scripts/build-unrar.sh` を実行しなくて
+もビルドできる。この構成では libarchive 自身の RAR リーダーにフォール
+バックする。カバレッジの差は `Spikes/README.md`（T-12）に測定結果がある。
 
 ### Gatekeeper（公証なし配布）
 

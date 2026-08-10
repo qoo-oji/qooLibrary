@@ -4,13 +4,15 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
 
 ## 0. 現在の状態
 
-**フェーズ 0（基盤検証）着手済み。** `docs/Specifications/17_実装ロードマップ.md` §17.2 の 0-1（libarchive の組み込み検証・zip 半分）と 0-4（プロジェクト骨格）が完了している。
+**フェーズ 0（基盤検証）ほぼ完了。** `docs/Specifications/17_実装ロードマップ.md` §17.2 の 0-1（libarchive・UnRAR の組み込み検証）、0-2（RAR カバレッジ差分の暫定測定）、0-4（プロジェクト骨格）が完了している。
 
-- `Package.swift`（`QooKit`/`QooPersistence`/`QooInfrastructure`/`QooApplication` + `CLibarchive` + `QooKitTests`）が存在し、`swift build` / `swift test` がグリーン。
-- `Scripts/build-libarchive.sh` で libarchive をソースからビルドし `ThirdParty/libarchive/libarchive.xcframework`（arm64+x86_64 ユニバーサル）を生成する。システムの `libarchive.dylib` にはリンクしない [LC-15][B-02]。
-- `Spikes/LibarchiveSpike` で zip の一覧・展開が実際に動作することを確認済み（`Spikes/README.md` に詳細）。7z・RAR/UnRAR・App Sandbox 下での検証は未着手。
+- `Package.swift`（`QooKit`/`QooPersistence`/`QooInfrastructure`/`QooApplication` + `CLibarchive` + `QooUnrarBridge` + `QooKitTests`）が存在し、`swift build` / `swift test` がグリーン。`PERMISSIVE_ONLY_BUILD=1 swift build` も動作する。
+- `Scripts/build-libarchive.sh` / `Scripts/build-unrar.sh` でそれぞれ libarchive・UnRAR をソースからビルドし、`ThirdParty/{libarchive,unrar}/*.xcframework`（arm64+x86_64 ユニバーサル）を生成する。システムの dylib にはリンクしない [LC-15][B-02][LC-11]。
+- UnRAR は Objective-C++ ラッパー `Sources/QooUnrarBridge/QooUnrarBridge.mm` 経由でのみ呼ぶ [B-03]。`PERMISSIVE_ONLY_BUILD` ではこのターゲット自体が `Package.swift` から除外される。
+- `Spikes/LibarchiveSpike`（zip/7z の zip 半分）・`Spikes/UnrarSpike`（RAR）で一覧・展開が実際に動作することを確認済み。`Spikes/compare-rar-coverage.sh` で libarchive 同梱の RAR テスト corpus 109 件による UnRAR/libarchive のカバレッジ比較も実施済み（詳細・注意点は `Spikes/README.md`）。
 - 静的検査 `Scripts/check-fileops-isolation.swift`（B-10）・`check-layer-dependencies.swift`（B-11）・`check-json-completeness.swift`（B-13, 現状はプレースホルダ）と CI（`.github/workflows/ci.yml`）を用意した。
-- **未着手**: UnRAR の組み込み（0-1 の残り半分・0-2 の RAR カバレッジ差分）、ゴールデンサンプル収集（0-3、ユーザーの実ファイル名が必要）、`qooLibraryApp`（SwiftUI アプリ本体・`qooLibrary.xcodeproj`・App Sandbox entitlement）はフェーズ 1 で着手する。
+- **未着手**: 7z サンプルでの検証、実 `.cbr` サンプルでの T-12 再測定（ユーザーの実ファイルが必要）、ゴールデンサンプル収集（0-3、同じくユーザーの実ファイル名が必要）、`qooLibraryApp`（SwiftUI アプリ本体・`qooLibrary.xcodeproj`・App Sandbox entitlement）はフェーズ 1 で着手する。
+- **既知の懸念（要フォローアップ）**: libarchive 3.8.9 は特定の壊れた RAR 入力（use-after-free の回帰テストファイル）でクラッシュする（エラーを返さず異常終了）。`SecureExtractor`（09章 §9.3）実装時に対処を検討する必要がある。詳細は `Spikes/README.md` の T-12 節。
 - 各 `Sources/*/*.swift` の中身はまだプレースホルダ（モジュール依存関係を検証するための最小限のマーカー型のみ）で、ドメインロジック・SwiftData モデル・UI は一切実装していない。
 
 作業を始める際は、対象領域の仕様書（下記 §2 の一覧）を該当箇所だけ `Read` してから着手する。仕様書は合計 18 ファイルあり、全部を毎回読み込む必要はない。要件定義書本体は `docs/Requirements/qooLibrary_要件定義書_v2.8.md` にある（約 2,900 行）。矛盾したときの優先順位は §1 参照。
@@ -165,8 +167,8 @@ Swift 6 言語モード、`StrictConcurrency` 有効。
 
 | # | 作業 | 状態 |
 |---|---|---|
-| 0-1 | libarchive / UnRAR の組み込み検証 [T-13] | zip/7z 側（libarchive）は完了。RAR/UnRAR 側は未着手 |
-| 0-2 | RAR カバレッジ差分の測定 [T-12] | 未着手（UnRAR 未組み込み、実 `.cbr` サンプルも必要） |
+| 0-1 | libarchive / UnRAR の組み込み検証 [T-13] | 完了。zip/7z（libarchive、7z はサンプル未検証）と RAR（UnRAR）の両方で一覧・展開を確認 |
+| 0-2 | RAR カバレッジ差分の測定 [T-12] | 暫定完了。libarchive 同梱の RAR テスト corpus（109 件、実 `.cbr` ではない）で比較。実 `.cbr` での再測定が要フォローアップ |
 | 0-3 | ゴールデンサンプルの収集開始 [MT-27][DP-09] | 未着手。ユーザーの実ファイル名 500 件以上が必要 |
 | 0-4 | プロジェクト骨格の作成 | 完了。`swift build`/`swift test`/CI がグリーン |
 
@@ -210,7 +212,7 @@ Swift 6 言語モード、`StrictConcurrency` 有効。
 ## 10. 依存ライブラリとライセンス [01 章 §1.7]
 
 - 自作コード（`Sources/`）は MIT。
-- **libarchive（BSD-2-Clause）は組み込み済み。** `Scripts/build-libarchive.sh` がソースからビルドし `ThirdParty/libarchive/libarchive.xcframework`（gitignore 対象、要再生成）を生成する。システムの `libarchive.dylib` にはリンクしない [LC-15][B-02]。ビルド前に一度このスクリプトを実行する必要がある（README 参照）。
-- **UnRAR は未組み込み。** 組み込み時は改変せず `ThirdParty/unrar/` に隔離し、ライセンス全文を同梱する。呼び出しは Objective-C++ ラッパー（`QooUnrarBridge.mm`）に閉じ込め、先頭コメントに「RAR 互換アーカイバの開発に使用してはならない」旨を記す [LC-26][B-03][B-04]。
-- 依存追加時は `THIRD-PARTY-NOTICES.md` の更新を必須とする（CI の `license` ジョブが `ThirdParty/` の変更を検出して強制する）。
-- `PERMISSIVE_ONLY_BUILD` ビルド構成（`PERMISSIVE_ONLY_BUILD=1 swift build`）は UnRAR 組み込み後、これを除外して libarchive の RAR リーダーを使う構成になる。既定ビルドと機能差があることをアバウト画面で明示する [B-01]。
+- **libarchive（BSD-2-Clause）は組み込み済み。** `Scripts/build-libarchive.sh` がソースからビルドし `ThirdParty/libarchive/libarchive.xcframework`（gitignore 対象、要再生成）を生成する。システムの `libarchive.dylib` にはリンクしない [LC-15][B-02]。ビルド前に一度このスクリプトを実行する必要がある（README 参照）。configure の機能検出はホスト環境依存になりやすい（liblzma の有無で CI と開発機の挙動が分かれた実例あり、`Spikes/README.md` 参照）ため、使わない機能は `--without-*` で明示的に無効化する方針。
+- **UnRAR（専用ライセンス、MIT ではない）は組み込み済み。** `Scripts/build-unrar.sh` がソースからビルドし `ThirdParty/unrar/libunrar.xcframework`（gitignore 対象、要再生成）を生成する。呼び出しは Objective-C++ ラッパー `Sources/QooUnrarBridge/QooUnrarBridge.mm` 1 ファイルに閉じ込め、先頭コメントに「RAR 互換アーカイバの開発に使用してはならない」旨を記している [LC-26][B-03][B-04]。Swift から見えるのは `Sources/QooUnrarBridge/include/QooUnrarBridge.h` の素の C API のみで、UnRAR 自身のヘッダ（`raros.hpp`/`dll.hpp`、`Sources/QooUnrarBridge/` 直下に private として同梱）を直接 import しない。
+- 依存追加時は `THIRD-PARTY-NOTICES.md` の更新を必須とする(CI の `license` ジョブが `ThirdParty/` の変更を検出して強制する)。
+- `PERMISSIVE_ONLY_BUILD=1 swift build` は `Package.swift` から `QooUnrarBridge`/`unrarBinary` ターゲット自体を除外し、libarchive の RAR リーダーを使う構成になる。`Scripts/build-unrar.sh` を実行していなくてもこの構成はビルドできる。既定ビルドとの機能差は `Spikes/README.md`（T-12、libarchive 同梱の RAR テスト corpus による暫定比較）を参照。実アプリのアバウト画面での明示は [B-01] としてフェーズ 1 以降の課題。

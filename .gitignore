@@ -15,8 +15,8 @@ xcuserdata/
 # Scripts/build-libarchive.sh)
 ThirdParty/libarchive/libarchive.xcframework/
 ThirdParty/libarchive/*.log
-ThirdParty/unrar/src/
-ThirdParty/unrar/build/
+ThirdParty/unrar/libunrar.xcframework/
+ThirdParty/unrar/*.log
 
 # Golden dataset samples that may contain real, copyrighted work/author names
 # [MT-28]. Ignore contents (not the directory itself) so a README explaining
