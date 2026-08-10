@@ -32,7 +32,21 @@ zip -r /tmp/test.zip <適当なフォルダ>
 libarchive は configure 時に検出したシステムの zlib / bz2 / iconv を前提にした
 オブジェクトを生成する。最終リンク時に `-lz -lbz2 -liconv` が必要だった
 （`Package.swift` の `CLibarchive` ターゲット `linkerSettings` 参照）。
-lzma/zstd/openssl/xml2/expat は `--without-*` で無効化しているため不要。
+zstd/openssl/xml2/expat は `--without-*` で無効化しているため不要。
+
+### 教訓: 検出ベースの機能有効化はホスト環境に依存する
+
+最初のバージョンでは `--without-lzma` を渡していなかった。開発機に liblzma の
+開発ヘッダがなかったため configure が自動で xz/lzma サポートを無効化し、
+ローカルではリンクが通っていた。ところが CI ランナー（GitHub Actions
+`macos-latest`）には Homebrew 経由で liblzma が入っており、configure が
+自動検出して xz/lzma サポートを有効化し、`-llzma` 未指定のリンクが失敗した
+（`build`/`unit` ジョブで初回に検出）。
+
+教訓として、`Scripts/build-libarchive.sh` では**使う予定のない機能はホスト環境の
+検出結果に関わらず明示的に `--without-*` で無効化する**方針にした。「たまたま
+このマシンにはなかったので無効化された」状態に依存しない。
+
 
 ### まだ検証していないこと（次回以降）
 

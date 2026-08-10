@@ -80,7 +80,7 @@ for ARCH in ${ARCHS}; do
             --host="${ARCH}-apple-darwin" \
             --disable-shared --enable-static \
             --without-nettle --without-openssl --without-xml2 --without-expat \
-            --without-lz4 --without-lzo2 --without-zstd \
+            --without-lz4 --without-lzo2 --without-zstd --without-lzma \
             --disable-bsdtar --disable-bsdcpio --disable-bsdcat \
             > configure.log 2>&1
     )
