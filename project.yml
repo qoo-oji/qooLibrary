@@ -9,7 +9,10 @@ name: qooLibrary
 options:
   bundleIdPrefix: com.qoolibrary
   deploymentTarget:
-    macOS: "15.0"
+    # macOS 26 で追加された `dragContainer`/`draggable(containerItemID:)`
+    # （List での複数選択ドラッグを正しく実現する唯一の API、1-6 で採用）を
+    # 使うため 15.0 から引き上げた [設計判断]。
+    macOS: "26.0"
   createIntermediateGroups: true
 
 packages:
@@ -40,7 +43,7 @@ targets:
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "6.0"
-        MACOSX_DEPLOYMENT_TARGET: "15.0"
+        MACOSX_DEPLOYMENT_TARGET: "26.0"
         CODE_SIGN_ENTITLEMENTS: Sources/qooLibraryApp/qooLibrary.entitlements
         ENABLE_HARDENED_RUNTIME: YES
         GENERATE_INFOPLIST_FILE: YES

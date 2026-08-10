@@ -4,7 +4,7 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
 
 ## 0. 現在の状態
 
-**フェーズ 0（基盤検証）完了。フェーズ 1（ファイルマネージャー）着手済み（1-1〜1-5 完了）。**
+**フェーズ 0（基盤検証）完了。フェーズ 1（ファイルマネージャー）着手済み（1-1〜1-6 完了）。**
 
 ### フェーズ 0（`17_実装ロードマップ.md` §17.2、全項目完了）
 
@@ -15,7 +15,7 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
 - 静的検査 `Scripts/check-fileops-isolation.swift`（B-10）・`check-layer-dependencies.swift`（B-11）・`check-json-completeness.swift`（B-13, 現状はプレースホルダ）と CI（`.github/workflows/ci.yml`）を用意した。
 - **既知の懸念（要フォローアップ）**: libarchive 3.8.9 は特定の壊れた RAR 入力（use-after-free の回帰テストファイル）でクラッシュする（エラーを返さず異常終了）。`SecureExtractor`（09章 §9.3）実装時に対処を検討する必要がある。詳細は `Spikes/README.md` の T-12 節。
 
-### フェーズ 1（`17_実装ロードマップ.md` §17.3、1-1〜1-5 完了・1-6 以降未着手）
+### フェーズ 1（`17_実装ロードマップ.md` §17.3、1-1〜1-6 完了・1-7 以降未着手）
 
 - **1-1 プロジェクト基盤が完了。** `qooLibrary.xcodeproj` は `project.yml` から `xcodegen generate` で生成する（**git-ignore 対象、手で pbxproj を編集しない**。ThirdParty の xcframework と同じ「生成物はコミットしない」方針）。ローカルの SwiftPM パッケージ（`QooKit`/`QooPersistence`/`QooInfrastructure`/`QooApplication`）を local package dependency として参照し、実機で起動確認済み。
 - App Sandbox entitlement（`Sources/qooLibraryApp/qooLibrary.entitlements`）を付与済み。`codesign -d --entitlements :-` で署名済みバイナリに実際に反映されていることを確認済み [SB-01]。
@@ -51,7 +51,24 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
   - `Sources/qooLibraryApp/MainWindow/FolderContentView.swift` に右クリックメニュー（Finder で表示・パスをコピー・複製・名前を変更・ゴミ箱）と新規フォルダボタンを配線。ファイルを変更する操作はすべて `FileOperationService` 経由。
   - **静的検査の誤検知を発見・修正**: `check-fileops-isolation.swift`（B-10）が `fileOps.createDirectory(...)`（`FileOperationService` への正当な呼び出し）を `FileManager` の変更系 API と誤認識していた。`FileOperationService` が spec 通り `FileManager` と同名のメソッドを公開しているため。該当行に `"FileManager"` という文字列が含まれる場合のみを違反候補とするよう修正（`Scripts/check-fileops-isolation.swift`）。
   - **実機検証（ユーザーによる手動確認）で完了。** サンドボックスコンテナ内に新規フォルダを作成 → 名前変更 → 複製（Finder 流 `名前 2` 命名を確認）→ ゴミ箱に入れる、を実際に操作してもらい、最後は実際の Finder ゴミ箱に移動していることまで確認済み。
-- **未着手**（1-6 以降）: ドラッグ＆ドロップ、圧縮展開 UI、Undo 基盤、環境設定（表示密度等の可変設定を含む）、通知基盤、診断ログ、右ペインの詳細情報（現状 1-2 の検証 UI が仮置き）、ラベルフィルタ（左ペイン下半分、現状プレースホルダ）等。
+- **1-6 ドラッグ＆ドロップが完了。** DD-01〜DD-03・DD-05 を実装。DD-04（テンポラリ／ライブラリ見出しへのドロップで登録）・DD-06（ライブラリ移動後の自動ラベル付け）・DD-07（ネスト登録の拒否）・DD-08（ロック中の拒否）は、それぞれ 1-13・フェーズ 2・1-13・`LockManager` 未実装のため対象外（該当機能の実装時に追加）。
+  - **最小対応 OS を macOS 15.0 → 26.0 に引き上げた**（`project.yml` の `deploymentTarget`/`MACOSX_DEPLOYMENT_TARGET`）。理由は後述の複数選択ドラッグ問題。ユーザーに確認の上での意図的な設計判断。SwiftPM ライブラリ層（`Package.swift` の `.macOS(.v15)`）は SwiftUI を使わないため据え置き。
+  - `Sources/qooLibraryApp/MainWindow/DropHandling.swift`: `DropHandling.performDrop(_:into:onComplete:onFailure:)` に D&D の共通処理を集約。Finder と同じ規則 [DD-01]（同一ボリューム内は既定移動・異なるボリューム間は既定コピー、Option キーで反転、`.volumeUUIDStringKey` で判定）。衝突は `.keepBoth`。失敗時は `onFailure` 経由でアラート表示（以前は console print のみで、後述のクロスウインドウの実測時にこの可視化がないと原因追跡できなかった）。
+  - `Sources/qooLibraryApp/MainWindow/FolderContentView.swift`: 行に `.draggable(containerItemID:)`（DD-02 実ファイル参照エクスポート）、フォルダ行への `DropIntoFolderModifier`、ペイン全体への `.dropDestination(for: URL.self)`（DD-03 Finder 等からの取り込み）。Cmd/Shift クリックでの複数選択、右クリックメニューは選択に含まれる行なら選択全体を対象にする（Finder 流）。
+  - `Sources/qooLibraryApp/MainWindow/FolderTreePane.swift`: ツリー行への `.dropDestination` で移動（DD-05）。
+  - `Sources/qooLibraryApp/State/WindowState.swift`: `SessionState.reloadToken`（ファイル操作完了のたびに増分、`FSEventsWatcher` が無い 2-2 前の暫定ポーリング代替）。**ウインドウ単位ではなくセッション全体で 1 つ**（`SessionState.shared`）を共有しており、あるウインドウでの操作が他のウインドウ／ペインの表示にも反映される（後述の実機検証で発見した不具合の修正）。
+  - **実機検証（ユーザーによる多数回の手動確認）で完了。** 単一・複数アイテムの D&D、Finder との相互ドラッグ（両方向・同一/異なるボリューム）、複数選択でのコンテキストメニュー操作、Cmd/Shift クリック、複数アイテム同時ドラッグ時のカーソル個数バッジ表示まで確認済み。
+  - **実機検証中に見つけて直した実装バグ（`swift test` では発見できなかったもの）**:
+    - `List` 行の当たり判定が `Label` の文字幅ぶんしかなく、`.draggable`/`.onDrag` と List 標準のクリック選択が競合して名前クリックが反応しなかった → `.frame(maxWidth: .infinity)` + 明示的な `.onTapGesture` での選択。
+    - `.draggable(_:)`（Transferable ベース）は macOS の `List` でドラッグそのものが一切発火しなかった（後述の通り Apple 側の既知の未解決バグ、Feedback FB10128110）。単一アイテムは `.onDrag`（`NSItemProvider` ベース）で当面回避。
+    - 同一ボリューム判定に `.volumeURLKey` を使うと、サンドボックス配下のフォルダ一覧経路で解決に失敗し「異なるボリューム」（＝コピー）に誤ってフォールバックしていた → `VolumeEligibilityChecker` と同じ `.volumeUUIDStringKey` に変更。
+    - `nextAvailableName`（Finder 流連番）が衝突先の名前（例: `name 2`）をそのまま素のベース名として扱い、次の衝突で `name 2 2` になってしまっていた → 既存の連番サフィックスを剥がしてから採番するよう修正（回帰テスト追加、`FileOperationServiceTests.conflictKeepBothIncrementsExistingSuffixInsteadOfStacking`）。
+    - D&D 対応で List 標準のクリック選択を手動処理に置き換えた副作用で、選択したリストにキーボードフォーカスが移らず、選択ハイライトが常に非アクティブ色（グレー）になっていた → `@FocusState` で明示的にフォーカスさせて解消。
+    - 右クリックのコンテキストメニュー（複製・ゴミ箱・Finder で表示）が、複数選択中でも右クリックした行 1 つだけを対象にしていた → 選択に含まれる行なら選択全体を対象にするよう修正。
+    - D&D 対応で List 標準のクリック選択を手動処理に置き換えた副作用で、Cmd/Shift クリックでの複数選択も失われていた → 手動で Cmd（トグル）・Shift（範囲選択、起点を `selectionAnchor` で保持）を再実装。
+    - `WindowState.reloadToken` がウインドウ単位だったため、あるウインドウでの D&D 完了後、別ウインドウで同じフォルダを表示していてもそちらは自動更新されなかった。実機検証中、これが原因で「ウインドウ間で反対方向にドラッグすると何も起きない（実際は移動に成功していたが表示が古かった）→ 同じ行をもう一度ドラッグして実体の無いファイルへのアクセスとなりエラー」という事象が発生し、原因特定に至った → `reloadToken` を `WindowState`（ウインドウ単位）から `SessionState.shared`（セッション全体で 1 つ）に移し、全ウインドウ・全ペインが同じシグナルを見るように変更。
+  - **SwiftUI の既知の未解決バグに遭遇し、macOS 26 の新 API で回避した**: `.onDrag`/`.draggable(_:)` は macOS の `List` で複数選択をまとめてドラッグできない（Apple Developer Forums、Feedback FB10128110、2023年7月報告、未修正）。デバッグログで実測したところ、複数選択中でも実際にドラッグされた 1 行分の `.onDrag` しか呼ばれず、SwiftUI が他の選択行を自動的に束ねてはくれないことを確認した。オープンソースの macOS ファイルマネージャー（Nimble Commander・Double Commander・folderium 等）を調査したところ、SwiftUI の `List` を使うもの（folderium）はペイン間の複数ファイル転送を D&D ではなくツールバーボタン（選択全体が対象）で行っており、AppKit 直下のもの（Nimble Commander）は自前の `NSTableView` サブクラス + `pasteboardWriterForRow:` で複数行ドラッグを実現していた。つまり SwiftUI の枠内でこの問題を回避する一般的な方法は無い。最終的に **macOS 26 で追加された `draggable(containerItemID:)` + `dragContainer(for:itemID:in:)` + `dragContainerSelection(_:)`**（`SwiftUI.swiftinterface` で確認、`@available(macOS 26.0, *)`、iOS 側は unavailable）を採用し、最小対応 OS を引き上げることで正攻法で解決した。
+- **未着手**（1-7 以降）: 圧縮展開 UI、Undo 基盤、環境設定（表示密度等の可変設定を含む）、通知基盤、診断ログ、右ペインの詳細情報（現状 1-2 の検証 UI が仮置き）、ラベルフィルタ（左ペイン下半分、現状プレースホルダ）、フォルダ登録（1-13）等。
 - 各 `Sources/{QooKit,QooPersistence,QooApplication}/*.swift` の中身はまだプレースホルダ（モジュール依存関係を検証するための最小限のマーカー型のみ）で、ドメインロジック・SwiftData モデルは一切実装していない。`QooInfrastructure` はサンドボックス／FS 検証のみ実装済み。
 
 作業を始める際は、対象領域の仕様書（下記 §2 の一覧）を該当箇所だけ `Read` してから着手する。仕様書は合計 18 ファイルあり、全部を毎回読み込む必要はない。要件定義書本体は `docs/Requirements/qooLibrary_要件定義書_v2.8.md` にある（約 2,900 行）。矛盾したときの優先順位は §1 参照。
@@ -197,7 +214,7 @@ Swift 6 言語モード、`StrictConcurrency` 有効。
 
 ```
 フェーズ0 基盤検証        T-13/T-12 の技術検証、ゴールデンサンプル収集開始、プロジェクト骨格 ← 完了
-フェーズ1 ファイルマネージャー  Finder 代替として日常使用できる状態             ← 進行中（1-1〜1-5 完了）
+フェーズ1 ファイルマネージャー  Finder 代替として日常使用できる状態             ← 進行中（1-1〜1-6 完了）
 フェーズ2 ライブラリマネージャー ラベル管理が実用レベル
 フェーズ3 テンポラリフォルダ   取り込み〜投入のワークフロー完結
 ```
@@ -211,7 +228,8 @@ Swift 6 言語モード、`StrictConcurrency` 有効。
 | 1-3 | メインウインドウ 3 ペイン、タブ・複数ウインドウ、状態の 3 分類 | 完了 |
 | 1-4 | フォルダツリー（ボリューム／テンポラリ／ライブラリの 3 グループ） | 完了 |
 | 1-5 | 基本ファイル操作・衝突処理。`FileOperationService` への集約 | 完了 |
-| 1-6〜1-15 | D&D、圧縮展開、Undo、環境設定、通知基盤 等 | 未着手 |
+| 1-6 | ドラッグ＆ドロップ（DD-01〜DD-03, DD-05） | 完了 |
+| 1-7〜1-15 | 圧縮展開、Undo、環境設定、通知基盤 等 | 未着手 |
 
 - フェーズ 1 の 4 制約（DP-01 Undo 基盤 / DP-05 FileOps 集約 / DP-07 mainContext 構成 / DP-08 通知基盤）は機能追加より先に固める。後付けは大規模改修になる。1-1 はこれらより前段の土台（プロジェクト構成・デザイントークン）であり、4 制約自体はまだ手を付けていない。
 - フェーズ 2 の最初に `VersionedSchema` を導入する。パーサ（`QooKit`）は永続化と並行実装できるため早期着手を推奨。

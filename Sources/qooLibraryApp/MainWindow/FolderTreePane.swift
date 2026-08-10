@@ -16,13 +16,17 @@ struct FolderTreePane: View {
     @State private var libraryExpanded = true
     @State private var expandedNodeIDs: Set<String> = [] // [LP-05]
     @State private var volumes: [FolderTreeNode] = []
+    @State private var dropError: String?
 
     var body: some View {
         List {
             Section {
                 if volumesExpanded {
                     ForEach(volumes) { node in
-                        FolderTreeRow(node: node, expandedIDs: $expandedNodeIDs, selectedURL: selectedURL, onSelect: onSelect)
+                        FolderTreeRow(
+                            node: node, expandedIDs: $expandedNodeIDs, selectedURL: selectedURL, onSelect: onSelect,
+                            onDropFailure: { dropError = $0 }
+                        )
                     }
                 }
             } header: {
@@ -53,6 +57,11 @@ struct FolderTreePane: View {
         .environment(\.defaultMinListRowHeight, 20) // 行間を少し詰める。可変にするのは 1-12（環境設定）で。
         .task {
             volumes = FolderTreeNode.mountedVolumes()
+        }
+        .alert("操作に失敗しました", isPresented: Binding(get: { dropError != nil }, set: { if !$0 { dropError = nil } })) {
+            Button("OK") {}
+        } message: {
+            Text(dropError ?? "")
         }
     }
 }
@@ -107,9 +116,11 @@ private struct FolderTreeRow: View {
     @Binding var expandedIDs: Set<String>
     let selectedURL: URL?
     let onSelect: (URL) -> Void
+    let onDropFailure: @MainActor @Sendable (String) -> Void
 
     @State private var children: [FolderTreeNode]?
     @State private var accessDenied = false
+    @State private var isDropTargeted = false
 
     private var isSelected: Bool {
         selectedURL?.standardizedFileURL.path == node.url.standardizedFileURL.path
@@ -134,7 +145,10 @@ private struct FolderTreeRow: View {
                 AccessDeniedRow() // [SB-04][LP2-09]
             } else if let children {
                 ForEach(children) { child in
-                    FolderTreeRow(node: child, expandedIDs: $expandedIDs, selectedURL: selectedURL, onSelect: onSelect)
+                    FolderTreeRow(
+                        node: child, expandedIDs: $expandedIDs, selectedURL: selectedURL, onSelect: onSelect,
+                        onDropFailure: onDropFailure
+                    )
                 }
             } else {
                 ProgressView()
@@ -146,10 +160,22 @@ private struct FolderTreeRow: View {
                 .fontWeight(isSelected ? .semibold : .regular)
                 .padding(.horizontal, Tokens.spacing.xs)
                 .padding(.vertical, 2)
-                .background(isSelected ? Tokens.Colors.accent.opacity(0.25) : Color.clear)
+                .background(isDropTargeted ? Tokens.Colors.accent.opacity(0.35) : (isSelected ? Tokens.Colors.accent.opacity(0.25) : Color.clear))
                 .clipShape(RoundedRectangle(cornerRadius: Tokens.radius.s))
                 .contentShape(Rectangle())
                 .onTapGesture { onSelect(node.url) } // [LP-06]
+                .dropDestination(for: URL.self) { items, _ in // [DD-05] ツリーへドロップで移動
+                    DropHandling.performDrop(
+                        items, into: node.url,
+                        onComplete: {
+                            if children != nil { loadChildren() }
+                            // ウインドウ／ペインをまたいだ変更を拾う暫定策 [1-6 実機検証で発見]。
+                            SessionState.shared.reloadToken += 1
+                        },
+                        onFailure: onDropFailure
+                    )
+                    return true
+                } isTargeted: { isDropTargeted = $0 }
         }
         .disabled(node.isSymlink) // [SL-05]
         .onChange(of: isExpanded.wrappedValue, initial: true) { _, expanded in

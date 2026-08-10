@@ -91,4 +91,14 @@ public final class WindowState {
 public final class SessionState {
     public static let shared = SessionState()
     private init() {}
+
+    /// ファイル操作（D&D・コンテキストメニュー等）が完了するたびに増やす。
+    /// `FSEventsWatcher`（2-2 で実装）が無いため、暫定的にこれを見て一覧を
+    /// 再読み込みするポーリング代替とする。ウインドウ単位ではなくセッション全体で
+    /// 1 つ（`SessionState.shared`）を共有することで、あるウインドウでの操作が
+    /// 他のウインドウ／ペインの表示にも反映される
+    /// [1-6 実機検証で発見: ウインドウ間の D&D で移動元ウインドウの一覧が古いまま
+    /// になり、既に存在しないファイルへ再度ドラッグして "no such file" エラーに
+    /// なる事象があった。ウインドウ単位の `reloadToken` だった名残]。
+    public var reloadToken: Int = 0
 }

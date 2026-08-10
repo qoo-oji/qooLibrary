@@ -148,6 +148,26 @@ import Testing
         #expect(FileManager.default.fileExists(atPath: destDir.appendingPathComponent("a 2.txt").path))
     }
 
+    @Test func conflictKeepBothIncrementsExistingSuffixInsteadOfStacking() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let destDir = root.appendingPathComponent("dest")
+        try FileManager.default.createDirectory(at: destDir, withIntermediateDirectories: true)
+
+        // 移動先に「a 2.txt」が既にある状態で、同名の「a 2.txt」をコピーしようとした場合、
+        // 「a 2 2.txt」ではなく「a 3.txt」になるべき [CF-01]。
+        let source = root.appendingPathComponent("a 2.txt")
+        try write("new", to: source)
+        try write("original", to: destDir.appendingPathComponent("a 2.txt"))
+
+        let receipts = try await service.copy([source], to: destDir, options: OpOptions(conflictPolicy: .keepBoth))
+
+        #expect(receipts.count == 1)
+        #expect(receipts[0].toURL.lastPathComponent == "a 3.txt")
+        #expect(FileManager.default.fileExists(atPath: destDir.appendingPathComponent("a 2.txt").path))
+        #expect(FileManager.default.fileExists(atPath: destDir.appendingPathComponent("a 3.txt").path))
+    }
+
     @Test func conflictAskWithoutResolverThrows() async throws {
         let root = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: root) }
