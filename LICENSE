@@ -1,0 +1,40 @@
+qooLibrary — License
+
+This repository contains code under different licenses depending on directory:
+
+  * `Sources/` (all qooLibrary application and library code written for this
+    project) is licensed under the MIT License below. [LC-01][LC-22]
+  * `ThirdParty/` contains vendored third-party code, each under its own
+    upstream license. See `THIRD-PARTY-NOTICES.md` for the full list and
+    `ThirdParty/<name>/license.txt` for each component's original license
+    text. In particular, `ThirdParty/unrar/` (UnRAR source) is NOT MIT-licensed
+    and carries additional restrictions — see §1.7 of
+    `docs/Specifications/01_プロジェクト構成とビルド.md` and
+    `THIRD-PARTY-NOTICES.md` for details. [LC-20][LC-23]
+
+The MIT License below applies only to the qooLibrary original source code
+under `Sources/`.
+
+---
+
+MIT License
+
+Copyright (c) 2026 Kosuke Nishimura
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

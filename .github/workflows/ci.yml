@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # 01_プロジェクト構成とビルド.md §1.2: Release / Release-Permissive の 2 構成。
+  # UnRAR は未組み込みのため、現時点では両構成とも同じ依存関係でビルドされる
+  # (PERMISSIVE_ONLY_BUILD の swiftSettings.define だけが異なる)。UnRAR 追加後、
+  # 既定構成のみ CUnrar への依存が付く。
+  build:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        permissive: [false, true]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build libarchive
+        run: Scripts/build-libarchive.sh
+      - name: swift build (default)
+        if: ${{ !matrix.permissive }}
+        run: swift build
+      - name: swift build (PERMISSIVE_ONLY_BUILD)
+        if: ${{ matrix.permissive }}
+        run: PERMISSIVE_ONLY_BUILD=1 swift build
+
+  # B-10〜B-13: 静的検査。コンパイル不要のテキストスキャンなのでビルドに
+  # 依存させず高速に回す。
+  static-checks:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: FileOps isolation [FO-02] (B-10)
+        run: swift Scripts/check-fileops-isolation.swift
+      - name: Layer dependencies [A-01] (B-11)
+        run: swift Scripts/check-layer-dependencies.swift
+      - name: JSON completeness [MG-23] (B-13)
+        run: swift Scripts/check-json-completeness.swift
+
+  # QooKitTests。カバレッジ 80% 未満で失敗させる方針だが、テスト対象コードが
+  # まだ存在しないフェーズ 0 の時点では実行のみ確認する [MT-01]。
+  unit:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build libarchive
+        run: Scripts/build-libarchive.sh
+      - name: swift test
+        run: swift test
+
+  # LC-05: THIRD-PARTY-NOTICES.md の更新漏れ検出。
+  license:
+    if: github.event_name == 'pull_request'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check THIRD-PARTY-NOTICES.md is updated when ThirdParty/ changes
+        run: |
+          set -eu
+          git fetch origin "${{ github.base_ref }}" --depth=1
+          CHANGED=$(git diff --name-only "origin/${{ github.base_ref }}"...HEAD)
+          if echo "$CHANGED" | grep -q '^ThirdParty/'; then
+            if ! echo "$CHANGED" | grep -q '^THIRD-PARTY-NOTICES\.md$'; then
+              echo "!! ThirdParty/ changed but THIRD-PARTY-NOTICES.md was not updated [LC-05]"
+              exit 1
+            fi
+          fi
+          echo "==> OK"
