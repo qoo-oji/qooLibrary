@@ -6,46 +6,16 @@ import SwiftUI
 
 /// アプリのエントリポイント。
 ///
-/// フェーズ 1 (1-1: プロジェクト基盤) の時点では、3 ペイン構成の骨格と
-/// デザイントークンが正しく配線されていることを示すプレースホルダのみを表示する。
-/// 実際のフォルダツリー・ファイル一覧・詳細情報は 1-3 以降で実装する。
+/// `WindowGroup` は新規ウインドウ（⌘N）のたびに新しい `MainWindowView`
+/// インスタンス（＝新しい `WindowState`）を作る。永続状態（DB）とセッション
+/// 一時状態（`SessionState`）はまだフェーズ 1 の対象外の型に依存する部分
+/// （ラベル・Undo 等）を除き、器だけをこの段階で用意している
+/// [11章 §11.4 状態の 3 分類]。
 @main
 struct QooLibraryApp: App {
     var body: some Scene {
         WindowGroup {
-            ThreePaneWindow(id: "main") {
-                PlaceholderPane(title: "フォルダツリー", subtitle: "1-4 で実装")
-            } center: {
-                PlaceholderPane(
-                    title: "qooLibrary",
-                    subtitle: "フェーズ 1 (1-1: プロジェクト基盤) 進行中\n"
-                        + "モジュール構成: \(QooKit.moduleName) / \(QooPersistence.moduleName) / "
-                        + "\(QooInfrastructure.moduleName) / \(QooApplication.moduleName)"
-                )
-                .background(Tokens.Colors.paneBackground)
-            } right: {
-                // 1-10（詳細情報ペイン）の実装まで、1-2 の実機検証 UI を仮置きする。
-                SandboxVerificationView()
-            }
-            .frame(minWidth: 900, minHeight: 560)
+            MainWindowView()
         }
-    }
-}
-
-private struct PlaceholderPane: View {
-    let title: String
-    let subtitle: String
-
-    var body: some View {
-        VStack(spacing: Tokens.spacing.s) {
-            Text(title)
-                .font(.system(size: Tokens.fontSize.title1, weight: .semibold))
-            Text(subtitle)
-                .font(.system(size: Tokens.fontSize.body))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .padding(Tokens.spacing.l)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

@@ -1,0 +1,86 @@
+import Foundation
+import SwiftUI
+
+/// 1 タブ分の状態。フォルダごとに独立して選択・スクロール位置・検索文字列を持つ。
+public struct TabState: Identifiable, Sendable, Equatable {
+    public let id: UUID
+    public var folder: URL?
+    public var title: String
+    public var selection: Set<URL> = []
+    public var searchText: String = ""
+
+    public init(id: UUID = UUID(), folder: URL?, title: String) {
+        self.id = id
+        self.folder = folder
+        self.title = title
+    }
+}
+
+public enum DisplayMode: Sendable, Equatable {
+    case folder // [VM-01 以降] ライブラリ表示モードは 2-9 でラベル基盤ができてから
+}
+
+public enum ListStyle: Sendable, Equatable {
+    case icon, list // [LV-04]
+}
+
+/// ウインドウ固有状態 [11章 §11.4 状態の 3 分類]。**DB に保存しない** [ST-20]。
+/// ウインドウ（＝この View 階層のインスタンス）ごとに独立して生成する。同じ
+/// フォルダを 2 ウインドウで開いても、タブ構成・選択・表示モードは互いに影響しない。
+///
+/// `labelSelection` / `ratingFilter` / `sort` はラベル・評価ドメイン型
+/// （`Label`, `RatingFilter`, `SortDescriptorSpec`）がまだ存在しない
+/// （フェーズ 2 で導入）ため未実装。タブと表示・選択の骨格のみ、このフェーズで
+/// 実装する。
+@MainActor
+@Observable
+public final class WindowState {
+    public var tabs: [TabState]
+    public var selectedTabID: TabState.ID
+    public var displayMode: DisplayMode = .folder // [ST-22]
+    public var listStyle: ListStyle = .icon // [ST-22]
+    public var iconSize: Double = 96 // [IV-04][ST-22]
+
+    public init(initialFolder: URL? = FileManager.default.homeDirectoryForCurrentUser) {
+        let firstTab = TabState(folder: initialFolder, title: initialFolder?.lastPathComponent ?? "新規タブ")
+        self.tabs = [firstTab]
+        self.selectedTabID = firstTab.id
+    }
+
+    public var currentTabIndex: Int? {
+        tabs.firstIndex { $0.id == selectedTabID }
+    }
+
+    public var currentTab: TabState? {
+        get { currentTabIndex.map { tabs[$0] } }
+        set {
+            guard let newValue, let index = currentTabIndex else { return }
+            tabs[index] = newValue
+        }
+    }
+
+    public func openTab(for folder: URL?) {
+        let tab = TabState(folder: folder, title: folder?.lastPathComponent ?? "新規タブ")
+        tabs.append(tab)
+        selectedTabID = tab.id
+    }
+
+    /// 最後の 1 枚は閉じない（ウインドウ自体を閉じる操作と役割が重複するため）。
+    public func closeTab(_ id: TabState.ID) {
+        guard tabs.count > 1, let index = tabs.firstIndex(where: { $0.id == id }) else { return }
+        tabs.remove(at: index)
+        if selectedTabID == id {
+            selectedTabID = tabs[min(index, tabs.count - 1)].id
+        }
+    }
+}
+
+/// セッション一時状態 [11章 §11.4]。メモリのみ、DB にもウインドウ復元にも
+/// 含めない [ST-20]。`LockManager`/`CommandStack` 相当のドメイン型がまだ
+/// 存在しないため、アプリ全体で 1 つ生成される器だけをこのフェーズで用意する。
+@MainActor
+@Observable
+public final class SessionState {
+    public static let shared = SessionState()
+    private init() {}
+}
