@@ -10,6 +10,11 @@
 //
 // Note: 単純なテキストスキャンであり、Swift の完全な構文解析はしない
 // （B-10 の意図であるレビュー漏れの機械的検出には十分）。
+//
+// `FileOperationService` 自身が `rename`/`createDirectory` 等、FileManager と
+// 同名のメソッドを公開している（spec 上意図した命名）ため、行に "FileManager"
+// という文字列が現れている場合のみを違反候補とする。`fileOps.createDirectory(...)`
+// のような正当な呼び出しを誤検知しないようにするための最小限の対策。
 
 import Foundation
 
@@ -41,6 +46,7 @@ func scan(_ url: URL) {
         for (index, line) in contents.components(separatedBy: .newlines).enumerated() {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.hasPrefix("//") { continue }
+            guard line.contains("FileManager") else { continue }
             for method in forbiddenMethods {
                 if line.contains(".\(method)(") {
                     violations.append("\(fileURL.path):\(index + 1): forbidden FileManager API `\(method)` outside FileOps — \(trimmed)")

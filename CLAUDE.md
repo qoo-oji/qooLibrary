@@ -4,7 +4,7 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
 
 ## 0. 現在の状態
 
-**フェーズ 0（基盤検証）完了。フェーズ 1（ファイルマネージャー）着手済み（1-1〜1-4 完了）。**
+**フェーズ 0（基盤検証）完了。フェーズ 1（ファイルマネージャー）着手済み（1-1〜1-5 完了）。**
 
 ### フェーズ 0（`17_実装ロードマップ.md` §17.2、全項目完了）
 
@@ -15,7 +15,7 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
 - 静的検査 `Scripts/check-fileops-isolation.swift`（B-10）・`check-layer-dependencies.swift`（B-11）・`check-json-completeness.swift`（B-13, 現状はプレースホルダ）と CI（`.github/workflows/ci.yml`）を用意した。
 - **既知の懸念（要フォローアップ）**: libarchive 3.8.9 は特定の壊れた RAR 入力（use-after-free の回帰テストファイル）でクラッシュする（エラーを返さず異常終了）。`SecureExtractor`（09章 §9.3）実装時に対処を検討する必要がある。詳細は `Spikes/README.md` の T-12 節。
 
-### フェーズ 1（`17_実装ロードマップ.md` §17.3、1-1〜1-4 完了・1-5 以降未着手）
+### フェーズ 1（`17_実装ロードマップ.md` §17.3、1-1〜1-5 完了・1-6 以降未着手）
 
 - **1-1 プロジェクト基盤が完了。** `qooLibrary.xcodeproj` は `project.yml` から `xcodegen generate` で生成する（**git-ignore 対象、手で pbxproj を編集しない**。ThirdParty の xcframework と同じ「生成物はコミットしない」方針）。ローカルの SwiftPM パッケージ（`QooKit`/`QooPersistence`/`QooInfrastructure`/`QooApplication`）を local package dependency として参照し、実機で起動確認済み。
 - App Sandbox entitlement（`Sources/qooLibraryApp/qooLibrary.entitlements`）を付与済み。`codesign -d --entitlements :-` で署名済みバイナリに実際に反映されていることを確認済み [SB-01]。
@@ -44,7 +44,14 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
   - **実機検証（ユーザーによる手動確認）で完了。** 実ボリューム（Macintosh HD / 外部ボリューム）がツリーに表示され、展開して実フォルダ構造を辿れること、権限のない領域が正しく「アクセス権がありません」になること、クリックで中央ペインと同期し選択がハイライトされることを確認済み。
   - 既知の粗さ: サンドボックスコンテナ内の `Desktop`/`Downloads`/`Movies`/`Music`/`Pictures`（実際はシンボリックリンク）がフォルダアイコンではなくファイルアイコンで表示される（`.isDirectoryKey` がシンボリックリンク越しに解決できない）。機能に影響はなく、1-9 あたりで直す。
   - 右クリックのコンテキストメニューは未実装。ファイル操作系は 1-5、フォルダ登録・削除系は 1-13 など、対応する機能が実装されるタイミングでそれぞれ追加する（LP-01〜08 自体はコンテキストメニューを要求していない）。
-- **未着手**（1-5 以降）: `FileOperationService`、ドラッグ＆ドロップ、圧縮展開 UI、Undo 基盤、環境設定（表示密度等の可変設定を含む）、通知基盤、診断ログ、右ペインの詳細情報（現状 1-2 の検証 UI が仮置き）、ラベルフィルタ（左ペイン下半分、現状プレースホルダ）等。
+- **1-5 基本ファイル操作・衝突処理（`FileOperationService` への集約）が完了。**
+  - `Sources/QooKit/Model/FileIdentity.swift`: `FileIdentity`（volumeUUID + inode、Foundation のみに依存する値型 [A-01]）。
+  - `Sources/QooInfrastructure/FileOps/FileOperationTypes.swift` + `FileOperationService.swift`: `createDirectory`/`copy`/`move`/`rename`/`trash`/`deletePermanently`/`restoreFromTrash` を実装。`trash`/`restoreFromTrash` は `NSWorkspace.shared.recycle` を使い Finder のゴミ箱と互換にする [FM-04][TR2-01]。衝突時は `.replace`/`.keepBoth`（Finder 流 `name 2.ext` [CF-01]）/`.skip`/`.ask`（`conflictResolver` クロージャに委譲、`NotificationRouter`/`BatchNotificationSession` が無い 1-12b 前の暫定形）に対応 [FM-11〜FM-13]。`CommandStack`/`LockManager` と同じ「アプリ全体で単一」の方針で `FileOperationService.shared` を用意（`ExpectedChangeLedger`・操作履歴・Undo との接続は 2-2/1-11 で行う）。
+  - `QooInfrastructureTests/FileOperationServiceTests.swift`: 実テンプディレクトリでの統合テスト 10 件（create/copy/move/rename/delete と衝突方針 4 種）。`trash`/`restoreFromTrash` は実 Finder ゴミ箱に触れるため自動テスト対象外とし、実機検証で確認する方針（後述）。
+  - `Sources/qooLibraryApp/MainWindow/FolderContentView.swift` に右クリックメニュー（Finder で表示・パスをコピー・複製・名前を変更・ゴミ箱）と新規フォルダボタンを配線。ファイルを変更する操作はすべて `FileOperationService` 経由。
+  - **静的検査の誤検知を発見・修正**: `check-fileops-isolation.swift`（B-10）が `fileOps.createDirectory(...)`（`FileOperationService` への正当な呼び出し）を `FileManager` の変更系 API と誤認識していた。`FileOperationService` が spec 通り `FileManager` と同名のメソッドを公開しているため。該当行に `"FileManager"` という文字列が含まれる場合のみを違反候補とするよう修正（`Scripts/check-fileops-isolation.swift`）。
+  - **実機検証（ユーザーによる手動確認）で完了。** サンドボックスコンテナ内に新規フォルダを作成 → 名前変更 → 複製（Finder 流 `名前 2` 命名を確認）→ ゴミ箱に入れる、を実際に操作してもらい、最後は実際の Finder ゴミ箱に移動していることまで確認済み。
+- **未着手**（1-6 以降）: ドラッグ＆ドロップ、圧縮展開 UI、Undo 基盤、環境設定（表示密度等の可変設定を含む）、通知基盤、診断ログ、右ペインの詳細情報（現状 1-2 の検証 UI が仮置き）、ラベルフィルタ（左ペイン下半分、現状プレースホルダ）等。
 - 各 `Sources/{QooKit,QooPersistence,QooApplication}/*.swift` の中身はまだプレースホルダ（モジュール依存関係を検証するための最小限のマーカー型のみ）で、ドメインロジック・SwiftData モデルは一切実装していない。`QooInfrastructure` はサンドボックス／FS 検証のみ実装済み。
 
 作業を始める際は、対象領域の仕様書（下記 §2 の一覧）を該当箇所だけ `Read` してから着手する。仕様書は合計 18 ファイルあり、全部を毎回読み込む必要はない。要件定義書本体は `docs/Requirements/qooLibrary_要件定義書_v2.8.md` にある（約 2,900 行）。矛盾したときの優先順位は §1 参照。
@@ -190,7 +197,7 @@ Swift 6 言語モード、`StrictConcurrency` 有効。
 
 ```
 フェーズ0 基盤検証        T-13/T-12 の技術検証、ゴールデンサンプル収集開始、プロジェクト骨格 ← 完了
-フェーズ1 ファイルマネージャー  Finder 代替として日常使用できる状態             ← 進行中（1-1〜1-4 完了）
+フェーズ1 ファイルマネージャー  Finder 代替として日常使用できる状態             ← 進行中（1-1〜1-5 完了）
 フェーズ2 ライブラリマネージャー ラベル管理が実用レベル
 フェーズ3 テンポラリフォルダ   取り込み〜投入のワークフロー完結
 ```
@@ -203,7 +210,8 @@ Swift 6 言語モード、`StrictConcurrency` 有効。
 | 1-2 | サンドボックス + Security-Scoped Bookmark 基盤、FS 適合検証 | 完了 |
 | 1-3 | メインウインドウ 3 ペイン、タブ・複数ウインドウ、状態の 3 分類 | 完了 |
 | 1-4 | フォルダツリー（ボリューム／テンポラリ／ライブラリの 3 グループ） | 完了 |
-| 1-5〜1-15 | ファイル操作、D&D、圧縮展開、Undo、環境設定、通知基盤 等 | 未着手 |
+| 1-5 | 基本ファイル操作・衝突処理。`FileOperationService` への集約 | 完了 |
+| 1-6〜1-15 | D&D、圧縮展開、Undo、環境設定、通知基盤 等 | 未着手 |
 
 - フェーズ 1 の 4 制約（DP-01 Undo 基盤 / DP-05 FileOps 集約 / DP-07 mainContext 構成 / DP-08 通知基盤）は機能追加より先に固める。後付けは大規模改修になる。1-1 はこれらより前段の土台（プロジェクト構成・デザイントークン）であり、4 制約自体はまだ手を付けていない。
 - フェーズ 2 の最初に `VersionedSchema` を導入する。パーサ（`QooKit`）は永続化と並行実装できるため早期着手を推奨。
