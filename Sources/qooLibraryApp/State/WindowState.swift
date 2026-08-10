@@ -59,6 +59,14 @@ public final class WindowState {
         }
     }
 
+    /// アクティブなタブの表示先を変更する。フォルダツリーでの選択 [LP-06] と
+    /// 中央ペインでのフォルダ移動（ダブルクリック等）の両方から使う共通経路。
+    public func navigateCurrentTab(to url: URL) {
+        guard let index = currentTabIndex else { return }
+        tabs[index].folder = url
+        tabs[index].title = url.lastPathComponent
+    }
+
     public func openTab(for folder: URL?) {
         let tab = TabState(folder: folder, title: folder?.lastPathComponent ?? "新規タブ")
         tabs.append(tab)

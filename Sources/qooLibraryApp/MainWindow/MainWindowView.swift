@@ -13,7 +13,13 @@ struct MainWindowView: View {
             TabBarView(windowState: windowState)
             Divider()
             ThreePaneWindow(id: "main") {
-                PlaceholderPane(title: "フォルダツリー", subtitle: "1-4 で実装")
+                VSplitView {
+                    FolderTreePane(
+                        selectedURL: windowState.currentTabIndex.flatMap { windowState.tabs[$0].folder },
+                        onSelect: { windowState.navigateCurrentTab(to: $0) }
+                    )
+                    PlaceholderPane(title: "ラベルフィルタ", subtitle: "2-8 で実装")
+                }
             } center: {
                 if let index = windowState.currentTabIndex {
                     FolderContentView(
@@ -22,10 +28,7 @@ struct MainWindowView: View {
                             get: { windowState.tabs[index].selection },
                             set: { windowState.tabs[index].selection = $0 }
                         ),
-                        onNavigate: { newFolder in
-                            windowState.tabs[index].folder = newFolder
-                            windowState.tabs[index].title = newFolder.lastPathComponent
-                        }
+                        onNavigate: { windowState.navigateCurrentTab(to: $0) }
                     )
                 } else {
                     PlaceholderPane(title: "タブがありません", subtitle: "")
