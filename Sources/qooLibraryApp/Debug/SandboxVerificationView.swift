@@ -67,27 +67,27 @@ final class SandboxVerificationModel {
     }
 
     private func verifyEligibilityAndAccess(url: URL, bookmark: Data) async {
+        // [バグ修正] FS 適合検証（tmpA の作成を伴う）は startAccessingSecurityScopedResource
+        // が有効な区間の中で行わないと、ブックマーク解決のみ（NSOpenPanel の新規選択ではない
+        // 経路）では書き込み権限がなく probeSetupFailed になる。NSOpenPanel 直後の URL は
+        // 暗黙に書き込み可だったため、初回の手動検証ではこのバグが表面化しなかった
+        // （実機検証で発見。詳細は CLAUDE.md/コミットログ参照）。
+        let checker = volumeChecker
         do {
-            let eligibility = try await volumeChecker.evaluate(url)
+            let (eligibility, count) = try await bookmarkResolver.withAccess(bookmark) { accessedURL in
+                let eligibility = try await checker.evaluate(accessedURL)
+                let count = try FileManager.default.contentsOfDirectory(atPath: accessedURL.path).count
+                return (eligibility, count)
+            }
             switch eligibility {
             case .eligible(let warnings):
                 append("FS 適合検証: 合格" + (warnings.isEmpty ? "" : "（警告: \(warnings)）"))
             case .rejected(let reason):
                 append("FS 適合検証: 却下 — \(reason)")
             }
-        } catch {
-            append("FS 適合検証でエラー: \(error)")
-        }
-
-        do {
-            // [SB-02] startAccessing/stopAccessing のスコープ管理が実際に機能するかを、
-            // サンドボックス化されたこのプロセス内で確認する。
-            let count = try await bookmarkResolver.withAccess(bookmark) { accessedURL in
-                try FileManager.default.contentsOfDirectory(atPath: accessedURL.path).count
-            }
             append("セキュリティスコープ内でのアクセス成功: \(count) 件")
         } catch {
-            append("セキュリティスコープアクセス失敗: \(error)")
+            append("検証中にエラー: \(error)")
         }
     }
 
