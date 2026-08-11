@@ -23,8 +23,12 @@ struct QooLibraryApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
-            MainWindowView()
+        // `for: URL.self` にすることで、右クリックの「新規ウインドウで開く」から
+        // `openWindow(value: url)` で特定のフォルダを初期表示にした新規ウインドウを
+        // 開ける（⌘N・Dock アイコンからの起動など、値を指定しない経路は
+        // 引き続き `nil` → 既定の仮想ホームになる）。
+        WindowGroup(for: URL.self) { $initialFolder in
+            MainWindowView(initialFolder: initialFolder)
         }
         .commands {
             CommandGroup(replacing: .appInfo) {

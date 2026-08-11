@@ -8,10 +8,20 @@ import SwiftUI
 /// ウインドウ（`WindowGroup` が作る各シーン）ごとに独立して生成される。
 /// 複数ウインドウを開いても互いのタブ・選択・表示モードは影響しない [ST-20][ST-21]。
 struct MainWindowView: View {
-    @State private var windowState = WindowState()
+    @State private var windowState: WindowState
     /// `⌘T` 新規タブ [KB-02 相当]。`FolderContentView` の他のショートカットと
     /// 同じく、可視要素を持たないボタンとして配線する。
     private let keyBindingStore: KeyBindingStore = UserDefaultsKeyBindingStore.shared
+    /// コンテキストメニューの「新規ウインドウで開く」用 [`qooLibraryApp` の
+    /// `WindowGroup(for: URL.self)` 参照]。
+    @Environment(\.openWindow) private var openWindow
+
+    /// `initialFolder` は `WindowGroup(for: URL.self)` から渡される値。⌘N や
+    /// Dock からの起動では `nil`（既定の仮想ホーム）、「新規ウインドウで開く」
+    /// からは特定のフォルダになる。
+    init(initialFolder: URL?) {
+        _windowState = State(initialValue: initialFolder.map(WindowState.init(initialFolder:)) ?? WindowState())
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -47,7 +57,9 @@ struct MainWindowView: View {
                         onGoBack: { windowState.goBack() },
                         onGoForward: { windowState.goForward() },
                         canGoBack: windowState.canGoBack,
-                        canGoForward: windowState.canGoForward
+                        canGoForward: windowState.canGoForward,
+                        onOpenInNewTab: { windowState.openTab(for: $0) },
+                        onOpenInNewWindow: { openWindow(value: $0) }
                     )
                 } else {
                     PlaceholderPane(title: "タブがありません", subtitle: "")

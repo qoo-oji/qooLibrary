@@ -5,6 +5,10 @@ public enum OperationKind: Sendable, Equatable {
     case createDirectory, copy, move, rename, trash, deletePermanently, restoreFromTrash
     /// 展開のステージングディレクトリから最終位置への移送 [EX-04]。
     case promoteFromStaging
+    /// Finder の「エイリアスを作成」相当。
+    case createAlias
+    /// Finder の「ロック」/「ロック解除」相当（`.isUserImmutableKey`）。
+    case setLocked
 }
 
 public enum ConflictPolicy: Sendable, Equatable {

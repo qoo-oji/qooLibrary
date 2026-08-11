@@ -127,6 +127,13 @@ public final class WindowState {
             selectedTabID = tabs[min(index, tabs.count - 1)].id
         }
     }
+
+    /// タブバーの右クリックメニュー「他のタブを閉じる」用。
+    public func closeOtherTabs(keeping id: TabState.ID) {
+        guard let keep = tabs.first(where: { $0.id == id }) else { return }
+        tabs = [keep]
+        selectedTabID = keep.id
+    }
 }
 
 /// セッション一時状態 [11章 §11.4]。メモリのみ、DB にもウインドウ復元にも
@@ -147,4 +154,14 @@ public final class SessionState {
     /// になり、既に存在しないファイルへ再度ドラッグして "no such file" エラーに
     /// なる事象があった。ウインドウ単位の `reloadToken` だった名残]。
     public var reloadToken: Int = 0
+
+    /// カット（⌘X）で選択された項目の URL 集合 [FM-02 相当]。ペースト時に
+    /// 現在のペーストボードの内容がこの集合と一致すれば「カット→ペースト」と
+    /// 判断してコピーではなく移動を行う。Finder 自身のカット判定はプライベート
+    /// API 頼りで他アプリと相互運用できないため、アプリ内で完結する簡易な
+    /// 独自実装にしている（Finder との間で「カット」を伝搬することはできないが、
+    /// コピー自体は標準の `NSPasteboard` ファイル URL 経由で相互運用できる）。
+    /// アプリ全体で 1 つ（ウインドウをまたいでカット→別ウインドウでペーストも
+    /// 成立させるため、`reloadToken` と同じ理由でセッション全体の状態にしている）。
+    public var cutURLs: Set<URL> = []
 }

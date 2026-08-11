@@ -22,6 +22,10 @@ struct FolderContentView: View {
     let onGoForward: () -> Void
     let canGoBack: Bool
     let canGoForward: Bool
+    /// コンテキストメニューの「新規タブで開く」「新規ウインドウで開く」
+    /// [MW-01/MW-04 の周辺、要件定義書には無いがユーザー要望で追加]。
+    let onOpenInNewTab: (URL) -> Void
+    let onOpenInNewWindow: (URL) -> Void
 
     @State private var entries: [FolderEntry] = []
     @State private var loadError: String?
@@ -41,6 +45,9 @@ struct FolderContentView: View {
     /// 圧縮・展開など数秒かかることがある処理の実行中表示 [UI-09]。
     /// バイト単位の進捗（`ProgressReporter`）はまだ無いため不定進捗のみ。
     @State private var busyMessage: String?
+    /// 「情報を見る」で表示する対象。1-10（右ペイン詳細情報）の本実装までの
+    /// 暫定的な簡易シート。
+    @State private var infoTargets: [FolderEntry]?
     /// リスト表示の現在のソート順 [LV-01]。タブ切替をまたいで保持されて構わない
     /// 軽微な状態のため `WindowState`/`TabState` へは持ち上げず、他の一時的な
     /// `@State`（`selectionAnchor` 等）と同じくこのビュー内で完結させる。
@@ -160,6 +167,20 @@ struct FolderContentView: View {
                     draggedItemIDs
                 }
                 .dragContainerSelection(Array(selection), containerNamespace: dragNamespace)
+                // `Table`/`List` 専用の選択集合ベースのコンテキストメニュー
+                // [実機検証時のユーザー指摘への対応]。行ごとに `.contextMenu` を
+                // 付ける方式（以前の実装）だと、選択されていない行を右クリックした
+                // ときに Finder のような青い枠線（「これから出るメニューの対象は
+                // この行」の表示）が出なかった。この API は AppKit の
+                // `NSTableView` の標準機能を直接使うため、右クリックした行が
+                // 現在の選択に含まれなければ自動的にその1行だけを対象にし、
+                // 枠線表示も標準で行われる（自前で追跡・実装する必要が無い）。
+                // 何も選択されていない空きスペースを右クリックした場合は
+                // `urls` が空集合になるので、それで空きスペース用メニューと
+                // 行メニューを切り替える（以前は別々の `.contextMenu` だった）。
+                .contextMenu(forSelectionType: URL.self) { urls in
+                    contextMenuContent(for: urls)
+                }
                 // [KB-02] 選択中の項目を開く。ディレクトリはダブルクリックと同じ
                 // ナビゲーション、ファイルは既定アプリで開く（Finder と同じ）。
                 .onKeyPress(keyBindingStore.binding(for: .open).combos.first?.swiftUIKeyEquivalent ?? .return) {
@@ -192,6 +213,12 @@ struct FolderContentView: View {
                 }
                 KeyBindingButtons(action: .goForward, store: keyBindingStore, isDisabled: !canGoForward) {
                     onGoForward()
+                }
+                KeyBindingButtons(action: .copy, store: keyBindingStore, isDisabled: selection.isEmpty) {
+                    copySelectionToPasteboard(Array(selection))
+                }
+                KeyBindingButtons(action: .paste, store: keyBindingStore, isDisabled: !canPaste || folder == nil) {
+                    pasteFromPasteboard()
                 }
             }
             .frame(width: 0, height: 0)
@@ -245,6 +272,11 @@ struct FolderContentView: View {
             Button("OK") {}
         } message: {
             Text(actionError ?? "")
+        }
+        .sheet(isPresented: Binding(get: { infoTargets != nil }, set: { if !$0 { infoTargets = nil } })) {
+            if let infoTargets {
+                FileInfoSheet(entries: infoTargets, sizeFormatter: Self.sizeFormatter, dateFormatter: Self.dateFormatter)
+            }
         }
     }
 
@@ -300,9 +332,6 @@ struct FolderContentView: View {
             .simultaneousGesture(TapGesture(count: 1).onEnded {
                 handleSingleClick(entry)
             })
-            .contextMenu {
-                rowContextMenu(for: entry)
-            }
             // [DD-02] アプリ外（Finder 等）への実ファイル参照エクスポート。
             // 旧来の `.onDrag`/`.draggable(_:)` は macOS の `List` で複数選択を
             // まとめてドラッグできない未解決の既知バグがある（Apple Feedback
@@ -351,32 +380,71 @@ struct FolderContentView: View {
         isListFocused = true
     }
 
+    /// `.contextMenu(forSelectionType:)` から呼ばれる。`urls` は AppKit が
+    /// 解決済みの対象集合（右クリックした行が選択に含まれていればその選択全体、
+    /// 含まれていなければその1行だけ、何もない場所なら空集合）[Finder と同じ規則、
+    /// 実機検証時のユーザー指摘への対応]。
+    ///
+    /// 利用頻度が高いと想定される順に並べる [ユーザー指摘]。開く／移動系 →
+    /// 編集系（名前変更・複製・コピー・ゴミ箱）→ 圧縮 → 展開 → 副次的な操作
+    /// （表示・パス・共有・エイリアス）→ 付随情報（ロック・情報）の順。
     @ViewBuilder
-    private func rowContextMenu(for entry: FolderEntry) -> some View {
-        // 右クリックした行が現在の複数選択に含まれる場合は選択全体を対象にする
-        // （Finder と同じ規則）。「名前を変更」だけはバッチ名変更 UI が無いため
-        // 右クリックした 1 件のみを対象にする。
-        let targets = targetURLs(for: entry)
-        Button("Finder で表示") { NSWorkspace.shared.activateFileViewerSelecting(targets) } // [FM-09]
-        Button("パスをコピー") { copyPaths(targets) } // [FM-10]
-        Divider()
-        Button("複製") { duplicate(targets) } // [FM-02]
-        Button("名前を変更…") { beginRename(entry) } // [FM-05]
-        Divider()
-        Button("ここに圧縮") { compressHere(targets) } // [AR-10]
-        Button("圧縮…") { compressWithDialog(targets) } // [AR-11]
-        if isExtractable(targets) {
-            Divider()
-            Button("ここに展開") { extractInPlace(targets) } // [AR-20]
-            if targets.count == 1, let single = targets.first {
-                Button("「\(archiveBaseName(single))」に展開") { extractToNamedFolders(targets) } // [AR-21]
-            } else {
-                Button("それぞれのフォルダに展開") { extractToNamedFolders(targets) } // [AR-23]
+    private func contextMenuContent(for urls: Set<URL>) -> some View {
+        if urls.isEmpty {
+            // 空きスペースの右クリック。
+            Button("新規フォルダ") {
+                newFolderName = "新規フォルダ"
+                showingNewFolderPrompt = true
             }
-            Button("展開…") { extractToChosenDestination(targets) } // [AR-22]
+            Button("ペースト") { pasteFromPasteboard() }
+                .disabled(!canPaste)
+        } else {
+            let targets = Array(urls)
+            let targetEntries = entries.filter { urls.contains($0.url) }
+            Button("開く") { openEntries(targetEntries) } // [KB-02 相当]
+            if targetEntries.allSatisfy(\.isDirectory) {
+                // 新規タブ/ウインドウで開くはフォルダのみ意味を持つ。Finder は
+                // 複数選択なら選択したフォルダの数だけタブ/ウインドウを開く。
+                Button(targets.count == 1 ? "新規タブで開く" : "新規タブでそれぞれ開く") {
+                    targets.forEach(onOpenInNewTab)
+                }
+                Button(targets.count == 1 ? "新規ウインドウで開く" : "新規ウインドウでそれぞれ開く") {
+                    targets.forEach(onOpenInNewWindow)
+                }
+            }
+            Divider()
+            // 名前を変更はバッチ名変更 UI が無いため単一対象時のみ。
+            if targets.count == 1, let only = targetEntries.first {
+                Button("名前を変更…") { beginRename(only) } // [FM-05]
+            }
+            Button("複製") { duplicate(targets) } // [FM-02]
+            Button("コピー") { copySelectionToPasteboard(targets) } // [KB-02 相当、⌘C]
+            Divider()
+            Button("ゴミ箱に入れる", role: .destructive) { moveToTrash(targets) } // [FM-04]
+            Divider()
+            Button("ここに圧縮") { compressHere(targets) } // [AR-10]
+            Button("圧縮…") { compressWithDialog(targets) } // [AR-11]
+            if isExtractable(targets) {
+                Divider()
+                Button("ここに展開") { extractInPlace(targets) } // [AR-20]
+                if targets.count == 1, let single = targets.first {
+                    Button("「\(archiveBaseName(single))」に展開") { extractToNamedFolders(targets) } // [AR-21]
+                } else {
+                    Button("それぞれのフォルダに展開") { extractToNamedFolders(targets) } // [AR-23]
+                }
+                Button("展開…") { extractToChosenDestination(targets) } // [AR-22]
+            }
+            Divider()
+            Button("Finder で表示") { NSWorkspace.shared.activateFileViewerSelecting(targets) } // [FM-09]
+            Button("パスをコピー") { copyPaths(targets) } // [FM-10]
+            ShareLink("共有…", items: targets) // [共有、既定ラベルが英語 "Share..." になるため明示的に指定]
+            Button("エイリアスを作成") { createAliases(for: targets) }
+            Divider()
+            Button(targetEntries.allSatisfy(\.isLocked) ? "ロック解除" : "ロック") {
+                toggleLock(targetEntries)
+            }
+            Button("情報を見る") { infoTargets = targetEntries } // [簡易版、1-10 で本実装]
         }
-        Divider()
-        Button("ゴミ箱に入れる", role: .destructive) { moveToTrash(targets) } // [FM-04]
     }
 
     private func reload() {
@@ -386,7 +454,7 @@ struct FolderContentView: View {
             return
         }
         do {
-            let keys: Set<URLResourceKey> = [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey]
+            let keys: Set<URLResourceKey> = [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey, .isUserImmutableKey]
             let urls = try FileManager.default.contentsOfDirectory(
                 at: folder,
                 includingPropertiesForKeys: Array(keys),
@@ -399,7 +467,8 @@ struct FolderContentView: View {
                     name: url.lastPathComponent,
                     isDirectory: values?.isDirectory ?? false,
                     fileSize: values?.fileSize.map(Int64.init),
-                    modificationDate: values?.contentModificationDate
+                    modificationDate: values?.contentModificationDate,
+                    isLocked: values?.isUserImmutable ?? false
                 )
             }
             loadError = nil
@@ -416,16 +485,68 @@ struct FolderContentView: View {
         SessionState.shared.reloadToken += 1
     }
 
-    /// 右クリックした行が現在の複数選択に含まれていれば選択全体を、そうでなければ
-    /// その 1 件のみを対象にする（Finder のコンテキストメニューと同じ規則）。
-    private func targetURLs(for entry: FolderEntry) -> [URL] {
-        guard selection.contains(entry.url) else { return [entry.url] }
-        return entries.filter { selection.contains($0.url) }.map(\.url)
-    }
-
     private func copyPaths(_ urls: [URL]) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(urls.map(\.path).joined(separator: "\n"), forType: .string)
+    }
+
+    /// `⌘C`/コンテキストメニュー「コピー」。標準の `NSPasteboard` にファイル URL
+    /// として書き込むため、Finder との相互運用（Finder へ貼り付け／Finder で
+    /// コピーしたものをここへ貼り付け）が両方とも成立する。
+    private func copySelectionToPasteboard(_ urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects(urls as [NSURL])
+    }
+
+    /// `⌘V`/コンテキストメニュー「ペースト」。ペーストボード上のファイル URL を
+    /// 現在のフォルダへコピーする（Finder の `⌘V` と同じ既定、移動ではない）。
+    private func pasteFromPasteboard() {
+        guard let folder,
+              let urls = NSPasteboard.general.readObjects(forClasses: [NSURL.self]) as? [URL],
+              !urls.isEmpty
+        else { return }
+        Task {
+            do {
+                _ = try await fileOps.copy(urls, to: folder, options: OpOptions(conflictPolicy: .keepBoth))
+                reloadAndBroadcast()
+            } catch {
+                actionError = error.localizedDescription
+            }
+        }
+    }
+
+    private var canPaste: Bool {
+        NSPasteboard.general.canReadObject(forClasses: [NSURL.self], options: nil)
+    }
+
+    private func createAliases(for urls: [URL]) {
+        guard let folder else { return }
+        Task {
+            do {
+                for url in urls {
+                    _ = try await fileOps.createAlias(for: url, in: folder)
+                }
+                reloadAndBroadcast()
+            } catch {
+                actionError = error.localizedDescription
+            }
+        }
+    }
+
+    /// 対象が全てロック済みなら解除、そうでなければロックする（Finder と同じ
+    /// トグル規則）。
+    private func toggleLock(_ targets: [FolderEntry]) {
+        guard !targets.isEmpty else { return }
+        let shouldLock = !targets.allSatisfy(\.isLocked)
+        Task {
+            do {
+                _ = try await fileOps.setLocked(targets.map(\.url), locked: shouldLock)
+                reloadAndBroadcast()
+            } catch {
+                actionError = error.localizedDescription
+            }
+        }
     }
 
     private func beginRename(_ entry: FolderEntry) {
@@ -447,7 +568,12 @@ struct FolderContentView: View {
     /// 同時に移動できないため、ファイルだけを開く。
     private func openSelection() {
         guard !selection.isEmpty else { return }
-        let targets = entries.filter { selection.contains($0.url) }
+        openEntries(entries.filter { selection.contains($0.url) })
+    }
+
+    /// コンテキストメニューの「開く」用 [KB-02 相当]。`openSelection()` と同じ
+    /// 規則だが、右クリックした対象（必ずしも現在の選択と一致しない）を直接渡せる。
+    private func openEntries(_ targets: [FolderEntry]) {
         if targets.count == 1, let only = targets.first {
             if only.isDirectory {
                 onNavigate(only.url)
@@ -641,6 +767,43 @@ struct FolderContentView: View {
     }
 }
 
+/// 「情報を見る」の簡易表示。1-10（右ペイン詳細情報の本実装、カバー画像・
+/// ラベル・評価を含む）ができるまでの暫定版で、基本的なファイル情報のみ。
+private struct FileInfoSheet: View {
+    let entries: [FolderEntry]
+    let sizeFormatter: ByteCountFormatter
+    let dateFormatter: DateFormatter
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Tokens.spacing.m) {
+            if entries.count == 1, let entry = entries.first {
+                Text(entry.name)
+                    .font(.system(size: Tokens.fontSize.title2, weight: .semibold))
+                Divider()
+                LabeledContent("種類", value: entry.kindDescription)
+                LabeledContent("サイズ", value: entry.isDirectory ? "—" : sizeFormatter.string(fromByteCount: entry.fileSize ?? 0))
+                LabeledContent("変更日", value: entry.modificationDate.map { dateFormatter.string(from: $0) } ?? "—")
+                LabeledContent("場所", value: entry.url.deletingLastPathComponent().path)
+                LabeledContent("ロック", value: entry.isLocked ? "はい" : "いいえ")
+            } else {
+                Text("\(entries.count) 項目")
+                    .font(.system(size: Tokens.fontSize.title2, weight: .semibold))
+                Divider()
+                let totalSize = entries.filter { !$0.isDirectory }.reduce(Int64(0)) { $0 + ($1.fileSize ?? 0) }
+                LabeledContent("合計サイズ", value: sizeFormatter.string(fromByteCount: totalSize))
+            }
+            Spacer()
+            HStack {
+                Spacer()
+                Button("閉じる") { dismiss() }
+            }
+        }
+        .padding(Tokens.spacing.l)
+        .frame(minWidth: 320, minHeight: 200)
+    }
+}
+
 private struct FolderEntry: Identifiable {
     var id: URL { url }
     let url: URL
@@ -648,6 +811,7 @@ private struct FolderEntry: Identifiable {
     let isDirectory: Bool
     let fileSize: Int64?
     let modificationDate: Date?
+    let isLocked: Bool
 
     /// zip/7z/rar/tar.gz（cbz/cb7/cbr のエイリアス含む）と認識できるファイル
     /// [AR-20〜AR-23]。フォルダは対象外。

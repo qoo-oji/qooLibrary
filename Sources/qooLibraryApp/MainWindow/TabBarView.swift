@@ -26,7 +26,9 @@ struct TabBarView: View {
                     isSelected: tab.id == windowState.selectedTabID,
                     canClose: windowState.tabs.count > 1,
                     onSelect: { windowState.selectedTabID = tab.id },
-                    onClose: { windowState.closeTab(tab.id) }
+                    onClose: { windowState.closeTab(tab.id) },
+                    onNewTab: { windowState.openDefaultTab() },
+                    onCloseOthers: { windowState.closeOtherTabs(keeping: tab.id) }
                 )
                 .frame(minWidth: Self.minTabWidth, maxWidth: .infinity)
             }
@@ -52,6 +54,8 @@ private struct TabChip: View {
     let canClose: Bool
     let onSelect: () -> Void
     let onClose: () -> Void
+    let onNewTab: () -> Void
+    let onCloseOthers: () -> Void
     @State private var isHovering = false
 
     var body: some View {
@@ -83,5 +87,12 @@ private struct TabChip: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
         .onHover { isHovering = $0 }
+        .contextMenu {
+            Button("新規タブ") { onNewTab() }
+            if canClose {
+                Button("タブを閉じる") { onClose() }
+                Button("他のタブを閉じる") { onCloseOthers() }
+            }
+        }
     }
 }

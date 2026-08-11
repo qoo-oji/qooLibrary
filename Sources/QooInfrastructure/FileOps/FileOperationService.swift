@@ -96,6 +96,33 @@ public actor FileOperationService {
         return receipts
     }
 
+    /// Finder の「エイリアスを作成」相当。`URL.bookmarkData(options: .suitableForBookmarkFile)`
+    /// で本物の Finder エイリアス（シンボリックリンクではない）を作る。
+    @discardableResult
+    public func createAlias(for source: URL, in destinationFolder: URL, options: OpOptions = .init()) async throws -> OpReceipt {
+        let aliasName = "\(source.lastPathComponent) のエイリアス"
+        let target = destinationFolder.appendingPathComponent(aliasName)
+        guard let finalTarget = try await resolveDestination(source, target, options: options) else {
+            throw FileOperationError.operationFailed("alias creation for \(source.path) skipped by conflict policy")
+        }
+        let bookmarkData = try source.bookmarkData(options: [.suitableForBookmarkFile])
+        try URL.writeBookmarkData(bookmarkData, to: finalTarget)
+        return OpReceipt(before: nil, after: try? identity(of: finalTarget), fromURL: source, toURL: finalTarget, kind: .createAlias)
+    }
+
+    /// Finder の「ロック」/「ロック解除」相当。
+    public func setLocked(_ items: [URL], locked: Bool) async throws -> [OpReceipt] {
+        var receipts: [OpReceipt] = []
+        for item in items {
+            var mutableItem = item
+            var values = URLResourceValues()
+            values.isUserImmutable = locked
+            try mutableItem.setResourceValues(values)
+            receipts.append(OpReceipt(before: try? identity(of: item), after: try? identity(of: item), fromURL: item, toURL: item, kind: .setLocked))
+        }
+        return receipts
+    }
+
     public func restoreFromTrash(_ receipts: [TrashReceipt]) async throws -> [OpReceipt] {
         var results: [OpReceipt] = []
         for receipt in receipts {
