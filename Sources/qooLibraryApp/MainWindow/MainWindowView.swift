@@ -15,6 +15,11 @@ struct MainWindowView: View {
     /// コンテキストメニューの「新規ウインドウで開く」用 [`qooLibraryApp` の
     /// `WindowGroup(for: URL.self)` 参照]。
     @Environment(\.openWindow) private var openWindow
+    /// 右ペインをたたむ（隠す）[実機検証時のユーザー要望]。`@AppStorage` には
+    /// 意図的にしていない（`ThreePaneWindow.isRightPaneCollapsed` のコメント
+    /// 参照、タブバーの表示/非表示で踏んだハング不具合と同じ危険なパターンを
+    /// 避けるため）。再起動をまたいでは保持されないが、セッション中は保持される。
+    @State private var isRightPaneCollapsed = false
 
     /// `initialFolder` は `WindowGroup(for: URL.self)` から渡される値。⌘N や
     /// Dock からの起動では `nil`（既定の仮想ホーム）、「新規ウインドウで開く」
@@ -37,7 +42,7 @@ struct MainWindowView: View {
                 TabBarView(windowState: windowState)
                 Divider()
             }
-            ThreePaneWindow(id: "main") {
+            ThreePaneWindow(id: "main", isRightPaneCollapsed: isRightPaneCollapsed) {
                 VSplitView {
                     FolderTreePane(
                         selectedURL: windowState.currentTabIndex.flatMap { windowState.tabs[$0].folder },
@@ -76,6 +81,16 @@ struct MainWindowView: View {
             }
             .frame(width: 0, height: 0)
             .opacity(0)
+        }
+        .toolbar {
+            ToolbarItem {
+                Button {
+                    isRightPaneCollapsed.toggle()
+                } label: {
+                    Image(systemName: "sidebar.trailing")
+                }
+                .help(isRightPaneCollapsed ? "詳細を表示" : "詳細を隠す")
+            }
         }
     }
 }

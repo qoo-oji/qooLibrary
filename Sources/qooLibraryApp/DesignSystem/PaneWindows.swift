@@ -104,17 +104,31 @@ public struct ThreePaneWindow<Left: View, Center: View, Right: View>: View {
     private let left: Left
     private let center: Center
     private let right: Right
+    /// 右ペインをたたむ（隠す）[実機検証時のユーザー要望]。中央ペインが
+    /// そのぶん広がり、ウインドウ全体の幅は変わらない。
+    ///
+    /// あえて `@AppStorage` ではなく呼び出し側から渡される単純な `Bool` に
+    /// している。この値は `HSplitView` 内で右ペインを含めるかどうかの `if`
+    /// 条件に使われるが、タブバーの表示/非表示を同様の `if` 条件の中で
+    /// `@AppStorage` を直接読む形にした際、SwiftUI の Observation が無限に
+    /// 再評価を繰り返しアプリがハングする不具合が実機検証で見つかっている
+    /// （`CLAUDE.md` 参照）。同じ危険なパターンを踏まないよう、永続化するなら
+    /// 呼び出し側（`@State` 等）で行い、ここでは受け取った値をそのまま使うだけ
+    /// にとどめる。
+    private let isRightPaneCollapsed: Bool
 
     @AppStorage private var leftWidth: Double
     @AppStorage private var rightWidth: Double
 
     public init(
         id: String,
+        isRightPaneCollapsed: Bool = false,
         @ViewBuilder left: () -> Left,
         @ViewBuilder center: () -> Center,
         @ViewBuilder right: () -> Right
     ) {
         self.id = id
+        self.isRightPaneCollapsed = isRightPaneCollapsed
         self.left = left()
         self.center = center()
         self.right = right()
@@ -130,10 +144,12 @@ public struct ThreePaneWindow<Left: View, Center: View, Right: View>: View {
                 .background(SplitPositionApplier(dividerIndex: 0, targetWidth: leftWidth))
             center
                 .frame(minWidth: 360)
-            right
-                .frame(minWidth: 220, maxWidth: 420)
-                .modifier(WidthPersistingModifier(storedWidth: $rightWidth))
-                .background(SplitPositionApplier(dividerIndex: 1, targetWidth: rightWidth, anchorsToTrailingEdge: true))
+            if !isRightPaneCollapsed {
+                right
+                    .frame(minWidth: 220, maxWidth: 420)
+                    .modifier(WidthPersistingModifier(storedWidth: $rightWidth))
+                    .background(SplitPositionApplier(dividerIndex: 1, targetWidth: rightWidth, anchorsToTrailingEdge: true))
+            }
         }
         .accessibilityIdentifier("ThreePaneWindow.\(id)")
     }
