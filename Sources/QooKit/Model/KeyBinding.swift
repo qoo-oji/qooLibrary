@@ -36,6 +36,7 @@ public struct KeyCombo: Sendable, Codable, Equatable, Hashable {
 /// 配線する）の両方を含む。一覧を完全にしておくことで、未実装のうちから
 /// 衝突検出・既定に戻す機能が意味を持つ。
 public enum ActionID: String, Sendable, Codable, CaseIterable {
+    case newTab
     case open
     case goToParent
     case goBack
@@ -95,6 +96,10 @@ public enum KeyBindingError: Error, Sendable, Equatable {
 /// Quick Look・サムネイル等）が実装されるフェーズで実際に配線する。
 public enum DefaultKeyBindings {
     public static let all: [KeyBinding] = [
+        // タブバーは既定で1タブ時に非表示のため、新規タブを開く手段が
+        // ショートカット以外に無くならないよう用意する
+        // [MW2-04 の設計判断、タブバー auto-hide 対応時に追加]。
+        KeyBinding(id: .newTab, combos: [KeyCombo(key: "t", modifiers: .command)]),
         KeyBinding(id: .open, combos: [KeyCombo(key: "return")]), // [KB-02]
         KeyBinding(id: .goToParent, combos: [KeyCombo(key: "up", modifiers: .command)]),
         // 戻る/進む: Finder 流の ⌘[ / ⌘] に加えて、ブラウザ流の ⌘← / ⌘→ も

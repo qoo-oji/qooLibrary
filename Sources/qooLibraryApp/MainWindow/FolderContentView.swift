@@ -4,11 +4,10 @@ import QooKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// アクティブなタブのフォルダ内容を一覧表示する最小実装。
+/// アクティブなタブのフォルダ内容を一覧表示する。
 ///
-/// これは 1-9（リスト表示・アイコン表示・サムネイル）の本実装ではなく、
-/// タブ切替・複数ウインドウが実際に「別々の実フォルダ」を表示できることを
-/// 検証するための最小限の中身。選択・ソート・サムネイルは 1-9 で作る。
+/// リスト表示（ソート可能なカラム）は 1-9 で実装済み [LV-01〜LV-03]。
+/// アイコン表示・サムネイルは 1-9 の後続ステップで追加する。
 ///
 /// コンテキストメニュー（名前変更・複製・ゴミ箱・新規フォルダ）はすべて
 /// `FileOperationService` 経由でのみファイルシステムを変更する [FO-01][FO-02]。
@@ -42,6 +41,18 @@ struct FolderContentView: View {
     /// 圧縮・展開など数秒かかることがある処理の実行中表示 [UI-09]。
     /// バイト単位の進捗（`ProgressReporter`）はまだ無いため不定進捗のみ。
     @State private var busyMessage: String?
+    /// リスト表示の現在のソート順 [LV-01]。タブ切替をまたいで保持されて構わない
+    /// 軽微な状態のため `WindowState`/`TabState` へは持ち上げず、他の一時的な
+    /// `@State`（`selectionAnchor` 等）と同じくこのビュー内で完結させる。
+    @State private var sortOrder: [FolderSortComparator] = [FolderSortComparator(key: .name)]
+    /// カラムの表示/非表示 [LV-02] とフォルダをまとめる設定 [LV-03] は、
+    /// 特定のウインドウやタブに紐づかないアプリ全体の表示設定。1-12（環境設定）
+    /// の本実装が無いため、1-8 のキーバインド上書きと同じく `UserDefaults`
+    /// （`@AppStorage`）に直接永続化する暫定形にしている。
+    @AppStorage("qoo.folderList.showModificationDateColumn") private var showModificationDateColumn = true
+    @AppStorage("qoo.folderList.showSizeColumn") private var showSizeColumn = true
+    @AppStorage("qoo.folderList.showKindColumn") private var showKindColumn = true
+    @AppStorage("qoo.folderList.groupFoldersAtTop") private var groupFoldersAtTop = true
 
     private let fileOps = FileOperationService.shared
     /// キーバインド [13章 §13.6]。1-8 時点では開く・リネーム・ゴミ箱・
@@ -59,6 +70,18 @@ struct FolderContentView: View {
                         .lineLimit(1)
                         .truncationMode(.head)
                     Spacer()
+                    Menu {
+                        Toggle("更新日", isOn: $showModificationDateColumn)
+                        Toggle("サイズ", isOn: $showSizeColumn)
+                        Toggle("種類", isOn: $showKindColumn)
+                        Divider()
+                        Toggle("フォルダを上にまとめる", isOn: $groupFoldersAtTop) // [LV-03]
+                    } label: {
+                        Image(systemName: "line.3.horizontal.decrease.circle")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .help("表示するカラム") // [LV-02]
                     Button {
                         newFolderName = "新規フォルダ"
                         showingNewFolderPrompt = true
@@ -77,95 +100,58 @@ struct FolderContentView: View {
             } else if entries.isEmpty {
                 PlaceholderPane(title: "空のフォルダ", subtitle: "")
             } else {
-                List(entries, selection: $selection) { entry in
-                    Label(entry.name, systemImage: entry.isDirectory ? "folder" : "doc")
-                        .font(.system(size: Tokens.fontSize.body))
-                        .tag(entry.url)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
-                        .onTapGesture(count: 2) {
-                            if entry.isDirectory { onNavigate(entry.url) }
-                        }
-                        // 単発クリックの選択は `.simultaneousGesture` にする。同じ view に
-                        // `.onTapGesture(count: 1)` と `.onTapGesture(count: 2)` を両方
-                        // つけると、SwiftUI は「本当に単発クリックか、ダブルクリックの
-                        // 1 回目か」を見極めるためシステムのダブルクリック間隔だけ単発側の
-                        // 発火を遅らせる（実機検証で Finder に対して選択ハイライトが
-                        // 遅く感じられる原因になっていた）。`.simultaneousGesture` は排他的な
-                        // 判定グループに入らないため、単発クリックで即座に発火する。
-                        .simultaneousGesture(TapGesture(count: 1).onEnded {
-                            // D&D 系のモディファイアを付けた行は List 標準のクリック選択が
-                            // ハイライト込みで効かなくなることがあるため、明示的に選択する
-                            // （Cmd でトグル・Shift で範囲選択、という Finder 流の規則も
-                            // ここで手動で再現する）。
-                            let flags = NSEvent.modifierFlags
-                            if flags.contains(.command) {
-                                if selection.contains(entry.url) {
-                                    selection.remove(entry.url)
-                                } else {
-                                    selection.insert(entry.url)
-                                }
-                                selectionAnchor = entry.url
-                            } else if flags.contains(.shift),
-                                      let anchor = selectionAnchor,
-                                      let anchorIndex = entries.firstIndex(where: { $0.url == anchor }),
-                                      let clickedIndex = entries.firstIndex(where: { $0.url == entry.url }) {
-                                let range = anchorIndex < clickedIndex ? anchorIndex...clickedIndex : clickedIndex...anchorIndex
-                                selection = Set(entries[range].map(\.url))
-                            } else {
-                                // 既に複数選択の一部になっている行は潰さない
-                                // （そうしないと複数選択した状態でドラッグを開始しても単一行しか
-                                // ドラッグに含まれなくなる）。
-                                if !selection.contains(entry.url) {
-                                    selection = [entry.url]
-                                }
-                                selectionAnchor = entry.url
+                // カラムベースのリスト表示 [LV-01〜LV-03]。ソートは `sortOrder`
+                // バインディングを通してヘッダクリックで切り替わる。実際の並べ替えは
+                // `displayedEntries` がこの状態を見て計算する（`Table` 自身は
+                // データを自動ソートしない）。
+                Table(displayedEntries, selection: $selection, sortOrder: $sortOrder) {
+                    TableColumn("名前", sortUsing: FolderSortComparator(key: .name)) { entry in
+                        rowCell(entry) {
+                            // `Label` だと "folder"/"doc" の SF Symbol の実測幅の違いで
+                            // 名前の先頭位置がフォルダとファイルでずれる（実機検証で発覚）。
+                            // アイコンを固定幅の枠に収めて Finder のように先頭を揃える。
+                            HStack(spacing: Tokens.spacing.xs) {
+                                Image(systemName: entry.isDirectory ? "folder" : "doc")
+                                    .frame(width: 16, alignment: .center)
+                                Text(entry.name)
                             }
-                            // List 標準のクリック選択は副作用としてリストへフォーカスも移すが、
-                            // 手動での選択にはその副作用が無いため、選択がグレー（非フォーカス）
-                            // 表示のままになる。明示的にフォーカスさせて青色のハイライトにする。
-                            isListFocused = true
-                        })
-                        .contextMenu {
-                            // 右クリックした行が現在の複数選択に含まれる場合は選択全体を対象にする
-                            // （Finder と同じ規則）。「名前を変更」だけはバッチ名変更 UI が無いため
-                            // 右クリックした 1 件のみを対象にする。
-                            let targets = targetURLs(for: entry)
-                            Button("Finder で表示") { NSWorkspace.shared.activateFileViewerSelecting(targets) } // [FM-09]
-                            Button("パスをコピー") { copyPaths(targets) } // [FM-10]
-                            Divider()
-                            Button("複製") { duplicate(targets) } // [FM-02]
-                            Button("名前を変更…") { beginRename(entry) } // [FM-05]
-                            Divider()
-                            Button("ここに圧縮") { compressHere(targets) } // [AR-10]
-                            Button("圧縮…") { compressWithDialog(targets) } // [AR-11]
-                            if isExtractable(targets) {
-                                Divider()
-                                Button("ここに展開") { extractInPlace(targets) } // [AR-20]
-                                if targets.count == 1, let single = targets.first {
-                                    Button("「\(archiveBaseName(single))」に展開") { extractToNamedFolders(targets) } // [AR-21]
-                                } else {
-                                    Button("それぞれのフォルダに展開") { extractToNamedFolders(targets) } // [AR-23]
-                                }
-                                Button("展開…") { extractToChosenDestination(targets) } // [AR-22]
-                            }
-                            Divider()
-                            Button("ゴミ箱に入れる", role: .destructive) { moveToTrash(targets) } // [FM-04]
+                            .font(.system(size: Tokens.fontSize.body))
                         }
-                        // [DD-02] アプリ外（Finder 等）への実ファイル参照エクスポート。
-                        // 旧来の `.onDrag`/`.draggable(_:)` は macOS の `List` で複数選択を
-                        // まとめてドラッグできない未解決の既知バグがある（Apple Feedback
-                        // FB10128110）。実測でも複数選択中に `.onDrag` が実際にドラッグされた
-                        // 1行分しか呼ばれないことを確認した。macOS 26 で追加された
-                        // `draggable(containerItemID:)` + `dragContainer` +
-                        // `dragContainerSelection`（このファイル末尾の `List` に付与）の
-                        // 組み合わせで、選択中の行から始めたドラッグに選択全体が含まれる。
-                        .draggable(containerItemID: entry.url, containerNamespace: dragNamespace)
-                        .modifier(DropIntoFolderModifier(
-                            entry: entry,
-                            reload: { reloadAndBroadcast() },
-                            onFailure: { actionError = $0 }
-                        ))
+                    }
+                    .width(min: 160, ideal: 280)
+
+                    if showModificationDateColumn {
+                        TableColumn("更新日", sortUsing: FolderSortComparator(key: .modificationDate)) { entry in
+                            rowCell(entry) {
+                                Text(entry.modificationDate.map { Self.dateFormatter.string(from: $0) } ?? "—")
+                                    .font(.system(size: Tokens.fontSize.body))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .width(min: 110, ideal: 170)
+                    }
+
+                    if showSizeColumn {
+                        TableColumn("サイズ", sortUsing: FolderSortComparator(key: .size)) { entry in
+                            rowCell(entry) {
+                                Text(entry.isDirectory ? "—" : Self.sizeFormatter.string(fromByteCount: entry.fileSize ?? 0))
+                                    .font(.system(size: Tokens.fontSize.body))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .width(min: 70, ideal: 90)
+                    }
+
+                    if showKindColumn {
+                        TableColumn("種類", sortUsing: FolderSortComparator(key: .kind)) { entry in
+                            rowCell(entry) {
+                                Text(entry.kindDescription)
+                                    .font(.system(size: Tokens.fontSize.body))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .width(min: 90, ideal: 140)
+                    }
                 }
                 .focused($isListFocused)
                 // [DD-02][設計判断] `URL` は既に `Transferable`。ドラッグされた行の
@@ -266,6 +252,133 @@ struct FolderContentView: View {
         Binding(get: { renamingEntry != nil }, set: { if !$0 { renamingEntry = nil } })
     }
 
+    private static let sizeFormatter: ByteCountFormatter = {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return formatter
+    }()
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
+    /// `entries` に現在のソート順 [LV-01] とフォルダをまとめる設定 [LV-03] を
+    /// 適用した、実際に `Table` へ渡す並び。`filter` は相対順序を保つため、
+    /// グルーピングを先にソートした結果へ適用しても各グループ内の順序は
+    /// 崩れない。
+    private var displayedEntries: [FolderEntry] {
+        var result = entries
+        result.sort(using: sortOrder)
+        if groupFoldersAtTop {
+            result = result.filter(\.isDirectory) + result.filter { !$0.isDirectory }
+        }
+        return result
+    }
+
+    /// 各カラムのセルに共通の行操作（選択・ダブルクリック・コンテキストメニュー・
+    /// ドラッグ＆ドロップ）をまとめて適用する。`Table` は `List` と違いカラムごとに
+    /// 独立したセルなので、Finder と同じく行のどこをクリックしても同じ挙動に
+    /// なるよう、すべてのカラムのセルに同一の modifier 一式を付与する。
+    @ViewBuilder
+    private func rowCell(_ entry: FolderEntry, @ViewBuilder content: () -> some View) -> some View {
+        content()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture(count: 2) {
+                if entry.isDirectory { onNavigate(entry.url) }
+            }
+            // 単発クリックの選択は `.simultaneousGesture` にする。同じ view に
+            // `.onTapGesture(count: 1)` と `.onTapGesture(count: 2)` を両方
+            // つけると、SwiftUI は「本当に単発クリックか、ダブルクリックの
+            // 1 回目か」を見極めるためシステムのダブルクリック間隔だけ単発側の
+            // 発火を遅らせる（実機検証で Finder に対して選択ハイライトが
+            // 遅く感じられる原因になっていた）。`.simultaneousGesture` は排他的な
+            // 判定グループに入らないため、単発クリックで即座に発火する。
+            .simultaneousGesture(TapGesture(count: 1).onEnded {
+                handleSingleClick(entry)
+            })
+            .contextMenu {
+                rowContextMenu(for: entry)
+            }
+            // [DD-02] アプリ外（Finder 等）への実ファイル参照エクスポート。
+            // 旧来の `.onDrag`/`.draggable(_:)` は macOS の `List` で複数選択を
+            // まとめてドラッグできない未解決の既知バグがある（Apple Feedback
+            // FB10128110）。macOS 26 で追加された `draggable(containerItemID:)` +
+            // `dragContainer` + `dragContainerSelection`（`Table` に付与、上記
+            // 参照）の組み合わせで、選択中の行から始めたドラッグに選択全体が含まれる。
+            .draggable(containerItemID: entry.url, containerNamespace: dragNamespace)
+            .modifier(DropIntoFolderModifier(
+                entry: entry,
+                reload: { reloadAndBroadcast() },
+                onFailure: { actionError = $0 }
+            ))
+    }
+
+    /// D&D 系のモディファイアを付けた行は List/Table 標準のクリック選択が
+    /// ハイライト込みで効かなくなることがあるため、明示的に選択する
+    /// （Cmd でトグル・Shift で範囲選択、という Finder 流の規則もここで手動で
+    /// 再現する）。範囲選択は画面表示順（`displayedEntries`）で計算する。
+    private func handleSingleClick(_ entry: FolderEntry) {
+        let flags = NSEvent.modifierFlags
+        if flags.contains(.command) {
+            if selection.contains(entry.url) {
+                selection.remove(entry.url)
+            } else {
+                selection.insert(entry.url)
+            }
+            selectionAnchor = entry.url
+        } else if flags.contains(.shift),
+                  let anchor = selectionAnchor,
+                  let anchorIndex = displayedEntries.firstIndex(where: { $0.url == anchor }),
+                  let clickedIndex = displayedEntries.firstIndex(where: { $0.url == entry.url }) {
+            let range = anchorIndex < clickedIndex ? anchorIndex...clickedIndex : clickedIndex...anchorIndex
+            selection = Set(displayedEntries[range].map(\.url))
+        } else {
+            // 既に複数選択の一部になっている行は潰さない
+            // （そうしないと複数選択した状態でドラッグを開始しても単一行しか
+            // ドラッグに含まれなくなる）。
+            if !selection.contains(entry.url) {
+                selection = [entry.url]
+            }
+            selectionAnchor = entry.url
+        }
+        // List/Table 標準のクリック選択は副作用としてリストへフォーカスも移すが、
+        // 手動での選択にはその副作用が無いため、選択がグレー（非フォーカス）
+        // 表示のままになる。明示的にフォーカスさせて青色のハイライトにする。
+        isListFocused = true
+    }
+
+    @ViewBuilder
+    private func rowContextMenu(for entry: FolderEntry) -> some View {
+        // 右クリックした行が現在の複数選択に含まれる場合は選択全体を対象にする
+        // （Finder と同じ規則）。「名前を変更」だけはバッチ名変更 UI が無いため
+        // 右クリックした 1 件のみを対象にする。
+        let targets = targetURLs(for: entry)
+        Button("Finder で表示") { NSWorkspace.shared.activateFileViewerSelecting(targets) } // [FM-09]
+        Button("パスをコピー") { copyPaths(targets) } // [FM-10]
+        Divider()
+        Button("複製") { duplicate(targets) } // [FM-02]
+        Button("名前を変更…") { beginRename(entry) } // [FM-05]
+        Divider()
+        Button("ここに圧縮") { compressHere(targets) } // [AR-10]
+        Button("圧縮…") { compressWithDialog(targets) } // [AR-11]
+        if isExtractable(targets) {
+            Divider()
+            Button("ここに展開") { extractInPlace(targets) } // [AR-20]
+            if targets.count == 1, let single = targets.first {
+                Button("「\(archiveBaseName(single))」に展開") { extractToNamedFolders(targets) } // [AR-21]
+            } else {
+                Button("それぞれのフォルダに展開") { extractToNamedFolders(targets) } // [AR-23]
+            }
+            Button("展開…") { extractToChosenDestination(targets) } // [AR-22]
+        }
+        Divider()
+        Button("ゴミ箱に入れる", role: .destructive) { moveToTrash(targets) } // [FM-04]
+    }
+
     private func reload() {
         guard let folder else {
             entries = []
@@ -273,15 +386,22 @@ struct FolderContentView: View {
             return
         }
         do {
+            let keys: Set<URLResourceKey> = [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey]
             let urls = try FileManager.default.contentsOfDirectory(
                 at: folder,
-                includingPropertiesForKeys: [.isDirectoryKey],
+                includingPropertiesForKeys: Array(keys),
                 options: [.skipsHiddenFiles]
             )
             entries = urls.map { url in
-                let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
-                return FolderEntry(url: url, name: url.lastPathComponent, isDirectory: isDirectory)
-            }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+                let values = try? url.resourceValues(forKeys: keys)
+                return FolderEntry(
+                    url: url,
+                    name: url.lastPathComponent,
+                    isDirectory: values?.isDirectory ?? false,
+                    fileSize: values?.fileSize.map(Int64.init),
+                    modificationDate: values?.contentModificationDate
+                )
+            }
             loadError = nil
         } catch {
             entries = []
@@ -526,11 +646,61 @@ private struct FolderEntry: Identifiable {
     let url: URL
     let name: String
     let isDirectory: Bool
+    let fileSize: Int64?
+    let modificationDate: Date?
 
     /// zip/7z/rar/tar.gz（cbz/cb7/cbr のエイリアス含む）と認識できるファイル
     /// [AR-20〜AR-23]。フォルダは対象外。
     var archiveFormat: ArchiveFormat? {
         isDirectory ? nil : ArchiveFormat.from(filename: name)
+    }
+
+    /// Finder の「種類」列相当 [LV-01]。`UTType` の `localizedDescription` を使う。
+    var kindDescription: String {
+        if isDirectory { return "フォルダ" }
+        let ext = url.pathExtension
+        if !ext.isEmpty, let type = UTType(filenameExtension: ext), let description = type.localizedDescription {
+            return description
+        }
+        return ext.isEmpty ? "書類" : "\(ext.uppercased()) ファイル"
+    }
+}
+
+/// リスト表示の全カラム共通のソートキー [LV-01]。`Table` の `sortOrder` は
+/// 単一のコンパレータ型の配列を要求するため、キーの種類を enum で切り替える
+/// 1つの型にまとめている（各カラムがそれぞれ別のコンパレータ型を持つことはできない）。
+private struct FolderSortComparator: SortComparator {
+    enum Key: Hashable {
+        case name, modificationDate, size, kind
+    }
+
+    var key: Key
+    var order: SortOrder = .forward
+
+    func compare(_ lhs: FolderEntry, _ rhs: FolderEntry) -> ComparisonResult {
+        let result: ComparisonResult
+        switch key {
+        case .name:
+            result = lhs.name.localizedStandardCompare(rhs.name) // [LV-01] Finder 流の自然順
+        case .modificationDate:
+            let l = lhs.modificationDate ?? .distantPast
+            let r = rhs.modificationDate ?? .distantPast
+            result = l == r ? .orderedSame : (l < r ? .orderedAscending : .orderedDescending)
+        case .size:
+            // フォルダはサイズを表示しない（Finder と同様）ため、常に先頭に来るよう
+            // 最小値扱いにする。
+            let l = lhs.isDirectory ? Int64.min : (lhs.fileSize ?? 0)
+            let r = rhs.isDirectory ? Int64.min : (rhs.fileSize ?? 0)
+            result = l == r ? .orderedSame : (l < r ? .orderedAscending : .orderedDescending)
+        case .kind:
+            result = lhs.kindDescription.localizedStandardCompare(rhs.kindDescription)
+        }
+        guard order == .reverse else { return result }
+        switch result {
+        case .orderedAscending: return .orderedDescending
+        case .orderedDescending: return .orderedAscending
+        case .orderedSame: return .orderedSame
+        }
     }
 }
 

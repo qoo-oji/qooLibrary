@@ -4,7 +4,16 @@ import Testing
 @testable import QooInfrastructure
 @testable import QooKit
 
-@Suite struct UserDefaultsKeyBindingStoreTests {
+/// `UserDefaults(suiteName:)` は OS レベルのグローバルな `CFPreferences`
+/// ドメイン登録を伴うため、Swift Testing の既定の並列実行下で複数のスイート
+/// インスタンスを同時に作成すると、稀に別テストが作った直後のドメインの
+/// 内容を拾ってしまうことがある（実機検証ではなく `swift test` のフル
+/// スイート実行でのみ再現、単独実行や少数実行では再現しない）。
+/// `ArchiveCompressor`/`SecureExtractor` のステージングディレクトリ競合
+/// （1-7 で対処）とは異なり、こちらは注入可能なルートパスを与える形の
+/// 根本修正ができない（`UserDefaults` 自体が OS 側の共有リソースのため）。
+/// そのためテスト側で直列実行に固定する。
+@Suite(.serialized) struct UserDefaultsKeyBindingStoreTests {
     /// テストごとに独立した `UserDefaults` スイートを使い、実際のアプリの
     /// 設定や他のテストと干渉しないようにする。
     private func makeStore() -> UserDefaultsKeyBindingStore {

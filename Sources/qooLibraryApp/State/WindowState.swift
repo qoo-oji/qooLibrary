@@ -112,6 +112,13 @@ public final class WindowState {
         selectedTabID = tab.id
     }
 
+    /// タブバーの「＋」・`⌘T` の共通経路 [KB-02 相当]。フォルダ登録・環境設定が
+    /// まだ無い（1-13/1-12）ため、選択ダイアログを出さず既定の仮想ホームを開く
+    /// [設計判断、実機検証時のユーザー指摘]。
+    public func openDefaultTab() {
+        openTab(for: FileManager.default.homeDirectoryForCurrentUser)
+    }
+
     /// 最後の 1 枚は閉じない（ウインドウ自体を閉じる操作と役割が重複するため）。
     public func closeTab(_ id: TabState.ID) {
         guard tabs.count > 1, let index = tabs.firstIndex(where: { $0.id == id }) else { return }

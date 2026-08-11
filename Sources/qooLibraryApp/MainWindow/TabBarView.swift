@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 /// アプリ内タブバー。ネイティブ `NSWindow` のタブ機構には委ねず、タブごとの
@@ -7,8 +6,20 @@ import SwiftUI
 struct TabBarView: View {
     @Bindable var windowState: WindowState
 
+    private static let barHeight: CGFloat = 30
+    private static let addButtonWidth: CGFloat = 28
+    private static let tabSpacing: CGFloat = 2
+    private static let minTabWidth: CGFloat = 100
+
     var body: some View {
-        HStack(spacing: 2) {
+        // `GeometryReader` + 手計算の幅は実機検証で初回レイアウト時の
+        // タイミング競合により表示が壊れる不具合を起こした
+        // （タブバーが新規に挿入された直後、`geometry.size` が確定する前の
+        // 値で `.frame(width:)` が適用され、黒塗りの崩れた表示になっていた）。
+        // `.frame(maxWidth: .infinity)` を各タブに与えれば `HStack` が
+        // 自然に均等分割してくれる（2つなら2分割、3つなら3分割
+        // [ユーザー指摘]）ため、GeometryReader 自体が不要だと判明し撤去した。
+        HStack(spacing: Self.tabSpacing) {
             ForEach(windowState.tabs) { tab in
                 TabChip(
                     tab: tab,
@@ -17,31 +28,21 @@ struct TabBarView: View {
                     onSelect: { windowState.selectedTabID = tab.id },
                     onClose: { windowState.closeTab(tab.id) }
                 )
+                .frame(minWidth: Self.minTabWidth, maxWidth: .infinity)
             }
             Button {
-                pickFolderAndOpenTab()
+                windowState.openDefaultTab()
             } label: {
                 Image(systemName: "plus")
             }
             .buttonStyle(.borderless)
-            .padding(.horizontal, Tokens.spacing.xs)
-            .help("新規タブ（フォルダを選択）")
-
-            Spacer()
+            .frame(width: Self.addButtonWidth)
+            .help("新規タブ")
         }
+        .frame(height: Self.barHeight)
         .padding(.horizontal, Tokens.spacing.s)
         .padding(.vertical, Tokens.spacing.xs)
         .background(Tokens.Colors.paneBackground)
-    }
-
-    private func pickFolderAndOpenTab() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.prompt = "このフォルダをタブで開く"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        windowState.openTab(for: url)
     }
 }
 
@@ -51,19 +52,29 @@ private struct TabChip: View {
     let canClose: Bool
     let onSelect: () -> Void
     let onClose: () -> Void
+    @State private var isHovering = false
 
     var body: some View {
         HStack(spacing: Tokens.spacing.xs) {
+            // 閉じるボタンはタブの左端 [ユーザー指摘]。ホバー時のみ表示するが、
+            // 表示/非表示でテキストの位置がずれないよう幅は常に確保し
+            // 不透明度だけ切り替える。
+            Group {
+                if canClose {
+                    Button(action: onClose) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 9))
+                    }
+                    .buttonStyle(.borderless)
+                    .opacity(isHovering ? 1 : 0)
+                }
+            }
+            .frame(width: 12)
             Text(tab.title)
                 .font(.system(size: Tokens.fontSize.caption))
                 .lineLimit(1)
-            if canClose {
-                Button(action: onClose) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 9))
-                }
-                .buttonStyle(.borderless)
-            }
+                .truncationMode(.tail)
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, Tokens.spacing.s)
         .padding(.vertical, Tokens.spacing.xs)
@@ -71,5 +82,6 @@ private struct TabChip: View {
         .clipShape(RoundedRectangle(cornerRadius: Tokens.radius.s))
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
+        .onHover { isHovering = $0 }
     }
 }

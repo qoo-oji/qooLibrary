@@ -15,7 +15,7 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
 - 静的検査 `Scripts/check-fileops-isolation.swift`（B-10）・`check-layer-dependencies.swift`（B-11）・`check-json-completeness.swift`（B-13, 現状はプレースホルダ）と CI（`.github/workflows/ci.yml`）を用意した。
 - **既知の懸念（要フォローアップ）**: libarchive 3.8.9 は特定の壊れた RAR 入力（use-after-free の回帰テストファイル）でクラッシュする（エラーを返さず異常終了）。`SecureExtractor`（09章 §9.3）実装時に対処を検討する必要がある。詳細は `Spikes/README.md` の T-12 節。
 
-### フェーズ 1（`17_実装ロードマップ.md` §17.3、1-1〜1-8 完了・1-9 以降未着手）
+### フェーズ 1（`17_実装ロードマップ.md` §17.3、1-1〜1-8 完了・1-9 着手中・1-10 以降未着手）
 
 - **1-1 プロジェクト基盤が完了。** `qooLibrary.xcodeproj` は `project.yml` から `xcodegen generate` で生成する（**git-ignore 対象、手で pbxproj を編集しない**。ThirdParty の xcframework と同じ「生成物はコミットしない」方針）。ローカルの SwiftPM パッケージ（`QooKit`/`QooPersistence`/`QooInfrastructure`/`QooApplication`）を local package dependency として参照し、実機で起動確認済み。
 - App Sandbox entitlement（`Sources/qooLibraryApp/qooLibrary.entitlements`）を付与済み。`codesign -d --entitlements :-` で署名済みバイナリに実際に反映されていることを確認済み [SB-01]。
@@ -96,7 +96,39 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
   - `Tests/QooKitTests/KeyBindingTests.swift`（7件）・`Tests/QooInfrastructureTests/UserDefaultsKeyBindingStoreTests.swift`（8件）で、既定値の網羅性・衝突検出（複数キー割り当て時も含む）・既定に戻す・複数ショートカットの永続化を検証。
   - **未配線**（対応する機能が未実装のため）: `quickLook`・`toggleThumbnails`・`copy`/`paste`/`cut`・`focusSearch`・`toggleDisplayMode`・`clearLabelFilter`・`moveToVault`・`undo`/`redo`・`deletePermanently`。いずれも `DefaultKeyBindings.all` には登録済みで、衝突検出・既定に戻すの対象にはなっている。キーバインドのカスタマイズ UI（KB2-02 の「既定に戻す」ボタン等）は 1-12（環境設定）で実装する。
   - **将来検討として記録のみ**（要件定義書に無い、ユーザーからの要望）: マウスのサイドボタン（戻る/進む）・トラックパッドの2本指スワイプでのナビゲーション。詳細と実装方針の見立ては `docs/Specifications/13_UI_共通基盤.md` §13.6「将来検討」参照。実装フェーズ未確定（1-12 候補）。
-- **未着手**（1-9 以降）: 文字化け判定のプレビュー UI・手動オーバーライド（EN-01/EN-02、1-7 の残り）、Undo 基盤、環境設定（表示密度等の可変設定・キーバインドのカスタマイズ UI を含む）、通知基盤、診断ログ、右ペインの詳細情報（現状 1-2 の検証 UI が仮置き）、ラベルフィルタ（左ペイン下半分、現状プレースホルダ）、フォルダ登録（1-13）等。
+- **1-9（リスト表示・アイコン表示、サムネイル生成）は着手中。リスト表示（LV-01〜LV-03）のみ完了。** サムネイル基盤・アイコン表示（IV-01/08/09、PF-10/11）は未着手。ユーザーとの合意で「リスト表示 → サムネイル基盤 → アイコン表示」の順に実装している。
+  - `Sources/qooLibraryApp/MainWindow/FolderContentView.swift`: 中央ペインを `List` から `Table` に置き換えた。名前・更新日・サイズ・種類のカラムを持ち、ヘッダクリックでソート可能 [LV-01]。カラムの表示/非表示は右上の漏斗アイコンのメニューから切り替える [LV-02]。列幅はドラッグで調整可能（`Table` 標準機能）。「フォルダを上にまとめる」トグルも同じメニューにある [LV-03]。
+  - **カラム表示/非表示・フォルダまとめ設定は `@AppStorage` で永続化**（アプリ全体で共有、ウインドウ固有ではない）。1-12（環境設定）の本実装が無いため、1-8 のキーバインド上書きと同じ暫定パターン。ソート順自体（`sortOrder`）はタブ/ウインドウをまたいだ永続化はしていない単純な `@State`。
+  - `FolderSortComparator`（`SortComparator` 準拠、`enum Key { name, modificationDate, size, kind }` で1つの型に集約）: SwiftUI の `Table` は `sortOrder` を単一のコンパレータ型の配列として要求するため、カラムごとに別のコンパレータ型を使うことができない。名前のソートは `localizedStandardCompare`（Finder 流の自然順、単純な `<` ではない）を使う。
+  - `Table` の各カラムは独立したセルのため、`List` のときのように行全体に1回だけ修飾子を付けるのではなく、`rowCell(_:content:)` ヘルパーで選択・ダブルクリック・コンテキストメニュー・D&D の同一の modifier 一式を全カラムのセルへ共通適用している（Finder のようにどの列をクリックしても同じ挙動になるようにするため）。
+  - **List→Table の置き換えでも 1-6 で実装した D&D（`draggable(containerItemID:)`/`dragContainer`/`dragContainerSelection`）・複数選択・コンテキストメニュー・キーボードショートカットはすべて無修正で動作した**（実機検証で確認。事前に懸念していた「Table でも同じ macOS 26 API が機能するか」は問題にならなかった）。
+  - **実機検証で発見・修正したバグ**: `Label(entry.name, systemImage:)` で "folder" と "doc" の SF Symbol の実測幅が異なるため、フォルダとファイルで名前の先頭位置がずれて見えていた。アイコンを `.frame(width: 16, alignment: .center)` の固定幅に収め、`HStack` で名前と組むことで Finder のように先頭を揃えた。
+  - `reload()` が `.fileSizeKey`/`.contentModificationDateKey` も取得するよう拡張。`kindDescription` は `UTType(filenameExtension:)?.localizedDescription` を使う（フォルダは「フォルダ」固定）。
+  - **実機検証（ユーザーによる手動確認）で完了。** 各カラムでのソート、カラム表示/非表示、フォルダまとめトグル、D&D（単一・複数選択、Finderとの相互ドラッグ、フォルダへのドロップ）、Cmd/Shift複数選択、右クリックメニュー、ダブルクリック、キーボードショートカットのいずれも回帰なく動作することを確認済み。
+  - **リスト表示の実機検証中、ユーザーから「起動直後は3ペインが等幅で中央・右ペインが見切れる」という別件の指摘があり、ペイン幅の保存・復元（`Sources/qooLibraryApp/DesignSystem/PaneWindows.swift`、[UI-02]）をあわせて実装した。** 1-1 時点では構造のみで未実装だった領域（コード中のコメントに明記されていた）。
+    - **試行錯誤の末、最終的に AppKit の `NSSplitView.setPosition(_:ofDividerAt:)` を直接呼ぶ方式に落ち着いた。** 過程で分かったこと・捨てた案:
+      1. 当初 `NSSplitViewController` + `NSSplitViewItem`（`autosaveName` による自動永続化）への全面置き換えを試したが、実機検証で右ペインが表示されなくなる不具合が発生。原因を視覚的に切り分けられる状況になく、リスクの大きい経路と判断して撤回。
+      2. 次に `HSplitView`（SwiftUI）を維持し、`.frame(idealWidth:)` に保存済みの幅を渡す方式を試したが、**`HSplitView` は `idealWidth` を初期レイアウトのヒントとして事実上使わないことが実機検証で判明**（常に等幅で開始する）。これはそもそもの「見切れる」報告の真因でもあった（1-1 の初期実装が元々ハードコードの `idealWidth: 220/280` を指定していたが機能していなかった）。
+      3. `minWidth` は確実に尊重される（見切れ防止自体は機能していた）ことを利用し、初回描画だけ `minWidth` を保存済みの幅まで一時的に引き上げてから通常値に戻す方式を試したが、**`minWidth` を戻した瞬間に再レイアウトが走り、しかも戻すたびに違う中途半端な幅（実測: 400→216.5→202.5 のように毎回変動）に収束することが実機検証で判明**。`.frame()` の制約値を動的に変更するアプローチ自体が信頼できないと判断。
+      4. 最終的に `.frame()` を一切いじらず、`NSViewRepresentable` でゼロサイズの補助 `NSView` を各ペインの背後に忍ばせ、`superview` を遡って実際の `NSSplitView` を見つけたら `setPosition(_:ofDividerAt:)` を一度だけ呼ぶ方式に変更。右ペイン側は `setPosition` の引数がウインドウ左端からのx座標であり「右ペインの幅」そのものではないため、`splitView.bounds.width - dividerThickness - rightWidth` で逆算している。
+    - 幅の観測・保存は `GeometryReader`（`WidthPersistingModifier`）で行い、`UserDefaults`（`@AppStorage`、動的キー `qoo.threePane.\(id).leftWidth` 等）に書き戻す。1-8 のキーバインド上書き・本フェーズのカラム表示設定と同じく、1-12（環境設定）の本実装が無い間の暫定的な永続化先。
+    - **実機検証（ユーザーによる複数回の再起動を含む手動確認）で完了。** ペイン幅のドラッグ調整、見切れの解消、アプリ再起動をまたいだ幅の保持のいずれも確認済み。
+  - **同じくリスト表示の実機検証の流れで、ユーザーからタブバーの改善要望（「＋」がダイアログを出す・タブ幅が均等でない・閉じるボタンがホバーで出ない）があり、あわせて対応した。**
+    - `Sources/qooLibraryApp/MainWindow/TabBarView.swift`: 「＋」はダイアログを出さず `WindowState.openDefaultTab()`（仮想ホームを開く、1-13 でフォルダ登録ができるまでの暫定）を呼ぶ。閉じるボタン（✗）はタブ左端に配置し、ホバー時のみ不透明度を上げて表示（表示/非表示でテキスト位置がずれないよう幅は常に確保）。タブ幅は `HStack` 内の各タブに `.frame(minWidth:100, maxWidth: .infinity)` を与えるだけで均等分割される（2つなら2分割、3つなら3分割）。
+    - **タブバーは既定で非表示、タブが2つ以上のときだけ自動表示する**（Safari/Finder 流、`MainWindowView.body` の `if windowState.tabs.count >= 2`）。表示メニューから「常に表示」に切り替えられるようにする案（`@AppStorage` をこの `if` 条件内で読む）も実装したが、**実機検証でアプリ全体がハングする不具合が発生した**（後述）ため撤回し、単純な条件のみにしている。
+    - タブバーを既定で隠すと、タブが1枚のときは「＋」ボタンも一緒に消え、2枚目のタブを開く手段が無くなる。これを防ぐため `⌘T`（新規タブ）を追加した。1-8 で作った `ActionID`/`KeyBindingStore` の仕組みに正式に組み込み（`DefaultKeyBindings` に `case newTab` 追加）、`MainWindowView` に他の 1-8 のショートカットと同じ「可視要素を持たない `KeyBindingButtons`」で配線した。**当初は `.commands` + `.focusedValue` で App 側の File メニューに出す実装を試みたが、以下のハング調査でこれも撤回した。**
+    - **実機で「ハングアップしているようです」という報告を受け、原因調査を行った。** `ps aux` で確認するとプロセスが継続的に CPU 100% を消費しており（`R` 状態）、デッドロックではなく無限ループだった。`sample` コマンドでスタックを採取したところ `AttributeGraph`/`Hasher`/Unicode 正規化まわりが継続的に呼ばれており、SwiftUI の再描画が止まっていないことを示していた。原因切り分けは以下の手順で行った（各段階でビルド・再起動・`ps aux` によるCPU確認を実施）:
+      1. `.focusedValue` にクロージャを渡す実装（`⌘T` を App の `.commands` から呼ぶための橋渡し）を疑い撤去 → 直らず。
+      2. `.commands` 内の `Toggle("タブバーを表示", isOn: $alwaysShowTabBar)` を撤去 → 直らず。
+      3. `PaneWindows.swift` を直前のコミット（1-8）の内容に戻す → 直らず。
+      4. `FolderContentView.swift` も 1-8 の内容に戻す → 直らず。
+      5. **作業ツリー全体を `git stash` して直前のコミット（1-8, `eacda7c`）のみをビルド → CPU 0%、正常。** ここで今回の変更のどれかが原因だと確定。
+      6. `git stash pop` で変更を復元し、`MainWindowView.body` の `if alwaysShowTabBar || windowState.tabs.count >= 2`（`@AppStorage` を含む条件）を `if windowState.tabs.count >= 2`（`@AppStorage` を使わない条件）に変更 → **CPU 0%、正常に戻った。**
+      - **結論: `@AppStorage` で読んだ値をタブバーの表示/非表示を決める `if` 条件の中で使うと、SwiftUI の Observation が無限に再評価を繰り返しハングする**（正確な内部メカニズムまでは特定できていない。`AttributeGraph`/`MainMenuItemHost` 関連のフレームがスタックに出ていたことから、メニューコマンド側の `@AppStorage` 購読と何らかの形で干渉している可能性はあるが未確認）。安全に原因を追い切れる状況ではなかったため、「常に表示」トグル自体を見送るという判断をした。
+      - **フォローアップ**: 「常に表示」トグルを実装したい場合は、`@AppStorage` を直接 `if` 条件に使わず、`onChange`/`NotificationCenter` 経由で明示的に同期する別の設計を検討すること。1-12（環境設定）で環境設定 UI 自体を作るタイミングで再検討する。
+    - タブ幅について、`GeometryReader` で実測してから `.frame(width:)` を手計算で設定する実装を最初に試みたが、**実機検証でタブバーが新規に挿入される瞬間（1タブ→2タブ）に表示が崩れる**（1つ目のタブが黒く塗りつぶされ、タブ下に黒い余白ができる）不具合が発生した。`GeometryReader` の初回レイアウト時のタイミング競合が疑わしい。`.frame(minWidth:100, maxWidth: .infinity)` を各タブに与えて `HStack` の標準レイアウトに均等分割を任せる方式に変更したところ解消した。**`GeometryReader` は結果的に不要だった**（教訓: 均等分割が欲しいだけなら `GeometryReader` より先に `.frame(maxWidth: .infinity)` を試すべきだった）。
+    - **実機検証（ユーザーによる複数回の手動確認）で完了。** 「＋」ボタン・`⌘T` での新規タブ、タブ2枚以降での自動表示・均等幅分割（崩れなし）、ホバーでの閉じるボタン表示・クローズ動作のいずれも確認済み。
+- **未着手**（1-9 以降）: 文字化け判定のプレビュー UI・手動オーバーライド（EN-01/EN-02、1-7 の残り）、Undo 基盤、環境設定（表示密度等の可変設定・キーバインドのカスタマイズ UI・タブバー常時表示トグルを含む）、通知基盤、診断ログ、右ペインの詳細情報（現状 1-2 の検証 UI が仮置き）、ラベルフィルタ（左ペイン下半分、現状プレースホルダ）、フォルダ登録（1-13）等。
 - 各 `Sources/{QooKit,QooPersistence,QooApplication}/*.swift` の中身はまだプレースホルダ（モジュール依存関係を検証するための最小限のマーカー型のみ）で、ドメインロジック・SwiftData モデルは一切実装していない。`QooInfrastructure` はサンドボックス／FS 検証のみ実装済み。
 
 作業を始める際は、対象領域の仕様書（下記 §2 の一覧）を該当箇所だけ `Read` してから着手する。仕様書は合計 18 ファイルあり、全部を毎回読み込む必要はない。要件定義書本体は `docs/Requirements/qooLibrary_要件定義書_v2.8.md` にある（約 2,900 行）。矛盾したときの優先順位は §1 参照。
@@ -259,7 +291,8 @@ Swift 6 言語モード、`StrictConcurrency` 有効。
 | 1-6 | ドラッグ＆ドロップ（DD-01〜DD-03, DD-05） | 完了 |
 | 1-7 | 圧縮・展開、文字化け対策、展開時のセキュリティ、ライセンス表記一式 | 完了（文字化け判定のプレビューUI・手動オーバーライド EN-01/EN-02 のみ未着手） |
 | 1-8 | キーボードショートカット（KB-01〜KB-05） | 完了（実装済み機能のみ実配線。他は登録済み・未配線） |
-| 1-9〜1-15 | Undo、環境設定、通知基盤 等 | 未着手 |
+| 1-9 | リスト表示・アイコン表示、サムネイル生成 | 着手中（リスト表示 LV-01〜LV-03 のみ完了。サムネイル基盤・アイコン表示は未着手） |
+| 1-10〜1-15 | Undo、環境設定、通知基盤 等 | 未着手 |
 
 - フェーズ 1 の 4 制約（DP-01 Undo 基盤 / DP-05 FileOps 集約 / DP-07 mainContext 構成 / DP-08 通知基盤）は機能追加より先に固める。後付けは大規模改修になる。1-1 はこれらより前段の土台（プロジェクト構成・デザイントークン）であり、4 制約自体はまだ手を付けていない。
 - フェーズ 2 の最初に `VersionedSchema` を導入する。パーサ（`QooKit`）は永続化と並行実装できるため早期着手を推奨。
