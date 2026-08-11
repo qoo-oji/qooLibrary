@@ -8,6 +8,10 @@ public struct TabState: Identifiable, Sendable, Equatable {
     public var title: String
     public var selection: Set<URL> = []
     public var searchText: String = ""
+    /// 戻る/進む用の履歴 [KB-02 相当、Finder ツールバーの矢印ボタンと同等の機能]。
+    /// タブごとに独立させる（タブ切替で他タブの履歴に影響しない）。
+    var backHistory: [URL] = []
+    var forwardHistory: [URL] = []
 
     public init(id: UUID = UUID(), folder: URL?, title: String) {
         self.id = id
@@ -60,11 +64,46 @@ public final class WindowState {
     }
 
     /// アクティブなタブの表示先を変更する。フォルダツリーでの選択 [LP-06] と
-    /// 中央ペインでのフォルダ移動（ダブルクリック等）の両方から使う共通経路。
+    /// 中央ペインでのフォルダ移動（ダブルクリック・Enter・1階層上に戻る等）の
+    /// 両方から使う共通経路。呼ぶたびに戻る履歴へ積み、進む履歴は破棄する
+    /// （ブラウザ・Finder と同じ規則）。`goBack`/`goForward` 自身はこのメソッドを
+    /// 経由しない（履歴を壊さずに移動するため）。
     public func navigateCurrentTab(to url: URL) {
         guard let index = currentTabIndex else { return }
+        if let current = tabs[index].folder, current != url {
+            tabs[index].backHistory.append(current)
+            tabs[index].forwardHistory.removeAll()
+        }
         tabs[index].folder = url
         tabs[index].title = url.lastPathComponent
+    }
+
+    public var canGoBack: Bool {
+        currentTabIndex.map { !tabs[$0].backHistory.isEmpty } ?? false
+    }
+
+    public var canGoForward: Bool {
+        currentTabIndex.map { !tabs[$0].forwardHistory.isEmpty } ?? false
+    }
+
+    /// Finder ツールバーの「戻る」相当 [KB-02]。
+    public func goBack() {
+        guard let index = currentTabIndex, let previous = tabs[index].backHistory.popLast() else { return }
+        if let current = tabs[index].folder {
+            tabs[index].forwardHistory.append(current)
+        }
+        tabs[index].folder = previous
+        tabs[index].title = previous.lastPathComponent
+    }
+
+    /// Finder ツールバーの「進む」相当 [KB-02]。
+    public func goForward() {
+        guard let index = currentTabIndex, let next = tabs[index].forwardHistory.popLast() else { return }
+        if let current = tabs[index].folder {
+            tabs[index].backHistory.append(current)
+        }
+        tabs[index].folder = next
+        tabs[index].title = next.lastPathComponent
     }
 
     public func openTab(for folder: URL?) {

@@ -28,7 +28,11 @@ struct MainWindowView: View {
                             get: { windowState.tabs[index].selection },
                             set: { windowState.tabs[index].selection = $0 }
                         ),
-                        onNavigate: { windowState.navigateCurrentTab(to: $0) }
+                        onNavigate: { windowState.navigateCurrentTab(to: $0) },
+                        onGoBack: { windowState.goBack() },
+                        onGoForward: { windowState.goForward() },
+                        canGoBack: windowState.canGoBack,
+                        canGoForward: windowState.canGoForward
                     )
                 } else {
                     PlaceholderPane(title: "タブがありません", subtitle: "")

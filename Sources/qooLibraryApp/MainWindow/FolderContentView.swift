@@ -17,6 +17,12 @@ struct FolderContentView: View {
     let folder: URL?
     @Binding var selection: Set<URL>
     let onNavigate: (URL) -> Void
+    /// Finder ツールバーの矢印ボタンと同等の戻る/進む [KB-02]。履歴自体は
+    /// `WindowState`（タブごと）が保持し、このビューは通知を受けて呼ぶだけ。
+    let onGoBack: () -> Void
+    let onGoForward: () -> Void
+    let canGoBack: Bool
+    let canGoForward: Bool
 
     @State private var entries: [FolderEntry] = []
     @State private var loadError: String?
@@ -38,6 +44,10 @@ struct FolderContentView: View {
     @State private var busyMessage: String?
 
     private let fileOps = FileOperationService.shared
+    /// キーバインド [13章 §13.6]。1-8 時点では開く・リネーム・ゴミ箱・
+    /// 新規フォルダのみ実際に配線している（他の既定バインドは対応する
+    /// 機能が実装され次第、各所で `keyBindingStore.binding(for:)` を参照する）。
+    private let keyBindingStore: KeyBindingStore = UserDefaultsKeyBindingStore.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -164,9 +174,43 @@ struct FolderContentView: View {
                     draggedItemIDs
                 }
                 .dragContainerSelection(Array(selection), containerNamespace: dragNamespace)
+                // [KB-02] 選択中の項目を開く。ディレクトリはダブルクリックと同じ
+                // ナビゲーション、ファイルは既定アプリで開く（Finder と同じ）。
+                .onKeyPress(keyBindingStore.binding(for: .open).combos.first?.swiftUIKeyEquivalent ?? .return) {
+                    openSelection()
+                    return .handled
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background {
+            // リネーム・ゴミ箱・新規フォルダのキーボードショートカット
+            // [KB-03][UI-09 相当]。可視要素を持たないボタンとして配線する
+            // 標準的な SwiftUI のパターン。
+            Group {
+                KeyBindingButtons(action: .rename, store: keyBindingStore, isDisabled: selection.count != 1) {
+                    beginRenameFromShortcut()
+                }
+                KeyBindingButtons(action: .moveToTrash, store: keyBindingStore, isDisabled: selection.isEmpty, role: .destructive) {
+                    moveToTrash(Array(selection))
+                }
+                KeyBindingButtons(action: .newFolder, store: keyBindingStore, isDisabled: folder == nil) {
+                    newFolderName = "新規フォルダ"
+                    showingNewFolderPrompt = true
+                }
+                KeyBindingButtons(action: .goToParent, store: keyBindingStore, isDisabled: !canGoToParent) {
+                    goToParent()
+                }
+                KeyBindingButtons(action: .goBack, store: keyBindingStore, isDisabled: !canGoBack) {
+                    onGoBack()
+                }
+                KeyBindingButtons(action: .goForward, store: keyBindingStore, isDisabled: !canGoForward) {
+                    onGoForward()
+                }
+            }
+            .frame(width: 0, height: 0)
+            .opacity(0)
+        }
         .overlay {
             if isDropTargeted {
                 RoundedRectangle(cornerRadius: Tokens.radius.s)
@@ -267,6 +311,57 @@ struct FolderContentView: View {
     private func beginRename(_ entry: FolderEntry) {
         renamingEntry = entry
         renameText = entry.name
+    }
+
+    /// `⌘R` ショートカット用。バッチ名変更 UI が無いため単一選択時のみ動く
+    /// [FM-05]。
+    private func beginRenameFromShortcut() {
+        guard selection.count == 1, let url = selection.first,
+              let entry = entries.first(where: { $0.url == url })
+        else { return }
+        beginRename(entry)
+    }
+
+    /// `Enter`/`⌘↓` ショートカット用 [KB-02]。単一選択ならディレクトリは
+    /// ナビゲーション、ファイルは既定アプリで開く。複数選択時はディレクトリへ
+    /// 同時に移動できないため、ファイルだけを開く。
+    private func openSelection() {
+        guard !selection.isEmpty else { return }
+        let targets = entries.filter { selection.contains($0.url) }
+        if targets.count == 1, let only = targets.first {
+            if only.isDirectory {
+                onNavigate(only.url)
+            } else {
+                NSWorkspace.shared.open(only.url)
+            }
+            return
+        }
+        for target in targets where !target.isDirectory {
+            NSWorkspace.shared.open(target.url)
+        }
+    }
+
+    /// サンドボックスの仮想ホーム（`~/Library/Containers/<bundle-id>/Data`、
+    /// `FileManager.homeDirectoryForCurrentUser` が返す値 [1-3 の実機検証で
+    /// 確認済み]）。この 1 つ上（コンテナ本体のルート）はアプリの内部実装領域で
+    /// サンドボックスプロファイルが読み取りを許可しない
+    /// [実機検証で発見: Documents から ⌘↑ を連打すると "permission to view it"
+    /// エラーになっていた。コンテナルート自体は Unix パーミッション上は
+    /// 読めても、サンドボックスは `Data` 配下だけをアプリに開放する]。
+    private static let sandboxHomeDirectory = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL
+
+    /// 仮想ホームより上には昇らない（昇っても読めない場所しかなく、
+    /// ユーザーにとって意味のある行き先ではないため）。
+    private var canGoToParent: Bool {
+        guard let folder else { return false }
+        return folder.standardizedFileURL != Self.sandboxHomeDirectory
+    }
+
+    /// `⌘↑` ショートカット用 [KB-02 相当]。ツリー・ダブルクリックと同じ
+    /// `onNavigate` 経路を使う。
+    private func goToParent() {
+        guard canGoToParent, let folder else { return }
+        onNavigate(folder.deletingLastPathComponent())
     }
 
     private func commitRename() {

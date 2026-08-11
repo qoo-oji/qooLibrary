@@ -4,7 +4,7 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
 
 ## 0. 現在の状態
 
-**フェーズ 0（基盤検証）完了。フェーズ 1（ファイルマネージャー）着手済み（1-1〜1-6 完了）。**
+**フェーズ 0（基盤検証）完了。フェーズ 1（ファイルマネージャー）着手済み（1-1〜1-8 完了）。**
 
 ### フェーズ 0（`17_実装ロードマップ.md` §17.2、全項目完了）
 
@@ -15,7 +15,7 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
 - 静的検査 `Scripts/check-fileops-isolation.swift`（B-10）・`check-layer-dependencies.swift`（B-11）・`check-json-completeness.swift`（B-13, 現状はプレースホルダ）と CI（`.github/workflows/ci.yml`）を用意した。
 - **既知の懸念（要フォローアップ）**: libarchive 3.8.9 は特定の壊れた RAR 入力（use-after-free の回帰テストファイル）でクラッシュする（エラーを返さず異常終了）。`SecureExtractor`（09章 §9.3）実装時に対処を検討する必要がある。詳細は `Spikes/README.md` の T-12 節。
 
-### フェーズ 1（`17_実装ロードマップ.md` §17.3、1-1〜1-6 完了・1-7 着手中・1-8 以降未着手）
+### フェーズ 1（`17_実装ロードマップ.md` §17.3、1-1〜1-8 完了・1-9 以降未着手）
 
 - **1-1 プロジェクト基盤が完了。** `qooLibrary.xcodeproj` は `project.yml` から `xcodegen generate` で生成する（**git-ignore 対象、手で pbxproj を編集しない**。ThirdParty の xcframework と同じ「生成物はコミットしない」方針）。ローカルの SwiftPM パッケージ（`QooKit`/`QooPersistence`/`QooInfrastructure`/`QooApplication`）を local package dependency として参照し、実機で起動確認済み。
 - App Sandbox entitlement（`Sources/qooLibraryApp/qooLibrary.entitlements`）を付与済み。`codesign -d --entitlements :-` で署名済みバイナリに実際に反映されていることを確認済み [SB-01]。
@@ -85,7 +85,18 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
   - `QooKitTests`（12件、`ArchiveNameEncodingHeuristicTests`/`ArchiveFormatTests`）・`QooInfrastructureTests`（新規 28 件、`LibarchiveBackendTests`/`SecureExtractorTests`/`ArchiveCompressorTests`/`FileOperationServiceTests` 追加分）で検証。**`Tests/QooInfrastructureTests/ArchiveFixtureBuilder.swift`** が libarchive の書き込み API で直接 zip フィクスチャを組み立てる（`zip` コマンド経由だとパストラバーサル等の不正なエントリ名が正規化されてしまい再現できないため）。パストラバーサル・絶対パス・シンボリックリンク・エントリ数上限・展開後サイズ上限・圧縮率上限・Shift_JIS ファイル名のデコード・NFC 正規化のいずれも実際に作ったフィクスチャで検証済み。UnRAR 経由（実 RAR ファイル）の自動テストは無し（フェーズ 0 と同じ理由、実 RAR ファイルはユーザー提供のみでリポジトリに含められない。ユーザーによる実機検証では成功を確認済み）。
   - **実装中に見つけて直した実装バグ**: `SecureExtractor.extract()` が成功時にステージングディレクトリを削除しないまま放置していた（`promoteFromStaging` は中身だけを移送し、空になった殻のディレクトリ自体は消さない）。「成功時は削除しない」という早すぎる最適化のフラグ変数が原因で、`extractDoesNotLeaveResidualStagingOnSuccess` テストが実際に空ディレクトリの蓄積を検出して発覚。成功・失敗を問わずステージングを必ず削除するよう修正（テストで実測検証済み）。
   - **最小対応 OS を macOS 26 に上げたことの副産物として** `Window`/`openWindow` などの比較的新しい SwiftUI シーン API が使えるようになり、About ウインドウの実装が単純になった。
-- **未着手**（1-8 以降）: 文字化け判定のプレビュー UI・手動オーバーライド（EN-01/EN-02、1-7 の残り）、キーボードショートカット、Undo 基盤、環境設定（表示密度等の可変設定を含む）、通知基盤、診断ログ、右ペインの詳細情報（現状 1-2 の検証 UI が仮置き）、ラベルフィルタ（左ペイン下半分、現状プレースホルダ）、フォルダ登録（1-13）等。
+- **1-8（キーボードショートカット、KB-01〜KB-05）が完了。** 対応する機能が既に実装済みの操作（開く・上の階層へ・戻る/進む・リネーム・ゴミ箱・新規フォルダ）のみ実際に配線し、他は登録済みだが未配線（下記）。
+  - `Sources/QooKit/Model/KeyBinding.swift`: `KeyModifiers`（`OptionSet`）・`KeyCombo`（キー1つ+修飾キー、`QooKit` は Foundation 以外に依存できないため `SwiftUI.KeyboardShortcut` を直接持てない [A-01]）・`ActionID`（`MX-08` の `ManualCommandID` とは別物）・`KeyBinding`・`KeyBindingStore` プロトコル・`DefaultKeyBindings.all`（既定値一覧）。**仕様書（`docs/Specifications/13_UI_共通基盤.md` §13.6）が当初 `KeyBinding.shortcut: KeyboardShortcut?` と `SwiftUI` 型を直接使う設計になっていたため、A-01 に合わせて先に仕様書側を修正してから実装した**（ユーザー確認済み）。
+  - `KeyBinding.combos: [KeyCombo]`（**単数の `combo: KeyCombo?` ではなく複数形の配列**）。1つの操作に複数のキーを割り当てられる設計 [KB-01 拡張]。当初は単数で実装したが、実機検証で「戻る」に割り当てた `⌘]` がユーザーの環境で他アプリのショートカットと競合して動作確認ができない事象が見つかり、**Finder 流の `⌘[`/`⌘]` に加えてブラウザ流の `⌘←`/`⌘→` も既定で併用できるようにする**ため、まだコミット前だったこの型を配列に置き換えた（既存のシリアライズ済みデータが無い段階だったため後方互換シムは作らず、素直に型を差し替えた）。
+  - `Sources/QooInfrastructure/Preferences/UserDefaultsKeyBindingStore.swift`: `KeyBindingStore` の既定実装。既定値からの差分だけを `UserDefaults` に JSON で保存する。**実装中に見つけて直した不具合**: 当初 `overrides: [ActionID: KeyCombo]`（値が非 Optional）に対して `overrides[action] = combo`（`combo` が `nil` のことがある）という添字代入をしていたが、Swift の `Dictionary` は `nil` の添字代入を「キー削除」と解釈するため、「上書きが無い（既定値を使う）」と「明示的に未割り当てへ上書きした」を区別できなくなっていた（`setBindingToNilUnassignsAction` テストが失敗して発覚）。保存領域を `[ActionID: [KeyCombo]]`（値が配列）に変えたことで、「キーが無い＝上書き無し」と「値が空配列＝明示的に未割り当て」を素直に区別できるようになり、この問題自体が解消された。
+  - `Sources/qooLibraryApp/Keyboard/KeyComboConversion.swift`: `KeyCombo` → `SwiftUI.KeyboardShortcut` への変換は View 層でのみ行う [A-01 との整合]。`KeyBindingButtons`（`action` に登録された `combos` の数だけ不可視ボタンを生成する View）が、1つの操作に複数のショートカットを割り当てる実際の配線経路。
+  - `Sources/qooLibraryApp/MainWindow/FolderContentView.swift`: 開く（`Enter`、`.onKeyPress`）・上の階層へ（`⌘↑`）・戻る（`⌘[`/`⌘←`）・進む（`⌘]`/`⌘→`）・リネーム（`⌘R`、単一選択時のみ）・ゴミ箱（`⌘⌫`）・新規フォルダ（`⇧⌘N`）を配線。戻る/進むの履歴自体は `WindowState`（タブごとに `backHistory`/`forwardHistory`）が持ち、`navigateCurrentTab(to:)` を経由するすべてのナビゲーション（ツリークリック・ダブルクリック・Enter・上の階層へ）が履歴に積まれる。`goBack()`/`goForward()` 自身は履歴を壊さないよう `navigateCurrentTab` を経由しない。
+  - **実機検証で発見・修正したバグ**: 仮想ホーム（サンドボックスコンテナ内 `Data`、`FileManager.homeDirectoryForCurrentUser` の値）で `⌘↑` を押すと、その1つ上（コンテナ本体のルート）へ移動しようとして「permission to view it」エラーになっていた。コンテナルート自体は Unix パーミッション上は読めても、サンドボックスプロファイルは `Data` 配下だけをアプリに開放しており、コンテナルートはアプリの内部実装領域でユーザーにとって意味のある行き先ではない。`FolderContentView` に `canGoToParent`（現在地が仮想ホームと一致したら `false`）を追加し、境界で `⌘↑` を無効化することで解決した。
+  - **実機検証（ユーザーによる手動確認）で完了。** 開く・上の階層へ・戻る（`⌘[`/`⌘←` とも）・進む（`⌘→`。`⌘]` はユーザーの環境で他アプリと競合し確認できず）・リネーム・ゴミ箱・新規フォルダのすべてで期待通りの動作を確認済み。
+  - `Tests/QooKitTests/KeyBindingTests.swift`（7件）・`Tests/QooInfrastructureTests/UserDefaultsKeyBindingStoreTests.swift`（8件）で、既定値の網羅性・衝突検出（複数キー割り当て時も含む）・既定に戻す・複数ショートカットの永続化を検証。
+  - **未配線**（対応する機能が未実装のため）: `quickLook`・`toggleThumbnails`・`copy`/`paste`/`cut`・`focusSearch`・`toggleDisplayMode`・`clearLabelFilter`・`moveToVault`・`undo`/`redo`・`deletePermanently`。いずれも `DefaultKeyBindings.all` には登録済みで、衝突検出・既定に戻すの対象にはなっている。キーバインドのカスタマイズ UI（KB2-02 の「既定に戻す」ボタン等）は 1-12（環境設定）で実装する。
+  - **将来検討として記録のみ**（要件定義書に無い、ユーザーからの要望）: マウスのサイドボタン（戻る/進む）・トラックパッドの2本指スワイプでのナビゲーション。詳細と実装方針の見立ては `docs/Specifications/13_UI_共通基盤.md` §13.6「将来検討」参照。実装フェーズ未確定（1-12 候補）。
+- **未着手**（1-9 以降）: 文字化け判定のプレビュー UI・手動オーバーライド（EN-01/EN-02、1-7 の残り）、Undo 基盤、環境設定（表示密度等の可変設定・キーバインドのカスタマイズ UI を含む）、通知基盤、診断ログ、右ペインの詳細情報（現状 1-2 の検証 UI が仮置き）、ラベルフィルタ（左ペイン下半分、現状プレースホルダ）、フォルダ登録（1-13）等。
 - 各 `Sources/{QooKit,QooPersistence,QooApplication}/*.swift` の中身はまだプレースホルダ（モジュール依存関係を検証するための最小限のマーカー型のみ）で、ドメインロジック・SwiftData モデルは一切実装していない。`QooInfrastructure` はサンドボックス／FS 検証のみ実装済み。
 
 作業を始める際は、対象領域の仕様書（下記 §2 の一覧）を該当箇所だけ `Read` してから着手する。仕様書は合計 18 ファイルあり、全部を毎回読み込む必要はない。要件定義書本体は `docs/Requirements/qooLibrary_要件定義書_v2.8.md` にある（約 2,900 行）。矛盾したときの優先順位は §1 参照。
@@ -231,7 +242,7 @@ Swift 6 言語モード、`StrictConcurrency` 有効。
 
 ```
 フェーズ0 基盤検証        T-13/T-12 の技術検証、ゴールデンサンプル収集開始、プロジェクト骨格 ← 完了
-フェーズ1 ファイルマネージャー  Finder 代替として日常使用できる状態             ← 進行中（1-1〜1-6 完了）
+フェーズ1 ファイルマネージャー  Finder 代替として日常使用できる状態             ← 進行中（1-1〜1-8 完了）
 フェーズ2 ライブラリマネージャー ラベル管理が実用レベル
 フェーズ3 テンポラリフォルダ   取り込み〜投入のワークフロー完結
 ```
@@ -246,8 +257,9 @@ Swift 6 言語モード、`StrictConcurrency` 有効。
 | 1-4 | フォルダツリー（ボリューム／テンポラリ／ライブラリの 3 グループ） | 完了 |
 | 1-5 | 基本ファイル操作・衝突処理。`FileOperationService` への集約 | 完了 |
 | 1-6 | ドラッグ＆ドロップ（DD-01〜DD-03, DD-05） | 完了 |
-| 1-7 | 圧縮・展開、文字化け対策、展開時のセキュリティ、ライセンス表記一式 | 着手中（展開エンジン＋ライセンス表記まで完了、圧縮・コンテキストメニューUI・文字化けプレビューUIは未着手） |
-| 1-8〜1-15 | キーボードショートカット、Undo、環境設定、通知基盤 等 | 未着手 |
+| 1-7 | 圧縮・展開、文字化け対策、展開時のセキュリティ、ライセンス表記一式 | 完了（文字化け判定のプレビューUI・手動オーバーライド EN-01/EN-02 のみ未着手） |
+| 1-8 | キーボードショートカット（KB-01〜KB-05） | 完了（実装済み機能のみ実配線。他は登録済み・未配線） |
+| 1-9〜1-15 | Undo、環境設定、通知基盤 等 | 未着手 |
 
 - フェーズ 1 の 4 制約（DP-01 Undo 基盤 / DP-05 FileOps 集約 / DP-07 mainContext 構成 / DP-08 通知基盤）は機能追加より先に固める。後付けは大規模改修になる。1-1 はこれらより前段の土台（プロジェクト構成・デザイントークン）であり、4 制約自体はまだ手を付けていない。
 - フェーズ 2 の最初に `VersionedSchema` を導入する。パーサ（`QooKit`）は永続化と並行実装できるため早期着手を推奨。
