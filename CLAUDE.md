@@ -163,6 +163,15 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
   - **ユーザー要望で追加（要件定義書には無い）**: 中央ペインで何も選択していない状態で↓キーを押すと先頭の項目、↑キーを押すと末尾の項目を選択する（Finder と同じ挙動）。リスト・アイコン両表示に `selectFirstOrLastIfNoneSelected(first:)` を共通で配線。既に何か選択済みの場合は何もせず `.ignored` を返し、リスト表示では `Table` 標準の行選択移動（AppKit の既定キーハンドリング）に処理を譲る。
   - **実機検証（ユーザーによる複数回の手動確認）で完了。** サムネイル表示（フォルダ・アーカイブ・画像ファイル）、選択・複数選択・D&D・コンテキストメニュー、Enter キーでの展開、⌘↑ の1階層ナビゲーション、キーボードナビゲーション後のフォーカス、↓/↑キーでの先頭/末尾選択のいずれも確認済み。
 - **未着手**（1-10 以降）: 文字化け判定のプレビュー UI・手動オーバーライド（EN-01/EN-02、1-7 の残り）、Undo 基盤、環境設定（表示密度等の可変設定・キーバインドのカスタマイズ UI・タブバー常時表示トグル・右ペイン折りたたみ状態の永続化・サムネイルキャッシュの上限設定/手動クリア UI [IV-09] を含む）、通知基盤、診断ログ、右ペインの詳細情報（現状 1-2 の検証 UI が仮置き。「情報を見る」の自作シートはこの本実装で置き換える）、ラベルフィルタ（左ペイン下半分、現状プレースホルダ）、フォルダ登録（1-13、フォルダツリーの右クリックメニューもここで追加）、Apple Events 自動化（新規ターミナルで開く・Finder の「情報を見る」を直接呼ぶ、要 entitlement 追加）等。
+- **将来検討として記録のみ（要件定義書には無い、ユーザーからの要望）**: **qooLibrary 自身を Finder の「このアプリケーションで開く」の対象にする**（フォルダを右クリック → このアプリケーションで開く → qooLibrary、を選べるようにする）。VSCode 等は自身をフォルダのオープナーとして登録しているが、qooLibrary はまだ登録していないため Finder からフォルダを qooLibrary へ直接渡せない、という実用上の不便から出た要望。
+  - 実装の見立て: `Info.plist` の `CFBundleDocumentTypes` に `LSItemContentTypes: ["public.folder"]` を追加して Finder の候補に出るようにし（`project.yml` 側で設定を追加、`xcodegen generate` で反映）、渡された URL を受け取る経路（SwiftUI の `WindowGroup(for: URL.self)` は `onOpenURL`/`application(_:open:)` 経由で自動的に処理される）は 1-9 で「新規ウインドウで開く」用に実装済みの `openWindow(value: url)` と同じ仕組み（`MainWindowView(initialFolder:)`）をそのまま使えると見込んでいる。
+  - `AS-01〜AS-07`（`docs/Specifications/12_アプリ層_ユースケース.md` §12.9、1-12 環境設定で実装予定）とは向きが逆（あちらは qooLibrary が「どのファイルをどのアプリで開くか」を管理する側）であり、別の要件として扱う。要件定義書・仕様書のどこにも記載が無いため、実装時に要件 ID を新設するか、13/14 章（UI 共通基盤／メインウインドウ）あたりに追記するかも含めて検討が必要。
+  - 実装フェーズ未確定（1-12 の前後、あるいは独立したタスクとして後日着手）。
+- **将来検討として記録のみ（要件定義書には無い、ユーザーからの要望）**: **フォルダツリー・リスト表示・アイコン表示すべてで、既定アイコンを Finder と同じものにする。**
+  - 現状は SF Symbol の代用アイコン（`FolderTreePane.swift`: `"folder"`、`FolderContentView.swift` のリスト表示: `"folder"`/`"doc"`、`IconGridView.swift` のサムネイル未生成時プレースホルダ: `"folder.fill"`/`"doc.zipper"`/`"doc.fill"`）を使っており、Finder の実際のアイコン（フォルダのカスタムアイコン、拡張子ごとの実アイコン、アプリバンドルのアイコン等）とは異なる。
+  - **利用可否の調査結果: 問題なく利用可能。** `NSWorkspace.shared.icon(forFile:)`（パス指定で Finder と同じアイコンを返す、`.icon(for: UTType)` という汎用版もある）は公開 API で、App Sandbox 下でも追加の entitlement 無しに動作する（アイコン取得はファイル内容の読み取りを伴わない Launch Services への問い合わせのため）。カスタムフォルダアイコン・拡張子別のアイコン・アプリバンドルのアイコンいずれも Finder と同一のものが得られる見込み。ブロッカーは無い。
+  - 実装の見立て: 3箇所（`FolderTreePane`/`FolderContentView` のリスト表示/`IconGridView`）で SF Symbol を `NSWorkspace.shared.icon(forFile:)` の結果（`NSImage`）に置き換える。ツリー・リストは行数が多くなり得るため、`ThumbnailService`/`CoverImageCache` と同様のキャッシュ（`NSWorkspace` 自体も内部でキャッシュを持つが、`NSImage` を毎回新規に取得するコストは避けたい）を検討する。シンボリックリンクの矢印バッジ表示（`FolderTreePane` の `isSymlink` 分岐）等、既存の特別扱いとの整合も要検討。
+  - 実装フェーズ未確定。1-9（リスト・アイコン表示）と 1-4（フォルダツリー）にまたがるため、独立したタスクとして後日着手する見込み。
 - 各 `Sources/{QooKit,QooPersistence,QooApplication}/*.swift` の中身はまだプレースホルダ（モジュール依存関係を検証するための最小限のマーカー型のみ）で、ドメインロジック・SwiftData モデルは一切実装していない。`QooInfrastructure` はサンドボックス／FS 検証のみ実装済み。
 
 作業を始める際は、対象領域の仕様書（下記 §2 の一覧）を該当箇所だけ `Read` してから着手する。仕様書は合計 18 ファイルあり、全部を毎回読み込む必要はない。要件定義書本体は `docs/Requirements/qooLibrary_要件定義書_v2.8.md` にある（約 2,900 行）。矛盾したときの優先順位は §1 参照。
