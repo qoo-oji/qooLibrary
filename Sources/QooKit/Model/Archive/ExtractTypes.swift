@@ -109,4 +109,8 @@ public enum ExtractError: Error, Sendable, Equatable {
     case compressionRatioExceeded(limit: Double) // [EX-20][EX-21]
     case cancelled // [EX-24]
     case backendFailure(String)
+    /// `ArchiveReading.readEntry` 用 [9.6 節、サムネイル生成の単一エントリ読み込み]。
+    case entryNotFound(String)
+    /// `ArchiveReading.readEntry` 用。`IM-02`（1エントリの読み込み上限）超過。
+    case entryReadLimitExceeded(limit: Int)
 }

@@ -54,12 +54,27 @@ int qoo_unrar_extract_all(const char *archivePathUTF8,
                            char *errorBuffer,
                            int errorBufferSize);
 
+// Extracts exactly one entry (matched byte-for-byte against the path
+// qoo_unrar_list reports) to `destinationFileUTF8` (an exact file path,
+// not a directory — parent directories are created as needed). Unlike
+// qoo_unrar_extract_all this does not invoke a callback and stops
+// scanning the archive as soon as the entry is found, since callers
+// (thumbnail generation) only need one entry and archives can be large.
+// Returns QOO_UNRAR_ERROR_ENTRY_NOT_FOUND if no entry with that exact
+// path exists.
+int qoo_unrar_extract_one(const char *archivePathUTF8,
+                           const char *entryPathUTF8,
+                           const char *destinationFileUTF8,
+                           char *errorBuffer,
+                           int errorBufferSize);
+
 // Synthetic error codes distinct from UnRAR's own ERAR_* range (which
 // starts at 0/10+), so callers can tell "UnRAR reported an error" apart
 // from "the bridge itself failed before calling into UnRAR".
 #define QOO_UNRAR_ERROR_OPEN_FAILED     -1
 #define QOO_UNRAR_ERROR_HEADER_FAILED   -2
 #define QOO_UNRAR_ERROR_PROCESS_FAILED  -3
+#define QOO_UNRAR_ERROR_ENTRY_NOT_FOUND -4
 
 #ifdef __cplusplus
 }

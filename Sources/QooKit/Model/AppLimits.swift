@@ -17,4 +17,16 @@ public enum AppLimits {
         /// 展開先ボリュームに確保しておく空き容量の余裕分（既定 1GB）。
         public static let defaultFreeSpaceMargin: Int64 = 1_000 * 1_000 * 1_000
     }
+
+    /// サムネイル生成の安全上限・既定値 [9.5〜9.6 節]。
+    public enum Thumbnail {
+        /// 画像1枚あたりのピクセル数上限（既定 1 億）[IM-01]。
+        public static let defaultMaxPixelCount: Int = 100_000_000
+        /// アーカイブ内の1エントリを読み込む際の上限バイト数（既定 512MB）[IM-02]。
+        public static let defaultMaxEntryReadBytes: Int = 512 * 1_000 * 1_000
+        /// サムネイル生成の同時実行数上限（既定 4）[PF-11]。
+        public static let defaultMaxConcurrent: Int = 4
+        /// キャッシュディレクトリの合計サイズ上限（既定 500MB）[IV-09]。
+        public static let defaultCacheMaxSize: Int64 = 500 * 1_000 * 1_000
+    }
 }

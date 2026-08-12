@@ -144,6 +144,75 @@ int RunArchive(const char *archivePathUTF8,
     return result;
 }
 
+// Extracts exactly one matching entry and stops scanning immediately,
+// rather than walking the whole archive like RunArchive does. Used for
+// thumbnail generation, where extracting an entire (possibly large)
+// archive just to read its first image would be wasteful [設計判断、
+// QooUnrarBridge.h の qoo_unrar_extract_one コメント参照].
+int ExtractOneEntry(const char *archivePathUTF8,
+                     NSString *targetEntryName,
+                     NSString *destinationFile,
+                     char *_Nullable errorBuffer,
+                     int errorBufferSize) {
+    NSString *archivePath = [NSString stringWithUTF8String:archivePathUTF8];
+    wchar_t archivePathW[kPathBufferCount];
+    StringToWideBuffer(archivePath, archivePathW, kPathBufferCount);
+
+    RAROpenArchiveDataEx archiveData;
+    memset(&archiveData, 0, sizeof(archiveData));
+    archiveData.ArcNameW = archivePathW;
+    archiveData.OpenMode = RAR_OM_EXTRACT;
+
+    HANDLE handle = RAROpenArchiveEx(&archiveData);
+    if (archiveData.OpenResult != 0 || handle == nullptr) {
+        SetError(errorBuffer, errorBufferSize,
+                 [NSString stringWithFormat:@"RAROpenArchiveEx failed (code %u)", archiveData.OpenResult]);
+        return QOO_UNRAR_ERROR_OPEN_FAILED;
+    }
+
+    NSFileManager *fm = NSFileManager.defaultManager;
+    [fm createDirectoryAtPath:destinationFile.stringByDeletingLastPathComponent
+        withIntermediateDirectories:YES attributes:nil error:nil];
+
+    int result = QOO_UNRAR_ERROR_ENTRY_NOT_FOUND;
+    while (true) {
+        RARHeaderDataEx headerData;
+        memset(&headerData, 0, sizeof(headerData));
+        int readResult = RARReadHeaderEx(handle, &headerData);
+        if (readResult == ERAR_END_ARCHIVE) { break; }
+        if (readResult != 0) {
+            SetError(errorBuffer, errorBufferSize,
+                     [NSString stringWithFormat:@"RARReadHeaderEx failed (code %d)", readResult]);
+            result = QOO_UNRAR_ERROR_HEADER_FAILED;
+            break;
+        }
+
+        NSString *entryName = WideToString(headerData.FileNameW);
+        BOOL isDirectory = (headerData.Flags & RHDF_DIRECTORY) != 0;
+
+        if (!isDirectory && [entryName isEqualToString:targetEntryName]) {
+            wchar_t destPathW[kPathBufferCount];
+            StringToWideBuffer(destinationFile, destPathW, kPathBufferCount);
+            int processResult = RARProcessFileW(handle, RAR_EXTRACT, nullptr, destPathW);
+            if (processResult != 0) {
+                SetError(errorBuffer, errorBufferSize,
+                         [NSString stringWithFormat:@"RARProcessFileW failed (code %d)", processResult]);
+                result = QOO_UNRAR_ERROR_PROCESS_FAILED;
+            } else {
+                result = 0;
+            }
+            break; // found it (or failed extracting it) — no need to keep scanning
+        }
+        RARProcessFileW(handle, RAR_SKIP, nullptr, nullptr);
+    }
+
+    RARCloseArchive(handle);
+    if (result == QOO_UNRAR_ERROR_ENTRY_NOT_FOUND) {
+        SetError(errorBuffer, errorBufferSize, [NSString stringWithFormat:@"entry not found: %@", targetEntryName]);
+    }
+    return result;
+}
+
 }  // namespace
 
 int qoo_unrar_list(const char *archivePathUTF8,
@@ -162,4 +231,14 @@ int qoo_unrar_extract_all(const char *archivePathUTF8,
                            int errorBufferSize) {
     NSString *destinationDir = [NSString stringWithUTF8String:destinationDirUTF8];
     return RunArchive(archivePathUTF8, destinationDir, callback, context, errorBuffer, errorBufferSize);
+}
+
+int qoo_unrar_extract_one(const char *archivePathUTF8,
+                           const char *entryPathUTF8,
+                           const char *destinationFileUTF8,
+                           char *errorBuffer,
+                           int errorBufferSize) {
+    NSString *entryName = [NSString stringWithUTF8String:entryPathUTF8];
+    NSString *destinationFile = [NSString stringWithUTF8String:destinationFileUTF8];
+    return ExtractOneEntry(archivePathUTF8, entryName, destinationFile, errorBuffer, errorBufferSize);
 }

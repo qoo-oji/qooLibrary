@@ -210,4 +210,55 @@ import Testing
             try await LibarchiveBackend.shared.extract(archiveURL, to: staging, options: options)
         }
     }
+
+    // MARK: - readEntry [9.6 節、サムネイル生成用の単一エントリ読み込み]
+
+    @Test func readEntryReturnsTheMatchingEntrysContents() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let archiveURL = root.appendingPathComponent("book.cbz")
+        try ArchiveFixtureBuilder.makeZip(at: archiveURL, entries: [
+            .file("page001.jpg", contents: Data("first page".utf8)),
+            .file("page002.jpg", contents: Data("second page".utf8)),
+        ])
+
+        let listing = try await LibarchiveBackend.shared.listEntries(archiveURL)
+        let target = try #require(listing.entries.first { $0.pathname == "page002.jpg" })
+
+        let data = try await LibarchiveBackend.shared.readEntry(
+            archiveURL, entry: target, encoding: listing.detectedEncoding, maxBytes: 1_000
+        )
+
+        #expect(String(data: data, encoding: .utf8) == "second page")
+    }
+
+    @Test func readEntryThrowsEntryNotFoundForUnknownPathname() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let archiveURL = root.appendingPathComponent("book.cbz")
+        try ArchiveFixtureBuilder.makeZip(at: archiveURL, entries: [
+            .file("page001.jpg", contents: Data("first page".utf8)),
+        ])
+        let bogusEntry = ArchiveEntry(pathname: "does-not-exist.jpg", uncompressedSize: 0, isDirectory: false, isSymlink: false, isSpecialEntry: false)
+
+        await #expect(throws: ExtractError.entryNotFound("does-not-exist.jpg")) {
+            try await LibarchiveBackend.shared.readEntry(archiveURL, entry: bogusEntry, encoding: .utf8, maxBytes: 1_000)
+        }
+    }
+
+    @Test func readEntryThrowsWhenEntryExceedsMaxBytes() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let archiveURL = root.appendingPathComponent("big.cbz")
+        try ArchiveFixtureBuilder.makeZip(at: archiveURL, entries: [
+            .file("page001.jpg", contents: Data(repeating: 0x00, count: 10_000)),
+        ])
+
+        let listing = try await LibarchiveBackend.shared.listEntries(archiveURL)
+        let target = try #require(listing.entries.first)
+
+        await #expect(throws: ExtractError.entryReadLimitExceeded(limit: 100)) {
+            try await LibarchiveBackend.shared.readEntry(archiveURL, entry: target, encoding: listing.detectedEncoding, maxBytes: 100)
+        }
+    }
 }

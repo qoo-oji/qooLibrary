@@ -196,6 +196,47 @@ public struct LibarchiveBackend: ArchiveReading {
         )
     }
 
+    /// [9.6 節] `entry.pathname` に一致するエントリだけを読む。`listEntries`
+    /// と同じデコード規則（`encoding` を使い、`decode(_:encoding:)` で
+    /// NFC 正規化まで揃える）で都度デコードしながら先頭から走査し、一致した
+    /// 時点で内容を読み切って返す。
+    public func readEntry(_ url: URL, entry: ArchiveEntry, encoding: String.Encoding, maxBytes: Int) async throws -> Data {
+        let reader = try Self.openReader(url)
+        defer { Self.closeReader(reader) }
+
+        while true {
+            var entryPtr: OpaquePointer?
+            let rc = archive_read_next_header(reader, &entryPtr)
+            if rc == ARCHIVE_EOF { throw ExtractError.entryNotFound(entry.pathname) }
+            guard rc == ARCHIVE_OK, let entryPtr else {
+                throw ExtractError.backendFailure(Self.errorMessage(reader))
+            }
+
+            let raw = Self.makeRawEntry(entryPtr)
+            guard Self.decode(raw.rawPathnameBytes, encoding: encoding) == entry.pathname else {
+                archive_read_data_skip(reader)
+                continue
+            }
+            guard !raw.isDirectory, !raw.isSymlink, !raw.isSpecialEntry else {
+                throw ExtractError.backendFailure("not a regular file: \(entry.pathname)")
+            }
+
+            var data = Data()
+            let bufferSize = 256 * 1024
+            var buffer = [UInt8](repeating: 0, count: bufferSize)
+            while true {
+                let bytesRead = buffer.withUnsafeMutableBytes { ptr in
+                    archive_read_data(reader, ptr.baseAddress, bufferSize)
+                }
+                if bytesRead < 0 { throw ExtractError.backendFailure(Self.errorMessage(reader)) }
+                if bytesRead == 0 { break }
+                data.append(contentsOf: buffer[0..<bytesRead])
+                if data.count > maxBytes { throw ExtractError.entryReadLimitExceeded(limit: maxBytes) } // [IM-02]
+            }
+            return data
+        }
+    }
+
     /// 圧縮 [AR-10][AR-11]。zip のみ対応する（RAR は読み取り専用
     /// [AR-05][OS-06][LC-17]）。書き込み可能な形式が zip 一択で、
     /// libarchive 以外の書き込みバックエンドを想定する具体的な理由が無いため

@@ -100,6 +100,41 @@ public struct UnrarBackend: ArchiveReading {
         )
     }
 
+    /// [9.6 節] `qoo_unrar_extract_one` は一括展開と違いエントリ単位の
+    /// ストリーミングができないため、一時ファイルへ書き出してから読み直す
+    /// （`UnrarBackend` は元々ステージングへ直接 `FileManager` で書き込む
+    /// 意図的な例外なので、一時ファイルの扱いも同じ方針でよい）。`encoding`
+    /// は使わない — `QooUnrarBridge` は最初から UTF-8 で返すため
+    /// `listEntries` 同様デコードの再判定が不要 [AR-03 のコメント参照]。
+    public func readEntry(_ url: URL, entry: ArchiveEntry, encoding: String.Encoding, maxBytes: Int) async throws -> Data {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let tempFile = tempDir.appendingPathComponent("entry")
+
+        var errorBuffer = [CChar](repeating: 0, count: 512)
+        let rc: Int32 = errorBuffer.withUnsafeMutableBufferPointer { errBuf in
+            url.path.withCString { archiveCStr in
+                entry.pathname.withCString { entryCStr in
+                    tempFile.path.withCString { destCStr in
+                        qoo_unrar_extract_one(archiveCStr, entryCStr, destCStr, errBuf.baseAddress, Int32(errBuf.count))
+                    }
+                }
+            }
+        }
+        guard rc == 0 else {
+            if rc == QOO_UNRAR_ERROR_ENTRY_NOT_FOUND {
+                throw ExtractError.entryNotFound(entry.pathname)
+            }
+            throw ExtractError.backendFailure(Self.errorMessage(from: errorBuffer, code: rc))
+        }
+
+        let size = (try? FileManager.default.attributesOfItem(atPath: tempFile.path)[.size] as? Int) ?? nil
+        if let size, size > maxBytes {
+            throw ExtractError.entryReadLimitExceeded(limit: maxBytes)
+        }
+        return try Data(contentsOf: tempFile)
+    }
+
     // MARK: - QooUnrarBridge の呼び出し
 
     private final class CallbackBox {
