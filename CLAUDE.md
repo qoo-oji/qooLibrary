@@ -172,6 +172,9 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
   - `Sources/qooLibraryApp/MainWindow/FileIconProvider.swift`（新規）: `@MainActor` の単純なパスキー付きメモリキャッシュ + `NSWorkspace.shared.icon(forFile:)`。公開 API で App Sandbox 下でも追加の entitlement 無しに動作する（Launch Services への問い合わせのみで、ファイル内容の読み取りを伴わない）ことを確認済み。カスタムフォルダアイコン・拡張子別のアイコン・アプリバンドルのアイコンいずれも Finder と同一のものが得られる。ディスクへの永続化はしない（サムネイルと違いデコードコストが無く、プロセス起動のたびに再取得すれば十分軽い）。
   - `FolderTreePane.swift`・`FolderContentView.swift`（リスト表示のセル）・`IconGridView.swift`（サムネイル未生成時のプレースホルダ）の3箇所で SF Symbol（`"folder"`/`"doc"`/`"folder.fill"`/`"doc.zipper"`/`"doc.fill"`/`"arrow.turn.up.right"`）を `FileIconProvider.shared.icon(for:)` に置き換えた。シンボリックリンク専用の代用アイコンだった `"arrow.turn.up.right"` は、`NSWorkspace` が対象種別のアイコンに Finder と同じエイリアス矢印バッジを重ねて返すため不要になり削除した。
   - **実機検証（ユーザーによる手動確認）で完了。**
+- **将来検討として記録のみ（要件定義書には無い、ユーザーからの要望）**: **フォルダツリーに「ホーム」グループを追加し、実ホームの `アプリケーション`/`デスクトップ`/`書類`/`ダウンロード`/`ムービー`/`ミュージック`/`ピクチャ` を展開できるようにする。** 表示名・アイコンは Finder 準拠（アイコンは `FileIconProvider` で追加コスト無し）。
+  - フルディスクアクセスが付与済みなら（`C-04`/`SB-03`/`SB-04`、要件定義書§3.1で確定済みの前提）、これらのフォルダは専用 entitlement もユーザーによるフォルダ選択（Security-Scoped Bookmark）も無しにアクセスできる。サンドボックスのカーネルレベルの制限自体がフルディスクアクセスの許可を見て緩和されるため（1-4 のボリュームツリーの実機検証で実際に確認済みの前提と同じ）。未付与の場合は既存の「アクセス権がありません」フォールバック（`FolderTreePane`）にそのまま乗る。
+  - **ユーザーの意向: フルディスクアクセス付与の導線（`SB-03`、初回セットアップウィザード）を実装するタイミングで良い。** その導線自体は `17_実装ロードマップ.md` の **2-17（初回セットアップウィザード、OB-01〜OB-10）** で、フェーズ2の対象。現状は 1-2 で作った `AccessDeniedRow` の「システム設定を開く」ボタンが暫定的にこの役割を担っている。
 - 各 `Sources/{QooKit,QooPersistence,QooApplication}/*.swift` の中身はまだプレースホルダ（モジュール依存関係を検証するための最小限のマーカー型のみ）で、ドメインロジック・SwiftData モデルは一切実装していない。`QooInfrastructure` はサンドボックス／FS 検証のみ実装済み。
 
 作業を始める際は、対象領域の仕様書（下記 §2 の一覧）を該当箇所だけ `Read` してから着手する。仕様書は合計 18 ファイルあり、全部を毎回読み込む必要はない。要件定義書本体は `docs/Requirements/qooLibrary_要件定義書_v2.8.md` にある（約 2,900 行）。矛盾したときの優先順位は §1 参照。
