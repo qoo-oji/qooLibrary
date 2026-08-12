@@ -6,8 +6,8 @@ import UniformTypeIdentifiers
 
 /// アクティブなタブのフォルダ内容を一覧表示する。
 ///
-/// リスト表示（ソート可能なカラム）は 1-9 で実装済み [LV-01〜LV-03]。
-/// アイコン表示・サムネイルは 1-9 の後続ステップで追加する。
+/// リスト表示（ソート可能なカラム、`Table`）とアイコン表示（サムネイル付き、
+/// `IconGridView`）の両方に対応する [LV-01〜LV-03][IV-01/08/09]。
 ///
 /// コンテキストメニュー（名前変更・複製・ゴミ箱・新規フォルダ）はすべて
 /// `FileOperationService` 経由でのみファイルシステムを変更する [FO-01][FO-02]。
@@ -22,10 +22,19 @@ struct FolderContentView: View {
     let onGoForward: () -> Void
     let canGoBack: Bool
     let canGoForward: Bool
+    /// 1階層上へ [KB-02 相当]。`goBack`/`goForward` と同じ理由で `WindowState`
+    /// 側のメソッドとして実装し、このビューは通知を受けて呼ぶだけにしている
+    /// [実機検証で発見したバグの修正、`goToParent()` の旧実装のコメント参照]。
+    let onGoToParent: () -> Void
+    let canGoToParent: Bool
     /// コンテキストメニューの「新規タブで開く」「新規ウインドウで開く」
     /// [MW-01/MW-04 の周辺、要件定義書には無いがユーザー要望で追加]。
     let onOpenInNewTab: (URL) -> Void
     let onOpenInNewWindow: (URL) -> Void
+    /// リスト/アイコン切替 [LV-04] とアイコンサイズ [IV-04]。`WindowState`
+    /// （ウインドウ単位、タブをまたいで共有 [ST-22]）が保持する。
+    @Binding var listStyle: ListStyle
+    @Binding var iconSize: Double
 
     @State private var entries: [FolderEntry] = []
     @State private var loadError: String?
@@ -77,18 +86,32 @@ struct FolderContentView: View {
                         .lineLimit(1)
                         .truncationMode(.head)
                     Spacer()
-                    Menu {
-                        Toggle("更新日", isOn: $showModificationDateColumn)
-                        Toggle("サイズ", isOn: $showSizeColumn)
-                        Toggle("種類", isOn: $showKindColumn)
-                        Divider()
-                        Toggle("フォルダを上にまとめる", isOn: $groupFoldersAtTop) // [LV-03]
-                    } label: {
-                        Image(systemName: "line.3.horizontal.decrease.circle")
+                    if listStyle == .icon { // [IV-04]
+                        Slider(value: $iconSize, in: Tokens.iconSize.min...Tokens.iconSize.max, step: Tokens.iconSize.step)
+                            .frame(width: 100)
+                            .help("アイコンサイズ")
                     }
-                    .menuStyle(.borderlessButton)
+                    Picker("表示", selection: $listStyle) { // [TB-04][LV-04]
+                        Image(systemName: "list.bullet").tag(ListStyle.list)
+                        Image(systemName: "square.grid.2x2").tag(ListStyle.icon)
+                    }
+                    .pickerStyle(.segmented)
                     .fixedSize()
-                    .help("表示するカラム") // [LV-02]
+                    .labelsHidden()
+                    if listStyle == .list {
+                        Menu {
+                            Toggle("更新日", isOn: $showModificationDateColumn)
+                            Toggle("サイズ", isOn: $showSizeColumn)
+                            Toggle("種類", isOn: $showKindColumn)
+                            Divider()
+                            Toggle("フォルダを上にまとめる", isOn: $groupFoldersAtTop) // [LV-03]
+                        } label: {
+                            Image(systemName: "line.3.horizontal.decrease.circle")
+                        }
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
+                        .help("表示するカラム") // [LV-02]
+                    }
                     Button {
                         newFolderName = "新規フォルダ"
                         showingNewFolderPrompt = true
@@ -106,6 +129,39 @@ struct FolderContentView: View {
                 PlaceholderPane(title: "読み込みエラー", subtitle: loadError)
             } else if entries.isEmpty {
                 PlaceholderPane(title: "空のフォルダ", subtitle: "")
+            } else if listStyle == .icon {
+                // アイコン表示 [IV-01/08/09、PF-10]。`Table` と違い選択・D&D・
+                // コンテキストメニューの AppKit 標準機能が無いため、それぞれ
+                // `IconGridView` 側で手動再現している（詳細はそのファイルの
+                // コメント参照）。
+                IconGridView(
+                    entries: displayedEntries,
+                    selection: $selection,
+                    iconSize: iconSize,
+                    dragNamespace: dragNamespace,
+                    onNavigate: onNavigate,
+                    onSingleClick: { handleSingleClick($0) },
+                    onReload: { reloadAndBroadcast() },
+                    onDropFailure: { actionError = $0 },
+                    contextMenuContent: { urls in contextMenuContent(for: urls) }
+                )
+                // `Table` は標準でキーボードフォーカスを受け取れるが、
+                // `IconGridView`（`ScrollView`/`LazyVGrid`）はそうではないため
+                // `.focusable()` が無いと `.focused($isListFocused)` が何にも
+                // 結びつかず、Enter キーの `.onKeyPress` が発火しなかった
+                // [実機検証で発見]。
+                .focusable()
+                .focused($isListFocused)
+                .onKeyPress(keyBindingStore.binding(for: .open).combos.first?.swiftUIKeyEquivalent ?? .return) {
+                    openSelection()
+                    return .handled
+                }
+                .onKeyPress(.downArrow) {
+                    selectFirstOrLastIfNoneSelected(first: true) ? .handled : .ignored
+                }
+                .onKeyPress(.upArrow) {
+                    selectFirstOrLastIfNoneSelected(first: false) ? .handled : .ignored
+                }
             } else {
                 // カラムベースのリスト表示 [LV-01〜LV-03]。ソートは `sortOrder`
                 // バインディングを通してヘッダクリックで切り替わる。実際の並べ替えは
@@ -187,6 +243,15 @@ struct FolderContentView: View {
                     openSelection()
                     return .handled
                 }
+                // Finder 流: 何も選択していない状態で↓/↑を押すと先頭/末尾を選択する
+                // [実機検証時のユーザー要望]。何か選択済みなら `.ignored` を返し、
+                // `Table` 標準の行選択移動（AppKit の既定キーハンドリング）に譲る。
+                .onKeyPress(.downArrow) {
+                    selectFirstOrLastIfNoneSelected(first: true) ? .handled : .ignored
+                }
+                .onKeyPress(.upArrow) {
+                    selectFirstOrLastIfNoneSelected(first: false) ? .handled : .ignored
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -206,7 +271,7 @@ struct FolderContentView: View {
                     showingNewFolderPrompt = true
                 }
                 KeyBindingButtons(action: .goToParent, store: keyBindingStore, isDisabled: !canGoToParent) {
-                    goToParent()
+                    onGoToParent()
                 }
                 KeyBindingButtons(action: .goBack, store: keyBindingStore, isDisabled: !canGoBack) {
                     onGoBack()
@@ -252,6 +317,14 @@ struct FolderContentView: View {
         } isTargeted: { isDropTargeted = $0 }
         .task(id: folder) {
             reload()
+            // ⌘↑・戻る・進む・ツリークリック等、クリック以外の経路でナビゲート
+            // した場合に一覧がキーボードフォーカスを失ったままになり、選択行が
+            // 非フォーカス色（グレー）で表示され、矢印キーを押してもビープする
+            // だけになる不具合があった [実機検証で発見]。フォルダそのものが
+            // 変わったとき（＝実際のナビゲーション時）だけフォーカスを戻す
+            // （`reloadToken` 経由の再読み込みではフォーカスを奪わないよう、
+            // ここではなく `reload()` 呼び出し側で行う）。
+            isListFocused = true
         }
         // ウインドウ／ペインをまたいだ変更を拾う暫定策 [1-6 実機検証で発見した
         // クロスウインドウの表示不整合対策、`SessionState.reloadToken` 参照]。
@@ -378,6 +451,20 @@ struct FolderContentView: View {
         // 手動での選択にはその副作用が無いため、選択がグレー（非フォーカス）
         // 表示のままになる。明示的にフォーカスさせて青色のハイライトにする。
         isListFocused = true
+    }
+
+    /// Finder 流: 何も選択していない状態で↓/↑を押すと先頭/末尾の項目を選択する
+    /// [実機検証時のユーザー要望、リスト・アイコン両表示で共通]。何かが既に
+    /// 選択されている場合は何もしない（`false` を返し、呼び出し側は
+    /// `.ignored` を返すことで `Table` 標準の行選択移動に処理を譲る）。
+    private func selectFirstOrLastIfNoneSelected(first: Bool) -> Bool {
+        guard selection.isEmpty, let target = first ? displayedEntries.first : displayedEntries.last else {
+            return false
+        }
+        selection = [target.url]
+        selectionAnchor = target.url
+        isListFocused = true
+        return true
     }
 
     /// `.contextMenu(forSelectionType:)` から呼ばれる。`urls` は AppKit が
@@ -587,29 +674,6 @@ struct FolderContentView: View {
         }
     }
 
-    /// サンドボックスの仮想ホーム（`~/Library/Containers/<bundle-id>/Data`、
-    /// `FileManager.homeDirectoryForCurrentUser` が返す値 [1-3 の実機検証で
-    /// 確認済み]）。この 1 つ上（コンテナ本体のルート）はアプリの内部実装領域で
-    /// サンドボックスプロファイルが読み取りを許可しない
-    /// [実機検証で発見: Documents から ⌘↑ を連打すると "permission to view it"
-    /// エラーになっていた。コンテナルート自体は Unix パーミッション上は
-    /// 読めても、サンドボックスは `Data` 配下だけをアプリに開放する]。
-    private static let sandboxHomeDirectory = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL
-
-    /// 仮想ホームより上には昇らない（昇っても読めない場所しかなく、
-    /// ユーザーにとって意味のある行き先ではないため）。
-    private var canGoToParent: Bool {
-        guard let folder else { return false }
-        return folder.standardizedFileURL != Self.sandboxHomeDirectory
-    }
-
-    /// `⌘↑` ショートカット用 [KB-02 相当]。ツリー・ダブルクリックと同じ
-    /// `onNavigate` 経路を使う。
-    private func goToParent() {
-        guard canGoToParent, let folder else { return }
-        onNavigate(folder.deletingLastPathComponent())
-    }
-
     private func commitRename() {
         guard let entry = renamingEntry, !renameText.isEmpty else { return }
         Task {
@@ -804,7 +868,7 @@ private struct FileInfoSheet: View {
     }
 }
 
-private struct FolderEntry: Identifiable {
+struct FolderEntry: Identifiable {
     var id: URL { url }
     let url: URL
     let name: String
@@ -869,7 +933,7 @@ private struct FolderSortComparator: SortComparator {
 }
 
 /// フォルダ行にだけドロップ先を付与する（ファイル行に落としても意味がないため）[DD-05 相当]。
-private struct DropIntoFolderModifier: ViewModifier {
+struct DropIntoFolderModifier: ViewModifier {
     let entry: FolderEntry
     let reload: () -> Void
     let onFailure: @MainActor @Sendable (String) -> Void

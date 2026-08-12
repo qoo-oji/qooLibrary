@@ -60,6 +60,20 @@ import Testing
         #expect(thumbnail != nil)
     }
 
+    /// フォルダ/アーカイブだけでなく、画像ファイル自身もプレビューできる
+    /// [IV-01 の自然な拡張、`ThumbnailService` のコメント参照]。
+    @Test func resolvesThumbnailForAPlainImageFileDirectly() async throws {
+        let (service, root) = makeService()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let imageURL = root.appendingPathComponent("photo.png")
+        try TestImageFixture.makePNGData(width: 40, height: 40).write(to: imageURL)
+
+        let thumbnail = await service.thumbnail(for: imageURL, maxPixelSize: 20)
+
+        #expect(thumbnail != nil)
+    }
+
     @Test func cachesGeneratedThumbnail() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("qoo-thumbnail-test-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }

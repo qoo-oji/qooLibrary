@@ -42,7 +42,11 @@ public final class WindowState {
     public var tabs: [TabState]
     public var selectedTabID: TabState.ID
     public var displayMode: DisplayMode = .folder // [ST-22]
-    public var listStyle: ListStyle = .icon // [ST-22]
+    // 既定は `.list`。1-9 でアイコン表示を実装するまで `.icon` になっていたが
+    // 何にも参照されておらず（`Table` が常に表示されていた）、実質的な既定表示は
+    // ずっとリストだった。アイコン表示の配線に合わせてここで初めて意味を持つ値に
+    // なるため、今回の変更で見た目が急に変わらないよう明示的に `.list` にする。
+    public var listStyle: ListStyle = .list // [ST-22][LV-04]
     public var iconSize: Double = 96 // [IV-04][ST-22]
 
     public init(initialFolder: URL? = FileManager.default.homeDirectoryForCurrentUser) {
@@ -86,6 +90,21 @@ public final class WindowState {
         currentTabIndex.map { !tabs[$0].forwardHistory.isEmpty } ?? false
     }
 
+    /// サンドボックスの仮想ホーム（`~/Library/Containers/<bundle-id>/Data`、
+    /// `FileManager.homeDirectoryForCurrentUser` が返す値 [1-3 の実機検証で
+    /// 確認済み]）。この 1 つ上（コンテナ本体のルート）はアプリの内部実装領域で
+    /// サンドボックスプロファイルが読み取りを許可しない
+    /// [実機検証で発見: Documents から ⌘↑ を連打すると "permission to view it"
+    /// エラーになっていた]。
+    private static let sandboxHomeDirectory = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL
+
+    /// 仮想ホームより上には昇らない（昇っても読めない場所しかなく、
+    /// ユーザーにとって意味のある行き先ではないため）。
+    public var canGoToParent: Bool {
+        guard let folder = currentTab?.folder else { return false }
+        return folder.standardizedFileURL != Self.sandboxHomeDirectory
+    }
+
     /// Finder ツールバーの「戻る」相当 [KB-02]。
     public func goBack() {
         guard let index = currentTabIndex, let previous = tabs[index].backHistory.popLast() else { return }
@@ -104,6 +123,26 @@ public final class WindowState {
         }
         tabs[index].folder = next
         tabs[index].title = next.lastPathComponent
+    }
+
+    /// `⌘↑` 相当 [KB-02]。`goBack`/`goForward` と同じく `navigateCurrentTab(to:)`
+    /// を経由する（履歴に積む）。
+    ///
+    /// **`FolderContentView` ではなくここに実装している**
+    /// [実機検証で発見したバグの修正]: 以前は `FolderContentView`（値型の
+    /// View）が自身の `folder: URL?` プロパティを直接読んで計算していたが、
+    /// `.background` 内の非表示ボタンに束縛されたクロージャが、フォルダを
+    /// 連続でナビゲートした直後は1回分古い `FolderContentView` インスタンスの
+    /// `folder` を参照してしまうことがあり（`Documents/Dummy` にいるつもりで
+    /// ⌘↑ を押すと `Documents` を素通りして仮想ホームまで戻ってしまっていた）、
+    /// 実際には「1回の入力で2回移動した」のではなく「1回移動を、1段階古い
+    /// 位置から行った」結果だった（`goToParent()`/`navigateCurrentTab(to:)` の
+    /// 双方に一時的なログを仕込んだ実機検証で確認）。`goBack`/`goForward` は
+    /// 元から `WindowState`（`@Observable` の参照型）のメソッドとして実装
+    /// されており同種の問題が出ていなかったため、同じ設計に揃えた。
+    public func goToParent() {
+        guard canGoToParent, let folder = currentTab?.folder else { return }
+        navigateCurrentTab(to: folder.deletingLastPathComponent())
     }
 
     public func openTab(for folder: URL?) {

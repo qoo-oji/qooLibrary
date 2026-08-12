@@ -63,8 +63,12 @@ struct MainWindowView: View {
                         onGoForward: { windowState.goForward() },
                         canGoBack: windowState.canGoBack,
                         canGoForward: windowState.canGoForward,
+                        onGoToParent: { windowState.goToParent() },
+                        canGoToParent: windowState.canGoToParent,
                         onOpenInNewTab: { windowState.openTab(for: $0) },
-                        onOpenInNewWindow: { openWindow(value: $0) }
+                        onOpenInNewWindow: { openWindow(value: $0) },
+                        listStyle: $windowState.listStyle,
+                        iconSize: $windowState.iconSize
                     )
                 } else {
                     PlaceholderPane(title: "タブがありません", subtitle: "")

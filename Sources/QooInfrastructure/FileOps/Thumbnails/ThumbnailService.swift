@@ -92,14 +92,19 @@ public actor ThumbnailService {
 
     // MARK: - 先頭画像の解決 [IV-01]
 
-    /// フォルダなら配下の自然順先頭の画像ファイル、アーカイブなら
-    /// エントリの自然順先頭の画像エントリを読む。
+    /// フォルダなら配下の自然順先頭の画像ファイル、アーカイブならエントリの
+    /// 自然順先頭の画像エントリ、画像ファイル自身ならその内容をそのまま読む
+    /// （IV-01 は「圧縮ファイルやフォルダも」とあるが、画像ファイル自体の
+    /// プレビューは実装しない理由が無いため自然な拡張として含めている）。
     private static func resolveFirstImageData(for url: URL) async -> Data? {
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else { return nil }
 
         if isDirectory.boolValue {
             return firstImageDataInFolder(url)
+        }
+        if isImageFilename(url.lastPathComponent) {
+            return try? Data(contentsOf: url)
         }
         return try? await firstImageDataInArchive(url)
     }

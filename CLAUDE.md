@@ -4,7 +4,7 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
 
 ## 0. 現在の状態
 
-**フェーズ 0（基盤検証）完了。フェーズ 1（ファイルマネージャー）着手済み（1-1〜1-8 完了）。**
+**フェーズ 0（基盤検証）完了。フェーズ 1（ファイルマネージャー）着手済み（1-1〜1-9 完了）。**
 
 ### フェーズ 0（`17_実装ロードマップ.md` §17.2、全項目完了）
 
@@ -15,7 +15,7 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
 - 静的検査 `Scripts/check-fileops-isolation.swift`（B-10）・`check-layer-dependencies.swift`（B-11）・`check-json-completeness.swift`（B-13, 現状はプレースホルダ）と CI（`.github/workflows/ci.yml`）を用意した。
 - **既知の懸念（要フォローアップ）**: libarchive 3.8.9 は特定の壊れた RAR 入力（use-after-free の回帰テストファイル）でクラッシュする（エラーを返さず異常終了）。`SecureExtractor`（09章 §9.3）実装時に対処を検討する必要がある。詳細は `Spikes/README.md` の T-12 節。
 
-### フェーズ 1（`17_実装ロードマップ.md` §17.3、1-1〜1-8 完了・1-9 着手中・1-10 以降未着手）
+### フェーズ 1（`17_実装ロードマップ.md` §17.3、1-1〜1-9 完了・1-10 以降未着手）
 
 - **1-1 プロジェクト基盤が完了。** `qooLibrary.xcodeproj` は `project.yml` から `xcodegen generate` で生成する（**git-ignore 対象、手で pbxproj を編集しない**。ThirdParty の xcframework と同じ「生成物はコミットしない」方針）。ローカルの SwiftPM パッケージ（`QooKit`/`QooPersistence`/`QooInfrastructure`/`QooApplication`）を local package dependency として参照し、実機で起動確認済み。
 - App Sandbox entitlement（`Sources/qooLibraryApp/qooLibrary.entitlements`）を付与済み。`codesign -d --entitlements :-` で署名済みバイナリに実際に反映されていることを確認済み [SB-01]。
@@ -96,7 +96,7 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
   - `Tests/QooKitTests/KeyBindingTests.swift`（7件）・`Tests/QooInfrastructureTests/UserDefaultsKeyBindingStoreTests.swift`（8件）で、既定値の網羅性・衝突検出（複数キー割り当て時も含む）・既定に戻す・複数ショートカットの永続化を検証。
   - **未配線**（対応する機能が未実装のため）: `quickLook`・`toggleThumbnails`・`copy`/`paste`/`cut`・`focusSearch`・`toggleDisplayMode`・`clearLabelFilter`・`moveToVault`・`undo`/`redo`・`deletePermanently`。いずれも `DefaultKeyBindings.all` には登録済みで、衝突検出・既定に戻すの対象にはなっている。キーバインドのカスタマイズ UI（KB2-02 の「既定に戻す」ボタン等）は 1-12（環境設定）で実装する。
   - **将来検討として記録のみ**（要件定義書に無い、ユーザーからの要望）: マウスのサイドボタン（戻る/進む）・トラックパッドの2本指スワイプでのナビゲーション。詳細と実装方針の見立ては `docs/Specifications/13_UI_共通基盤.md` §13.6「将来検討」参照。実装フェーズ未確定（1-12 候補）。
-- **1-9（リスト表示・アイコン表示、サムネイル生成）は着手中。リスト表示（LV-01〜LV-03）・サムネイル基盤が完了。アイコン表示のみ未着手。** ユーザーとの合意で「リスト表示 → サムネイル基盤 → アイコン表示」の順に実装している。
+- **1-9（リスト表示・アイコン表示、サムネイル生成）が完了。** ユーザーとの合意で「リスト表示 → サムネイル基盤 → アイコン表示」の順に実装した。
   - `Sources/qooLibraryApp/MainWindow/FolderContentView.swift`: 中央ペインを `List` から `Table` に置き換えた。名前・更新日・サイズ・種類のカラムを持ち、ヘッダクリックでソート可能 [LV-01]。カラムの表示/非表示は右上の漏斗アイコンのメニューから切り替える [LV-02]。列幅はドラッグで調整可能（`Table` 標準機能）。「フォルダを上にまとめる」トグルも同じメニューにある [LV-03]。
   - **カラム表示/非表示・フォルダまとめ設定は `@AppStorage` で永続化**（アプリ全体で共有、ウインドウ固有ではない）。1-12（環境設定）の本実装が無いため、1-8 のキーバインド上書きと同じ暫定パターン。ソート順自体（`sortOrder`）はタブ/ウインドウをまたいだ永続化はしていない単純な `@State`。
   - `FolderSortComparator`（`SortComparator` 準拠、`enum Key { name, modificationDate, size, kind }` で1つの型に集約）: SwiftUI の `Table` は `sortOrder` を単一のコンパレータ型の配列として要求するため、カラムごとに別のコンパレータ型を使うことができない。名前のソートは `localizedStandardCompare`（Finder 流の自然順、単純な `<` ではない）を使う。
@@ -149,8 +149,20 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
   - `Sources/QooKit/Model/AppLimits.swift`: `AppLimits.Thumbnail`（ピクセル数上限 1億 [IM-01]、1エントリ読み込み上限 512MB [IM-02]、同時実行数 4 [PF-11]、キャッシュ上限 500MB [IV-09]）を追加。
   - **テスト作成中に実機ではなく `swift build` で見つけた実装バグ**: `guard let X = <複数行にまたがる`.filter{}.sorted(by:){}.first`チェーン> else { ... }` という書き方をしたところ、Swift の型検査が `X` の型を `Array.filter` メソッド自体の型（未呼び出しの関数値）だと誤推論し、無関係な箇所にまで波及するコンパイルエラーになった。中間変数に分けて1行ずつの代入にしたところ解消した（`ThumbnailService.firstImageDataInFolder`/`firstImageDataInArchive`）。原因のコンパイラの挙動自体は特定できていないが、同種の複数行チェーン + `guard let` は避けたほうが安全という教訓として記録しておく。
   - `Tests/QooInfrastructureTests/TestImageFixture.swift`: `CoreGraphics`/`ImageIO` だけで実画像データ（PNG）をその場で生成するヘルパー。バイナリのテストフィクスチャをリポジトリに含めずに済む。
-  - `ImageLoadingTests`（6件）・`CoverImageCacheTests`（6件）・`ThumbnailServiceTests`（6件）・`LibarchiveBackendTests` に `readEntry` 系3件を追加。**RAR 経由（`UnrarBackend.readEntry`、実 RAR ファイル）の自動テストは無し**（フェーズ0以来一貫した理由: 実 RAR ファイルはユーザー提供のみでリポジトリに含められない）。フルスイートを4回連続実行して安定を確認済み（計87件）。
-- **未着手**（1-9 の残り以降）: アイコン表示（`LazyVGrid` + 上記サムネイル基盤の配線、IV-01/08/09 の UI 側、PF-10）、文字化け判定のプレビュー UI・手動オーバーライド（EN-01/EN-02、1-7 の残り）、Undo 基盤、環境設定（表示密度等の可変設定・キーバインドのカスタマイズ UI・タブバー常時表示トグル・右ペイン折りたたみ状態の永続化・サムネイルキャッシュの上限設定/手動クリア UI [IV-09] を含む）、通知基盤、診断ログ、右ペインの詳細情報（現状 1-2 の検証 UI が仮置き。「情報を見る」の自作シートはこの本実装で置き換える）、ラベルフィルタ（左ペイン下半分、現状プレースホルダ）、フォルダ登録（1-13、フォルダツリーの右クリックメニューもここで追加）、Apple Events 自動化（新規ターミナルで開く・Finder の「情報を見る」を直接呼ぶ、要 entitlement 追加）等。
+  - `ImageLoadingTests`（6件）・`CoverImageCacheTests`（6件）・`ThumbnailServiceTests`（6件、後述の直接画像ファイル対応で+1）・`LibarchiveBackendTests` に `readEntry` 系3件を追加。**RAR 経由（`UnrarBackend.readEntry`、実 RAR ファイル）の自動テストは無し**（フェーズ0以来一貫した理由: 実 RAR ファイルはユーザー提供のみでリポジトリに含められない）。
+  - `ThumbnailService.resolveFirstImageData` に、フォルダ・アーカイブに加えて**画像ファイル自身を直接プレビューする分岐**を追加した（IV-01 の自然な拡張、`.task(id: entry.url)` のコメント参照）。`ThumbnailServiceTests.resolvesThumbnailForAPlainImageFileDirectly` で検証。
+- **アイコン表示（IV-01/08/09 の UI 側、PF-10）が完了し、1-9 全体が完了した。**
+  - `Sources/qooLibraryApp/MainWindow/IconGridView.swift`（新規）: `LazyVGrid`（可視範囲のみ描画 [PF-10]）+ `ScrollView`。`Table`/`List` と違い選択・D&D・コンテキストメニューまわりの AppKit 標準機能が一切無いため、このファイルで手動再現している。実際の選択・ダブルクリック・コンテキストメニューの中身は `FolderContentView` 側の既存 `private` メソッド（`handleSingleClick`/`contextMenuContent(for:)`/`reloadAndBroadcast` 等）をクロージャとして受け取るだけで、二重実装していない（`FolderEntry`/`DropIntoFolderModifier` の2つの型だけ `private` を外してモジュール内可視にした）。`IconGridView<MenuContent: View>` はコンテキストメニューの内容の型についてジェネリックにし、`AnyView` を避けている。
+  - **既知の制限**: `.contextMenu(forSelectionType:)`（`Table` が使う、非選択項目を右クリックしたときに Finder 流の青い枠線を自動描画してくれる AppKit 標準 API）は `List`/`Table` 専用で `LazyVGrid` には使えないため、アイコン表示では各セルへ個別に `.contextMenu` を付ける旧来方式に戻しており、非選択項目を右クリックしたときの枠線表示は無い。
+  - `Sources/qooLibraryApp/MainWindow/FolderContentView.swift`: ツールバーにリスト/アイコン切替の `Picker`（`.pickerStyle(.segmented)`、SF Symbol）とアイコンサイズの `Slider`（アイコン表示時のみ表示、`Tokens.iconSize` の範囲を使用）を追加。`WindowState.listStyle`/`iconSize` を `@Binding` で受け取る。
+  - `Sources/qooLibraryApp/State/WindowState.swift`: `listStyle` の既定値を `.icon` から `.list` に変更した。1-9 でアイコン表示を実装するまで `.icon` はどこからも参照されておらず実質的な既定表示はずっとリストだったため、配線して初めて意味を持つ値になるこのタイミングで、見た目が急に変わらないよう明示的に `.list` にした [設計判断、ユーザー要望ではなく既存ユーザー体験を壊さないための予防的判断]。
+  - **実機検証で発見・修正したバグ（3件）**:
+    1. **アイコン表示で Enter キーが効かない・フォルダに入れない。** `IconGridView` のルート（`ScrollView`）が既定では `.focusable()` でなかったため、`.focused($isListFocused)` が何にも結びつかず `.onKeyPress` が発火しなかった。`.focusable()` を追加して解消。
+    2. **`⌘↑` で1階層のつもりが2階層上がってしまう。** `Data/Documents/Dummy` にいる状態で ⌘↑ を押すと `Documents` を素通りして仮想ホーム（`Data`）まで戻ってしまう、という実機検証での指摘。当初「OS のキーリピートで `.keyboardShortcut` が二重発火している」という仮説で 300ms のデバウンスガードを実装したが**効果が無く**（症状不変）、仮説が誤りだと判明。両方の関数に一時的なログ（`FileHandle.standardError.write`。`NSLog`/`os_log` は非 Apple 署名プロセスだと内容が `<private>` に伏字化されて実機で読めなかった。実行ファイルを直接ターミナルから起動し標準エラー出力をファイルへリダイレクトして採取）を仕込んで実機検証したところ、**`goToParent()` が呼ばれた瞬間の `folder` の値が実際には1段階古い値になっている**ことが判明した（`WindowState.tabs[index].folder` は正しく最新値を指していたが、`FolderContentView`（値型の View）が自身のプロパティとして保持する `folder` を読む非表示ボタンのクロージャが、フォルダを連続でナビゲートした直後は1世代古い View インスタンスを参照してしまっていた）。「1回の入力で2回移動した」のではなく「1回の移動を、1段階古い位置から行った」が真相だった。同じ非表示ボタンパターンを使う `戻る`/`進む`（`WindowState` というクラス側のメソッドとして最初から実装されており、`@Observable` 経由で常に最新状態を読むため同種の問題が出ていなかった）に合わせ、`goToParent()` を `FolderContentView` から `WindowState.goToParent()`（`navigateCurrentTab(to:)` を内部で使う、`goBack`/`goForward` と同じ構造）に移設して解消した。300ms デバウンスは誤った仮説に基づく対処だったため撤去した。
+    3. **⌘↑ 等キーボード操作でのナビゲーション後、選択行がグレー（非フォーカス）表示になり矢印キーがビープするだけになる。** クリック以外の経路（⌘↑・戻る・進む・ツリークリック等）でナビゲートした場合に一覧がキーボードフォーカスを失ったままになっていた。`folder` が実際に変わったとき（`.task(id: folder)` 内）に `isListFocused = true` を設定して解消（`reloadToken` 経由の再読み込みでは他ウインドウ・他ペインのフォーカスを奪わないよう、そちらには適用していない）。
+  - **ユーザー要望で追加（要件定義書には無い）**: 中央ペインで何も選択していない状態で↓キーを押すと先頭の項目、↑キーを押すと末尾の項目を選択する（Finder と同じ挙動）。リスト・アイコン両表示に `selectFirstOrLastIfNoneSelected(first:)` を共通で配線。既に何か選択済みの場合は何もせず `.ignored` を返し、リスト表示では `Table` 標準の行選択移動（AppKit の既定キーハンドリング）に処理を譲る。
+  - **実機検証（ユーザーによる複数回の手動確認）で完了。** サムネイル表示（フォルダ・アーカイブ・画像ファイル）、選択・複数選択・D&D・コンテキストメニュー、Enter キーでの展開、⌘↑ の1階層ナビゲーション、キーボードナビゲーション後のフォーカス、↓/↑キーでの先頭/末尾選択のいずれも確認済み。
+- **未着手**（1-10 以降）: 文字化け判定のプレビュー UI・手動オーバーライド（EN-01/EN-02、1-7 の残り）、Undo 基盤、環境設定（表示密度等の可変設定・キーバインドのカスタマイズ UI・タブバー常時表示トグル・右ペイン折りたたみ状態の永続化・サムネイルキャッシュの上限設定/手動クリア UI [IV-09] を含む）、通知基盤、診断ログ、右ペインの詳細情報（現状 1-2 の検証 UI が仮置き。「情報を見る」の自作シートはこの本実装で置き換える）、ラベルフィルタ（左ペイン下半分、現状プレースホルダ）、フォルダ登録（1-13、フォルダツリーの右クリックメニューもここで追加）、Apple Events 自動化（新規ターミナルで開く・Finder の「情報を見る」を直接呼ぶ、要 entitlement 追加）等。
 - 各 `Sources/{QooKit,QooPersistence,QooApplication}/*.swift` の中身はまだプレースホルダ（モジュール依存関係を検証するための最小限のマーカー型のみ）で、ドメインロジック・SwiftData モデルは一切実装していない。`QooInfrastructure` はサンドボックス／FS 検証のみ実装済み。
 
 作業を始める際は、対象領域の仕様書（下記 §2 の一覧）を該当箇所だけ `Read` してから着手する。仕様書は合計 18 ファイルあり、全部を毎回読み込む必要はない。要件定義書本体は `docs/Requirements/qooLibrary_要件定義書_v2.8.md` にある（約 2,900 行）。矛盾したときの優先順位は §1 参照。
@@ -296,7 +308,7 @@ Swift 6 言語モード、`StrictConcurrency` 有効。
 
 ```
 フェーズ0 基盤検証        T-13/T-12 の技術検証、ゴールデンサンプル収集開始、プロジェクト骨格 ← 完了
-フェーズ1 ファイルマネージャー  Finder 代替として日常使用できる状態             ← 進行中（1-1〜1-8 完了）
+フェーズ1 ファイルマネージャー  Finder 代替として日常使用できる状態             ← 進行中（1-1〜1-9 完了）
 フェーズ2 ライブラリマネージャー ラベル管理が実用レベル
 フェーズ3 テンポラリフォルダ   取り込み〜投入のワークフロー完結
 ```
@@ -313,7 +325,7 @@ Swift 6 言語モード、`StrictConcurrency` 有効。
 | 1-6 | ドラッグ＆ドロップ（DD-01〜DD-03, DD-05） | 完了 |
 | 1-7 | 圧縮・展開、文字化け対策、展開時のセキュリティ、ライセンス表記一式 | 完了（文字化け判定のプレビューUI・手動オーバーライド EN-01/EN-02 のみ未着手） |
 | 1-8 | キーボードショートカット（KB-01〜KB-05） | 完了（実装済み機能のみ実配線。他は登録済み・未配線） |
-| 1-9 | リスト表示・アイコン表示、サムネイル生成 | 着手中（リスト表示 LV-01〜LV-03・サムネイル基盤 完了。アイコン表示は未着手） |
+| 1-9 | リスト表示・アイコン表示、サムネイル生成 | 完了 |
 | 1-10〜1-15 | Undo、環境設定、通知基盤 等 | 未着手 |
 
 - フェーズ 1 の 4 制約（DP-01 Undo 基盤 / DP-05 FileOps 集約 / DP-07 mainContext 構成 / DP-08 通知基盤）は機能追加より先に固める。後付けは大規模改修になる。1-1 はこれらより前段の土台（プロジェクト構成・デザイントークン）であり、4 制約自体はまだ手を付けていない。
