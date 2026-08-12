@@ -115,11 +115,13 @@ private struct ThumbnailImage: View {
                     .resizable()
                     .aspectRatio(contentMode: .fit)
             } else {
-                Image(systemName: placeholderSystemImage)
+                // サムネイル生成中・生成不可（大半のファイルはここに留まる）は
+                // Finder と同じアイコンを表示する [ユーザー要望: SF Symbol の
+                // 代用アイコンでは視認性が良くない]。
+                Image(nsImage: FileIconProvider.shared.icon(for: entry.url))
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .foregroundStyle(.secondary)
-                    .padding(size * 0.18)
+                    .padding(size * 0.12)
             }
         }
         .frame(width: size, height: size)
@@ -131,11 +133,5 @@ private struct ThumbnailImage: View {
             }
             image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
         }
-    }
-
-    private var placeholderSystemImage: String {
-        if entry.isDirectory { return "folder.fill" }
-        if entry.archiveFormat != nil { return "doc.zipper" }
-        return "doc.fill"
     }
 }

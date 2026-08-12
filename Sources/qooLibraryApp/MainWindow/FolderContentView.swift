@@ -170,12 +170,14 @@ struct FolderContentView: View {
                 Table(displayedEntries, selection: $selection, sortOrder: $sortOrder) {
                     TableColumn("名前", sortUsing: FolderSortComparator(key: .name)) { entry in
                         rowCell(entry) {
-                            // `Label` だと "folder"/"doc" の SF Symbol の実測幅の違いで
-                            // 名前の先頭位置がフォルダとファイルでずれる（実機検証で発覚）。
-                            // アイコンを固定幅の枠に収めて Finder のように先頭を揃える。
+                            // アイコンを固定幅の枠に収めて Finder のように先頭を揃える
+                            // （実機検証で発覚: アイコンの実測幅がまちまちだと名前の
+                            // 先頭位置がずれる）。Finder と同じアイコン [ユーザー要望、
+                            // `FileIconProvider` 参照]。
                             HStack(spacing: Tokens.spacing.xs) {
-                                Image(systemName: entry.isDirectory ? "folder" : "doc")
-                                    .frame(width: 16, alignment: .center)
+                                Image(nsImage: FileIconProvider.shared.icon(for: entry.url))
+                                    .resizable()
+                                    .frame(width: 16, height: 16)
                                 Text(entry.name)
                             }
                             .font(.system(size: Tokens.fontSize.body))

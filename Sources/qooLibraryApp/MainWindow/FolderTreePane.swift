@@ -155,8 +155,17 @@ private struct FolderTreeRow: View {
                     .controlSize(.small)
             }
         } label: {
-            Label(node.displayName, systemImage: node.isSymlink ? "arrow.turn.up.right" : "folder")
-                .opacity(node.isOnline ? 1 : 0.4) // [LP-04]
+            Label {
+                Text(node.displayName)
+            } icon: {
+                // Finder と同じアイコン [ユーザー要望]。シンボリックリンクは
+                // `NSWorkspace` が対象種別のアイコンにエイリアスの矢印バッジを
+                // 重ねて返すため、以前のような専用の代用アイコンは不要になった。
+                Image(nsImage: FileIconProvider.shared.icon(for: node.url))
+                    .resizable()
+                    .frame(width: 16, height: 16)
+            }
+            .opacity(node.isOnline ? 1 : 0.4) // [LP-04]
                 .fontWeight(isSelected ? .semibold : .regular)
                 .padding(.horizontal, Tokens.spacing.xs)
                 .padding(.vertical, 2)
