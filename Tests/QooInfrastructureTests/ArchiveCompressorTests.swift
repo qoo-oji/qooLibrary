@@ -108,6 +108,37 @@ import Testing
         #expect(try String(contentsOf: destinationFolder.appendingPathComponent("a.zip"), encoding: .utf8) == "existing")
     }
 
+    /// [ユーザー要望] Windows で展開したときに `.DS_Store`/`._*`（AppleDouble
+    /// サイドカー、リソースフォーク等の Mac 固有メタデータを別ファイルとして
+    /// 保持する形式）がゴミとして残らないようにしたい、という要望への対応。
+    /// `addRecursively`（`LibarchiveBackend.swift`）が `FileManager.contentsOfDirectory`
+    /// を `.skipsHiddenFiles` 付きで呼んでおり、`.` で始まるこれらのファイルは
+    /// そもそも列挙されず zip に入らない。また実際に含まれるファイルも
+    /// `FileHandle` でデータフォークの中身だけを読んでおり（`copyfile`/xattr
+    /// 保持系 API は使っていない）、APFS 上のファイルが持つリソースフォーク
+    /// （`com.apple.ResourceFork` xattr）自体も最初から zip に含まれない。
+    /// 実装済みの既存動作を明示的にロックするための回帰テスト。
+    @Test func compressExcludesDSStoreAndAppleDoubleSidecarFiles() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sourceFolder = root.appendingPathComponent("MyBook")
+        try FileManager.default.createDirectory(at: sourceFolder, withIntermediateDirectories: true)
+        try Data("a".utf8).write(to: sourceFolder.appendingPathComponent("a.jpg"))
+        try Data("ds-store".utf8).write(to: sourceFolder.appendingPathComponent(".DS_Store"))
+        try Data("apple-double".utf8).write(to: sourceFolder.appendingPathComponent("._a.jpg"))
+        let destinationFolder = root.appendingPathComponent("dest")
+        try FileManager.default.createDirectory(at: destinationFolder, withIntermediateDirectories: true)
+        let stagingRoot = root.appendingPathComponent("staging", isDirectory: true)
+
+        let zipURL = try await ArchiveCompressor(stagingRoot: stagingRoot).compress(
+            [sourceFolder], destinationName: "MyBook", in: destinationFolder
+        )
+
+        let listing = try await LibarchiveBackend.shared.listEntries(zipURL)
+        let names = Set(listing.entries.map(\.pathname))
+        #expect(names == ["MyBook/", "MyBook/a.jpg"])
+    }
+
     @Test func compressDoesNotLeaveResidualStaging() async throws {
         let root = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: root) }
