@@ -4,7 +4,7 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
 
 ## 0. 現在の状態
 
-**フェーズ 0（基盤検証）完了。フェーズ 1（ファイルマネージャー）着手済み（1-1〜1-11 完了）。**
+**フェーズ 0（基盤検証）完了。フェーズ 1（ファイルマネージャー）着手済み（1-1〜1-11・1-13 完了。1-12/1-12b は依存関係上ブロックされていないため 1-13 を先に着手した）。**
 
 ### フェーズ 0（`17_実装ロードマップ.md` §17.2、全項目完了）
 
@@ -15,7 +15,7 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
 - 静的検査 `Scripts/check-fileops-isolation.swift`（B-10）・`check-layer-dependencies.swift`（B-11）・`check-json-completeness.swift`（B-13, 現状はプレースホルダ）と CI（`.github/workflows/ci.yml`）を用意した。
 - **既知の懸念（要フォローアップ）**: libarchive 3.8.9 は特定の壊れた RAR 入力（use-after-free の回帰テストファイル）でクラッシュする（エラーを返さず異常終了）。`SecureExtractor`（09章 §9.3）実装時に対処を検討する必要がある。詳細は `Spikes/README.md` の T-12 節。
 
-### フェーズ 1（`17_実装ロードマップ.md` §17.3、1-1〜1-11 完了・1-12 以降未着手）
+### フェーズ 1（`17_実装ロードマップ.md` §17.3、1-1〜1-11・1-13 完了・1-12/1-12b/1-14/1-15 未着手）
 
 - **1-1 プロジェクト基盤が完了。** `qooLibrary.xcodeproj` は `project.yml` から `xcodegen generate` で生成する（**git-ignore 対象、手で pbxproj を編集しない**。ThirdParty の xcframework と同じ「生成物はコミットしない」方針）。ローカルの SwiftPM パッケージ（`QooKit`/`QooPersistence`/`QooInfrastructure`/`QooApplication`）を local package dependency として参照し、実機で起動確認済み。
 - App Sandbox entitlement（`Sources/qooLibraryApp/qooLibrary.entitlements`）を付与済み。`codesign -d --entitlements :-` で署名済みバイナリに実際に反映されていることを確認済み [SB-01]。
@@ -208,6 +208,14 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
 - **フォルダツリー・アイコン表示の選択ハイライト色を AppKit のシステム標準色に変更した**（要件定義書には無い、ユーザーからの要望: 独自の半透明アクセントカラーだと Finder のような青にならないという指摘）。
   - `FolderTreePane.swift`: `Color(nsColor: .selectedContentBackgroundColor)` に変更（このツリーはフォーカスの概念を持たない表示専用の選択のため常に強調表示）。選択時の文字色も `.alternateSelectedControlTextColor`（白）にして濃い青背景でのコントラストを確保。
   - `IconGridView.swift`: `Table` と同じくフォーカスの有無で `selectedContentBackgroundColor`（濃い青）と `unemphasizedSelectedContentBackgroundColor`（灰色）を切り替えるようにした（`FolderContentView.isListFocused` を新しい `isFocused` パラメータとして受け取る）。選択時の文字色もフォーカスありのときだけ白にする。
+- **1-13（ライブラリ／テンポラリフォルダの登録・削除、RG-01〜RG-08）が完了した。** 1-12/1-12b より依存関係上先に着手できたため、ロードマップの番号順を飛ばして先に実装した（1-13 の依存は 1-2/1-4 のみ）。
+  - **ロードマップの注記通り「エイリアス相当」に留めた。** SwiftData（`Library`/`TemporaryFolder` モデル）がまだ無いため、`Sources/QooInfrastructure/FileOps/RegisteredFolderStore.swift`（新規）は実フォルダへの参照（Security-Scoped Bookmark）と表示名だけを持つ軽量なレコードを JSON（`Application Support/qooLibrary/registeredFolders.json`）で永続化する `actor`。8章 §8.7 疑似コードの①〜④（シンボリックリンク解決 [SL-07]、入れ子禁止 [RG-03][RG-04]、FS 適合検証 [RG-08]、ブックマーク生成 [RG-07]）は実装したが、⑤（テンプレート適用・初回フルスキャン）はラベル・スキャンドメインが無い Phase 1 のスコープ外。RG-06（登録解除時のラベル保持選択）もラベル自体が無いため意味を持たず、単純に削除するのみにした。
+  - **Security-Scoped Bookmark は「登録されている間はアプリ終了までアクセスを開始したまま保持する」方針にした**（個々の読み取り操作のたびに `startAccessing`/`stopAccessing` するのではない）[1-2 の実機検証で確認済みのパターンの応用]。これにより `FolderTreeNode.children(of:)`/`FolderContentView.reload()` など、既存の素の `FileManager` 呼び出し（読み取り専用、FileOps 隔離検査の対象外）を一切変更せずに登録フォルダにも対応できた。
+  - **すべての公開メソッドの先頭で `ensureLoaded()`（初回だけ JSON 読み込み＋ブックマークのアクセス開始）を呼ぶ設計にした。** 当初はアプリ起動時に明示的に1回だけ `loadAndActivateAll()` を呼ぶだけの設計だったが、`FolderTreePane` 側の `.task` も独立して起動時に同じストアへアクセスするため、どちらが先に実行されるか保証できないレースコンディションになると気づき、呼び出し順序に依存しない設計に直した。
+  - `Sources/qooLibraryApp/MainWindow/FolderTreePane.swift`: 「テンポラリフォルダ」「ライブラリフォルダ」見出しの「+」ボタンで `NSOpenPanel` を開いて登録する（DD-04 のドロップ登録は今回のスコープ外、後日検討）。登録済みフォルダは解決した URL から `FolderTreeNode` を構築し、既存の `FolderTreeRow`（ボリューム行と共通）でそのまま表示・展開・D&D できる。登録ルート行にだけ右クリックメニュー（「表示名を変更…」[RG-05]・「登録解除」）を出す（`registeredFolder`/`onRename`/`onUnregister` を再帰呼び出しでは `nil` のままにすることで、実フォルダの深い階層に誤ってメニューが出ないようにしている）。ブックマーク解決に失敗した場合（ボリューム未接続等 [SB-05]）は専用のグレーアウト行（`OfflineRegisteredFolderRow`）を表示し、そこからも登録解除だけはできる。
+  - `Sources/qooLibraryApp/qooLibraryApp.swift`: 起動時に `RegisteredFolderStore.shared.loadAndActivateAll()` を呼ぶ（`SecureExtractor.cleanupResidualStaging()` と同じ `init()` 内の `Task`）。
+  - `Tests/QooInfrastructureTests/RegisteredFolderStoreTests.swift`（新規8件）: 登録・種別ごとの一覧取得・入れ子禁止（祖先・子孫の両方向）・登録解除・表示名変更・別インスタンス間での永続化・FS 非対応時の拒否（フェイクの `VolumeEligibilityChecking` で模擬）を検証。実際の Security-Scoped Bookmark 生成・解決は非サンドボックスの `swift test` プロセスでも成功する（サンドボックス外ではスコープ強制自体が無効なだけで API 自体は動く、既存の `SecurityScopedBookmarkResolverTests` と同じ前提）ため、フェイクを使わず実装をそのままテストしている。
+  - **実機検証（ユーザーによる手動確認）で完了。** 「+」ボタンでのライブラリ／テンポラリ登録、登録フォルダのツリー表示・展開、登録解除、表示名変更のいずれも確認済み。
 - `QooApplication` は 1-11 で `Command`/`CommandStack`（ファイル操作の Undo 基盤）が実装され、プレースホルダの段階を脱した。`QooKit`/`QooPersistence` の中身はまだプレースホルダ（モジュール依存関係を検証するための最小限のマーカー型のみ）で、ドメインロジック・SwiftData モデルは一切実装していない。`QooInfrastructure` はサンドボックス／FS 検証・ファイル操作・アーカイブ・サムネイルを実装済み（DB 依存部分のみ未実装）。
 
 作業を始める際は、対象領域の仕様書（下記 §2 の一覧）を該当箇所だけ `Read` してから着手する。仕様書は合計 18 ファイルあり、全部を毎回読み込む必要はない。要件定義書本体は `docs/Requirements/qooLibrary_要件定義書_v2.8.md` にある（約 2,900 行）。矛盾したときの優先順位は §1 参照。
@@ -353,7 +361,7 @@ Swift 6 言語モード、`StrictConcurrency` 有効。
 
 ```
 フェーズ0 基盤検証        T-13/T-12 の技術検証、ゴールデンサンプル収集開始、プロジェクト骨格 ← 完了
-フェーズ1 ファイルマネージャー  Finder 代替として日常使用できる状態             ← 進行中（1-1〜1-11 完了）
+フェーズ1 ファイルマネージャー  Finder 代替として日常使用できる状態             ← 進行中（1-1〜1-11・1-13 完了）
 フェーズ2 ライブラリマネージャー ラベル管理が実用レベル
 フェーズ3 テンポラリフォルダ   取り込み〜投入のワークフロー完結
 ```
@@ -373,7 +381,8 @@ Swift 6 言語モード、`StrictConcurrency` 有効。
 | 1-9 | リスト表示・アイコン表示、サムネイル生成 | 完了 |
 | 1-10 | 右ペイン（詳細情報表示、DT-01〜DT-07/DT-10） | 完了 |
 | 1-11 | Undo 基盤（ファイル操作のみ、UD-01〜UD-11/HS-01〜HS-04） | 完了 |
-| 1-12〜1-15 | 環境設定、通知基盤 等 | 未着手 |
+| 1-13 | ライブラリ／テンポラリフォルダの登録・削除（エイリアス相当、RG-01〜RG-08） | 完了 |
+| 1-12/1-12b/1-14/1-15 | 環境設定、通知基盤、Quick Look 等、診断ログ | 未着手 |
 
 - フェーズ 1 の 4 制約（DP-01 Undo 基盤 / DP-05 FileOps 集約 / DP-07 mainContext 構成 / DP-08 通知基盤）は機能追加より先に固める。後付けは大規模改修になる。DP-05（FileOps 集約）は 1-5 で、DP-01（Undo 基盤）は 1-11 でそれぞれ完了済み。DP-07（mainContext 構成）は SwiftData 導入（フェーズ2）まで対象外、DP-08（通知基盤）は 1-12b が対象。
 - フェーズ 2 の最初に `VersionedSchema` を導入する。パーサ（`QooKit`）は永続化と並行実装できるため早期着手を推奨。

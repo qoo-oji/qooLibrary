@@ -20,6 +20,12 @@ struct QooLibraryApp: App {
         Task {
             await SecureExtractor.cleanupResidualStaging()
         }
+        // 登録済みライブラリ／テンポラリフォルダを読み込み、Security-Scoped
+        // Bookmark へのアクセスをアプリ終了まで開始したままにする [1-13、
+        // `RegisteredFolderStore.loadAndActivateAll()` のコメント参照]。
+        Task {
+            await RegisteredFolderStore.shared.loadAndActivateAll()
+        }
     }
 
     var body: some Scene {
