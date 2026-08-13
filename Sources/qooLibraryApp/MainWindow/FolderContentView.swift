@@ -54,9 +54,6 @@ struct FolderContentView: View {
     /// 圧縮・展開など数秒かかることがある処理の実行中表示 [UI-09]。
     /// バイト単位の進捗（`ProgressReporter`）はまだ無いため不定進捗のみ。
     @State private var busyMessage: String?
-    /// 「情報を見る」で表示する対象。1-10（右ペイン詳細情報）の本実装までの
-    /// 暫定的な簡易シート。
-    @State private var infoTargets: [FolderEntry]?
     /// リスト表示の現在のソート順 [LV-01]。タブ切替をまたいで保持されて構わない
     /// 軽微な状態のため `WindowState`/`TabState` へは持ち上げず、他の一時的な
     /// `@State`（`selectionAnchor` 等）と同じくこのビュー内で完結させる。
@@ -348,11 +345,6 @@ struct FolderContentView: View {
         } message: {
             Text(actionError ?? "")
         }
-        .sheet(isPresented: Binding(get: { infoTargets != nil }, set: { if !$0 { infoTargets = nil } })) {
-            if let infoTargets {
-                FileInfoSheet(entries: infoTargets, sizeFormatter: Self.sizeFormatter, dateFormatter: Self.dateFormatter)
-            }
-        }
     }
 
     private var renamingBinding: Binding<Bool> {
@@ -532,7 +524,8 @@ struct FolderContentView: View {
             Button(targetEntries.allSatisfy(\.isLocked) ? "ロック解除" : "ロック") {
                 toggleLock(targetEntries)
             }
-            Button("情報を見る") { infoTargets = targetEntries } // [簡易版、1-10 で本実装]
+            // 「情報を見る」の簡易シートは 1-10 で常設の右ペイン
+            // インスペクタ（`InspectorPane`）に置き換えたため削除した。
         }
     }
 
@@ -830,43 +823,6 @@ struct FolderContentView: View {
                 actionError = error.localizedDescription
             }
         }
-    }
-}
-
-/// 「情報を見る」の簡易表示。1-10（右ペイン詳細情報の本実装、カバー画像・
-/// ラベル・評価を含む）ができるまでの暫定版で、基本的なファイル情報のみ。
-private struct FileInfoSheet: View {
-    let entries: [FolderEntry]
-    let sizeFormatter: ByteCountFormatter
-    let dateFormatter: DateFormatter
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Tokens.spacing.m) {
-            if entries.count == 1, let entry = entries.first {
-                Text(entry.name)
-                    .font(.system(size: Tokens.fontSize.title2, weight: .semibold))
-                Divider()
-                LabeledContent("種類", value: entry.kindDescription)
-                LabeledContent("サイズ", value: entry.isDirectory ? "—" : sizeFormatter.string(fromByteCount: entry.fileSize ?? 0))
-                LabeledContent("変更日", value: entry.modificationDate.map { dateFormatter.string(from: $0) } ?? "—")
-                LabeledContent("場所", value: entry.url.deletingLastPathComponent().path)
-                LabeledContent("ロック", value: entry.isLocked ? "はい" : "いいえ")
-            } else {
-                Text("\(entries.count) 項目")
-                    .font(.system(size: Tokens.fontSize.title2, weight: .semibold))
-                Divider()
-                let totalSize = entries.filter { !$0.isDirectory }.reduce(Int64(0)) { $0 + ($1.fileSize ?? 0) }
-                LabeledContent("合計サイズ", value: sizeFormatter.string(fromByteCount: totalSize))
-            }
-            Spacer()
-            HStack {
-                Spacer()
-                Button("閉じる") { dismiss() }
-            }
-        }
-        .padding(Tokens.spacing.l)
-        .frame(minWidth: 320, minHeight: 200)
     }
 }
 

@@ -74,8 +74,10 @@ struct MainWindowView: View {
                     PlaceholderPane(title: "タブがありません", subtitle: "")
                 }
             } right: {
-                // 1-10（詳細情報ペイン）の実装まで、1-2 の実機検証 UI を仮置きする。
-                SandboxVerificationView()
+                InspectorPane(
+                    folder: windowState.currentTabIndex.flatMap { windowState.tabs[$0].folder },
+                    selection: windowState.currentTabIndex.map { windowState.tabs[$0].selection } ?? []
+                )
             }
         }
         .frame(minWidth: 900, minHeight: 560)
