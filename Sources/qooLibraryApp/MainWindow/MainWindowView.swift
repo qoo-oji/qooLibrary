@@ -56,6 +56,13 @@ struct MainWindowView: View {
     /// 旧 `ThreePaneWindow` 時代と同じものを使い、既存の保存値を引き継ぐ。
     @AppStorage("qoo.threePane.main.leftWidth") private var leftWidth: Double = 220
     @AppStorage("qoo.threePane.main.rightWidth") private var rightWidth: Double = 280
+    /// 2本指の横スワイプを戻る/進むとして使うか、通常の横スクロールとして
+    /// 使うか [ユーザー要望: どちらか一方しか選べないトレードオフを、ユーザー
+    /// 自身に選ばせる]。空きスペースの右クリックメニュー
+    /// （`FolderContentView.swift`）で切り替える。`false` を選んだ場合は
+    /// 3本指スワイプ（OS 側で「ページ間をスワイプ」を3本指に設定する必要が
+    /// ある）が戻る/進むの手段になる。
+    @AppStorage("qoo.twoFingerSwipeForNavigation") private var twoFingerSwipeForNavigation = true
 
     /// `initialFolder` は `WindowGroup(for: URL.self)` から渡される値。⌘N や
     /// Dock からの起動では `nil`（既定の仮想ホーム）、「新規ウインドウで開く」
@@ -247,6 +254,18 @@ struct MainWindowView: View {
         }
         .frame(minWidth: 900, minHeight: 560)
         .windowFrameAutosave("qoo.MainWindow") // [実機検証時のユーザー要望]
+        // マウスのサイドボタン・トラックパッドのスワイプでの戻る/進む
+        // [ユーザー要望、13章 §13.6「将来検討」に記録していたものを実装]。
+        // ウインドウ直下（`MainWindowView`）に1回だけ適用する
+        // [`BackForwardGestureSupport.swift` のコメント参照: タブごとに
+        // 再生成されうる `FolderContentView` に付けるとジェスチャー途中で
+        // モニタが再設置され、イベントストリームが途切れることを実機検証で
+        // 確認した]。
+        .backForwardGestureSupport(
+            onGoBack: { windowState.goBack() },
+            onGoForward: { windowState.goForward() },
+            twoFingerSwipeForNavigation: twoFingerSwipeForNavigation
+        )
         .background {
             Group {
                 KeyBindingButtons(action: .newTab, store: keyBindingStore) {

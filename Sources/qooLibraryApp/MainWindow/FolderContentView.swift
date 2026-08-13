@@ -75,7 +75,11 @@ struct FolderContentView: View {
     @AppStorage("qoo.folderList.showSizeColumn") private var showSizeColumn = true
     @AppStorage("qoo.folderList.showKindColumn") private var showKindColumn = true
     @AppStorage("qoo.folderList.groupFoldersAtTop") private var groupFoldersAtTop = true
-
+    /// 2本指の横スワイプを戻る/進むとして使うか、通常の横スクロールとして
+    /// 使うか [ユーザー要望]。実際の判定は `MainWindowView` の
+    /// `backForwardGestureSupport` が行うが、同じ `UserDefaults` キーを
+    /// `@AppStorage` で共有することで、ここでの変更が即座に反映される。
+    @AppStorage("qoo.twoFingerSwipeForNavigation") private var twoFingerSwipeForNavigation = true
     /// キーバインド [13章 §13.6]。1-8 時点では開く・リネーム・ゴミ箱・
     /// 新規フォルダのみ実際に配線している（他の既定バインドは対応する
     /// 機能が実装され次第、各所で `keyBindingStore.binding(for:)` を参照する）。
@@ -239,6 +243,7 @@ struct FolderContentView: View {
                 .onKeyPress(.upArrow) {
                     selectFirstOrLastIfNoneSelected(first: false) ? .handled : .ignored
                 }
+                .background(TableHorizontalScrollDisabler())
             }
 
             if let folder {
@@ -544,6 +549,21 @@ struct FolderContentView: View {
                 // アイコン表示にはこの設定への導線が無かったため、ここに置くことで
                 // リスト・アイコン両方から到達できるようにした [LV-03 の導線拡張]。
                 Toggle("フォルダを上にまとめる", isOn: $groupFoldersAtTop)
+            }
+            Menu("2本指の横スワイプ") { // [ユーザー要望: 2本指横スワイプを戻る/
+                // 進むと通常のスクロールのどちらに使うか、トレードオフを
+                // ユーザー自身に選ばせる]
+                Picker("2本指の横スワイプ", selection: $twoFingerSwipeForNavigation) {
+                    Text("戻る/進むとして使う").tag(true)
+                    Text("スクロールとして使う").tag(false)
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
+                if !twoFingerSwipeForNavigation {
+                    Text("戻る/進むは3本指のスワイプで行えます。システム設定 > トラックパッド > その他のジェスチャー で「ページ間をスワイプ」を3本指に設定してください。")
+                        .font(.system(size: Tokens.fontSize.caption))
+                        .foregroundStyle(.secondary)
+                }
             }
             Divider()
             Button("新規フォルダ") {
@@ -1096,5 +1116,55 @@ struct PathBarView: View {
         // [ユーザー要望: モード依存コントロールをパスバー行の右端へ統合]。
         .frame(maxWidth: .infinity, alignment: .leading)
         .clipped()
+    }
+}
+
+/// `Table`（`NSTableView`/`NSScrollView` 内包）の水平方向のスクロールバー・
+/// 端でのバウンスを見た目だけ抑える [マウス・トラックパッドでの戻る/進む機能
+/// `BackForwardGestureSupport` 実装時に追加]。`Table` の4カラムがウインドウ幅を
+/// 超えるとカラムが見切れるが、ウインドウ幅を広げる／カラムを非表示にする
+/// （LV-02）ことで対処できるため、このトレードオフを許容する。
+///
+/// **実際に横スワイプのジェスチャーを `Table` に渡さないようにする本体の対処は
+/// ここではなく `BackForwardGestureSupport.swift` 側で行っている**（横方向優位の
+/// `.scrollWheel` イベントをグローバルモニタの段階で `nil` を返して握りつぶし、
+/// `Table` を含め以降どの view にも配送されないようにする）。当初はここで
+/// `Table` の内部 `NSScrollView`（実体は `ListCoreScrollView`、SwiftUI 内部の
+/// private なサブクラス）を実行時に isa 差し替え（`object_setClass`）して
+/// `scrollWheel(with:)` を上書きする方式を試したが、`ListCoreScrollView` 独自の
+/// 描画・挙動（実機のビュー階層ダンプで確認した `NSScrollPocket`/`BackdropView`
+/// 等の視覚効果）を丸ごと破壊するリスクがあり、かつ `.background()` で配置した
+/// このビューは `Table` の内部スクロールビューの子孫ではなく共通の祖先を持つ
+/// 「兄弟」だったため `enclosingScrollView`（祖先方向のみ探索）では見つけられ
+/// ないことも判明した。イベント配送そのものを止める方が対象の型に依存せず
+/// 安全なため、そちらへ切り替えた。
+private struct TableHorizontalScrollDisabler: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        TableHorizontalScrollDisablerView()
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+private final class TableHorizontalScrollDisablerView: NSView {
+    private var hasApplied = false
+
+    override var intrinsicContentSize: NSSize { NSSize(width: 0, height: 0) }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        applyIfNeeded()
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        applyIfNeeded()
+    }
+
+    private func applyIfNeeded() {
+        guard !hasApplied, let scrollView = enclosingScrollView else { return }
+        hasApplied = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.horizontalScrollElasticity = .none
     }
 }
