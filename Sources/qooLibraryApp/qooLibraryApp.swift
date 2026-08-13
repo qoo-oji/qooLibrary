@@ -30,9 +30,24 @@ struct QooLibraryApp: App {
         WindowGroup(for: URL.self) { $initialFolder in
             MainWindowView(initialFolder: initialFolder)
         }
+        .windowResizability(.automatic)
+        .defaultSize(width: 900, height: 560)
+        // ゾンビウインドウ対策 [設計判断、qooViewer（姉妹プロジェクト）の実機
+        // バグ報告を踏まえた予防的対応]。SwiftUI の `WindowGroup` 標準の状態
+        // 復元（ウインドウが無い状態から再アクティブ化されたとき等に前回の
+        // ウインドウを復元しようとする仕組み）が、閉じたはずの古い `NSWindow`
+        // を再利用してしまい中身が正しく描画されない・`onAppear` が意図せず
+        // 再発火するなどの不具合を招くことがあると報告されている。ウインドウの
+        // 位置・サイズの記憶は `windowFrameAutosave`（自前の `UserDefaults`
+        // ベースの仕組み）で行っており、この標準の状態復元には依存していない
+        // ため、無効化しても既存機能に影響しない。
+        .restorationBehavior(.disabled)
         .commands {
             CommandGroup(replacing: .appInfo) {
                 AboutMenuButton()
+            }
+            CommandGroup(replacing: .undoRedo) {
+                UndoRedoMenuCommands()
             }
         }
 
@@ -50,5 +65,32 @@ private struct AboutMenuButton: View {
         Button("qooLibrary について") {
             openWindow(id: "about")
         }
+    }
+}
+
+/// Edit メニューの「取り消す」/「やり直す」[UD-06]。実際のキーボード
+/// ショートカット（⌘Z/⇧⌘Z）はここでは付けない
+/// — `DefaultKeyBindings`/`KeyBindingButtons`（`MainWindowView` の
+/// `.background` 参照）がアプリの唯一の配線経路になるようにするため
+/// [設計判断、1-8 以来の他のショートカットと同じ仕組みに揃える]。ここは
+/// 動的なタイトルを出す発見可能なメニュー項目としての役割のみを持つ。
+private struct UndoRedoMenuCommands: View {
+    var body: some View {
+        let stack = CommandStack.shared
+        Button(stack.undoTitle.map { "\($0)を取り消す" } ?? "取り消す") {
+            Task {
+                await CommandStack.shared.undo()
+                SessionState.shared.reloadToken += 1 // [実機検証で発見: 一覧再読み込みの伝達漏れ]
+            }
+        }
+        .disabled(!stack.canUndo)
+
+        Button(stack.redoTitle.map { "\($0)をやり直す" } ?? "やり直す") {
+            Task {
+                await CommandStack.shared.redo()
+                SessionState.shared.reloadToken += 1
+            }
+        }
+        .disabled(!stack.canRedo)
     }
 }

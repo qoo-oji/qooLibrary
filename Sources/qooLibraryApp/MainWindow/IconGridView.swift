@@ -30,6 +30,23 @@ struct IconGridView<MenuContent: View>: View {
     /// （`FolderContentView.contextMenuContent(for:)` が既に空集合の場合の
     /// 「新規フォルダ」「ペースト」を用意しているため、ここで別途持つ必要が無い）。
     @ViewBuilder let contextMenuContent: (Set<URL>) -> MenuContent
+    /// Finder 流のインライン名前編集 [ユーザー要望]。トリガー判定
+    /// （「既に選択済みの項目をもう一度クリック」の遅延判定）自体は
+    /// `FolderContentView.handleSingleClick` に委譲しており（`onSingleClick`
+    /// 経由、二重実装を避ける）、ここでは `renamingURL` に応じてセルの表示を
+    /// 名前 `Text` から `TextField` へ切り替えるだけを担当する。
+    let renamingURL: URL?
+    @Binding var renameText: String
+    var isRenameFieldFocused: FocusState<Bool>.Binding
+    let onCommitRename: () -> Void
+    let onCancelRename: () -> Void
+    /// 選択ハイライトの濃淡切り替え用 [実機検証時のユーザー指摘: 独自の
+    /// 半透明アクセントカラーだと Finder のような青にならない]。`Table` は
+    /// AppKit がフォーカス状態に応じて濃い青（フォーカスあり）と灰色
+    /// （フォーカスなし）を自動的に切り替えるが、`LazyVGrid` にはその仕組みが
+    /// 無いため、`FolderContentView` の `isListFocused` をそのまま受け取って
+    /// 同じ判定をここでも再現する。
+    let isFocused: Bool
 
     private var columns: [GridItem] {
         [GridItem(.adaptive(minimum: iconSize + 32), spacing: Tokens.spacing.m)]
@@ -61,33 +78,101 @@ struct IconGridView<MenuContent: View>: View {
 
     @ViewBuilder
     private func cell(for entry: FolderEntry) -> some View {
+        let isRenaming = renamingURL == entry.url
         VStack(spacing: Tokens.spacing.xs) {
             ThumbnailImage(entry: entry, size: iconSize)
-            Text(entry.name)
-                .font(.system(size: Tokens.fontSize.caption))
-                .lineLimit(2)
-                .multilineTextAlignment(.center)
-                .frame(height: Tokens.fontSize.caption * 2.4)
+            if isRenaming {
+                // Finder 流のインライン名前編集 [ユーザー要望]。
+                TextField("名前", text: $renameText)
+                    .textFieldStyle(.plain)
+                    .multilineTextAlignment(.center)
+                    .font(.system(size: Tokens.fontSize.caption))
+                    .focused(isRenameFieldFocused)
+                    .onSubmit { onCommitRename() }
+                    .onExitCommand { onCancelRename() }
+                    .onAppear {
+                        isRenameFieldFocused.wrappedValue = true
+                        // フィールドエディタが割り当てられた後でないと選択範囲を
+                        // 操作できないため 1 サイクル遅らせる。
+                        DispatchQueue.main.async {
+                            InlineRenameSupport.selectBaseNameIfApplicable(for: entry)
+                        }
+                    }
+                    .onChange(of: isRenameFieldFocused.wrappedValue) { _, focused in
+                        if !focused, renamingURL == entry.url {
+                            onCommitRename()
+                        }
+                    }
+                    .frame(height: Tokens.fontSize.caption * 2.4)
+            } else {
+                Text(entry.name)
+                    .font(.system(size: Tokens.fontSize.caption))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    // 濃い青の背景に対して黒文字だとコントラストが低いため、
+                    // Finder と同じくフォーカスありの選択中は白文字にする。
+                    .foregroundStyle(
+                        selection.contains(entry.url) && isFocused
+                            ? Color(nsColor: .alternateSelectedControlTextColor) : Color.primary
+                    )
+                    .frame(height: Tokens.fontSize.caption * 2.4)
+            }
         }
         .padding(Tokens.spacing.xs)
         .frame(width: iconSize + 32)
-        .background(selection.contains(entry.url) ? Tokens.Colors.accent.opacity(0.18) : Color.clear)
+        // 選択のハイライトは AppKit のシステム標準色を使い、`Table` と同じく
+        // フォーカスの有無で濃い青／灰色を切り替える
+        // [実機検証時のユーザー指摘: 独自の半透明アクセントカラーだと Finder
+        // のような青にならない]。
+        .background(selectionBackground(for: entry))
         .clipShape(RoundedRectangle(cornerRadius: Tokens.radius.s))
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) {
-            if entry.isDirectory { onNavigate(entry.url) }
-        }
-        // `FolderContentView.rowCell` と同じ理由で `.simultaneousGesture` に
-        // している（単発クリックの選択発火をダブルクリック判定の待ち時間から
-        // 外し、即座に反応させる）。
-        .simultaneousGesture(TapGesture(count: 1).onEnded {
-            onSingleClick(entry)
-        })
         .contextMenu {
             contextMenuContent(targets(for: entry))
         }
-        .draggable(containerItemID: entry.url, containerNamespace: dragNamespace)
-        .modifier(DropIntoFolderModifier(entry: entry, reload: onReload, onFailure: onDropFailure))
+        .modifier(IconCellGestures(
+            isEnabled: !isRenaming,
+            entry: entry,
+            dragNamespace: dragNamespace,
+            onNavigate: onNavigate,
+            onSingleClick: onSingleClick,
+            onReload: onReload,
+            onDropFailure: onDropFailure
+        ))
+    }
+
+    /// セルの選択・ダブルクリック・D&D 用ジェスチャ一式。`isEnabled == false`
+    /// （インライン編集中）のときは何も付けない
+    /// （`FolderContentView.rowCell` の `isRenaming` 分岐と同じ理由: `TextField`
+    /// 自身のクリックが誤って選択操作やリネームの再トリガーとして扱われるのを
+    /// 防ぐため）。
+    private struct IconCellGestures: ViewModifier {
+        let isEnabled: Bool
+        let entry: FolderEntry
+        let dragNamespace: Namespace.ID
+        let onNavigate: (URL) -> Void
+        let onSingleClick: (FolderEntry) -> Void
+        let onReload: () -> Void
+        let onDropFailure: (String) -> Void
+
+        func body(content: Content) -> some View {
+            if isEnabled {
+                content
+                    .onTapGesture(count: 2) {
+                        if entry.isDirectory { onNavigate(entry.url) }
+                    }
+                    // `FolderContentView.rowCell` と同じ理由で
+                    // `.simultaneousGesture` にしている（単発クリックの選択発火を
+                    // ダブルクリック判定の待ち時間から外し、即座に反応させる）。
+                    .simultaneousGesture(TapGesture(count: 1).onEnded {
+                        onSingleClick(entry)
+                    })
+                    .draggable(containerItemID: entry.url, containerNamespace: dragNamespace)
+                    .modifier(DropIntoFolderModifier(entry: entry, reload: onReload, onFailure: onDropFailure))
+            } else {
+                content
+            }
+        }
     }
 
     /// 右クリックした項目が現在の選択に含まれていれば選択全体、そうでなければ
@@ -95,6 +180,13 @@ struct IconGridView<MenuContent: View>: View {
     /// 自動でやってくれるが、`LazyVGrid` では自前で判定する）。
     private func targets(for entry: FolderEntry) -> Set<URL> {
         selection.contains(entry.url) ? selection : [entry.url]
+    }
+
+    private func selectionBackground(for entry: FolderEntry) -> Color {
+        guard selection.contains(entry.url) else { return .clear }
+        return isFocused
+            ? Color(nsColor: .selectedContentBackgroundColor)
+            : Color(nsColor: .unemphasizedSelectedContentBackgroundColor)
     }
 }
 

@@ -1,3 +1,4 @@
+import QooApplication
 import QooInfrastructure
 import QooKit
 import SwiftUI
@@ -18,14 +19,20 @@ struct MainWindowView: View {
     /// 右ペインをたたむ（隠す）[実機検証時のユーザー要望]。`@AppStorage` には
     /// 意図的にしていない（`ThreePaneWindow.isRightPaneCollapsed` のコメント
     /// 参照、タブバーの表示/非表示で踏んだハング不具合と同じ危険なパターンを
-    /// 避けるため）。再起動をまたいでは保持されないが、セッション中は保持される。
-    @State private var isRightPaneCollapsed = false
+    /// 避けるため、この値を使う `if` 条件では `@AppStorage` を直接読まない）。
+    /// その代わり、初期値だけ `init` で `UserDefaults` から**素の値として**
+    /// 読み込み（リアクティブな購読ではない）、トグル時に明示的に書き戻す
+    /// [実機検証時のユーザー要望: 新規ウインドウを既存ウインドウの表示状態に
+    /// 揃えたい／再起動をまたいでも保持したい、の両方に対応]。
+    @State private var isRightPaneCollapsed: Bool
+    private static let isRightPaneCollapsedKey = "qoo.mainWindow.isRightPaneCollapsed"
 
     /// `initialFolder` は `WindowGroup(for: URL.self)` から渡される値。⌘N や
     /// Dock からの起動では `nil`（既定の仮想ホーム）、「新規ウインドウで開く」
     /// からは特定のフォルダになる。
     init(initialFolder: URL?) {
         _windowState = State(initialValue: initialFolder.map(WindowState.init(initialFolder:)) ?? WindowState())
+        _isRightPaneCollapsed = State(initialValue: UserDefaults.standard.bool(forKey: Self.isRightPaneCollapsedKey))
     }
 
     var body: some View {
@@ -81,9 +88,30 @@ struct MainWindowView: View {
             }
         }
         .frame(minWidth: 900, minHeight: 560)
+        .windowFrameAutosave("qoo.MainWindow") // [実機検証時のユーザー要望]
         .background {
-            KeyBindingButtons(action: .newTab, store: keyBindingStore) {
-                windowState.openDefaultTab()
+            Group {
+                KeyBindingButtons(action: .newTab, store: keyBindingStore) {
+                    windowState.openDefaultTab()
+                }
+                // [UD-02] Undo/Redo はウインドウ単位ではなくアプリ全体で単一の
+                // `CommandStack.shared` を操作するため、特定のタブ/フォルダに
+                // 依存せずここ（ウインドウ直下）に配線する。
+                KeyBindingButtons(action: .undo, store: keyBindingStore, isDisabled: !CommandStack.shared.canUndo) {
+                    Task {
+                        await CommandStack.shared.undo()
+                        // ファイル操作系の他の経路と同じく、Undo 後も一覧の再読み込みを
+                        // 明示的に伝える必要がある [実機検証で発見: 忘れていたため
+                        // Undo 自体は成功していても画面が古いままだった]。
+                        SessionState.shared.reloadToken += 1
+                    }
+                }
+                KeyBindingButtons(action: .redo, store: keyBindingStore, isDisabled: !CommandStack.shared.canRedo) {
+                    Task {
+                        await CommandStack.shared.redo()
+                        SessionState.shared.reloadToken += 1
+                    }
+                }
             }
             .frame(width: 0, height: 0)
             .opacity(0)
@@ -92,6 +120,7 @@ struct MainWindowView: View {
             ToolbarItem {
                 Button {
                     isRightPaneCollapsed.toggle()
+                    UserDefaults.standard.set(isRightPaneCollapsed, forKey: Self.isRightPaneCollapsedKey)
                 } label: {
                     Image(systemName: "sidebar.trailing")
                 }

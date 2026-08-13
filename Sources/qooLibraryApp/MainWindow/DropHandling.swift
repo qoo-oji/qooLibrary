@@ -1,8 +1,13 @@
 import AppKit
+import QooApplication
 import QooInfrastructure
 import SwiftUI
 
 /// D&D の共通処理 [DD-01〜DD-05]。すべて `FileOperationService` 経由 [FO-01]。
+/// `Command`（`QooApplication`）が `@MainActor` プロトコルのため、それを
+/// 構築するこの型も `@MainActor` にする（呼び出し元は SwiftUI の View
+/// クロージャのみで、元々すべて MainActor 上だった）。
+@MainActor
 enum DropHandling {
     /// 本物の Finder と同じ規則 [DD-01][設計判断]: 同一ボリューム内のドラッグは既定で
     /// 移動、異なるボリューム間（Finder からの取り込みを含む）のドラッグは既定でコピー。
@@ -39,12 +44,20 @@ enum DropHandling {
         Task {
             do {
                 let options = OpOptions(conflictPolicy: .keepBoth) // [CF-01]
+                // コピー・移動が両方混在する 1 回の D&D ジェスチャは、1-11 の
+                // Undo 基盤で 1 つの Undo 単位にまとめる [UD-04]。
+                var children: [any Command] = []
                 if !copyTargets.isEmpty {
-                    _ = try await FileOperationService.shared.copy(copyTargets, to: destination, options: options)
+                    children.append(CopyFilesCommand(items: copyTargets, destination: destination, options: options))
                 }
                 if !moveTargets.isEmpty {
-                    _ = try await FileOperationService.shared.move(moveTargets, to: destination, options: options)
+                    children.append(MoveFilesCommand(items: moveTargets, destination: destination, options: options))
                 }
+                guard !children.isEmpty else { return }
+                let command: any Command = children.count == 1
+                    ? children[0]
+                    : CompositeCommand(displayName: "ドラッグ＆ドロップ", children: children)
+                _ = try await CommandStack.shared.run(command)
                 await onComplete()
             } catch {
                 await onFailure(error.localizedDescription)

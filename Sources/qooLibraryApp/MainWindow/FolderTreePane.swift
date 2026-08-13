@@ -167,9 +167,18 @@ private struct FolderTreeRow: View {
             }
             .opacity(node.isOnline ? 1 : 0.4) // [LP-04]
                 .fontWeight(isSelected ? .semibold : .regular)
+                // 濃い青の背景に対して黒文字だとコントラストが低いため、
+                // Finder と同じく選択中は白文字にする。
+                .foregroundStyle(isSelected ? Color(nsColor: .alternateSelectedControlTextColor) : Color.primary)
                 .padding(.horizontal, Tokens.spacing.xs)
                 .padding(.vertical, 2)
-                .background(isDropTargeted ? Tokens.Colors.accent.opacity(0.35) : (isSelected ? Tokens.Colors.accent.opacity(0.25) : Color.clear))
+                // 選択のハイライトは AppKit のシステム標準色を使う
+                // [実機検証時のユーザー指摘: 独自の半透明アクセントカラーだと
+                // Finder のような青にならない]。`Table`/`List` の
+                // `selection:` バインディングと違いこのツリーはフォーカスの
+                // 概念を持たないため（クリックで中央ペインと同期するだけの
+                // 表示専用の選択）、常に強調表示（青）にする。
+                .background(isDropTargeted ? Tokens.Colors.accent.opacity(0.35) : (isSelected ? Color(nsColor: .selectedContentBackgroundColor) : Color.clear))
                 .clipShape(RoundedRectangle(cornerRadius: Tokens.radius.s))
                 .contentShape(Rectangle())
                 .onTapGesture { onSelect(node.url) } // [LP-06]

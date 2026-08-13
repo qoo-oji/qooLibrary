@@ -83,17 +83,25 @@ public struct ExtractResult: Sendable, Equatable {
     public let rejected: [ExtractRejection]
     public let renamedForCaseCollision: [ExtractRename]
     public let totalBytesWritten: Int64
+    /// 最終位置（`ExtractOptions.destination` 直下）に実際に作られたトップ
+    /// レベルの項目 [1-11、`ExtractCommand` の Undo 用]。バックエンド
+    /// （`LibarchiveBackend`/`UnrarBackend`）はステージング内で完結し最終位置を
+    /// 知らないため関知しない（既定は空配列）。`SecureExtractor.extract()` が
+    /// `promoteFromStaging` の結果からこのフィールドだけを埋めた結果を返す。
+    public let createdURLs: [URL]
 
     public init(
         extractedCount: Int,
         rejected: [ExtractRejection],
         renamedForCaseCollision: [ExtractRename],
-        totalBytesWritten: Int64
+        totalBytesWritten: Int64,
+        createdURLs: [URL] = []
     ) {
         self.extractedCount = extractedCount
         self.rejected = rejected
         self.renamedForCaseCollision = renamedForCaseCollision
         self.totalBytesWritten = totalBytesWritten
+        self.createdURLs = createdURLs
     }
 }
 

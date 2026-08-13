@@ -75,11 +75,17 @@ public actor SecureExtractor {
         let result = try await backend.extract(archiveURL, to: staging, options: extractOptions)
         if Task.isCancelled { throw ExtractError.cancelled } // [EX-24]
 
-        _ = try await fileOps.promoteFromStaging(
+        let receipts = try await fileOps.promoteFromStaging(
             staging, to: options.destination, options: OpOptions(conflictPolicy: .keepBoth)
         )
 
-        return result
+        return ExtractResult(
+            extractedCount: result.extractedCount,
+            rejected: result.rejected,
+            renamedForCaseCollision: result.renamedForCaseCollision,
+            totalBytesWritten: result.totalBytesWritten,
+            createdURLs: receipts.map(\.toURL) // [1-11、`ExtractCommand` の Undo 用]
+        )
     }
 
     // MARK: - ステージング [EX-01][EX-03][CL-01]

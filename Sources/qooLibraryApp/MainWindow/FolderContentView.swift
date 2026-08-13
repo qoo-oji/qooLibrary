@@ -1,4 +1,5 @@
 import AppKit
+import QooApplication
 import QooInfrastructure
 import QooKit
 import SwiftUI
@@ -41,6 +42,12 @@ struct FolderContentView: View {
     @State private var actionError: String?
     @State private var renamingEntry: FolderEntry?
     @State private var renameText = ""
+    @FocusState private var isRenameFieldFocused: Bool
+    /// Finder 流「選択済みの項目をもう一度クリックするとリネーム」の識別用
+    /// [ユーザー要望]。クリックのたびに増分し、ダブルクリックや他の選択操作
+    /// （＝別のクリック）が割り込んだら保留中のリネーム開始タイマーを
+    /// 無効化する（`handleSingleClick`/`rowCell`/`IconGridView` 参照）。
+    @State private var pendingRenameGeneration = 0
     @State private var showingNewFolderPrompt = false
     @State private var newFolderName = "新規フォルダ"
     @State private var isDropTargeted = false
@@ -67,7 +74,6 @@ struct FolderContentView: View {
     @AppStorage("qoo.folderList.showKindColumn") private var showKindColumn = true
     @AppStorage("qoo.folderList.groupFoldersAtTop") private var groupFoldersAtTop = true
 
-    private let fileOps = FileOperationService.shared
     /// キーバインド [13章 §13.6]。1-8 時点では開く・リネーム・ゴミ箱・
     /// 新規フォルダのみ実際に配線している（他の既定バインドは対応する
     /// 機能が実装され次第、各所で `keyBindingStore.binding(for:)` を参照する）。
@@ -140,7 +146,13 @@ struct FolderContentView: View {
                     onSingleClick: { handleSingleClick($0) },
                     onReload: { reloadAndBroadcast() },
                     onDropFailure: { actionError = $0 },
-                    contextMenuContent: { urls in contextMenuContent(for: urls) }
+                    contextMenuContent: { urls in contextMenuContent(for: urls) },
+                    renamingURL: renamingEntry?.url,
+                    renameText: $renameText,
+                    isRenameFieldFocused: $isRenameFieldFocused,
+                    onCommitRename: { commitRename() },
+                    onCancelRename: { cancelRename() },
+                    isFocused: isListFocused
                 )
                 // `Table` は標準でキーボードフォーカスを受け取れるが、
                 // `IconGridView`（`ScrollView`/`LazyVGrid`）はそうではないため
@@ -166,7 +178,7 @@ struct FolderContentView: View {
                 // データを自動ソートしない）。
                 Table(displayedEntries, selection: $selection, sortOrder: $sortOrder) {
                     TableColumn("名前", sortUsing: FolderSortComparator(key: .name)) { entry in
-                        rowCell(entry) {
+                        rowCell(entry, isRenaming: renamingEntry?.url == entry.url) {
                             // アイコンを固定幅の枠に収めて Finder のように先頭を揃える
                             // （実機検証で発覚: アイコンの実測幅がまちまちだと名前の
                             // 先頭位置がずれる）。Finder と同じアイコン [ユーザー要望、
@@ -175,7 +187,30 @@ struct FolderContentView: View {
                                 Image(nsImage: FileIconProvider.shared.icon(for: entry.url))
                                     .resizable()
                                     .frame(width: 16, height: 16)
-                                Text(entry.name)
+                                if renamingEntry?.url == entry.url {
+                                    // Finder 流のインライン名前編集 [ユーザー要望]。
+                                    TextField("名前", text: $renameText)
+                                        .textFieldStyle(.plain)
+                                        .focused($isRenameFieldFocused)
+                                        .onSubmit { commitRename() }
+                                        .onExitCommand { cancelRename() }
+                                        .onAppear {
+                                            isRenameFieldFocused = true
+                                            // フィールドエディタが割り当てられた後で
+                                            // ないと選択範囲を操作できないため
+                                            // 1 サイクル遅らせる。
+                                            DispatchQueue.main.async {
+                                                InlineRenameSupport.selectBaseNameIfApplicable(for: entry)
+                                            }
+                                        }
+                                        .onChange(of: isRenameFieldFocused) { _, focused in
+                                            if !focused, renamingEntry?.url == entry.url {
+                                                commitRename()
+                                            }
+                                        }
+                                } else {
+                                    Text(entry.name)
+                                }
                             }
                             .font(.system(size: Tokens.fontSize.body))
                         }
@@ -184,7 +219,7 @@ struct FolderContentView: View {
 
                     if showModificationDateColumn {
                         TableColumn("更新日", sortUsing: FolderSortComparator(key: .modificationDate)) { entry in
-                            rowCell(entry) {
+                            rowCell(entry, isRenaming: renamingEntry?.url == entry.url) {
                                 Text(entry.modificationDate.map { Self.dateFormatter.string(from: $0) } ?? "—")
                                     .font(.system(size: Tokens.fontSize.body))
                                     .foregroundStyle(.secondary)
@@ -195,7 +230,7 @@ struct FolderContentView: View {
 
                     if showSizeColumn {
                         TableColumn("サイズ", sortUsing: FolderSortComparator(key: .size)) { entry in
-                            rowCell(entry) {
+                            rowCell(entry, isRenaming: renamingEntry?.url == entry.url) {
                                 Text(entry.isDirectory ? "—" : Self.sizeFormatter.string(fromByteCount: entry.fileSize ?? 0))
                                     .font(.system(size: Tokens.fontSize.body))
                                     .foregroundStyle(.secondary)
@@ -206,7 +241,7 @@ struct FolderContentView: View {
 
                     if showKindColumn {
                         TableColumn("種類", sortUsing: FolderSortComparator(key: .kind)) { entry in
-                            rowCell(entry) {
+                            rowCell(entry, isRenaming: renamingEntry?.url == entry.url) {
                                 Text(entry.kindDescription)
                                     .font(.system(size: Tokens.fontSize.body))
                                     .foregroundStyle(.secondary)
@@ -330,11 +365,6 @@ struct FolderContentView: View {
         .onChange(of: SessionState.shared.reloadToken) {
             reload()
         }
-        .alert("名前を変更", isPresented: renamingBinding) {
-            TextField("名前", text: $renameText)
-            Button("変更") { commitRename() }
-            Button("キャンセル", role: .cancel) {}
-        }
         .alert("新規フォルダ", isPresented: $showingNewFolderPrompt) {
             TextField("フォルダ名", text: $newFolderName)
             Button("作成") { createNewFolder() }
@@ -345,10 +375,6 @@ struct FolderContentView: View {
         } message: {
             Text(actionError ?? "")
         }
-    }
-
-    private var renamingBinding: Binding<Bool> {
-        Binding(get: { renamingEntry != nil }, set: { if !$0 { renamingEntry = nil } })
     }
 
     private static let sizeFormatter: ByteCountFormatter = {
@@ -382,42 +408,65 @@ struct FolderContentView: View {
     /// 独立したセルなので、Finder と同じく行のどこをクリックしても同じ挙動に
     /// なるよう、すべてのカラムのセルに同一の modifier 一式を付与する。
     @ViewBuilder
-    private func rowCell(_ entry: FolderEntry, @ViewBuilder content: () -> some View) -> some View {
-        content()
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-            .onTapGesture(count: 2) {
-                if entry.isDirectory { onNavigate(entry.url) }
-            }
-            // 単発クリックの選択は `.simultaneousGesture` にする。同じ view に
-            // `.onTapGesture(count: 1)` と `.onTapGesture(count: 2)` を両方
-            // つけると、SwiftUI は「本当に単発クリックか、ダブルクリックの
-            // 1 回目か」を見極めるためシステムのダブルクリック間隔だけ単発側の
-            // 発火を遅らせる（実機検証で Finder に対して選択ハイライトが
-            // 遅く感じられる原因になっていた）。`.simultaneousGesture` は排他的な
-            // 判定グループに入らないため、単発クリックで即座に発火する。
-            .simultaneousGesture(TapGesture(count: 1).onEnded {
-                handleSingleClick(entry)
-            })
-            // [DD-02] アプリ外（Finder 等）への実ファイル参照エクスポート。
-            // 旧来の `.onDrag`/`.draggable(_:)` は macOS の `List` で複数選択を
-            // まとめてドラッグできない未解決の既知バグがある（Apple Feedback
-            // FB10128110）。macOS 26 で追加された `draggable(containerItemID:)` +
-            // `dragContainer` + `dragContainerSelection`（`Table` に付与、上記
-            // 参照）の組み合わせで、選択中の行から始めたドラッグに選択全体が含まれる。
-            .draggable(containerItemID: entry.url, containerNamespace: dragNamespace)
-            .modifier(DropIntoFolderModifier(
-                entry: entry,
-                reload: { reloadAndBroadcast() },
-                onFailure: { actionError = $0 }
-            ))
+    private func rowCell(_ entry: FolderEntry, isRenaming: Bool = false, @ViewBuilder content: () -> some View) -> some View {
+        if isRenaming {
+            // インライン編集中はこの行の選択・ダブルクリック・D&D 用ジェスチャを
+            // すべて外す。`TextField` 自身のクリック（カーソル位置合わせ等）が
+            // 誤って選択操作やリネームの再トリガーとして扱われるのを防ぐため
+            // [ユーザー要望: Finder 流のインライン名前編集]。
+            content()
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            content()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) {
+                    pendingRenameGeneration += 1 // ダブルクリックなら保留中のリネームは取り消す
+                    if entry.isDirectory { onNavigate(entry.url) }
+                }
+                // 単発クリックの選択は `.simultaneousGesture` にする。同じ view に
+                // `.onTapGesture(count: 1)` と `.onTapGesture(count: 2)` を両方
+                // つけると、SwiftUI は「本当に単発クリックか、ダブルクリックの
+                // 1 回目か」を見極めるためシステムのダブルクリック間隔だけ単発側の
+                // 発火を遅らせる（実機検証で Finder に対して選択ハイライトが
+                // 遅く感じられる原因になっていた）。`.simultaneousGesture` は排他的な
+                // 判定グループに入らないため、単発クリックで即座に発火する。
+                .simultaneousGesture(TapGesture(count: 1).onEnded {
+                    handleSingleClick(entry)
+                })
+                // [DD-02] アプリ外（Finder 等）への実ファイル参照エクスポート。
+                // 旧来の `.onDrag`/`.draggable(_:)` は macOS の `List` で複数選択を
+                // まとめてドラッグできない未解決の既知バグがある（Apple Feedback
+                // FB10128110）。macOS 26 で追加された `draggable(containerItemID:)` +
+                // `dragContainer` + `dragContainerSelection`（`Table` に付与、上記
+                // 参照）の組み合わせで、選択中の行から始めたドラッグに選択全体が含まれる。
+                .draggable(containerItemID: entry.url, containerNamespace: dragNamespace)
+                .modifier(DropIntoFolderModifier(
+                    entry: entry,
+                    reload: { reloadAndBroadcast() },
+                    onFailure: { actionError = $0 }
+                ))
+        }
     }
 
     /// D&D 系のモディファイアを付けた行は List/Table 標準のクリック選択が
     /// ハイライト込みで効かなくなることがあるため、明示的に選択する
     /// （Cmd でトグル・Shift で範囲選択、という Finder 流の規則もここで手動で
     /// 再現する）。範囲選択は画面表示順（`displayedEntries`）で計算する。
+    ///
+    /// **Finder 流のインライン名前編集の起点もここ**
+    /// [ユーザー要望: 既に選択済みの項目をもう一度クリックするとその場で
+    /// リネームできるようにしたい、リネーム用の別ウインドウは出したくない]。
+    /// クリックの瞬間にダブルクリックの1回目かどうかは判定できないため、
+    /// 「既にこの1件だけが選択されていた状態でのクリック」を検知したら
+    /// 少し待ってから開始し、その間に別のクリック（ダブルクリックの2回目・
+    /// 他の項目の選択・修飾キー付きクリック等）が起きたら
+    /// `pendingRenameGeneration` の不一致で自動的にキャンセルされる。
     private func handleSingleClick(_ entry: FolderEntry) {
+        if renamingEntry != nil {
+            commitRename() // 別の行をクリックしたら進行中のインライン編集を確定する
+        }
+        pendingRenameGeneration += 1
         let flags = NSEvent.modifierFlags
         if flags.contains(.command) {
             if selection.contains(entry.url) {
@@ -433,6 +482,7 @@ struct FolderContentView: View {
             let range = anchorIndex < clickedIndex ? anchorIndex...clickedIndex : clickedIndex...anchorIndex
             selection = Set(displayedEntries[range].map(\.url))
         } else {
+            let wasAlreadySoleSelection = selection == [entry.url]
             // 既に複数選択の一部になっている行は潰さない
             // （そうしないと複数選択した状態でドラッグを開始しても単一行しか
             // ドラッグに含まれなくなる）。
@@ -440,6 +490,14 @@ struct FolderContentView: View {
                 selection = [entry.url]
             }
             selectionAnchor = entry.url
+            if wasAlreadySoleSelection {
+                let generation = pendingRenameGeneration
+                Task {
+                    try? await Task.sleep(for: .milliseconds(400))
+                    guard generation == pendingRenameGeneration, selection == [entry.url] else { return }
+                    beginRename(entry)
+                }
+            }
         }
         // List/Table 標準のクリック選択は副作用としてリストへフォーカスも移すが、
         // 手動での選択にはその副作用が無いため、選択がグレー（非フォーカス）
@@ -590,7 +648,7 @@ struct FolderContentView: View {
         else { return }
         Task {
             do {
-                _ = try await fileOps.copy(urls, to: folder, options: OpOptions(conflictPolicy: .keepBoth))
+                _ = try await CommandStack.shared.run(CopyFilesCommand(items: urls, destination: folder))
                 reloadAndBroadcast()
             } catch {
                 actionError = error.localizedDescription
@@ -604,11 +662,11 @@ struct FolderContentView: View {
 
     private func createAliases(for urls: [URL]) {
         guard let folder else { return }
+        let children: [any Command] = urls.map { CreateAliasCommand(source: $0, destinationFolder: folder) }
+        guard let command = Self.singleOrComposite(children, displayName: "エイリアスを作成") else { return }
         Task {
             do {
-                for url in urls {
-                    _ = try await fileOps.createAlias(for: url, in: folder)
-                }
+                _ = try await CommandStack.shared.run(command)
                 reloadAndBroadcast()
             } catch {
                 actionError = error.localizedDescription
@@ -623,7 +681,7 @@ struct FolderContentView: View {
         let shouldLock = !targets.allSatisfy(\.isLocked)
         Task {
             do {
-                _ = try await fileOps.setLocked(targets.map(\.url), locked: shouldLock)
+                _ = try await CommandStack.shared.run(SetLockedCommand(items: targets.map(\.url), locked: shouldLock))
                 reloadAndBroadcast()
             } catch {
                 actionError = error.localizedDescription
@@ -669,11 +727,17 @@ struct FolderContentView: View {
         }
     }
 
+    /// インライン編集中の `TextField` は即座に閉じる（`renamingEntry` を
+    /// 同期的にクリアする）。実際のリネーム自体は非同期だが、UI 上の見た目は
+    /// 楽観的に確定させる（Finder と同じ体感）。名前が変わっていなければ
+    /// 何もしない（Undo スタックへの無意味な積み増しを避ける）。
     private func commitRename() {
-        guard let entry = renamingEntry, !renameText.isEmpty else { return }
+        guard let entry = renamingEntry else { return }
+        renamingEntry = nil
+        guard !renameText.isEmpty, renameText != entry.name else { return }
         Task {
             do {
-                _ = try await fileOps.rename(entry.url, to: renameText)
+                _ = try await CommandStack.shared.run(RenameCommand(item: entry.url, newName: renameText))
                 reloadAndBroadcast()
             } catch {
                 actionError = error.localizedDescription
@@ -681,11 +745,15 @@ struct FolderContentView: View {
         }
     }
 
+    private func cancelRename() {
+        renamingEntry = nil
+    }
+
     private func duplicate(_ urls: [URL]) {
         guard let folder else { return }
         Task {
             do {
-                _ = try await fileOps.copy(urls, to: folder, options: OpOptions(conflictPolicy: .keepBoth))
+                _ = try await CommandStack.shared.run(CopyFilesCommand(items: urls, destination: folder))
                 reloadAndBroadcast()
             } catch {
                 actionError = error.localizedDescription
@@ -696,7 +764,7 @@ struct FolderContentView: View {
     private func moveToTrash(_ urls: [URL]) {
         Task {
             do {
-                _ = try await fileOps.trash(urls)
+                _ = try await CommandStack.shared.run(TrashCommand(items: urls))
                 reloadAndBroadcast()
             } catch {
                 actionError = error.localizedDescription
@@ -708,7 +776,7 @@ struct FolderContentView: View {
         guard let folder, !newFolderName.isEmpty else { return }
         Task {
             do {
-                _ = try await fileOps.createDirectory(at: folder.appendingPathComponent(newFolderName))
+                _ = try await CommandStack.shared.run(CreateFolderCommand(url: folder.appendingPathComponent(newFolderName)))
                 reloadAndBroadcast()
             } catch {
                 actionError = error.localizedDescription
@@ -736,23 +804,39 @@ struct FolderContentView: View {
         return url.deletingPathExtension().lastPathComponent
     }
 
-    /// 複数選択時、途中で失敗したら残りは中断する（1-12b の通知基盤が無く
-    /// 個別エラーをまとめて出せないための暫定対応 [ER-20 の趣旨に近い]）。
+    /// 複数のコマンドを 1 回の操作として 1 つの Undo 単位にまとめる [UD-04]。
+    /// 1 件ならそのまま返し、0 件なら `nil`（実行するものが無い）。
+    private static func singleOrComposite(_ commands: [any Command], displayName: String) -> (any Command)? {
+        if commands.isEmpty { return nil }
+        if commands.count == 1 { return commands[0] }
+        return CompositeCommand(displayName: displayName, children: commands)
+    }
+
+    /// 展開先フォルダを新規作成する場合は `CreateFolderCommand` + `ExtractCommand`
+    /// を 1 つの Undo 単位にまとめる [UD-04]。複数アーカイブの一括展開も
+    /// まとめて 1 単位にする（`MX2-08` の精神、途中で失敗したら残りは中断する
+    /// 暫定対応 [ER-20 の趣旨に近い、1-12b の通知基盤が無いため]）。
     private func extractArchives(_ urls: [URL], destination: @escaping (URL) -> URL) {
         busyMessage = urls.count == 1 ? "展開しています…" : "展開しています…（\(urls.count) 件）"
+        var children: [any Command] = []
+        for url in urls {
+            let target = destination(url)
+            if !FileManager.default.fileExists(atPath: target.path) {
+                children.append(CreateFolderCommand(url: target))
+            }
+            children.append(ExtractCommand(archiveURL: url, destination: target))
+        }
+        let name = urls.count == 1 ? "「\(urls[0].lastPathComponent)」を展開" : "\(urls.count) 件のアーカイブを展開"
+        guard let command = Self.singleOrComposite(children, displayName: name) else {
+            busyMessage = nil
+            return
+        }
         Task {
             defer { busyMessage = nil }
-            for url in urls {
-                let target = destination(url)
-                do {
-                    if !FileManager.default.fileExists(atPath: target.path) {
-                        _ = try await fileOps.createDirectory(at: target)
-                    }
-                    _ = try await SecureExtractor.shared.extract(url, options: ExtractOptions(destination: target))
-                } catch {
-                    actionError = error.localizedDescription
-                    break
-                }
+            do {
+                _ = try await CommandStack.shared.run(command)
+            } catch {
+                actionError = error.localizedDescription
             }
             reloadAndBroadcast()
         }
@@ -787,7 +871,9 @@ struct FolderContentView: View {
         Task {
             defer { busyMessage = nil }
             do {
-                _ = try await ArchiveCompressor.shared.compress(urls, destinationName: name, in: folder)
+                _ = try await CommandStack.shared.run(
+                    CompressCommand(items: urls, destinationName: name, destinationFolder: folder)
+                )
                 reloadAndBroadcast()
             } catch {
                 actionError = error.localizedDescription
@@ -815,8 +901,10 @@ struct FolderContentView: View {
             do {
                 // NSSavePanel は既存ファイルの上書き確認を既に行っているため、
                 // ここでは `.keepBoth`（自動連番）ではなく `.replace` にする。
-                _ = try await ArchiveCompressor.shared.compress(
-                    urls, destinationName: name, in: destinationFolder, conflictPolicy: .replace
+                _ = try await CommandStack.shared.run(
+                    CompressCommand(
+                        items: urls, destinationName: name, destinationFolder: destinationFolder, conflictPolicy: .replace
+                    )
                 )
                 reloadAndBroadcast()
             } catch {

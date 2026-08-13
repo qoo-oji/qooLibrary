@@ -4,7 +4,7 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
 
 ## 0. 現在の状態
 
-**フェーズ 0（基盤検証）完了。フェーズ 1（ファイルマネージャー）着手済み（1-1〜1-10 完了）。**
+**フェーズ 0（基盤検証）完了。フェーズ 1（ファイルマネージャー）着手済み（1-1〜1-11 完了）。**
 
 ### フェーズ 0（`17_実装ロードマップ.md` §17.2、全項目完了）
 
@@ -15,7 +15,7 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
 - 静的検査 `Scripts/check-fileops-isolation.swift`（B-10）・`check-layer-dependencies.swift`（B-11）・`check-json-completeness.swift`（B-13, 現状はプレースホルダ）と CI（`.github/workflows/ci.yml`）を用意した。
 - **既知の懸念（要フォローアップ）**: libarchive 3.8.9 は特定の壊れた RAR 入力（use-after-free の回帰テストファイル）でクラッシュする（エラーを返さず異常終了）。`SecureExtractor`（09章 §9.3）実装時に対処を検討する必要がある。詳細は `Spikes/README.md` の T-12 節。
 
-### フェーズ 1（`17_実装ロードマップ.md` §17.3、1-1〜1-10 完了・1-11 以降未着手）
+### フェーズ 1（`17_実装ロードマップ.md` §17.3、1-1〜1-11 完了・1-12 以降未着手）
 
 - **1-1 プロジェクト基盤が完了。** `qooLibrary.xcodeproj` は `project.yml` から `xcodegen generate` で生成する（**git-ignore 対象、手で pbxproj を編集しない**。ThirdParty の xcframework と同じ「生成物はコミットしない」方針）。ローカルの SwiftPM パッケージ（`QooKit`/`QooPersistence`/`QooInfrastructure`/`QooApplication`）を local package dependency として参照し、実機で起動確認済み。
 - App Sandbox entitlement（`Sources/qooLibraryApp/qooLibrary.entitlements`）を付与済み。`codesign -d --entitlements :-` で署名済みバイナリに実際に反映されていることを確認済み [SB-01]。
@@ -183,7 +183,32 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
   - **`FolderContentView.swift` から「情報を見る」の簡易シート（`FileInfoSheet`、1-9 までの暫定実装）と関連state（`infoTargets`）を削除した。** 常設インスペクタに機能が統合されたため冗長になったコンテキストメニュー項目も削除。右ペインを折りたたんでいる状態だと詳細情報を見る手段が無くなる点は既知のトレードオフ（折りたたみトグルを解除すればよいだけのため許容）。
   - `MainWindowView.swift`: 右ペインへ `InspectorPane(folder:selection:)` を配線。`selection` は既存の `WindowState.tabs[index].selection`（`FolderContentView` の選択と共有）をそのまま渡すだけで、選択状態を二重管理していない。
   - **実機検証（ユーザーによる手動確認）で完了。** 単一選択・複数選択・未選択それぞれの表示を確認済み。大きなフォルダでのファイル数カウントの検証は、サンドボックス外（フルディスクアクセス付与後）で実際に大きなフォルダにアクセスできるようになってから改めて行う予定（現時点ではサンドボックスコンテナ内に検証に足る規模のフォルダが無いため）。
-- 各 `Sources/{QooKit,QooPersistence,QooApplication}/*.swift` の中身はまだプレースホルダ（モジュール依存関係を検証するための最小限のマーカー型のみ）で、ドメインロジック・SwiftData モデルは一切実装していない。`QooInfrastructure` はサンドボックス／FS 検証のみ実装済み。
+- **1-11（Undo 基盤、ファイル操作のみ、UD-01〜UD-11/HS-01〜HS-04）が完了した。**
+  - `Sources/QooApplication/Command.swift`: `Command` プロトコル・`CommandResult`/`UndoResult`/`FailedItem`・`CompositeCommand`（複数コマンドを1つの Undo 単位にまとめる [UD-04]、`undo()` は children を逆順に実行し失敗した子は部分取り消しとして集約 [UD-07]）。**仕様書は `Command: Sendable` としているが、`@MainActor` プロトコルにする設計判断をした**（実際に扱うのは `CommandStack` とそれを呼ぶ SwiftUI 層のみで、複数 actor をまたぐ必要が無いため。可変な捕捉状態を持つ参照型コマンドを `Sendable` にする複雑さを避けられる）。仕様書の `CommandContext`（`fileOps`/`repositories`/`history`/`notifications`/`progress` を束ねる）も、フェーズ1には `fileOps` 以外の実体（`RepositoryBundle`/`NotificationRouter`/`ProgressReporter`）が無いため導入せず、各コマンドが `init` で `FileOperationService`（既定 `.shared`）を直接受け取る、このコードベース全体で既に使われている DI パターンに合わせた。`affectedFolderIDs`（`LockManager` 用、LK-10）も未実装（`LockManager` 自体がフェーズ1のロードマップに含まれていない。登録フォルダ〈SwiftData の `Library`/`TemporaryFolder`〉が前提のため）。
+  - `Sources/QooApplication/CommandStack.swift`: `@Observable @MainActor final class`（仕様書の `ObservableObject`/`@Published` ではなく、既存の `WindowState`/`SessionState` と同じ `@Observable` に統一 [設計判断]）。`.shared` シングルトンだが `FileOperationService`/`SecureExtractor` と同じ理由で `public init()` を残しテスト側で独立インスタンスを作れるようにしている。`run`/`undo`/`redo`、`depth`（既定50 [UD-05]、超過時は最古のコマンドを捨てる [CS-01]）、`undoTitle`/`redoTitle` [UD-06]。新しい `run` で redo スタックを破棄する（一般的な Undo/Redo の規則）。
+  - **HS-01〜04（操作履歴）は DB（`OperationLogRecord`、07章）が無い Phase 1 では簡易版に縮小した。** `CommandStack.operationHistory`（メモリのみ、上限500件、アプリ終了で消える）に `run`/`undo`/`redo` のたびに記録する（CS-05 の構造的な要件は満たすが、CSV エクスポート・保持期間設定・専用の操作履歴ウインドウ〈OH-01〜05〉はフェーズ2〈DB導入時〉の対象、まだ表示 UI は無い）。
+  - `Sources/QooApplication/FileCommands.swift` + `ArchiveCommands.swift`: `MoveFilesCommand`/`CopyFilesCommand`/`RenameCommand`/`TrashCommand`/`CreateFolderCommand`/`CompressCommand`/`ExtractCommand`（仕様書の11章コマンド一覧のうちフェーズ1のファイル操作に該当するもの）に加え、`CreateAliasCommand`/`SetLockedCommand`（仕様書のコマンド一覧には無いが、1-9 で追加した UI から呼ばれる変更操作を Undo 対象から漏らさないための追加 [設計判断]）。Undo の実装方針: 複製・新規フォルダ・エイリアス作成・圧縮・展開の取り消しは（誤って生成物を失わないよう）完全削除ではなく **Trash へ送る**。移動の取り消しは元の親フォルダへ `.keepBoth` で戻す（元の場所が変化していれば部分取り消し [UD-07]）。すべてのコマンドで `redo()` は `execute()` の再実行と同じにできる（`undo()` が完全に元の状態へ戻すことを前提にできるため、`Command` プロトコルの既定実装として提供）。
+  - **`ExtractCommand` の Undo のために `SecureExtractor`/`ExtractResult` を拡張した。** `ExtractResult` に `createdURLs: [URL] = []`（最終位置に実際に作られたトップレベル項目）を追加し、`SecureExtractor.extract()` が `promoteFromStaging` の返り値からこれを埋めて返すようにした。「ここに展開」は既存フォルダへ他のファイルと混在して書き込まれるため、フォルダ丸ごと削除ではなく `createdURLs` だけを Trash へ送ることで、展開前から存在していた無関係なファイルを巻き込まない。
+  - **UI 側の全ファイル変更操作を `CommandStack.shared.run(...)` 経由に置き換えた**（`FolderContentView.swift`: ペースト・エイリアス作成・ロック/ロック解除・名前変更・複製・ゴミ箱・新規フォルダ・展開・圧縮、`DropHandling.swift`: D&D のコピー・移動）。1回の操作に複数のコマンドが属する場合（D&D でコピーと移動が混在する場合、新規フォルダ作成込みの展開）は `CompositeCommand` で1つの Undo 単位にまとめている。`DropHandling` は `Command`（`@MainActor` プロトコル）を構築する必要があるため `enum` 自体を `@MainActor` にした（呼び出し元はすべて SwiftUI の View クロージャで元々 MainActor 上だったため実質的な変更は無い）。
+  - `Sources/qooLibraryApp/MainWindow/MainWindowView.swift`: `⌘Z`/`⇧⌘Z` を配線（1-8 で登録済みだった `ActionID.undo`/`.redo` を実際に使用。`CommandStack` はウインドウ単位ではなくアプリ全体で単一のため、特定のタブ/フォルダに依存せずウインドウ直下の隠しボタンとして配線）。`Sources/qooLibraryApp/qooLibraryApp.swift`: Edit メニューにも Undo/Redo の項目を追加（動的なタイトル表示 [UD-06]）。**実際のキーボードショートカットはここでは付けていない** — `KeyBindingButtons`/`DefaultKeyBindings` をアプリの唯一の配線経路にするため（1-8 以来の他のショートカットと同じ仕組みに揃える設計判断、メニューの `.keyboardShortcut` と二重に登録すると SwiftUI の挙動が読みにくくなることを避けた）。
+  - **実機検証で発見・修正したバグ**: Undo/Redo 自体は成功していたが、他のファイル操作系の経路（`reloadAndBroadcast()`）と違い `SessionState.shared.reloadToken` を伝える処理を入れ忘れており、画面が古いまま更新されなかった（実際には正しく取り消されていたが、フォルダを移動して戻ってくるまで気づけなかった）。`MainWindowView`/`qooLibraryApp.swift` の Undo/Redo アクションに `SessionState.shared.reloadToken += 1` を追加して解消。
+  - `Tests/QooApplicationTests`（新規テストターゲット、21件）: `CommandStackTests`（run/undo/redo、深さ超過時の破棄 [CS-01]、redo スタックのクリア、操作履歴の記録）、`FileCommandsTests`、`CompositeCommandTests`（`FakeCommand`/`CallRecorder` を使い実行順序・部分失敗の集約を検証）。**Trash を経由する Undo（`copy`/`createFolder`/`createAlias`/`compress`/`extract`/`trash` コマンドの取り消し）は実 Finder ゴミ箱に触れるため自動テスト対象外**（`FileOperationServiceTests`/`ArchiveCompressorTests` と同じ方針）。それらは `execute()` の結果までを検証し、`undo()` 自体は実機検証で確認した。`move`/`rename`/`setLocked` は実 Trash に触れないため Undo まで含めて自動テストしている。
+  - **実機検証（ユーザーによる複数回の手動確認）で完了。** 新規フォルダ・移動・複製・名前変更・ゴミ箱・圧縮・展開・D&D（コピー/移動）のそれぞれで実行→⌘Z（取り消し）→⇧⌘Z（やり直し）、Edit メニューの動的タイトル表示のいずれも確認済み。
+- **⌘N で開いた新規ウインドウのサイズを既存ウインドウに揃え、アプリ再起動後も復元する機能を追加した**（要件定義書には無い、ユーザーからの要望。UI-08 相当）。
+  - `Sources/qooLibraryApp/DesignSystem/WindowFrameAutosave.swift`（新規）: 当初 AppKit 標準の `NSWindow.setFrameAutosaveName(_:)`（1回呼ぶだけで復元・以後の自動保存の両方をやってくれるはずの API）を使ったが、実機検証でウインドウ幅が揃わないことが判明した（リサイズ後に ⌘N しても新規ウインドウに反映されない）。原因を深追いするより、`PaneWindows.swift` のペイン幅永続化で実績のある方式（`NSWindowDidResize` 通知を自分で監視して `UserDefaults` へ明示的に書き込み、新規ウインドウでは明示的に読み込んで1回だけ適用する）に統一した方が確実と判断し、そちらへ切り替えた。適用は `PaneWindows.swift` の `SplitPositionApplierView` と同じ理由で `DispatchQueue.main.async` により1サイクル遅らせている（SwiftUI 自身のウインドウサイズ決定ロジックが直後に走り即座の適用を上書きすることがあるため）。
+  - **位置（origin）は意図的に対象外にした。** 当初は位置も含めて復元していたところ、⌘N で開いた新規ウインドウが既存ウインドウとまったく同じ位置・サイズになって完全に重なり、見た目上「消えた」（実際は閉じておらず背後に重なっていただけ）というユーザー報告があった。サイズだけを保存・復元し、位置は AppKit 標準のカスケード配置に任せる方式に修正した。
+  - **ゾンビウインドウ対策として `.restorationBehavior(.disabled)` を予防的に追加した。** 姉妹プロジェクト qooViewer（同じユーザーが開発）のソースコードを参照したところ、SwiftUI の `WindowGroup` 標準の状態復元が、閉じたはずの古い `NSWindow` を再利用してしまい中身が正しく描画されない・`onAppear` が意図せず再発火するなどの実機バグが実際に報告・修正されていた。qooLibrary のウインドウ位置・サイズの記憶は上記の自前の `UserDefaults` ベースの仕組みで行っており標準の状態復元には依存していないため、無効化しても既存機能に影響しない。`.windowResizability(.automatic)` + `.defaultSize(width: 900, height: 560)` も合わせて設定した（qooViewer のコメントで、`.contentSize` のままだと SwiftUI がコンテンツサイズからフレームを再計算しようとして自前の復元と競合すると報告されていたため）。
+  - **既にペイン幅（左右の分割位置）は全ウインドウで共有・永続化されていた**ことも今回わかった（`ThreePaneWindow` の内部 ID が全ウインドウで同じ `"main"` のため、`@AppStorage` キーが元々共通だった）。追加対応は不要だった。
+  - **右ペインの折りたたみ状態も、新規ウインドウへの反映と再起動をまたいだ保持の両方に対応した。** `MainWindowView.isRightPaneCollapsed` の `if` 条件では引き続き素の `@State` だけを見る（タブバー表示/非表示のハング不具合を踏まえた既存方針を維持、`ThreePaneWindow` のコメント参照）。その代わり、初期値だけ `init` で `UserDefaults` から素の値として読み込み（リアクティブな購読ではない）、トグル時に明示的に書き戻す一方向同期にすることで、`@AppStorage` を `if` 条件内で直接読む危険なパターンを踏まずに両方の要望を満たした。
+- **Finder 流のインライン名前編集を実装した**（要件定義書には無い、ユーザーからの要望: リネームは別ウインドウ/アラートではなく中央ペインのその場で行いたい）。
+  - `FolderContentView.handleSingleClick`: 既に選択済みの1件だけをもう一度クリックすると、少し待って（400ms、ダブルクリックとの区別のため）からリネームを開始する。クリックのたびに増分する `pendingRenameGeneration` を使い、その間に別のクリック（ダブルクリックの2回目・他項目の選択・修飾キー付きクリック等）が起きたら自動的にキャンセルされる。
+  - リスト表示（`Table` の名前セル）・アイコン表示（`IconGridView` のラベル）とも、名前を `Text` から `TextField` へ切り替えるインライン編集にした（旧: `.alert` によるモーダルダイアログ、`FileInfoSheet` と同様に削除）。編集中の行/セルは選択・ダブルクリック・D&D 用のジェスチャをすべて外し、`TextField` 自身のクリックが誤って再トリガーされないようにしている。Enter で確定・Esc で取り消し・他の項目のクリックやフォーカス喪失でも確定する。名前が変わっていなければ何もしない（Undo スタックを無意味に汚さない）。
+  - `Sources/qooLibraryApp/MainWindow/InlineRenameSupport.swift`（新規、リスト・アイコン両方で共有）: リネーム開始時、Finder と同じく拡張子を除いたファイル名部分だけを選択状態にする。SwiftUI の `TextField` は選択範囲操作を公開していないため、AppKit のフィールドエディタ（`NSApp.keyWindow?.firstResponder as? NSText`）へ直接アクセスする。フォーカスが実際に割り当てられた後でないと機能しないため `DispatchQueue.main.async` で1サイクル遅らせて呼ぶ。
+  - **将来検討として記録のみ**: 「拡張子を含めて選択」に切り替えられる環境設定（ユーザーからの要望、1-12 で実装予定）。現状は上記の Finder 流の既定動作のみで、切り替え UI 自体はまだ無い。
+- **フォルダツリー・アイコン表示の選択ハイライト色を AppKit のシステム標準色に変更した**（要件定義書には無い、ユーザーからの要望: 独自の半透明アクセントカラーだと Finder のような青にならないという指摘）。
+  - `FolderTreePane.swift`: `Color(nsColor: .selectedContentBackgroundColor)` に変更（このツリーはフォーカスの概念を持たない表示専用の選択のため常に強調表示）。選択時の文字色も `.alternateSelectedControlTextColor`（白）にして濃い青背景でのコントラストを確保。
+  - `IconGridView.swift`: `Table` と同じくフォーカスの有無で `selectedContentBackgroundColor`（濃い青）と `unemphasizedSelectedContentBackgroundColor`（灰色）を切り替えるようにした（`FolderContentView.isListFocused` を新しい `isFocused` パラメータとして受け取る）。選択時の文字色もフォーカスありのときだけ白にする。
+- `QooApplication` は 1-11 で `Command`/`CommandStack`（ファイル操作の Undo 基盤）が実装され、プレースホルダの段階を脱した。`QooKit`/`QooPersistence` の中身はまだプレースホルダ（モジュール依存関係を検証するための最小限のマーカー型のみ）で、ドメインロジック・SwiftData モデルは一切実装していない。`QooInfrastructure` はサンドボックス／FS 検証・ファイル操作・アーカイブ・サムネイルを実装済み（DB 依存部分のみ未実装）。
 
 作業を始める際は、対象領域の仕様書（下記 §2 の一覧）を該当箇所だけ `Read` してから着手する。仕様書は合計 18 ファイルあり、全部を毎回読み込む必要はない。要件定義書本体は `docs/Requirements/qooLibrary_要件定義書_v2.8.md` にある（約 2,900 行）。矛盾したときの優先順位は §1 参照。
 
@@ -328,7 +353,7 @@ Swift 6 言語モード、`StrictConcurrency` 有効。
 
 ```
 フェーズ0 基盤検証        T-13/T-12 の技術検証、ゴールデンサンプル収集開始、プロジェクト骨格 ← 完了
-フェーズ1 ファイルマネージャー  Finder 代替として日常使用できる状態             ← 進行中（1-1〜1-10 完了）
+フェーズ1 ファイルマネージャー  Finder 代替として日常使用できる状態             ← 進行中（1-1〜1-11 完了）
 フェーズ2 ライブラリマネージャー ラベル管理が実用レベル
 フェーズ3 テンポラリフォルダ   取り込み〜投入のワークフロー完結
 ```
@@ -347,9 +372,10 @@ Swift 6 言語モード、`StrictConcurrency` 有効。
 | 1-8 | キーボードショートカット（KB-01〜KB-05） | 完了（実装済み機能のみ実配線。他は登録済み・未配線） |
 | 1-9 | リスト表示・アイコン表示、サムネイル生成 | 完了 |
 | 1-10 | 右ペイン（詳細情報表示、DT-01〜DT-07/DT-10） | 完了 |
-| 1-11〜1-15 | Undo、環境設定、通知基盤 等 | 未着手 |
+| 1-11 | Undo 基盤（ファイル操作のみ、UD-01〜UD-11/HS-01〜HS-04） | 完了 |
+| 1-12〜1-15 | 環境設定、通知基盤 等 | 未着手 |
 
-- フェーズ 1 の 4 制約（DP-01 Undo 基盤 / DP-05 FileOps 集約 / DP-07 mainContext 構成 / DP-08 通知基盤）は機能追加より先に固める。後付けは大規模改修になる。1-1 はこれらより前段の土台（プロジェクト構成・デザイントークン）であり、4 制約自体はまだ手を付けていない。
+- フェーズ 1 の 4 制約（DP-01 Undo 基盤 / DP-05 FileOps 集約 / DP-07 mainContext 構成 / DP-08 通知基盤）は機能追加より先に固める。後付けは大規模改修になる。DP-05（FileOps 集約）は 1-5 で、DP-01（Undo 基盤）は 1-11 でそれぞれ完了済み。DP-07（mainContext 構成）は SwiftData 導入（フェーズ2）まで対象外、DP-08（通知基盤）は 1-12b が対象。
 - フェーズ 2 の最初に `VersionedSchema` を導入する。パーサ（`QooKit`）は永続化と並行実装できるため早期着手を推奨。
 - 各フェーズの DoD（完了条件、17 章に記載）を満たさないまま次フェーズへ進まない。
 
