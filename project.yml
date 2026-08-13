@@ -27,6 +27,8 @@ targets:
       - path: Sources/qooLibraryApp
       - path: Resources/DesignTokens.json
         buildPhase: resources
+      - path: Resources/Localizable.xcstrings
+        buildPhase: resources
     dependencies:
       - package: qooLibraryPackage
         product: QooKit
@@ -36,6 +38,56 @@ targets:
         product: QooInfrastructure
       - package: qooLibraryPackage
         product: QooApplication
+    # `GENERATE_INFOPLIST_FILE: YES` の「ビルド設定から自動生成」方式は
+    # スカラー値の `INFOPLIST_KEY_*` しか表現できず、`CFBundleDocumentTypes`
+    # のようなネストした配列・辞書を持たせられない。XcodeGen の `info:`
+    # ブロック（実ファイルとして Info.plist を書き出し `INFOPLIST_FILE` を
+    # 自動設定する仕組み）に切り替え、既存の3キー（コピーライト表記／
+    # アプリカテゴリ／プリンシパルクラス）もこちらへ移した
+    # [ユーザー要望: qooLibrary を Finder の「このアプリケーションで開く」の
+    # 対象にする、CLAUDE.md「将来検討」参照]。XcodeGen 自身が
+    # `CFBundleIdentifier`/`CFBundleExecutable`/`CFBundlePackageType` 等の
+    # 必須キーを自動的に補うため、ここには追加したいキーだけを書けばよい
+    # （XcodeGen の `InfoPlistGenerator.swift` で確認済み）。
+    info:
+      path: Sources/qooLibraryApp/Info-Generated.plist
+      properties:
+        NSHumanReadableCopyright: "Copyright © 2026 Kosuke Nishimura. MIT licensed (Sources/); see THIRD-PARTY-NOTICES.md for vendored components."
+        LSApplicationCategoryType: public.app-category.utilities
+        NSPrincipalClass: NSApplication
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        # Finder でフォルダ・アーカイブを右クリック →「このアプリケーションで
+        # 開く」→ qooLibrary を選べるようにする。`LSHandlerRank: Alternate`
+        # は既定アプリを奪わず候補に加わるだけの指定 [設計判断]。実際に
+        # 選ばれた URL の受け口は 1-9 で「新規ウインドウで開く」用に実装済みの
+        # `WindowGroup(for: URL.self)` がそのまま使える見込み（実機検証が必要）。
+        #
+        # [実機検証で発見: 独自 UTI（`com.qoolibrary.cbz` 等）を宣言していたが
+        # Finder の「このアプリケーションで開く」に候補として出なかった。
+        # `mdls -name kMDItemContentType` で実際の .cbz/.cbr/.cb7/.7z/.rar
+        # ファイルを調べたところ、macOS は独自 UTI ではなく標準の
+        # `public.cbz-archive`/`public.cbr-archive`/`public.cb7-archive`/
+        # `org.7-zip.7-zip-archive`/`com.rarlab.rar-archive` にファイルを
+        # 解決していることが判明した（いずれも macOS 標準搭載の UTI、
+        # 独自宣言は不要かつ実際のファイルとは一致しないため無意味だった）。
+        # `UTExportedTypeDeclarations` は撤去し、`LSItemContentTypes` を
+        # これら実際の標準 UTI に置き換えて解消した]。
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Folder
+            LSItemContentTypes: [public.folder]
+            LSHandlerRank: Alternate
+            CFBundleTypeRole: Viewer
+          - CFBundleTypeName: Archive
+            LSItemContentTypes:
+              - public.zip-archive
+              - public.cbz-archive
+              - org.7-zip.7-zip-archive
+              - public.cb7-archive
+              - com.rarlab.rar-archive
+              - public.cbr-archive
+            LSHandlerRank: Alternate
+            CFBundleTypeRole: Viewer
     settings:
       base:
         PRODUCT_NAME: qooLibrary
@@ -46,9 +98,5 @@ targets:
         MACOSX_DEPLOYMENT_TARGET: "26.0"
         CODE_SIGN_ENTITLEMENTS: Sources/qooLibraryApp/qooLibrary.entitlements
         ENABLE_HARDENED_RUNTIME: YES
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_NSHumanReadableCopyright: "Copyright © 2026 Kosuke Nishimura. MIT licensed (Sources/); see THIRD-PARTY-NOTICES.md for vendored components."
-        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
-        INFOPLIST_KEY_NSPrincipalClass: NSApplication
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_STYLE: Automatic

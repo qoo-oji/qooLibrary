@@ -43,7 +43,7 @@ public struct QooProgressPresenter: View {
             if let onCancel {
                 HStack {
                     Spacer()
-                    Button("キャンセル", role: .cancel, action: onCancel)
+                    Button("common.cancel", role: .cancel, action: onCancel)
                 }
             }
         }

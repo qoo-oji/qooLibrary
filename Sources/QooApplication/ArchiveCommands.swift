@@ -8,29 +8,42 @@ public final class CompressCommand: Command {
     private let items: [URL]
     private let destinationName: String
     private let destinationFolder: URL
+    private let options: CompressionOptions
+    private let passphrase: String?
     private let conflictPolicy: ConflictPolicy
     private let compressor: ArchiveCompressor
     private let fileOps: FileOperationService
-    private var resultURL: URL?
+    /// 実行後に作成されたアーカイブの URL。呼び出し側が実行直後に選択状態を
+    /// 更新するために公開している [ユーザー要望: 「ここに圧縮」後、
+    /// 作成した圧縮ファイルを選択した状態にしてほしい]。
+    public private(set) var resultURL: URL?
 
     public init(
-        items: [URL], destinationName: String, destinationFolder: URL, conflictPolicy: ConflictPolicy = .keepBoth,
+        items: [URL], destinationName: String, destinationFolder: URL,
+        options: CompressionOptions = .default, passphrase: String? = nil,
+        conflictPolicy: ConflictPolicy = .keepBoth,
         compressor: ArchiveCompressor = .shared, fileOps: FileOperationService = .shared
     ) {
         self.items = items
         self.destinationName = destinationName
         self.destinationFolder = destinationFolder
+        self.options = options
+        self.passphrase = passphrase
         self.conflictPolicy = conflictPolicy
         self.compressor = compressor
         self.fileOps = fileOps
     }
 
-    public var displayName: String { "「\(destinationName).zip」を作成" }
+    public var displayName: String {
+        let ext = options.format == .zip ? "zip" : "7z"
+        return "「\(destinationName).\(ext)」を作成"
+    }
     public let isUndoable = true
 
     public func execute() async throws -> CommandResult {
         resultURL = try await compressor.compress(
-            items, destinationName: destinationName, in: destinationFolder, conflictPolicy: conflictPolicy
+            items, destinationName: destinationName, in: destinationFolder,
+            options: options, passphrase: passphrase, conflictPolicy: conflictPolicy
         )
         return .success
     }
@@ -54,15 +67,20 @@ public final class CompressCommand: Command {
 public final class ExtractCommand: Command {
     private let archiveURL: URL
     private let destination: URL
+    private let limits: ExtractLimits
+    private let passphrase: String?
     private let extractor: SecureExtractor
     private let fileOps: FileOperationService
     private var createdURLs: [URL] = []
 
     public init(
-        archiveURL: URL, destination: URL, extractor: SecureExtractor = .shared, fileOps: FileOperationService = .shared
+        archiveURL: URL, destination: URL, limits: ExtractLimits = .default, passphrase: String? = nil,
+        extractor: SecureExtractor = .shared, fileOps: FileOperationService = .shared
     ) {
         self.archiveURL = archiveURL
         self.destination = destination
+        self.limits = limits
+        self.passphrase = passphrase
         self.extractor = extractor
         self.fileOps = fileOps
     }
@@ -71,7 +89,8 @@ public final class ExtractCommand: Command {
     public let isUndoable = true
 
     public func execute() async throws -> CommandResult {
-        let result = try await extractor.extract(archiveURL, options: ExtractOptions(destination: destination))
+        let options = ExtractOptions(destination: destination, limits: limits, passphrase: passphrase)
+        let result = try await extractor.extract(archiveURL, options: options)
         createdURLs = result.createdURLs
         return .success
     }

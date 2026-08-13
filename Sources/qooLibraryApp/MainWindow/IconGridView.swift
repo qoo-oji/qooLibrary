@@ -22,7 +22,12 @@ struct IconGridView<MenuContent: View>: View {
     @Binding var selection: Set<URL>
     let iconSize: Double
     let dragNamespace: Namespace.ID
-    let onNavigate: (URL) -> Void
+    /// ダブルクリック時に呼ばれる。フォルダなら移動、ファイルなら関連付けた
+    /// アプリで開く、の判定は呼び出し側（`FolderContentView.openEntries`）に
+    /// 委譲する [実機検証で発見したバグの修正: 以前はここで `isDirectory` を
+    /// 見てフォルダのときだけ呼んでいたため、ファイルのダブルクリックが
+    /// 何も起きなかった]。
+    let onOpenEntry: (FolderEntry) -> Void
     let onSingleClick: (FolderEntry) -> Void
     let onReload: () -> Void
     let onDropFailure: (String) -> Void
@@ -83,7 +88,7 @@ struct IconGridView<MenuContent: View>: View {
             ThumbnailImage(entry: entry, size: iconSize)
             if isRenaming {
                 // Finder 流のインライン名前編集 [ユーザー要望]。
-                TextField("名前", text: $renameText)
+                TextField("column.name", text: $renameText)
                     .textFieldStyle(.plain)
                     .multilineTextAlignment(.center)
                     .font(.system(size: Tokens.fontSize.caption))
@@ -134,7 +139,7 @@ struct IconGridView<MenuContent: View>: View {
             isEnabled: !isRenaming,
             entry: entry,
             dragNamespace: dragNamespace,
-            onNavigate: onNavigate,
+            onOpenEntry: onOpenEntry,
             onSingleClick: onSingleClick,
             onReload: onReload,
             onDropFailure: onDropFailure
@@ -150,7 +155,7 @@ struct IconGridView<MenuContent: View>: View {
         let isEnabled: Bool
         let entry: FolderEntry
         let dragNamespace: Namespace.ID
-        let onNavigate: (URL) -> Void
+        let onOpenEntry: (FolderEntry) -> Void
         let onSingleClick: (FolderEntry) -> Void
         let onReload: () -> Void
         let onDropFailure: (String) -> Void
@@ -159,7 +164,7 @@ struct IconGridView<MenuContent: View>: View {
             if isEnabled {
                 content
                     .onTapGesture(count: 2) {
-                        if entry.isDirectory { onNavigate(entry.url) }
+                        onOpenEntry(entry)
                     }
                     // `FolderContentView.rowCell` と同じ理由で
                     // `.simultaneousGesture` にしている（単発クリックの選択発火を

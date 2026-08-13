@@ -27,7 +27,9 @@ enum DropHandling {
             // D&D の失敗がユーザーに一切見えなかった [ER-01 違反、1-12b で解消]）。
             Task {
                 await NotificationRouter.shared.present(NotificationItem(
-                    category: .error, severity: .sheet, title: "操作に失敗しました", body: message
+                    category: .error, severity: .sheet,
+                    title: String(localized: "error.operationFailed", locale: AppLanguage.effectiveLocale),
+                    body: message
                 ))
             }
         }
@@ -64,7 +66,10 @@ enum DropHandling {
                 guard !children.isEmpty else { return }
                 let command: any Command = children.count == 1
                     ? children[0]
-                    : CompositeCommand(displayName: "ドラッグ＆ドロップ", children: children)
+                    : CompositeCommand(
+                        displayName: String(localized: "command.dragAndDrop", locale: AppLanguage.effectiveLocale),
+                        children: children
+                    )
                 _ = try await CommandStack.shared.run(command)
                 await onComplete()
             } catch {

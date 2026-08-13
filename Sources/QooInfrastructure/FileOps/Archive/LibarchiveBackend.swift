@@ -79,7 +79,7 @@ public struct LibarchiveBackend: ArchiveReading {
         // 呼び出し方（テスト等）のために UTF-8 へのフォールバックも用意する。
         let encoding = options.encoding ?? .utf8
 
-        let reader = try Self.openReader(url)
+        let reader = try Self.openReader(url, passphrase: options.passphrase)
         defer { Self.closeReader(reader) }
 
         var extractedCount = 0
@@ -96,7 +96,8 @@ public struct LibarchiveBackend: ArchiveReading {
             let rc = archive_read_next_header(reader, &entryPtr)
             if rc == ARCHIVE_EOF { break }
             guard rc == ARCHIVE_OK, let entryPtr else {
-                throw ExtractError.backendFailure(Self.errorMessage(reader))
+                let message = Self.errorMessage(reader)
+                throw Self.passphraseError(from: message) ?? ExtractError.backendFailure(message)
             }
 
             entryCount += 1
@@ -160,7 +161,8 @@ public struct LibarchiveBackend: ArchiveReading {
                 }
                 if bytesRead < 0 {
                     try? handle.close()
-                    throw ExtractError.backendFailure(Self.errorMessage(reader))
+                    let message = Self.errorMessage(reader)
+                    throw Self.passphraseError(from: message) ?? ExtractError.backendFailure(message)
                 }
                 if bytesRead == 0 { break extractEntry }
 
@@ -237,22 +239,51 @@ public struct LibarchiveBackend: ArchiveReading {
         }
     }
 
-    /// 圧縮 [AR-10][AR-11]。zip のみ対応する（RAR は読み取り専用
-    /// [AR-05][OS-06][LC-17]）。書き込み可能な形式が zip 一択で、
-    /// libarchive 以外の書き込みバックエンドを想定する具体的な理由が無いため
-    /// `ArchiveReading` のようなバックエンド抽象化・プロトコルは導入しない
-    /// [YAGNI]。呼び出し側（`ArchiveCompressor`）がステージングへの書き込み
-    /// をこのメソッドに任せ、完成した単一の zip だけを
-    /// `FileOperationService` 経由で最終位置へ移す。
-    public func compress(_ items: [URL], to destinationZip: URL) async throws {
+    /// 圧縮 [AR-10][AR-11]。zip/7z に対応する（RAR は読み取り専用
+    /// [AR-05][OS-06][LC-17]）。書き込み可能な形式が zip/7z の2つに増えたが、
+    /// どちらも libarchive 自身の C API 切替（`archive_write_set_format_*`）で
+    /// 完結し、libarchive 以外の書き込みバックエンドを想定する具体的な理由も
+    /// 無いため、引き続き `ArchiveReading` のようなバックエンド抽象化・
+    /// プロトコルは導入しない [YAGNI]。呼び出し側（`ArchiveCompressor`）が
+    /// ステージングへの書き込みをこのメソッドに任せ、完成した単一のアーカイブ
+    /// だけを `FileOperationService` 経由で最終位置へ移す。
+    ///
+    /// **7z は暗号化オプションを持たない**（libarchive の
+    /// `archive_write_set_format_7zip.c` を確認済み、`compression`/
+    /// `compression-level`/`threads` のみ）。そのため `options.format == .sevenZip`
+    /// のときは `options.encryption`/`passphrase` を無視する
+    /// （UI 側もこの組み合わせを選ばせない設計だが、防御的にここでも徹底する）。
+    public func compress(_ items: [URL], to destination: URL, options: CompressionOptions, passphrase: String? = nil) async throws {
         guard let writer = archive_write_new() else {
             throw ExtractError.backendFailure("archive_write_new returned NULL")
         }
         defer { archive_write_free(writer) }
 
-        archive_write_set_format_zip(writer)
+        switch options.format {
+        case .zip:
+            archive_write_set_format_zip(writer)
+            guard archive_write_set_options(writer, "zip:compression-level=\(options.zipLevel.rawValue)") == ARCHIVE_OK else {
+                throw ExtractError.backendFailure(Self.errorMessage(writer))
+            }
+            if let encryptionValue = options.encryption.zipOptionValue {
+                guard archive_write_set_options(writer, "zip:encryption=\(encryptionValue)") == ARCHIVE_OK else {
+                    throw ExtractError.backendFailure(Self.errorMessage(writer))
+                }
+                guard let passphrase, !passphrase.isEmpty else {
+                    throw ExtractError.passwordProtected
+                }
+                guard archive_write_set_passphrase(writer, passphrase) == ARCHIVE_OK else {
+                    throw ExtractError.backendFailure(Self.errorMessage(writer))
+                }
+            }
+        case .sevenZip:
+            archive_write_set_format_7zip(writer)
+            guard archive_write_set_options(writer, "7zip:compression=\(options.sevenZipCodec.rawValue)") == ARCHIVE_OK else {
+                throw ExtractError.backendFailure(Self.errorMessage(writer))
+            }
+        }
 
-        guard archive_write_open_filename(writer, destinationZip.path) == ARCHIVE_OK else {
+        guard archive_write_open_filename(writer, destination.path) == ARCHIVE_OK else {
             throw ExtractError.backendFailure(Self.errorMessage(writer))
         }
 
@@ -353,12 +384,19 @@ public struct LibarchiveBackend: ArchiveReading {
 
     // MARK: - libarchive の薄いラッパー
 
-    private static func openReader(_ url: URL) throws -> OpaquePointer {
+    /// `passphrase` を渡すと zip の暗号化エントリの復号を試みる
+    /// [環境設定「圧縮／展開」タブ]。libarchive はエントリ一覧（ファイル名）
+    /// 自体は暗号化しないため、`passphrase` が `nil` でも `listEntries` は
+    /// 成功する。
+    private static func openReader(_ url: URL, passphrase: String? = nil) throws -> OpaquePointer {
         guard let a = archive_read_new() else {
             throw ExtractError.backendFailure("archive_read_new returned NULL")
         }
         archive_read_support_filter_all(a)
         archive_read_support_format_all(a)
+        if let passphrase {
+            archive_read_add_passphrase(a, passphrase)
+        }
         let rc = archive_read_open_filename(a, url.path, 64 * 1024)
         guard rc == ARCHIVE_OK else {
             let message = String(cString: archive_error_string(a))
@@ -366,6 +404,18 @@ public struct LibarchiveBackend: ArchiveReading {
             throw ExtractError.backendFailure(message)
         }
         return a
+    }
+
+    /// `archive_read_data`/`archive_read_next_header` が返すパスフレーズ
+    /// 関連のエラー文言を判別する [libarchive `archive_read_support_format_zip.c`
+    /// の既知の文言、WebSearch で確認: "Passphrase required for this entry"/
+    /// "Incorrect passphrase"]。該当しなければ `nil`。
+    private static func passphraseError(from message: String) -> ExtractError? {
+        guard message.localizedCaseInsensitiveContains("assphrase") else { return nil }
+        if message.localizedCaseInsensitiveContains("ncorrect") {
+            return .incorrectPassphrase
+        }
+        return .passwordProtected
     }
 
     private static func closeReader(_ a: OpaquePointer) {

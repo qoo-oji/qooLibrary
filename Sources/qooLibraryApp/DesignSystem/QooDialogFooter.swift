@@ -20,11 +20,15 @@ public struct QooDialogFooter: View {
     private let confirm: DialogButton
     private let cancel: DialogButton?
     private let extra: [DialogButton]
+    /// 入力が未確定の間は決定ボタンだけを無効化する（キャンセルは常に押せる）
+    /// [`ArchivePasswordSheet` が最初の利用箇所]。
+    private let confirmDisabled: Bool
 
-    public init(confirm: DialogButton, cancel: DialogButton?, extra: [DialogButton] = []) {
+    public init(confirm: DialogButton, cancel: DialogButton?, extra: [DialogButton] = [], confirmDisabled: Bool = false) {
         self.confirm = confirm
         self.cancel = cancel
         self.extra = extra
+        self.confirmDisabled = confirmDisabled
     }
 
     public var body: some View {
@@ -39,6 +43,7 @@ public struct QooDialogFooter: View {
             }
             Button(confirm.title, role: confirm.role, action: confirm.action)
                 .keyboardShortcut(.defaultAction)
+                .disabled(confirmDisabled)
         }
         .padding(Tokens.spacing.m)
     }

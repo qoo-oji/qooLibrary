@@ -13,6 +13,11 @@ import SwiftUI
 /// [11章 §11.4 状態の 3 分類]。
 @main
 struct QooLibraryApp: App {
+    /// [ユーザー要望、要件定義書には無い] 「すべてのウインドウが閉じたら終了」
+    /// 環境設定（`GeneralPreferencesTab`）を実現するための橋渡し。詳細は
+    /// `AppDelegate.swift` 参照。
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     init() {
         // 異常終了後に残ったステージングディレクトリを削除する
         // [RB-07][EX-03]。`Scene` は `.task` を持てないため `init()` から
@@ -38,6 +43,7 @@ struct QooLibraryApp: App {
         // 引き続き `nil` → 既定の仮想ホームになる）。
         WindowGroup(for: URL.self) { $initialFolder in
             MainWindowView(initialFolder: initialFolder)
+                .appLanguageOverride() // [1-12 ローカライズ方針、CLAUDE.md 参照]
         }
         .windowResizability(.automatic)
         .defaultSize(width: 900, height: 560)
@@ -55,15 +61,61 @@ struct QooLibraryApp: App {
             CommandGroup(replacing: .appInfo) {
                 AboutMenuButton()
             }
+            CommandGroup(replacing: .appSettings) {
+                PreferencesMenuButton()
+            }
+            // [Finder/Edit メニュー整備、要件定義書には無いユーザー要望への対応]
+            // `.newItem`（既定の「新規ウインドウ」)の直後に追加する。個々の
+            // ウインドウ・タブの状態は `FolderMenuActions`（`@FocusedValue`）
+            // 経由で読む — 詳細はその型のコメント参照。
+            CommandGroup(after: .newItem) {
+                FileMenuCommands()
+            }
             CommandGroup(replacing: .undoRedo) {
                 UndoRedoMenuCommands()
             }
+            // 標準の Cut/Copy/Paste/Delete/すべて選択は非活性のプレースホルダの
+            // ままで実際には何も起きない（このアプリはテキスト編集ビューを
+            // 持たず、AppKit 標準のレスポンダチェーン実装に乗っていないため）。
+            // 独自実装（`FolderMenuActions` 経由）に丸ごと置き換える
+            // [Finder/Edit メニュー整備]。
+            CommandGroup(replacing: .pasteboard) {
+                EditMenuCommands()
+            }
         }
 
-        Window("qooLibrary について", id: "about") {
+        Window("about.windowTitle", id: "about") {
             AboutView()
+                .appLanguageOverride()
         }
         .windowResizability(.contentSize)
+
+        // 環境設定 [15.10 節、1-12]。**`Settings` シーンではなく `About` と
+        // 同じ普通の `Window(id:)` を使う** [設計判断、ユーザー要望による
+        // 2ペイン化（`NavigationSplitView`）への変更時に実機検証で判明:
+        // `Settings` シーンは `.principal` 配置のツールバー項目を「現在の
+        // タブ」を示すピル（カプセル）状の背景付きで自動的に描画する仕様が
+        // あり（Safari/Mail の環境設定のような、古い macOS の丸型タブに近い
+        // 見た目を意図した挙動と考えられる）、これを SwiftUI の公開 API で
+        // 取り除く方法が無かった。`Window(id:)` シーンにはこの自動装飾が
+        // 無く、`⌘,`・メニュー項目は上の `CommandGroup(replacing: .appSettings)`
+        // で手動配線する]。
+        Window("preferences.windowTitle", id: "preferences") {
+            PreferencesView()
+                .appLanguageOverride()
+        }
+        .windowResizability(.contentSize)
+    }
+}
+
+private struct PreferencesMenuButton: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("preferences.windowTitle") {
+            openWindow(id: "preferences")
+        }
+        .keyboardShortcut(",", modifiers: .command)
     }
 }
 
@@ -71,9 +123,65 @@ private struct AboutMenuButton: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        Button("qooLibrary について") {
+        Button("about.windowTitle") {
             openWindow(id: "about")
         }
+    }
+}
+
+/// File メニュー本体 [Finder/Edit メニュー整備]。実際のキーボードショートカット
+/// はここでは付けない — `KeyBindingButtons`（`FolderContentView` の
+/// `.background` 参照）がアプリの唯一の配線経路になるようにするため
+/// [設計判断、1-8 以来の他のショートカットと同じ仕組みに揃える。`UndoRedoMenuCommands`
+/// と同じ理由]。フォーカス中のウインドウにアクティブなタブが無い場合
+/// （`actions` が `nil`）はすべて無効化する。
+private struct FileMenuCommands: View {
+    @FocusedValue(\.folderMenuActions) private var actions
+
+    var body: some View {
+        Button("action.newFolder") { actions?.newFolder() }
+            .disabled(actions?.canNewFolder != true)
+        Button("action.newFolderWithSelection") { actions?.newFolderWithSelection() }
+            .disabled(actions?.canNewFolderWithSelection != true)
+        Divider()
+        Button("action.open") { actions?.open() }
+            .disabled(actions?.canOpen != true)
+        Divider()
+        Button("action.rename") { actions?.rename() }
+            .disabled(actions?.canRename != true)
+        Button("folder.duplicate") { actions?.duplicate() }
+            .disabled(actions?.canDuplicate != true)
+        Button("folder.createAlias") { actions?.makeAlias() }
+            .disabled(actions?.canMakeAlias != true)
+        Button("action.compress") { actions?.compress() }
+            .disabled(actions?.canCompress != true)
+        Divider()
+        Button("folder.revealInFinder") { actions?.revealInFinder() }
+            .disabled(actions?.canRevealInFinder != true)
+        Divider()
+        Button("folder.moveToTrash", role: .destructive) { actions?.moveToTrash() }
+            .disabled(actions?.canMoveToTrash != true)
+    }
+}
+
+/// Edit メニューの Cut/Copy/Paste/すべて選択 [Finder/Edit メニュー整備]。
+/// 標準の `.pasteboard` プレースホルダを丸ごと置き換える（`.commands` 呼び出し
+/// 箇所のコメント参照）。Undo/Redo は別グループ（`UndoRedoMenuCommands`）の
+/// ままにしている（`CommandStack` はアプリ全体で単一のシングルトンのため
+/// `FocusedValue` を経由する必要が無く、置き換える理由も無い）。
+private struct EditMenuCommands: View {
+    @FocusedValue(\.folderMenuActions) private var actions
+
+    var body: some View {
+        Button("action.cut") { actions?.cut() }
+            .disabled(actions?.canCut != true)
+        Button("action.copy") { actions?.copy() }
+            .disabled(actions?.canCopy != true)
+        Button("action.paste") { actions?.paste() }
+            .disabled(actions?.canPaste != true)
+        Divider()
+        Button("action.selectAll") { actions?.selectAll() }
+            .disabled(actions?.canSelectAll != true)
     }
 }
 
@@ -84,9 +192,14 @@ private struct AboutMenuButton: View {
 /// [設計判断、1-8 以来の他のショートカットと同じ仕組みに揃える]。ここは
 /// 動的なタイトルを出す発見可能なメニュー項目としての役割のみを持つ。
 private struct UndoRedoMenuCommands: View {
+    // `Command.displayName`（`QooApplication`）は現状 UI 文字列扱いで日本語
+    // 固定のまま。ここではその前後に付く助詞部分だけをローカライズする
+    // [1-12 ローカライズ方針の適用範囲外、CLAUDE.md「既知の未対応範囲」参照]。
+    @Environment(\.locale) private var locale
+
     var body: some View {
         let stack = CommandStack.shared
-        Button(stack.undoTitle.map { "\($0)を取り消す" } ?? "取り消す") {
+        Button(undoTitle(stack.undoTitle)) {
             Task {
                 await CommandStack.shared.undo()
                 SessionState.shared.reloadToken += 1 // [実機検証で発見: 一覧再読み込みの伝達漏れ]
@@ -94,12 +207,24 @@ private struct UndoRedoMenuCommands: View {
         }
         .disabled(!stack.canUndo)
 
-        Button(stack.redoTitle.map { "\($0)をやり直す" } ?? "やり直す") {
+        Button(redoTitle(stack.redoTitle)) {
             Task {
                 await CommandStack.shared.redo()
                 SessionState.shared.reloadToken += 1
             }
         }
         .disabled(!stack.canRedo)
+    }
+
+    private func undoTitle(_ operationName: String?) -> String {
+        guard let operationName else { return String(localized: "action.undo", locale: locale) }
+        let template = String(localized: "menu.undoWithName", locale: locale)
+        return String(format: template, operationName)
+    }
+
+    private func redoTitle(_ operationName: String?) -> String {
+        guard let operationName else { return String(localized: "action.redo", locale: locale) }
+        let template = String(localized: "menu.redoWithName", locale: locale)
+        return String(format: template, operationName)
     }
 }

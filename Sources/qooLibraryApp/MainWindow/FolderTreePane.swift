@@ -10,9 +10,20 @@ import SwiftUI
 /// テンポラリ・ライブラリフォルダの登録・削除は 1-13 で実装した
 /// [RG-01〜RG-08、`RegisteredFolderStore` 参照]。
 struct FolderTreePane: View {
+    /// `String(localized:)`/`NSOpenPanel`/`NotificationItem` 等 `Text` の
+    /// `LocalizedStringKey` 解決を経由しない箇所向け [1-12 ローカライズ方針、
+    /// CLAUDE.md 参照]。
+    @Environment(\.locale) private var locale
     /// 中央ペインで現在表示中のフォルダ。一致するツリー行をハイライトする [LP-06]。
     let selectedURL: URL?
-    let onSelect: (URL) -> Void
+    /// `selectedURL` の入口 [`NavigationRoot` 参照]。実体として同じフォルダ
+    /// でも、ボリューム経由か登録フォルダ経由かでツリーの自動展開先を分ける
+    /// ために使う [ユーザー要望]。同じ仕組みは将来のラベルフィルタ
+    /// （ライブラリ経由のときだけ適用）・テンポラリフォルダ専用の一括処理
+    /// （テンポラリ経由のときだけ適用）にも使う想定の基盤 [ユーザー指摘、
+    /// CLAUDE.md 参照]。
+    let navigationRoot: NavigationRoot
+    let onSelect: (URL, NavigationRoot) -> Void
 
     @State private var volumesExpanded = true
     @State private var temporaryExpanded = true
@@ -23,64 +34,154 @@ struct FolderTreePane: View {
     @State private var temporaryEntries: [RegisteredFolderEntry] = []
     @State private var renamingFolder: RegisteredFolder?
     @State private var renameText = ""
+    /// [ユーザー要望、環境設定「表示」タブ] 中央ペインでフォルダを移動した
+    /// とき、現在のフォルダまでツリーを自動展開してスクロールする。
+    @AppStorage("qoo.preferences.autoExpandTreeToCurrentFolder") private var autoExpandTreeToCurrentFolder = true
 
     var body: some View {
-        List {
-            Section {
-                if volumesExpanded {
-                    ForEach(volumes) { node in
-                        FolderTreeRow(
-                            node: node, expandedIDs: $expandedNodeIDs, selectedURL: selectedURL, onSelect: onSelect,
-                            onDropFailure: { presentFailureMessage($0) }
-                        )
+        ScrollViewReader { scrollProxy in
+            List {
+                Section {
+                    if volumesExpanded {
+                        ForEach(volumes) { node in
+                            FolderTreeRow(
+                                node: node, expandedIDs: $expandedNodeIDs, selectedURL: selectedURL,
+                                rowNavigationRoot: .volume, onSelect: onSelect,
+                                onDropFailure: { presentFailureMessage($0) }
+                            )
+                        }
+                    }
+                } header: {
+                    GroupHeader(title: String(localized: "folderTree.volumes", locale: locale), isExpanded: $volumesExpanded)
+                }
+
+                Section {
+                    if temporaryExpanded {
+                        registeredFolderRows(temporaryEntries)
+                    }
+                } header: {
+                    GroupHeader(title: String(localized: "folderTree.temporaryFolders", locale: locale), isExpanded: $temporaryExpanded, showsAddButton: true) {
+                        presentRegistrationPanel(kind: .temporary)
                     }
                 }
-            } header: {
-                GroupHeader(title: "ボリューム", isExpanded: $volumesExpanded)
-            }
 
-            Section {
-                if temporaryExpanded {
-                    registeredFolderRows(temporaryEntries)
-                }
-            } header: {
-                GroupHeader(title: "テンポラリフォルダ", isExpanded: $temporaryExpanded, showsAddButton: true) {
-                    presentRegistrationPanel(kind: .temporary)
+                Section {
+                    if libraryExpanded {
+                        registeredFolderRows(libraryEntries)
+                    }
+                } header: {
+                    GroupHeader(title: String(localized: "folderTree.libraryFolders", locale: locale), isExpanded: $libraryExpanded, showsAddButton: true) {
+                        presentRegistrationPanel(kind: .library)
+                    }
                 }
             }
+            .listStyle(.sidebar)
+            .environment(\.defaultMinListRowHeight, 20) // 行間を少し詰める。可変にするのは 1-12（環境設定）で。
+            .task {
+                volumes = FolderTreeNode.mountedVolumes()
+                await reloadRegisteredFolders()
+                revealSelectionIfNeeded(scrollProxy: scrollProxy)
+            }
+            .alert("folderTree.renameDisplayName", isPresented: Binding(get: { renamingFolder != nil }, set: { if !$0 { renamingFolder = nil } })) {
+                TextField("folderTree.displayName", text: $renameText)
+                Button("action.rename") { commitRenameRegisteredFolder() }
+                Button("common.cancel", role: .cancel) {}
+            }
+            .onChange(of: selectedURL) { _, _ in
+                revealSelectionIfNeeded(scrollProxy: scrollProxy)
+            }
+        }
+    }
 
-            Section {
-                if libraryExpanded {
-                    registeredFolderRows(libraryEntries)
-                }
-            } header: {
-                GroupHeader(title: "ライブラリフォルダ", isExpanded: $libraryExpanded, showsAddButton: true) {
-                    presentRegistrationPanel(kind: .library)
-                }
+    /// [ユーザー要望] `selectedURL` の祖先をすべて展開し、その行までスクロール
+    /// する。`autoExpandTreeToCurrentFolder` が無効なら何もしない。
+    ///
+    /// **`navigationRoot` で反応するグループを厳密に1つに絞る**
+    /// [ユーザー指摘: 実体として同じフォルダでも、ライブラリ経由でアクセス
+    /// したときはボリューム側のツリーが反応してはならず、その逆（ボリューム
+    /// 経由のときにライブラリ／テンポラリ側が反応する）もあってはならない。
+    /// 当初は `selectedURL` のパスが登録フォルダの配下かどうかで判定していたが、
+    /// これだと「実際にはどちらの入口から来たか」を区別できず、ボリューム
+    /// ツリーを手で辿って登録フォルダと同じ実フォルダに到達した場合にも
+    /// ライブラリ側が反応してしまっていた。`navigationRoot`（`WindowState` が
+    /// 入口ごとに明示的に記録する）を直接見ることで、実体のパスに関わらず
+    /// 「どちらから来たか」で厳密に分岐する]。
+    private func revealSelectionIfNeeded(scrollProxy: ScrollViewProxy) {
+        guard autoExpandTreeToCurrentFolder, let selectedURL else { return }
+
+        switch navigationRoot {
+        case .volume:
+            volumesExpanded = true
+            expandedNodeIDs.formUnion(Self.ancestorPaths(of: selectedURL, downTo: nil))
+        case .registeredFolder(let id, let rootURL):
+            if temporaryEntries.contains(where: { $0.folder.id == id }) {
+                temporaryExpanded = true
+            } else if libraryEntries.contains(where: { $0.folder.id == id }) {
+                libraryExpanded = true
+            }
+            expandedNodeIDs.formUnion(Self.ancestorPaths(of: selectedURL, downTo: rootURL))
+        }
+
+        // ツリー行は遅延読み込み（`FolderTreeRow.loadChildren()`）のため、
+        // 展開の反映（子の読み込み・行の生成）が実際に画面へ反映されるまで
+        // 数フレームかかることがある。`PaneWindows.swift`/`WindowFrameAutosave.swift`
+        // と同じ「1サイクル遅らせて適用する」パターンだが、階層が深い場合は
+        // 複数段のカスケードになるため、経験的に十分な余裕を持たせている。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            withAnimation {
+                scrollProxy.scrollTo(selectedURL.standardizedFileURL.path, anchor: .center)
             }
         }
-        .listStyle(.sidebar)
-        .environment(\.defaultMinListRowHeight, 20) // 行間を少し詰める。可変にするのは 1-12（環境設定）で。
-        .task {
-            volumes = FolderTreeNode.mountedVolumes()
-            await reloadRegisteredFolders()
+    }
+
+    /// `url` の祖先ディレクトリの正規化パス（`FolderTreeNode.id` と同じ形式）
+    /// を返す。`downTo` を指定すると、その URL に到達した時点で打ち切る
+    /// （`downTo` 自身は結果に含める）。`nil`（ボリューム経由）ならファイル
+    /// システムルートまで遡る。
+    ///
+    /// [実機検証で発見した無限ループを修正] `URL.deletingLastPathComponent()`
+    /// はルート `/` に対して呼んでも `/` 自身を返すとは限らない（Apple の
+    /// ドキュメントに明記された既知の挙動、1-8 のパスバー実装時に一度踏んで
+    /// CLAUDE.md に教訓として残していたのと同じ罠に、ここでも気づかずに
+    /// 引っかかった）。「`parent == current` になったら止める」という終了判定
+    /// では `current` が `/` に達した後も `deletingLastPathComponent()` を
+    /// 呼び続けてしまい、CPU を 100% 消費するハングを引き起こした。
+    /// **ループの先頭で `current.path == "/"` を確認し、`/` に達した時点で
+    /// `deletingLastPathComponent()` を一切呼ばずに抜ける**よう修正した。
+    ///
+    /// [実機検証で発見した2件目のバグを修正] `url` が `floor` そのもの
+    /// （登録フォルダの根を直接選択した場合）だと、`floor` との一致判定を
+    /// 「`parent` を計算した後」にしか行っていなかったため、`floor` 自身は
+    /// 一度も `parent` になる機会が無く（`parent` は常に `current` の1つ上を
+    /// 指すため）、判定に一切引っかからないままファイルシステムルートまで
+    /// 遡ってしまっていた（ライブラリフォルダの根を直接開くとボリューム
+    /// ツリーまで反応する不具合として発覚）。**ループの先頭で「`current` が
+    /// 既に `floor` そのもの」かを確認し、その時点で `parent` を計算せずに
+    /// 抜ける**よう修正した。
+    private static func ancestorPaths(of url: URL, downTo floor: URL?) -> Set<String> {
+        var paths: Set<String> = []
+        let floorPath = floor?.standardizedFileURL.path
+        var current = url.standardizedFileURL
+        while current.path != "/" && !current.path.isEmpty {
+            if let floorPath, current.path == floorPath { break } // 既に根に達している
+            let parent = current.deletingLastPathComponent().standardizedFileURL
+            paths.insert(parent.path)
+            if parent.path == current.path { break } // 保険: 万一進まなくなったら打ち切る
+            current = parent
         }
-        .alert("表示名を変更", isPresented: Binding(get: { renamingFolder != nil }, set: { if !$0 { renamingFolder = nil } })) {
-            TextField("表示名", text: $renameText)
-            Button("変更") { commitRenameRegisteredFolder() }
-            Button("キャンセル", role: .cancel) {}
-        }
+        return paths
     }
 
     @ViewBuilder
     private func registeredFolderRows(_ entries: [RegisteredFolderEntry]) -> some View {
         if entries.isEmpty {
-            EmptyGroupRow(message: "登録なし")
+            EmptyGroupRow(message: String(localized: "folderTree.noneRegistered", locale: locale))
         } else {
             ForEach(entries) { entry in
                 if let node = entry.node {
                     FolderTreeRow(
-                        node: node, expandedIDs: $expandedNodeIDs, selectedURL: selectedURL, onSelect: onSelect,
+                        node: node, expandedIDs: $expandedNodeIDs, selectedURL: selectedURL,
+                        rowNavigationRoot: .registeredFolder(id: entry.folder.id, rootURL: node.url), onSelect: onSelect,
                         onDropFailure: { presentFailureMessage($0) },
                         registeredFolder: entry.folder,
                         onRename: { beginRenameRegisteredFolder(entry.folder) },
@@ -101,10 +202,10 @@ struct FolderTreePane: View {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
-        panel.prompt = "登録"
+        panel.prompt = String(localized: "folderTree.registerPanelPrompt", locale: locale)
         panel.message = kind == .library
-            ? "ライブラリフォルダとして登録するフォルダを選択してください"
-            : "テンポラリフォルダとして登録するフォルダを選択してください"
+            ? String(localized: "folderTree.chooseLibraryFolder", locale: locale)
+            : String(localized: "folderTree.chooseTemporaryFolder", locale: locale)
         guard panel.runModal() == .OK, let url = panel.url else { return }
         Task {
             do {
@@ -113,7 +214,7 @@ struct FolderTreePane: View {
             } catch {
                 await NotificationRouter.shared.present(NotificationItem(
                     category: .error, severity: .sheet,
-                    title: "登録できませんでした", body: Self.errorMessage(for: error)
+                    title: String(localized: "folderTree.registrationFailedTitle", locale: locale), body: Self.errorMessage(for: error)
                 ))
             }
         }
@@ -130,7 +231,7 @@ struct FolderTreePane: View {
     private func presentFailureMessage(_ message: String) {
         Task {
             await NotificationRouter.shared.present(
-                NotificationItem(category: .error, severity: .sheet, title: "操作に失敗しました", body: message)
+                NotificationItem(category: .error, severity: .sheet, title: String(localized: "error.operationFailed", locale: locale), body: message)
             )
         }
     }
@@ -166,13 +267,14 @@ struct FolderTreePane: View {
     }
 
     private static func errorMessage(for error: Error) -> String {
+        let locale = AppLanguage.effectiveLocale
         switch error {
         case RegisteredFolderError.nestedRegistration:
-            return "このフォルダは既に登録済みのフォルダと親子関係にあります。ライブラリ・テンポラリフォルダ同士は入れ子にできません。"
+            return String(localized: "folderTree.nestedRegistrationError", locale: locale)
         case RegisteredFolderError.unsupportedFileSystem(let reason):
             switch reason {
             case .noPersistentFileID(let fileSystem), .persistentIDNotPreserved(let fileSystem):
-                return "このフォルダのファイルシステム（\(fileSystem)）は永続的なファイル ID に対応していないため登録できません（exFAT・FAT32 の外部ボリューム等は非対応です）。"
+                return String(format: String(localized: "folderTree.unsupportedFileSystemError", locale: locale), fileSystem)
             }
         default:
             return error.localizedDescription
@@ -189,6 +291,7 @@ private struct RegisteredFolderEntry: Identifiable {
 }
 
 private struct GroupHeader: View {
+    @Environment(\.locale) private var locale
     let title: String
     @Binding var isExpanded: Bool
     var showsAddButton: Bool = false
@@ -214,10 +317,10 @@ private struct GroupHeader: View {
                     Image(systemName: "plus")
                 }
                 .buttonStyle(.borderless)
-                .help("\(title)を登録")
+                .help(String(format: String(localized: "folderTree.registerGroup", locale: locale), title))
                 Image(systemName: "gearshape")
                     .foregroundStyle(.secondary)
-                    .help("\(title)の設定（1-13 以降で実装）")
+                    .help(String(format: String(localized: "folderTree.groupSettings", locale: locale), title))
             }
         }
     }
@@ -249,9 +352,9 @@ private struct OfflineRegisteredFolderRow: View {
         .opacity(0.4)
         .padding(.horizontal, Tokens.spacing.xs)
         .padding(.vertical, 2)
-        .help("見つかりません（ボリュームが接続されていない可能性があります）")
+        .help("folderTree.notFoundHint")
         .contextMenu {
-            Button("登録解除") { onUnregister() }
+            Button("folderTree.unregister") { onUnregister() }
         }
     }
 }
@@ -261,7 +364,12 @@ private struct FolderTreeRow: View {
     let node: FolderTreeNode
     @Binding var expandedIDs: Set<String>
     let selectedURL: URL?
-    let onSelect: (URL) -> Void
+    /// この行（および再帰的に読み込まれる子孫すべて）が属する
+    /// `NavigationRoot`。`registeredFolder`/`onRename`/`onUnregister` と違い
+    /// **子孫にもそのまま伝播する**（クリックした行がツリーのどの枝に
+    /// 属するかを常に正しく `onSelect` へ伝えるため）。
+    let rowNavigationRoot: NavigationRoot
+    let onSelect: (URL, NavigationRoot) -> Void
     let onDropFailure: @MainActor @Sendable (String) -> Void
     /// ライブラリ／テンポラリの**登録ルート行**のときだけ渡される
     /// [RG-05][RG-06]。再帰的に読み込まれる子孫フォルダの行では `nil` の
@@ -320,7 +428,7 @@ private struct FolderTreeRow: View {
             .background(isDropTargeted ? Tokens.Colors.accent.opacity(0.35) : (isSelected ? Color(nsColor: .selectedContentBackgroundColor) : Color.clear))
             .clipShape(RoundedRectangle(cornerRadius: Tokens.radius.s))
             .contentShape(Rectangle())
-            .onTapGesture { onSelect(node.url) } // [LP-06]
+            .onTapGesture { onSelect(node.url, rowNavigationRoot) } // [LP-06]
             .dropDestination(for: URL.self) { items, _ in // [DD-05] ツリーへドロップで移動
                 DropHandling.performDrop(
                     items, into: node.url,
@@ -342,7 +450,8 @@ private struct FolderTreeRow: View {
             } else if let children {
                 ForEach(children) { child in
                     FolderTreeRow(
-                        node: child, expandedIDs: $expandedIDs, selectedURL: selectedURL, onSelect: onSelect,
+                        node: child, expandedIDs: $expandedIDs, selectedURL: selectedURL,
+                        rowNavigationRoot: rowNavigationRoot, onSelect: onSelect,
                         onDropFailure: onDropFailure
                     )
                 }
@@ -358,10 +467,10 @@ private struct FolderTreeRow: View {
             if registeredFolder != nil {
                 rowLabel.contextMenu {
                     if let onRename {
-                        Button("表示名を変更…") { onRename() } // [RG-05]
+                        Button("folderTree.renameDisplayNameEllipsis") { onRename() } // [RG-05]
                     }
                     if let onUnregister {
-                        Button("登録解除") { onUnregister() } // [RG-06 の簡易版]
+                        Button("folderTree.unregister") { onUnregister() } // [RG-06 の簡易版]
                     }
                 }
             } else {
@@ -387,10 +496,10 @@ private struct FolderTreeRow: View {
 private struct AccessDeniedRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
-            Text("アクセス権がありません")
+            Text("folderTree.accessDenied")
                 .font(.system(size: Tokens.fontSize.caption))
                 .foregroundStyle(Tokens.Colors.dangerText)
-            Button("システム設定を開く") {
+            Button("folderTree.openSystemSettings") {
                 // [B-20] フルディスクアクセスは entitlement では取得できない。
                 if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
                     NSWorkspace.shared.open(url)

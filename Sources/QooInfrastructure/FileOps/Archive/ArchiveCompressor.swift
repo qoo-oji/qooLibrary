@@ -20,14 +20,18 @@ public actor ArchiveCompressor {
         self.stagingRoot = stagingRoot
     }
 
-    /// `items` を `destinationName`.zip として `destinationFolder` に作る。
-    /// 返り値は実際に作られた zip の URL（衝突時は `.keepBoth`/`.replace`
-    /// に従ってリネームされている場合がある）。
+    /// `items` を `destinationName`.zip/.7z として `destinationFolder` に作る
+    /// （拡張子は `options.format` に従う）。返り値は実際に作られたアーカイブの
+    /// URL（衝突時は `.keepBoth`/`.replace` に従ってリネームされている場合が
+    /// ある）。`options.encryption != .none` のときは `passphrase` が必須
+    /// [環境設定「圧縮／展開」タブ]。
     @discardableResult
     public func compress(
         _ items: [URL],
         destinationName: String,
         in destinationFolder: URL,
+        options: CompressionOptions = .default,
+        passphrase: String? = nil,
         conflictPolicy: ConflictPolicy = .keepBoth
     ) async throws -> URL {
         guard !items.isEmpty else {
@@ -40,11 +44,12 @@ public actor ArchiveCompressor {
             try? FileManager.default.removeItem(at: stagingDir) // [EX-03] 相当、ユーザー非可視の一時領域
         }
 
-        let stagingZip = stagingDir.appendingPathComponent("\(destinationName).zip")
-        try await LibarchiveBackend.shared.compress(items, to: stagingZip)
+        let ext = options.format == .zip ? "zip" : "7z"
+        let stagingArchive = stagingDir.appendingPathComponent("\(destinationName).\(ext)")
+        try await LibarchiveBackend.shared.compress(items, to: stagingArchive, options: options, passphrase: passphrase)
 
         let receipts = try await fileOps.move(
-            [stagingZip], to: destinationFolder, options: OpOptions(conflictPolicy: conflictPolicy)
+            [stagingArchive], to: destinationFolder, options: OpOptions(conflictPolicy: conflictPolicy)
         )
         guard let finalURL = receipts.first?.toURL else {
             throw ExtractError.backendFailure("failed to move compressed archive to destination")

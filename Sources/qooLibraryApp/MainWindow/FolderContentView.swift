@@ -14,7 +14,23 @@ import UniformTypeIdentifiers
 /// `FileOperationService` 経由でのみファイルシステムを変更する [FO-01][FO-02]。
 /// 「Finder で表示」「パスをコピー」はファイルを変更しないため対象外 [FM-09][FM-10]。
 struct FolderContentView: View {
+    /// `String(localized:)`/`NotificationItem` 等 `Text` の `LocalizedStringKey`
+    /// 解決を経由しない箇所向け [1-12 ローカライズ方針、CLAUDE.md 参照]。
+    @Environment(\.locale) private var locale
     let folder: URL?
+    /// `folder` の「実行時点で常に最新」版 [実機検証で発見したバグの修正、
+    /// `onGoToParent` のコメントと同種の問題]。`folder`（`let` で受け取った
+    /// 値）を直接読むアクション（ペースト・圧縮・新規フォルダ等、キーボード
+    /// ショートカット経由で `KeyBindingButtons` の非表示ボタンから呼ばれる
+    /// もの）は、ナビゲーション直後にキー入力すると SwiftUI が古い世代の
+    /// `FolderContentView` インスタンス（＝古い `folder` の値）をまだ保持して
+    /// いることがあり、1段階古いフォルダを対象に実行されてしまうことがあった
+    /// （実機検証: Documents で ⌘X → Documents/Dummy へ移動して ⌘V すると
+    /// Documents 側にペーストされる、という形で発覚）。`WindowState` は
+    /// クラス（参照型）のため、その場で読み直せば常に最新の値が得られる。
+    /// このクロージャは呼び出しのたびに `windowState.tabs[index].folder` を
+    /// 読み直す（`MainWindowView` 側の配線を参照）。
+    let currentFolder: () -> URL?
     @Binding var selection: Set<URL>
     let onNavigate: (URL) -> Void
     /// Finder ツールバーの矢印ボタンと同等の戻る/進む [KB-02]。履歴自体は
@@ -68,27 +84,58 @@ struct FolderContentView: View {
     /// `@State`（`selectionAnchor` 等）と同じくこのビュー内で完結させる。
     @State private var sortOrder: [FolderSortComparator] = [FolderSortComparator(key: .name)]
     /// カラムの表示/非表示 [LV-02] とフォルダをまとめる設定 [LV-03] は、
-    /// 特定のウインドウやタブに紐づかないアプリ全体の表示設定。1-12（環境設定）
-    /// の本実装が無いため、1-8 のキーバインド上書きと同じく `UserDefaults`
-    /// （`@AppStorage`）に直接永続化する暫定形にしている。
+    /// 特定のウインドウやタブに紐づかないアプリ全体の表示設定。1-12 環境設定
+    /// （`DisplayPreferencesTab.swift`/`GeneralPreferencesTab.swift`）が
+    /// 同じ `UserDefaults` キーを共有しており、そちらからも変更できる。
+    /// ここでは中央ペイン漏斗アイコンメニューの quick access のために
+    /// `@AppStorage` で直接参照し続けている。
     @AppStorage("qoo.folderList.showModificationDateColumn") private var showModificationDateColumn = true
     @AppStorage("qoo.folderList.showSizeColumn") private var showSizeColumn = true
     @AppStorage("qoo.folderList.showKindColumn") private var showKindColumn = true
+    /// Finder の列選択に合わせて追加した2列 [ユーザー要望: 「現在表示できる
+    /// 情報だけでは少ない」]。新規に増やした列のため、既存ユーザーの表示が
+    /// 急に増えて煩雑にならないよう既定は非表示にしている（他の3列は
+    /// 元から既定 true）。
+    @AppStorage("qoo.folderList.showCreationDateColumn") private var showCreationDateColumn = false
+    @AppStorage("qoo.folderList.showAddedDateColumn") private var showAddedDateColumn = false
     @AppStorage("qoo.folderList.groupFoldersAtTop") private var groupFoldersAtTop = true
-    /// 2本指の横スワイプを戻る/進むとして使うか、通常の横スクロールとして
-    /// 使うか [ユーザー要望]。実際の判定は `MainWindowView` の
-    /// `backForwardGestureSupport` が行うが、同じ `UserDefaults` キーを
-    /// `@AppStorage` で共有することで、ここでの変更が即座に反映される。
-    @AppStorage("qoo.twoFingerSwipeForNavigation") private var twoFingerSwipeForNavigation = true
+    /// 圧縮・展開の既定値 [環境設定「圧縮／展開」タブ、`CompressionPreferencesTab`
+    /// と同じ `UserDefaults` キーを共有]。
+    @AppStorage("qoo.preferences.compression.format") private var compressionFormat: CompressibleFormat = .zip
+    @AppStorage("qoo.preferences.compression.zipLevel") private var compressionZipLevel: ZipCompressionLevel = .normal
+    @AppStorage("qoo.preferences.compression.sevenZipCodec") private var compressionSevenZipCodec: SevenZipCodec = .ppmd
+    @AppStorage("qoo.preferences.compression.encryption") private var compressionEncryption: ArchiveEncryptionMethod = .none
+    @AppStorage("qoo.preferences.extraction.maxUncompressedGB") private var extractionMaxUncompressedGB: Double = Double(AppLimits.Extraction.defaultMaxUncompressedBytes) / 1_000_000_000
+    @AppStorage("qoo.preferences.extraction.maxEntries") private var extractionMaxEntries: Double = Double(AppLimits.Extraction.defaultMaxEntries)
+    @AppStorage("qoo.preferences.extraction.ratioWarn") private var extractionRatioWarn: Double = AppLimits.Extraction.defaultRatioWarn
+    @AppStorage("qoo.preferences.extraction.ratioAbort") private var extractionRatioAbort: Double = AppLimits.Extraction.defaultRatioAbort
+    /// 単一アーカイブ展開でパスワードが必要だった場合の再試行状態
+    /// [環境設定「圧縮／展開」タブ]。複数選択の一括展開では対話的な
+    /// パスワード再試行を提供しない（`extractArchives` のコメント参照、
+    /// スコープを絞った設計判断）。
+    @State private var pendingExtractionPassword: PendingExtractionPassword?
+    /// 圧縮時にパスワードを尋ねている状態。
+    @State private var pendingCompression: PendingCompression?
+    /// 非 `nil` の間だけ、その URL までスクロールする [`.onChange(of: pendingScrollTarget)`
+    /// 参照]。ユーザー自身のクリックによる選択ではスクロールしないよう、
+    /// プログラム的に選択を変える呼び出し元（`runCompress` 等）だけが設定する。
+    @State private var pendingScrollTarget: URL?
     /// キーバインド [13章 §13.6]。1-8 時点では開く・リネーム・ゴミ箱・
     /// 新規フォルダのみ実際に配線している（他の既定バインドは対応する
     /// 機能が実装され次第、各所で `keyBindingStore.binding(for:)` を参照する）。
     private let keyBindingStore: KeyBindingStore = UserDefaultsKeyBindingStore.shared
+    /// アプリ関連付け [12章 §12.9]。`openEntries`/`OpenWithMenu` から使う。
+    private let appAssociationService: AppAssociationService = AppAssociationStore.shared
 
     var body: some View {
+        // 選択がプログラム的に変わったとき（例: 「ここに圧縮」完了後に
+        // 作成したアーカイブを選択する）に中央ペインをその項目までスクロール
+        // させるための `ScrollViewReader`（`Table`/`IconGridView` 双方の
+        // スクロール領域を包む）[ユーザー要望]。
+        ScrollViewReader { scrollProxy in
         VStack(alignment: .leading, spacing: 0) {
             if let loadError {
-                PlaceholderPane(title: "読み込みエラー", subtitle: loadError)
+                PlaceholderPane(title: String(localized: "folder.loadError", locale: locale), subtitle: loadError)
             } else if listStyle == .icon {
                 // アイコン表示 [IV-01/08/09、PF-10]。`Table` と違い選択・D&D・
                 // コンテキストメニューの AppKit 標準機能が無いため、それぞれ
@@ -99,7 +146,7 @@ struct FolderContentView: View {
                     selection: $selection,
                     iconSize: iconSize,
                     dragNamespace: dragNamespace,
-                    onNavigate: onNavigate,
+                    onOpenEntry: { openEntries([$0]) },
                     onSingleClick: { handleSingleClick($0) },
                     onReload: { reloadAndBroadcast() },
                     onDropFailure: { presentFailureMessage($0) },
@@ -134,7 +181,7 @@ struct FolderContentView: View {
                 // `displayedEntries` がこの状態を見て計算する（`Table` 自身は
                 // データを自動ソートしない）。
                 Table(displayedEntries, selection: $selection, sortOrder: $sortOrder) {
-                    TableColumn("名前", sortUsing: FolderSortComparator(key: .name)) { entry in
+                    TableColumn("column.name", sortUsing: FolderSortComparator(key: .name)) { entry in
                         rowCell(entry, isRenaming: renamingEntry?.url == entry.url) {
                             // アイコンを固定幅の枠に収めて Finder のように先頭を揃える
                             // （実機検証で発覚: アイコンの実測幅がまちまちだと名前の
@@ -146,7 +193,7 @@ struct FolderContentView: View {
                                     .frame(width: 16, height: 16)
                                 if renamingEntry?.url == entry.url {
                                     // Finder 流のインライン名前編集 [ユーザー要望]。
-                                    TextField("名前", text: $renameText)
+                                    TextField("column.name", text: $renameText)
                                         .textFieldStyle(.plain)
                                         .focused($isRenameFieldFocused)
                                         .onSubmit { commitRename() }
@@ -175,7 +222,7 @@ struct FolderContentView: View {
                     .width(min: 160, ideal: 280)
 
                     if showModificationDateColumn {
-                        TableColumn("更新日", sortUsing: FolderSortComparator(key: .modificationDate)) { entry in
+                        TableColumn("column.modificationDate", sortUsing: FolderSortComparator(key: .modificationDate)) { entry in
                             rowCell(entry, isRenaming: renamingEntry?.url == entry.url) {
                                 Text(entry.modificationDate.map { Self.dateFormatter.string(from: $0) } ?? "—")
                                     .font(.system(size: Tokens.fontSize.body))
@@ -186,7 +233,7 @@ struct FolderContentView: View {
                     }
 
                     if showSizeColumn {
-                        TableColumn("サイズ", sortUsing: FolderSortComparator(key: .size)) { entry in
+                        TableColumn("column.size", sortUsing: FolderSortComparator(key: .size)) { entry in
                             rowCell(entry, isRenaming: renamingEntry?.url == entry.url) {
                                 Text(entry.isDirectory ? "—" : Self.sizeFormatter.string(fromByteCount: entry.fileSize ?? 0))
                                     .font(.system(size: Tokens.fontSize.body))
@@ -197,7 +244,7 @@ struct FolderContentView: View {
                     }
 
                     if showKindColumn {
-                        TableColumn("種類", sortUsing: FolderSortComparator(key: .kind)) { entry in
+                        TableColumn("column.kind", sortUsing: FolderSortComparator(key: .kind)) { entry in
                             rowCell(entry, isRenaming: renamingEntry?.url == entry.url) {
                                 Text(entry.kindDescription)
                                     .font(.system(size: Tokens.fontSize.body))
@@ -205,6 +252,28 @@ struct FolderContentView: View {
                             }
                         }
                         .width(min: 90, ideal: 140)
+                    }
+
+                    if showCreationDateColumn { // [ユーザー要望: Finder に合わせてカラムを増やす]
+                        TableColumn("column.creationDate", sortUsing: FolderSortComparator(key: .creationDate)) { entry in
+                            rowCell(entry, isRenaming: renamingEntry?.url == entry.url) {
+                                Text(entry.creationDate.map { Self.dateFormatter.string(from: $0) } ?? "—")
+                                    .font(.system(size: Tokens.fontSize.body))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .width(min: 110, ideal: 170)
+                    }
+
+                    if showAddedDateColumn {
+                        TableColumn("column.addedDate", sortUsing: FolderSortComparator(key: .addedDate)) { entry in
+                            rowCell(entry, isRenaming: renamingEntry?.url == entry.url) {
+                                Text(entry.addedDate.map { Self.dateFormatter.string(from: $0) } ?? "—")
+                                    .font(.system(size: Tokens.fontSize.body))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .width(min: 110, ideal: 170)
                     }
                 }
                 .focused($isListFocused)
@@ -256,20 +325,22 @@ struct FolderContentView: View {
                     if listStyle == .icon { // [IV-04]
                         Slider(value: $iconSize, in: Tokens.iconSize.min...Tokens.iconSize.max, step: Tokens.iconSize.step)
                             .frame(width: 100)
-                            .help("アイコンサイズ")
+                            .help("folder.iconSize")
                     } else {
                         Menu {
-                            Toggle("更新日", isOn: $showModificationDateColumn)
-                            Toggle("サイズ", isOn: $showSizeColumn)
-                            Toggle("種類", isOn: $showKindColumn)
+                            Toggle("column.modificationDate", isOn: $showModificationDateColumn)
+                            Toggle("column.size", isOn: $showSizeColumn)
+                            Toggle("column.kind", isOn: $showKindColumn)
+                            Toggle("column.creationDate", isOn: $showCreationDateColumn)
+                            Toggle("column.addedDate", isOn: $showAddedDateColumn)
                             Divider()
-                            Toggle("フォルダを上にまとめる", isOn: $groupFoldersAtTop) // [LV-03]
+                            Toggle("preferences.general.groupFoldersAtTop", isOn: $groupFoldersAtTop) // [LV-03]
                         } label: {
                             Image(systemName: "line.3.horizontal.decrease.circle")
                         }
                         .menuStyle(.borderlessButton)
                         .fixedSize()
-                        .help("表示するカラム") // [LV-02]
+                        .help("folder.visibleColumns") // [LV-02]
                     }
                 }
                 .padding(.horizontal, Tokens.spacing.m)
@@ -290,7 +361,7 @@ struct FolderContentView: View {
                     moveToTrash(Array(selection))
                 }
                 KeyBindingButtons(action: .newFolder, store: keyBindingStore, isDisabled: folder == nil) {
-                    newFolderName = "新規フォルダ"
+                    newFolderName = String(localized: "action.newFolder", locale: locale)
                     showingNewFolderPrompt = true
                 }
                 KeyBindingButtons(action: .goToParent, store: keyBindingStore, isDisabled: !canGoToParent) {
@@ -305,8 +376,23 @@ struct FolderContentView: View {
                 KeyBindingButtons(action: .copy, store: keyBindingStore, isDisabled: selection.isEmpty) {
                     copySelectionToPasteboard(Array(selection))
                 }
+                KeyBindingButtons(action: .cut, store: keyBindingStore, isDisabled: selection.isEmpty) {
+                    cutSelectionToPasteboard(Array(selection))
+                }
                 KeyBindingButtons(action: .paste, store: keyBindingStore, isDisabled: !canPaste || folder == nil) {
                     pasteFromPasteboard()
+                }
+                KeyBindingButtons(action: .selectAll, store: keyBindingStore, isDisabled: entries.isEmpty) {
+                    selectAllInCurrentFolder()
+                }
+                KeyBindingButtons(action: .duplicate, store: keyBindingStore, isDisabled: selection.isEmpty) {
+                    duplicate(Array(selection))
+                }
+                KeyBindingButtons(action: .makeAlias, store: keyBindingStore, isDisabled: selection.isEmpty) {
+                    createAliases(for: Array(selection))
+                }
+                KeyBindingButtons(action: .compress, store: keyBindingStore, isDisabled: selection.isEmpty) {
+                    compressHere(Array(selection))
                 }
             }
             .frame(width: 0, height: 0)
@@ -338,6 +424,8 @@ struct FolderContentView: View {
             DropHandling.performDrop(items, into: folder, onComplete: { reloadAndBroadcast() }, onFailure: { presentFailureMessage($0) })
             return true
         } isTargeted: { isDropTargeted = $0 }
+        // File/Edit メニューバーへの橋渡し [`FolderMenuActions` 参照]。
+        .focusedSceneValue(\.folderMenuActions, currentFolderMenuActions)
         .task(id: folder) {
             reload()
             // ⌘↑・戻る・進む・ツリークリック等、クリック以外の経路でナビゲート
@@ -354,11 +442,82 @@ struct FolderContentView: View {
         .onChange(of: SessionState.shared.reloadToken) {
             reload()
         }
-        .alert("新規フォルダ", isPresented: $showingNewFolderPrompt) {
-            TextField("フォルダ名", text: $newFolderName)
-            Button("作成") { createNewFolder() }
-            Button("キャンセル", role: .cancel) {}
+        .alert("action.newFolder", isPresented: $showingNewFolderPrompt) {
+            TextField("folder.namePlaceholder", text: $newFolderName)
+            Button("common.create") { createNewFolder() }
+            Button("common.cancel", role: .cancel) {}
         }
+        // 圧縮時のパスワード設定 [環境設定「圧縮／展開」タブ]。
+        .sheet(item: $pendingCompression) { pending in
+            ArchivePasswordSheet(mode: .setPassword) { password in
+                runCompress(
+                    pending.items, destinationName: pending.destinationName, destinationFolder: pending.destinationFolder,
+                    options: pending.options, passphrase: password, conflictPolicy: pending.conflictPolicy
+                )
+            }
+        }
+        // 展開時のパスワード入力・誤りパスワードの再試行 [同上]。
+        .sheet(item: $pendingExtractionPassword) { pending in
+            ArchivePasswordSheet(mode: .unlock(retryErrorMessage: pending.retryErrorMessage)) { password in
+                extractArchives([pending.archiveURL], destination: { _ in pending.target }, passphrase: password)
+            }
+        }
+        // `pendingScrollTarget` が設定されたときだけスクロールする
+        // [実機検証で発見したバグの修正: 以前は `.onChange(of: selection)` で
+        // あらゆる選択変更のたびにスクロールしていたため、ユーザーが中央
+        // ペイン内の既に見えている項目をクリックしただけで画面が中央寄せに
+        // ジャンプしてしまっていた。「ここに圧縮」後に作成したファイルまで
+        // スクロールしたいのはプログラム的に選択を変えたときだけであり、
+        // ユーザー自身のクリックによる選択ではスクロールすべきではない
+        // （ユーザー指摘）。`runCompress` など、明示的にスクロールが必要な
+        // 呼び出し元だけが `pendingScrollTarget` を設定する]。
+        .onChange(of: pendingScrollTarget) { _, newValue in
+            guard let target = newValue else { return }
+            withAnimation {
+                scrollProxy.scrollTo(target, anchor: .center)
+            }
+            pendingScrollTarget = nil
+        }
+        }
+    }
+
+    /// `FolderMenuActions` の値。File/Edit メニューの各項目はこの値を通じて
+    /// 現在のフォルダ・選択に対して動作する [`.focusedSceneValue` の呼び出し
+    /// 箇所参照]。
+    private var currentFolderMenuActions: FolderMenuActions {
+        let selected = Array(selection)
+        var actions = FolderMenuActions()
+        actions.canOpen = !selection.isEmpty
+        actions.canNewFolder = folder != nil
+        actions.canNewFolderWithSelection = folder != nil && !selection.isEmpty
+        actions.canRename = selection.count == 1
+        actions.canDuplicate = !selection.isEmpty
+        actions.canMakeAlias = !selection.isEmpty
+        actions.canCompress = !selection.isEmpty
+        actions.canMoveToTrash = !selection.isEmpty
+        actions.canCopy = !selection.isEmpty
+        actions.canCut = !selection.isEmpty
+        actions.canPaste = canPaste && folder != nil
+        actions.canSelectAll = !entries.isEmpty
+        actions.canRevealInFinder = !selection.isEmpty
+
+        actions.open = { openSelection() }
+        actions.newFolder = {
+            newFolderName = String(localized: "action.newFolder", locale: locale)
+            showingNewFolderPrompt = true
+        }
+        actions.newFolderWithSelection = { newFolderWithSelection(selected) }
+        actions.rename = { beginRenameFromShortcut() }
+        actions.duplicate = { duplicate(selected) }
+        actions.makeAlias = { createAliases(for: selected) }
+        actions.compress = { compressHere(selected) }
+        actions.moveToTrash = { moveToTrash(selected) }
+        actions.copy = { copySelectionToPasteboard(selected) }
+        actions.cut = { cutSelectionToPasteboard(selected) }
+        actions.paste = { pasteFromPasteboard() }
+        actions.selectAll = { selectAllInCurrentFolder() }
+        actions.revealInFinder = { NSWorkspace.shared.activateFileViewerSelecting(selected) }
+        return actions
     }
 
     private static let sizeFormatter: ByteCountFormatter = {
@@ -416,7 +575,12 @@ struct FolderContentView: View {
                 .contentShape(Rectangle())
                 .onTapGesture(count: 2) {
                     pendingRenameGeneration += 1 // ダブルクリックなら保留中のリネームは取り消す
-                    if entry.isDirectory { onNavigate(entry.url) }
+                    // [実機検証で発見したバグの修正] 以前はフォルダのときだけ
+                    // `onNavigate` を呼んでおり、ファイルのダブルクリックが
+                    // 何も起きなかった（環境設定「関連付け」タブで既定アプリを
+                    // 設定しても反映されない、という報告の真因だった）。
+                    // `openEntries` はフォルダ/ファイルの判定を内部で行う。
+                    openEntries([entry])
                 }
                 // 単発クリックの選択は `.simultaneousGesture` にする。同じ view に
                 // `.onTapGesture(count: 1)` と `.onTapGesture(count: 2)` を両方
@@ -528,93 +692,94 @@ struct FolderContentView: View {
             // [ユーザー要望、要件定義書には無い]。`Picker` を `Menu` の中で
             // `.pickerStyle(.inline)` にすると、サブメニューとして現在の
             // 選択にチェックマークが付く標準の見た目になる。
-            Menu("表示") { // [LV-04]
-                Picker("表示", selection: $listStyle) {
-                    Label("リスト", systemImage: "list.bullet").tag(ListStyle.list)
-                    Label("アイコン", systemImage: "square.grid.2x2").tag(ListStyle.icon)
+            Menu("common.view") { // [LV-04]
+                Picker("common.view", selection: $listStyle) {
+                    Label("common.list", systemImage: "list.bullet").tag(ListStyle.list)
+                    Label("common.icon", systemImage: "square.grid.2x2").tag(ListStyle.icon)
                 }
                 .pickerStyle(.inline)
                 .labelsHidden()
             }
-            Menu("並び替え") { // [LV-01]
-                Picker("並び替え", selection: sortKeyBinding) {
-                    Text("名前").tag(FolderSortComparator.Key.name)
-                    Text("更新日").tag(FolderSortComparator.Key.modificationDate)
-                    Text("サイズ").tag(FolderSortComparator.Key.size)
-                    Text("種類").tag(FolderSortComparator.Key.kind)
+            Menu("common.sortBy") { // [LV-01]
+                Picker("common.sortBy", selection: sortKeyBinding) {
+                    Text("column.name").tag(FolderSortComparator.Key.name)
+                    Text("column.modificationDate").tag(FolderSortComparator.Key.modificationDate)
+                    Text("column.size").tag(FolderSortComparator.Key.size)
+                    Text("column.kind").tag(FolderSortComparator.Key.kind)
+                    Text("column.creationDate").tag(FolderSortComparator.Key.creationDate)
+                    Text("column.addedDate").tag(FolderSortComparator.Key.addedDate)
                 }
                 .pickerStyle(.inline)
                 .labelsHidden()
-                Divider()
-                // アイコン表示にはこの設定への導線が無かったため、ここに置くことで
-                // リスト・アイコン両方から到達できるようにした [LV-03 の導線拡張]。
-                Toggle("フォルダを上にまとめる", isOn: $groupFoldersAtTop)
-            }
-            Menu("2本指の横スワイプ") { // [ユーザー要望: 2本指横スワイプを戻る/
-                // 進むと通常のスクロールのどちらに使うか、トレードオフを
-                // ユーザー自身に選ばせる]
-                Picker("2本指の横スワイプ", selection: $twoFingerSwipeForNavigation) {
-                    Text("戻る/進むとして使う").tag(true)
-                    Text("スクロールとして使う").tag(false)
-                }
-                .pickerStyle(.inline)
-                .labelsHidden()
-                if !twoFingerSwipeForNavigation {
-                    Text("戻る/進むは3本指のスワイプで行えます。システム設定 > トラックパッド > その他のジェスチャー で「ページ間をスワイプ」を3本指に設定してください。")
-                        .font(.system(size: Tokens.fontSize.caption))
-                        .foregroundStyle(.secondary)
-                }
             }
             Divider()
-            Button("新規フォルダ") {
-                newFolderName = "新規フォルダ"
+            Button("action.newFolder") {
+                newFolderName = String(localized: "action.newFolder", locale: locale)
                 showingNewFolderPrompt = true
             }
-            Button("ペースト") { pasteFromPasteboard() }
+            Button("action.paste") { pasteFromPasteboard() }
                 .disabled(!canPaste)
+            // Finder は空きスペースの右クリックにも「すべて選択」を出す
+            // [Finder/Edit メニュー整備の一環で追加]。
+            Button("action.selectAll") { selectAllInCurrentFolder() }
+                .disabled(entries.isEmpty)
         } else {
             let targets = Array(urls)
             let targetEntries = entries.filter { urls.contains($0.url) }
-            Button("開く") { openEntries(targetEntries) } // [KB-02 相当]
+            Button("action.open") { openEntries(targetEntries) } // [KB-02 相当]
+            // 「アプリケーションで開く」[12章 §12.9、単一選択のファイルのみ。
+            // フォルダは拡張子を持たず `candidates(for:)` の対象にならない
+            // ため対象外にしている]。
+            if targets.count == 1, let only = targetEntries.first, !only.isDirectory {
+                OpenWithMenu(url: only.url)
+            }
             if targetEntries.allSatisfy(\.isDirectory) {
                 // 新規タブ/ウインドウで開くはフォルダのみ意味を持つ。Finder は
                 // 複数選択なら選択したフォルダの数だけタブ/ウインドウを開く。
-                Button(targets.count == 1 ? "新規タブで開く" : "新規タブでそれぞれ開く") {
+                Button(targets.count == 1 ? "folder.openInNewTab" : "folder.openEachInNewTab") {
                     targets.forEach(onOpenInNewTab)
                 }
-                Button(targets.count == 1 ? "新規ウインドウで開く" : "新規ウインドウでそれぞれ開く") {
+                Button(targets.count == 1 ? "folder.openInNewWindow" : "folder.openEachInNewWindow") {
                     targets.forEach(onOpenInNewWindow)
                 }
             }
             Divider()
             // 名前を変更はバッチ名変更 UI が無いため単一対象時のみ。
             if targets.count == 1, let only = targetEntries.first {
-                Button("名前を変更…") { beginRename(only) } // [FM-05]
+                Button("folder.renameEllipsis") { beginRename(only) } // [FM-05]
             }
-            Button("複製") { duplicate(targets) } // [FM-02]
-            Button("コピー") { copySelectionToPasteboard(targets) } // [KB-02 相当、⌘C]
+            Button("folder.duplicate") { duplicate(targets) } // [FM-02]
+            Button("action.copy") { copySelectionToPasteboard(targets) } // [KB-02 相当、⌘C]
+            Button("action.cut") { cutSelectionToPasteboard(targets) } // [Finder/Edit メニュー整備、⌘X]
+            // Finder の「選択項目で新規フォルダを作成」[Finder/Edit メニュー整備]。
+            // 移動先を作る操作のため、フォルダ自身が対象に混ざっていても
+            // Finder と同じく無条件に出す。
+            Button("action.newFolderWithSelection") { newFolderWithSelection(targets) }
             Divider()
-            Button("ゴミ箱に入れる", role: .destructive) { moveToTrash(targets) } // [FM-04]
+            Button("folder.moveToTrash", role: .destructive) { moveToTrash(targets) } // [FM-04]
             Divider()
-            Button("ここに圧縮") { compressHere(targets) } // [AR-10]
-            Button("圧縮…") { compressWithDialog(targets) } // [AR-11]
-            if isExtractable(targets) {
-                Divider()
-                Button("ここに展開") { extractInPlace(targets) } // [AR-20]
-                if targets.count == 1, let single = targets.first {
-                    Button("「\(archiveBaseName(single))」に展開") { extractToNamedFolders(targets) } // [AR-21]
-                } else {
-                    Button("それぞれのフォルダに展開") { extractToNamedFolders(targets) } // [AR-23]
+            // 圧縮・展開関連をサブメニューにまとめる [ユーザー要望]。
+            Menu("folder.compressExtractSubmenu") {
+                Button("folder.compressHere") { compressHere(targets) } // [AR-10]
+                Button("folder.compressEllipsis") { compressWithDialog(targets) } // [AR-11]
+                if isExtractable(targets) {
+                    Divider()
+                    Button("folder.extractInPlace") { extractInPlace(targets) } // [AR-20]
+                    if targets.count == 1, let single = targets.first {
+                        Button(String(format: String(localized: "folder.extractToNamed", locale: locale), archiveBaseName(single))) { extractToNamedFolders(targets) } // [AR-21]
+                    } else {
+                        Button("folder.extractEachToOwnFolder") { extractToNamedFolders(targets) } // [AR-23]
+                    }
+                    Button("folder.extractEllipsis") { extractToChosenDestination(targets) } // [AR-22]
                 }
-                Button("展開…") { extractToChosenDestination(targets) } // [AR-22]
             }
             Divider()
-            Button("Finder で表示") { NSWorkspace.shared.activateFileViewerSelecting(targets) } // [FM-09]
-            Button("パスをコピー") { copyPaths(targets) } // [FM-10]
-            ShareLink("共有…", items: targets) // [共有、既定ラベルが英語 "Share..." になるため明示的に指定]
-            Button("エイリアスを作成") { createAliases(for: targets) }
+            Button("folder.revealInFinder") { NSWorkspace.shared.activateFileViewerSelecting(targets) } // [FM-09]
+            Button("folder.copyPath") { copyPaths(targets) } // [FM-10]
+            ShareLink("folder.shareEllipsis", items: targets) // [共有、既定ラベルが英語 "Share..." になるため明示的に指定]
+            Button("folder.createAlias") { createAliases(for: targets) }
             Divider()
-            Button(targetEntries.allSatisfy(\.isLocked) ? "ロック解除" : "ロック") {
+            Button(targetEntries.allSatisfy(\.isLocked) ? "folder.unlock" : "folder.lock") {
                 toggleLock(targetEntries)
             }
             // 「情報を見る」の簡易シートは 1-10 で常設の右ペイン
@@ -629,7 +794,10 @@ struct FolderContentView: View {
             return
         }
         do {
-            let keys: Set<URLResourceKey> = [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey, .isUserImmutableKey]
+            let keys: Set<URLResourceKey> = [
+                .isDirectoryKey, .fileSizeKey, .contentModificationDateKey,
+                .creationDateKey, .addedToDirectoryDateKey, .isUserImmutableKey,
+            ]
             let urls = try FileManager.default.contentsOfDirectory(
                 at: folder,
                 includingPropertiesForKeys: Array(keys),
@@ -643,10 +811,20 @@ struct FolderContentView: View {
                     isDirectory: values?.isDirectory ?? false,
                     fileSize: values?.fileSize.map(Int64.init),
                     modificationDate: values?.contentModificationDate,
+                    creationDate: values?.creationDate,
+                    addedDate: values?.addedToDirectoryDate,
                     isLocked: values?.isUserImmutable ?? false
                 )
             }
             loadError = nil
+            // ゴミ箱・移動等で消えた項目を選択から取り除く [実機検証で発見:
+            // ファイルをゴミ箱に入れても `selection` に URL が残ったままになり、
+            // 右ペインのインスペクタ（`InspectorPane`）が `.task(id: url)` の
+            // id（＝ URL 自体）が変わらないため削除前の情報を表示し続けて
+            // いた]。選択が空になれば `InspectorPane` は現在のフォルダ自身の
+            // 情報表示にフォールバックする（既存の設計）。
+            let currentURLs = Set(entries.map(\.url))
+            selection.formIntersection(currentURLs)
         } catch {
             entries = []
             loadError = error.localizedDescription
@@ -672,7 +850,7 @@ struct FolderContentView: View {
     private func presentFailureMessage(_ message: String) {
         Task {
             await NotificationRouter.shared.present(
-                NotificationItem(category: .error, severity: .sheet, title: "操作に失敗しました", body: message)
+                NotificationItem(category: .error, severity: .sheet, title: String(localized: "error.operationFailed", locale: locale), body: message)
             )
         }
     }
@@ -689,21 +867,49 @@ struct FolderContentView: View {
         guard !urls.isEmpty else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.writeObjects(urls as [NSURL])
+        // 素のコピーはカット状態を打ち消す（さもないと直前のカットが
+        // 後続のペーストで誤って移動として処理されてしまう）。
+        SessionState.shared.cutURLs = []
     }
 
-    /// `⌘V`/コンテキストメニュー「ペースト」。ペーストボード上のファイル URL を
-    /// 現在のフォルダへコピーする（Finder の `⌘V` と同じ既定、移動ではない）。
+    /// `⌘X`/コンテキストメニュー「カット」[Finder/Edit メニュー整備の一環で追加]。
+    /// Finder 自身のカット判定はプライベート API 頼りで他アプリと相互運用
+    /// できないため、`SessionState.cutURLs`（アプリ内で完結する簡易な独自実装、
+    /// 型のコメント参照）で「次のペーストは移動にする」ことだけを覚えておく。
+    /// ペーストボードへの書き込み自体は `copySelectionToPasteboard` と同じ
+    /// （Finder への貼り付け自体はコピーとして成立する。カットの伝搬は
+    /// アプリ内ペースト時のみ有効）。
+    private func cutSelectionToPasteboard(_ urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects(urls as [NSURL])
+        SessionState.shared.cutURLs = Set(urls.map { $0.standardizedFileURL.path })
+    }
+
+    /// `⌘V`/コンテキストメニュー「ペースト」。ペーストボード上のファイル URL が
+    /// 直前にカットされた集合と一致すれば移動、そうでなければコピー
+    /// （Finder の `⌘V` と同じ既定）。**パス文字列（`standardizedFileURL.path`）で
+    /// 比較する** — 生の `URL` 同士の `==` はペーストボード往復後の表現差異
+    /// （末尾スラッシュ等）で一致しないことがあった [実機検証で発見、
+    /// `SessionState.cutURLs` のコメント参照]。
     private func pasteFromPasteboard() {
-        guard let folder,
+        guard let folder = currentFolder(),
               let urls = NSPasteboard.general.readObjects(forClasses: [NSURL.self]) as? [URL],
               !urls.isEmpty
         else { return }
+        let isCutPaste = !SessionState.shared.cutURLs.isEmpty
+            && Set(urls.map { $0.standardizedFileURL.path }) == SessionState.shared.cutURLs
         Task {
             do {
-                _ = try await CommandStack.shared.run(CopyFilesCommand(items: urls, destination: folder))
+                if isCutPaste {
+                    _ = try await CommandStack.shared.run(MoveFilesCommand(items: urls, destination: folder))
+                    SessionState.shared.cutURLs = []
+                } else {
+                    _ = try await CommandStack.shared.run(CopyFilesCommand(items: urls, destination: folder))
+                }
                 reloadAndBroadcast()
             } catch {
-                presentError(error, whatHappened: "ペーストに失敗しました")
+                presentError(error, whatHappened: String(localized: "error.pasteFailed", locale: locale))
             }
         }
     }
@@ -712,16 +918,51 @@ struct FolderContentView: View {
         NSPasteboard.general.canReadObject(forClasses: [NSURL.self], options: nil)
     }
 
+    /// `⌘A`/空きスペースの右クリック「すべて選択」[Finder/Edit メニュー整備]。
+    private func selectAllInCurrentFolder() {
+        guard !entries.isEmpty else { return }
+        selection = Set(entries.map(\.url))
+    }
+
+    /// Finder の「選択項目で新規フォルダを作成」[Finder/Edit メニュー整備]。
+    /// 新規フォルダの作成と選択項目の移動を 1 つの Undo 単位にまとめる [UD-04]。
+    /// 衝突時にコマンド自体が失敗しないよう、事前にフォルダ名の空きを探す
+    /// （Finder の「新規フォルダ」「新規フォルダ 2」…と同じ体裁）。
+    private func newFolderWithSelection(_ urls: [URL]) {
+        guard let folder = currentFolder(), !urls.isEmpty else { return }
+        let baseName = String(localized: "action.newFolderWithSelection.baseName", locale: locale)
+        var candidate = folder.appendingPathComponent(baseName)
+        var suffix = 2
+        while FileManager.default.fileExists(atPath: candidate.path) {
+            candidate = folder.appendingPathComponent("\(baseName) \(suffix)")
+            suffix += 1
+        }
+        let children: [any Command] = [
+            CreateFolderCommand(url: candidate),
+            MoveFilesCommand(items: urls, destination: candidate),
+        ]
+        guard let command = Self.singleOrComposite(children, displayName: String(localized: "action.newFolderWithSelection", locale: locale)) else { return }
+        Task {
+            do {
+                _ = try await CommandStack.shared.run(command)
+                selection = [candidate]
+                reloadAndBroadcast()
+            } catch {
+                presentError(error, whatHappened: String(localized: "error.newFolderWithSelectionFailed", locale: locale))
+            }
+        }
+    }
+
     private func createAliases(for urls: [URL]) {
-        guard let folder else { return }
+        guard let folder = currentFolder() else { return }
         let children: [any Command] = urls.map { CreateAliasCommand(source: $0, destinationFolder: folder) }
-        guard let command = Self.singleOrComposite(children, displayName: "エイリアスを作成") else { return }
+        guard let command = Self.singleOrComposite(children, displayName: String(localized: "folder.createAlias", locale: locale)) else { return }
         Task {
             do {
                 _ = try await CommandStack.shared.run(command)
                 reloadAndBroadcast()
             } catch {
-                presentError(error, whatHappened: "エイリアスの作成に失敗しました")
+                presentError(error, whatHappened: String(localized: "error.createAliasFailed", locale: locale))
             }
         }
     }
@@ -736,7 +977,7 @@ struct FolderContentView: View {
                 _ = try await CommandStack.shared.run(SetLockedCommand(items: targets.map(\.url), locked: shouldLock))
                 reloadAndBroadcast()
             } catch {
-                presentError(error, whatHappened: shouldLock ? "ロックに失敗しました" : "ロック解除に失敗しました")
+                presentError(error, whatHappened: String(localized: shouldLock ? "error.lockFailed" : "error.unlockFailed", locale: locale))
             }
         }
     }
@@ -765,17 +1006,36 @@ struct FolderContentView: View {
 
     /// コンテキストメニューの「開く」用 [KB-02 相当]。`openSelection()` と同じ
     /// 規則だが、右クリックした対象（必ずしも現在の選択と一致しない）を直接渡せる。
+    ///
+    /// [実機検証で発見: 環境設定「関連付け」タブで既定アプリを設定しても
+    /// ダブルクリックで反映されなかったバグの修正] ファイルは
+    /// `AppAssociationService.open(_:with: nil)` 経由で開く — `nil` を渡すと
+    /// 内部で qooLibrary の関連付け設定（`primary(for:)`）→ 無ければシステムの
+    /// 既定アプリの順にフォールバックする（`AppAssociationStore.open(_:with:)`
+    /// 参照）。以前は `NSWorkspace.shared.open(url)` を直に呼んでおり、
+    /// 常にシステムの既定アプリで開いてしまっていた。
     private func openEntries(_ targets: [FolderEntry]) {
         if targets.count == 1, let only = targets.first {
             if only.isDirectory {
                 onNavigate(only.url)
             } else {
-                NSWorkspace.shared.open(only.url)
+                openWithAssociation(only.url)
             }
             return
         }
         for target in targets where !target.isDirectory {
-            NSWorkspace.shared.open(target.url)
+            openWithAssociation(target.url)
+        }
+    }
+
+    /// [ER-01] 開くのに失敗した場合もエラーを握りつぶさず提示する。
+    private func openWithAssociation(_ url: URL) {
+        Task {
+            do {
+                try await appAssociationService.open([url], with: nil)
+            } catch {
+                presentError(error, whatHappened: String(localized: "error.openFailed", locale: locale))
+            }
         }
     }
 
@@ -792,7 +1052,7 @@ struct FolderContentView: View {
                 _ = try await CommandStack.shared.run(RenameCommand(item: entry.url, newName: renameText))
                 reloadAndBroadcast()
             } catch {
-                presentError(error, whatHappened: "名前の変更に失敗しました")
+                presentError(error, whatHappened: String(localized: "error.renameFailed", locale: locale))
             }
         }
     }
@@ -802,13 +1062,13 @@ struct FolderContentView: View {
     }
 
     private func duplicate(_ urls: [URL]) {
-        guard let folder else { return }
+        guard let folder = currentFolder() else { return }
         Task {
             do {
                 _ = try await CommandStack.shared.run(CopyFilesCommand(items: urls, destination: folder))
                 reloadAndBroadcast()
             } catch {
-                presentError(error, whatHappened: "複製に失敗しました")
+                presentError(error, whatHappened: String(localized: "error.duplicateFailed", locale: locale))
             }
         }
     }
@@ -819,19 +1079,19 @@ struct FolderContentView: View {
                 _ = try await CommandStack.shared.run(TrashCommand(items: urls))
                 reloadAndBroadcast()
             } catch {
-                presentError(error, whatHappened: "ゴミ箱への移動に失敗しました")
+                presentError(error, whatHappened: String(localized: "error.trashFailed", locale: locale))
             }
         }
     }
 
     private func createNewFolder() {
-        guard let folder, !newFolderName.isEmpty else { return }
+        guard let folder = currentFolder(), !newFolderName.isEmpty else { return }
         Task {
             do {
                 _ = try await CommandStack.shared.run(CreateFolderCommand(url: folder.appendingPathComponent(newFolderName)))
                 reloadAndBroadcast()
             } catch {
-                presentError(error, whatHappened: "フォルダの作成に失敗しました")
+                presentError(error, whatHappened: String(localized: "error.createFolderFailed", locale: locale))
             }
         }
     }
@@ -864,22 +1124,45 @@ struct FolderContentView: View {
         return CompositeCommand(displayName: displayName, children: commands)
     }
 
+    /// 展開時の安全上限 [環境設定「圧縮／展開」タブ]。GB 単位で保存している
+    /// ため `ExtractLimits.maxUncompressedBytes`（バイト単位）へ変換する。
+    private var currentExtractLimits: ExtractLimits {
+        ExtractLimits(
+            maxUncompressedBytes: Int64(extractionMaxUncompressedGB * 1_000_000_000),
+            maxEntries: Int(extractionMaxEntries),
+            ratioWarn: extractionRatioWarn,
+            ratioAbort: extractionRatioAbort
+        )
+    }
+
     /// 展開先フォルダを新規作成する場合は `CreateFolderCommand` + `ExtractCommand`
     /// を 1 つの Undo 単位にまとめる [UD-04]。複数アーカイブの一括展開も
     /// まとめて 1 単位にする（`MX2-08` の精神）。途中で失敗したら残りは中断する
     /// 暫定対応 [ER-20 の趣旨に近い、`BatchNotificationSession`〈結果サマリ・
     /// 部分失敗の集約〉はまだ実装していないため]。
-    private func extractArchives(_ urls: [URL], destination: @escaping (URL) -> URL) {
-        busyMessage = urls.count == 1 ? "展開しています…" : "展開しています…（\(urls.count) 件）"
+    ///
+    /// **パスワードの対話的な再試行は単一アーカイブ展開時のみ提供する**
+    /// [環境設定「圧縮／展開」タブ、設計判断]。複数選択の一括展開中に
+    /// パスワード保護されたアーカイブに遭遇した場合、どれが原因か・途中まで
+    /// 成功した分をどう扱うかの UX が複雑になるため、通常のエラー表示に
+    /// 留める（対話的な再試行は行わない）。
+    private func extractArchives(_ urls: [URL], destination: @escaping (URL) -> URL, passphrase: String? = nil) {
+        busyMessage = urls.count == 1
+            ? String(localized: "folder.extractingOne", locale: locale)
+            : String(format: String(localized: "folder.extractingCount", locale: locale), urls.count)
+        let limits = currentExtractLimits
         var children: [any Command] = []
         for url in urls {
             let target = destination(url)
             if !FileManager.default.fileExists(atPath: target.path) {
                 children.append(CreateFolderCommand(url: target))
             }
-            children.append(ExtractCommand(archiveURL: url, destination: target))
+            let entryPassphrase = urls.count == 1 ? passphrase : nil
+            children.append(ExtractCommand(archiveURL: url, destination: target, limits: limits, passphrase: entryPassphrase))
         }
-        let name = urls.count == 1 ? "「\(urls[0].lastPathComponent)」を展開" : "\(urls.count) 件のアーカイブを展開"
+        let name = urls.count == 1
+            ? String(format: String(localized: "folder.extractCommandName", locale: locale), urls[0].lastPathComponent)
+            : String(format: String(localized: "folder.extractCommandNameCount", locale: locale), urls.count)
         guard let command = Self.singleOrComposite(children, displayName: name) else {
             busyMessage = nil
             return
@@ -888,20 +1171,26 @@ struct FolderContentView: View {
             defer { busyMessage = nil }
             do {
                 _ = try await CommandStack.shared.run(command)
+                reloadAndBroadcast()
+            } catch let error as ExtractError where urls.count == 1 && (error == .passwordProtected || error == .incorrectPassphrase) {
+                let retryMessage = error == .incorrectPassphrase ? String(localized: "error.incorrectPassphrase", locale: locale) : nil
+                pendingExtractionPassword = PendingExtractionPassword(
+                    archiveURL: urls[0], target: destination(urls[0]), retryErrorMessage: retryMessage
+                )
             } catch {
-                presentError(error, whatHappened: "展開に失敗しました")
+                presentError(error, whatHappened: String(localized: "error.extractFailed", locale: locale))
+                reloadAndBroadcast()
             }
-            reloadAndBroadcast()
         }
     }
 
     private func extractInPlace(_ urls: [URL]) {
-        guard let folder else { return }
+        guard let folder = currentFolder() else { return }
         extractArchives(urls) { _ in folder } // [AR-20]
     }
 
     private func extractToNamedFolders(_ urls: [URL]) {
-        guard let folder else { return }
+        guard let folder = currentFolder() else { return }
         extractArchives(urls) { folder.appendingPathComponent(archiveBaseName($0)) } // [AR-21][AR-23]
     }
 
@@ -910,60 +1199,157 @@ struct FolderContentView: View {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
-        panel.prompt = "展開"
-        panel.message = "展開先のフォルダを選択してください"
+        panel.prompt = String(localized: "folder.extractPanelPrompt", locale: locale)
+        panel.message = String(localized: "folder.chooseExtractDestination", locale: locale)
         guard panel.runModal() == .OK, let destination = panel.url else { return }
         extractArchives(urls) { _ in destination } // [AR-22]
     }
 
-    /// 単一選択時は項目名、複数選択時はカレントフォルダ名 [AR-10]。
-    private func compressHere(_ urls: [URL]) {
-        guard let folder, !urls.isEmpty else { return }
-        let name = urls.count == 1 ? archiveBaseName(urls[0]) : folder.lastPathComponent
-        busyMessage = "圧縮しています…"
-        Task {
-            defer { busyMessage = nil }
-            do {
-                _ = try await CommandStack.shared.run(
-                    CompressCommand(items: urls, destinationName: name, destinationFolder: folder)
-                )
-                reloadAndBroadcast()
-            } catch {
-                presentError(error, whatHappened: "圧縮に失敗しました")
-            }
-        }
+    /// 現在の環境設定から `CompressionOptions` を組み立てる
+    /// [環境設定「圧縮／展開」タブ]。
+    private var currentCompressionOptions: CompressionOptions {
+        CompressionOptions(
+            format: compressionFormat, zipLevel: compressionZipLevel,
+            sevenZipCodec: compressionSevenZipCodec, encryption: compressionEncryption
+        )
     }
 
-    /// ファイル名・保存先を指定するダイアログ。既定値は `compressHere` と同じ
-    /// [AR-11]。zip 以外の形式は対応しないため、形式選択は設けない。
+    /// 単一選択時は項目名、複数選択時はカレントフォルダ名 [AR-10]。暗号化が
+    /// 有効な場合はパスワードシートを挟んでから実行する
+    /// [環境設定「圧縮／展開」タブ]。
+    private func compressHere(_ urls: [URL]) {
+        guard let folder = currentFolder(), !urls.isEmpty else { return }
+        let name = urls.count == 1 ? archiveBaseName(urls[0]) : folder.lastPathComponent
+        let options = currentCompressionOptions
+        guard options.encryption != .none else {
+            runCompress(urls, destinationName: name, destinationFolder: folder, options: options, passphrase: nil)
+            return
+        }
+        pendingCompression = PendingCompression(items: urls, destinationName: name, destinationFolder: folder, options: options, conflictPolicy: .keepBoth)
+    }
+
+    /// ファイル名・保存先を指定するダイアログ。zip/7z は環境設定の既定形式に
+    /// 従う [AR-11]。
     private func compressWithDialog(_ urls: [URL]) {
-        guard let folder, !urls.isEmpty else { return }
+        guard let folder = currentFolder(), !urls.isEmpty else { return }
+        let options = currentCompressionOptions
+        let ext = options.format == .zip ? "zip" : "7z"
         let defaultName = urls.count == 1 ? archiveBaseName(urls[0]) : folder.lastPathComponent
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = "\(defaultName).zip"
-        panel.allowedContentTypes = [.zip]
+        panel.nameFieldStringValue = "\(defaultName).\(ext)"
+        panel.allowedContentTypes = options.format == .zip ? [.zip] : []
         panel.directoryURL = folder
-        panel.prompt = "圧縮"
-        panel.message = "保存先を選択してください"
+        panel.prompt = String(localized: "folder.compressPanelPrompt", locale: locale)
+        panel.message = String(localized: "folder.chooseSaveDestination", locale: locale)
         guard panel.runModal() == .OK, let destinationURL = panel.url else { return }
         let destinationFolder = destinationURL.deletingLastPathComponent()
         let name = destinationURL.deletingPathExtension().lastPathComponent
-        busyMessage = "圧縮しています…"
+        // NSSavePanel は既存ファイルの上書き確認を既に行っているため、
+        // ここでは `.keepBoth`（自動連番）ではなく `.replace` にする。
+        guard options.encryption != .none else {
+            runCompress(urls, destinationName: name, destinationFolder: destinationFolder, options: options, passphrase: nil, conflictPolicy: .replace)
+            return
+        }
+        pendingCompression = PendingCompression(items: urls, destinationName: name, destinationFolder: destinationFolder, options: options, conflictPolicy: .replace)
+    }
+
+    private func runCompress(
+        _ items: [URL], destinationName: String, destinationFolder: URL,
+        options: CompressionOptions, passphrase: String?, conflictPolicy: ConflictPolicy = .keepBoth
+    ) {
+        busyMessage = String(localized: "folder.compressing", locale: locale)
         Task {
             defer { busyMessage = nil }
             do {
-                // NSSavePanel は既存ファイルの上書き確認を既に行っているため、
-                // ここでは `.keepBoth`（自動連番）ではなく `.replace` にする。
-                _ = try await CommandStack.shared.run(
-                    CompressCommand(
-                        items: urls, destinationName: name, destinationFolder: destinationFolder, conflictPolicy: .replace
-                    )
+                // 完了後に作成したアーカイブを選択状態にするため、`CommandStack`
+                // に渡す前に具体的な型のまま変数へ保持しておく（`CompressCommand`
+                // は `final class` のため、`run(_:)` 実行後も同じインスタンスの
+                // `resultURL` を読める）[ユーザー要望]。
+                let command = CompressCommand(
+                    items: items, destinationName: destinationName, destinationFolder: destinationFolder,
+                    options: options, passphrase: passphrase, conflictPolicy: conflictPolicy
                 )
+                _ = try await CommandStack.shared.run(command)
                 reloadAndBroadcast()
+                if let resultURL = command.resultURL {
+                    selection = [resultURL]
+                    pendingScrollTarget = resultURL
+                }
             } catch {
-                presentError(error, whatHappened: "圧縮に失敗しました")
+                presentError(error, whatHappened: String(localized: "error.compressFailed", locale: locale))
             }
         }
+    }
+}
+
+/// 圧縮時にパスワードシートを表示するための保留状態
+/// [環境設定「圧縮／展開」タブ]。
+private struct PendingCompression: Identifiable {
+    let id = UUID()
+    let items: [URL]
+    let destinationName: String
+    let destinationFolder: URL
+    let options: CompressionOptions
+    let conflictPolicy: ConflictPolicy
+}
+
+/// 単一アーカイブ展開でパスワードが必要だった場合の再試行状態
+/// [環境設定「圧縮／展開」タブ]。
+private struct PendingExtractionPassword: Identifiable {
+    let id = UUID()
+    let archiveURL: URL
+    let target: URL
+    let retryErrorMessage: String?
+}
+
+/// 「アプリケーションで開く」サブメニュー [12章 §12.9、ユーザー要望]。
+/// `AppAssociationService.candidates(for:)` を非同期で読み込んで列挙する。
+/// `.task(id: url)` は `Menu` の中身として組み立てられた時点（右クリックで
+/// コンテキストメニューを開いた時点）で発火するため、候補アプリの探索は
+/// サブメニューへ実際にカーソルを合わせる前から先行して始まる。
+private struct OpenWithMenu: View {
+    @Environment(\.locale) private var locale
+    let url: URL
+
+    private let service: AppAssociationService = AppAssociationStore.shared
+    @State private var candidates: [AppCandidate] = []
+
+    var body: some View {
+        Menu("folder.openWithSubmenu") {
+            ForEach(candidates) { candidate in
+                Button {
+                    Task { try? await service.open([url], with: candidate.bundleID) }
+                } label: {
+                    Label {
+                        Text(candidate.name)
+                    } icon: {
+                        Image(nsImage: NSWorkspace.shared.icon(forFile: candidate.url.path))
+                    }
+                }
+            }
+            if !candidates.isEmpty {
+                Divider()
+            }
+            Button("folder.openWithOtherEllipsis") { chooseOtherApplication() }
+        }
+        .task(id: url) {
+            candidates = await service.candidates(for: url.pathExtension)
+        }
+    }
+
+    /// Finder の「Open With > その他…」相当。選んだアプリはこの1回だけ使う
+    /// （既定アプリとして保存するかどうかは環境設定「関連付け」タブの役割）。
+    private func chooseOtherApplication() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = [.application]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        panel.prompt = String(localized: "folder.openWithChoosePrompt", locale: locale)
+        guard panel.runModal() == .OK, let appURL = panel.url,
+              let bundle = Bundle(url: appURL), let bundleID = bundle.bundleIdentifier
+        else { return }
+        Task { try? await service.open([url], with: bundleID) }
     }
 }
 
@@ -974,6 +1360,10 @@ struct FolderEntry: Identifiable {
     let isDirectory: Bool
     let fileSize: Int64?
     let modificationDate: Date?
+    /// Finder の「作成日」列相当 [ユーザー要望: Finder に合わせてカラムを増やす]。
+    let creationDate: Date?
+    /// Finder の「追加日」列相当（このフォルダへ作成/移動/リネームされた日時）。
+    let addedDate: Date?
     let isLocked: Bool
 
     /// zip/7z/rar/tar.gz（cbz/cb7/cbr のエイリアス含む）と認識できるファイル
@@ -984,12 +1374,17 @@ struct FolderEntry: Identifiable {
 
     /// Finder の「種類」列相当 [LV-01]。`UTType` の `localizedDescription` を使う。
     var kindDescription: String {
-        if isDirectory { return "フォルダ" }
+        // `FolderEntry` は View ではないため `@Environment(\.locale)` を
+        // 持てず、`AppLanguage.effectiveLocale` を使う
+        // [1-12 ローカライズ方針、CLAUDE.md 参照]。
+        let locale = AppLanguage.effectiveLocale
+        if isDirectory { return String(localized: "kind.folder", locale: locale) }
         let ext = url.pathExtension
         if !ext.isEmpty, let type = UTType(filenameExtension: ext), let description = type.localizedDescription {
             return description
         }
-        return ext.isEmpty ? "書類" : "\(ext.uppercased()) ファイル"
+        guard !ext.isEmpty else { return String(localized: "kind.document", locale: locale) }
+        return String(format: String(localized: "kind.extensionFile", locale: locale), ext.uppercased())
     }
 }
 
@@ -998,7 +1393,7 @@ struct FolderEntry: Identifiable {
 /// 1つの型にまとめている（各カラムがそれぞれ別のコンパレータ型を持つことはできない）。
 private struct FolderSortComparator: SortComparator {
     enum Key: Hashable {
-        case name, modificationDate, size, kind
+        case name, modificationDate, size, kind, creationDate, addedDate
     }
 
     var key: Key
@@ -1021,6 +1416,14 @@ private struct FolderSortComparator: SortComparator {
             result = l == r ? .orderedSame : (l < r ? .orderedAscending : .orderedDescending)
         case .kind:
             result = lhs.kindDescription.localizedStandardCompare(rhs.kindDescription)
+        case .creationDate:
+            let l = lhs.creationDate ?? .distantPast
+            let r = rhs.creationDate ?? .distantPast
+            result = l == r ? .orderedSame : (l < r ? .orderedAscending : .orderedDescending)
+        case .addedDate:
+            let l = lhs.addedDate ?? .distantPast
+            let r = rhs.addedDate ?? .distantPast
+            result = l == r ? .orderedSame : (l < r ? .orderedAscending : .orderedDescending)
         }
         guard order == .reverse else { return result }
         switch result {

@@ -22,6 +22,9 @@ import SwiftUI
 /// `docs/Specifications/13_UI_共通基盤.md` CP-01 の注記、`docs/Specifications/14_UI_メインウインドウ.md`
 /// 参照。
 struct MainWindowView: View {
+    /// `String(localized:)` 等 `Text` の `LocalizedStringKey` 解決を経由しない
+    /// 箇所向け [1-12 ローカライズ方針、CLAUDE.md 参照]。
+    @Environment(\.locale) private var locale
     @State private var windowState: WindowState
     /// `⌘T` 新規タブ [KB-02 相当]。`FolderContentView` の他のショートカットと
     /// 同じく、可視要素を持たないボタンとして配線する。
@@ -46,7 +49,7 @@ struct MainWindowView: View {
     /// で橋渡ししている [ユーザー要望: 戻る/進む/上の階層へ・表示切替・新規
     /// フォルダ・右ペイン折りたたみをすべて実ツールバーへ統合]。
     @State private var showingNewFolderPrompt = false
-    @State private var newFolderName = "新規フォルダ"
+    @State private var newFolderName = String(localized: "action.newFolder", locale: AppLanguage.effectiveLocale)
     /// サイドバー（左ペイン）・インスペクタ（右ペイン）の幅 [UI-02 相当]。
     /// `NavigationSplitView`/`.inspector()` は `ideal:` を初期表示幅として
     /// 素直に尊重してくれる（`HSplitView` の `.frame(idealWidth:)` は無視される
@@ -58,18 +61,32 @@ struct MainWindowView: View {
     @AppStorage("qoo.threePane.main.rightWidth") private var rightWidth: Double = 280
     /// 2本指の横スワイプを戻る/進むとして使うか、通常の横スクロールとして
     /// 使うか [ユーザー要望: どちらか一方しか選べないトレードオフを、ユーザー
-    /// 自身に選ばせる]。空きスペースの右クリックメニュー
-    /// （`FolderContentView.swift`）で切り替える。`false` を選んだ場合は
-    /// 3本指スワイプ（OS 側で「ページ間をスワイプ」を3本指に設定する必要が
-    /// ある）が戻る/進むの手段になる。
+    /// 自身に選ばせる]。環境設定「一般」タブ（`GeneralPreferencesTab.swift`）
+    /// で切り替える。`false` を選んだ場合は3本指スワイプ（OS 側で
+    /// 「ページ間をスワイプ」を3本指に設定する必要がある）が戻る/進むの手段になる。
     @AppStorage("qoo.twoFingerSwipeForNavigation") private var twoFingerSwipeForNavigation = true
+    /// 戻る/進むのスワイプ方向を入れ替える [1-12 環境設定「一般」タブ、
+    /// ユーザー要望]。
+    @AppStorage("qoo.backForwardSwipeDirectionInverted") private var swipeDirectionInverted = false
 
     /// `initialFolder` は `WindowGroup(for: URL.self)` から渡される値。⌘N や
     /// Dock からの起動では `nil`（既定の仮想ホーム）、「新規ウインドウで開く」
     /// からは特定のフォルダになる。
+    ///
+    /// `initialFolder == nil` の場合だけ「アプリ起動時に開くフォルダ」の環境
+    /// 設定を適用する余地がある（`initialFolder` が明示的に指定されている
+    /// 場合はそちらを優先する）。実際に適用するのは `hasAppliedStartupFolderThisLaunch`
+    /// でさらに絞り込んだ、アプリ起動後最初の1本のウインドウだけ
+    /// [`WindowFrameAutosaveView.hasRestoredPositionThisLaunch` と同じ
+    /// パターン、⌘N で追加のウインドウを開くたびに起動時フォルダへ戻される
+    /// のは望ましくないため]。
+    private let wasLaunchedWithoutExplicitFolder: Bool
+    nonisolated(unsafe) private static var hasAppliedStartupFolderThisLaunch = false
+
     init(initialFolder: URL?) {
         _windowState = State(initialValue: initialFolder.map(WindowState.init(initialFolder:)) ?? WindowState())
         _isRightPaneCollapsed = State(initialValue: UserDefaults.standard.bool(forKey: Self.isRightPaneCollapsedKey))
+        wasLaunchedWithoutExplicitFolder = initialFolder == nil
     }
 
     /// ウインドウタイトル [ユーザー要望]。タブが無い/フォルダが無い場合のみ
@@ -99,9 +116,13 @@ struct MainWindowView: View {
                 VSplitView {
                     FolderTreePane(
                         selectedURL: windowState.currentTabIndex.flatMap { windowState.tabs[$0].folder },
-                        onSelect: { windowState.navigateCurrentTab(to: $0) }
+                        navigationRoot: windowState.currentTabIndex.map { windowState.tabs[$0].navigationRoot } ?? .volume,
+                        onSelect: { url, root in windowState.navigateCurrentTab(to: url, root: root) }
                     )
-                    PlaceholderPane(title: "ラベルフィルタ", subtitle: "2-8 で実装")
+                    PlaceholderPane(
+                        title: String(localized: "mainWindow.labelFilter", locale: locale),
+                        subtitle: String(localized: "mainWindow.implementedIn28", locale: locale)
+                    )
                 }
                 .navigationSplitViewColumnWidth(min: 180, ideal: leftWidth, max: 400)
                 .modifier(PaneWidthPersisting(storedWidth: $leftWidth))
@@ -110,6 +131,7 @@ struct MainWindowView: View {
                     if let index = windowState.currentTabIndex {
                         FolderContentView(
                             folder: windowState.tabs[index].folder,
+                            currentFolder: { windowState.tabs[index].folder },
                             selection: Binding(
                                 get: { windowState.tabs[index].selection },
                                 set: { windowState.tabs[index].selection = $0 }
@@ -129,7 +151,7 @@ struct MainWindowView: View {
                             newFolderName: $newFolderName
                         )
                     } else {
-                        PlaceholderPane(title: "タブがありません", subtitle: "")
+                        PlaceholderPane(title: String(localized: "mainWindow.noTabs", locale: locale), subtitle: "")
                     }
                 }
                 .inspector(isPresented: Binding(
@@ -174,7 +196,7 @@ struct MainWindowView: View {
                         Image(systemName: "chevron.backward")
                     }
                     .disabled(!windowState.canGoBack)
-                    .help("戻る")
+                    .help("action.goBack")
 
                     Button {
                         windowState.goForward()
@@ -182,7 +204,7 @@ struct MainWindowView: View {
                         Image(systemName: "chevron.forward")
                     }
                     .disabled(!windowState.canGoForward)
-                    .help("進む")
+                    .help("action.goForward")
 
                     Button {
                         windowState.goToParent()
@@ -190,7 +212,7 @@ struct MainWindowView: View {
                         Image(systemName: "arrow.up")
                     }
                     .disabled(!windowState.canGoToParent)
-                    .help("上の階層へ")
+                    .help("action.goToParent")
                 }
                 // 表示切替（リスト/アイコン）・新規フォルダ [ユーザー要望:
                 // 戻る/進むと同じ高さの実ツールバーに置く]。`.navigation` には
@@ -206,7 +228,7 @@ struct MainWindowView: View {
                 // 収めることより実ツールバーとしての見た目・高さを優先する
                 // [ユーザー判断、既知のトレードオフとして受け入れ]。
                 ToolbarItemGroup(placement: .primaryAction) {
-                    Picker("表示", selection: $windowState.listStyle) { // [TB-04][LV-04]
+                    Picker("common.view", selection: $windowState.listStyle) { // [TB-04][LV-04]
                         Image(systemName: "list.bullet").tag(ListStyle.list)
                         Image(systemName: "square.grid.2x2").tag(ListStyle.icon)
                     }
@@ -214,12 +236,12 @@ struct MainWindowView: View {
                     .labelsHidden()
 
                     Button {
-                        newFolderName = "新規フォルダ"
+                        newFolderName = String(localized: "action.newFolder", locale: locale)
                         showingNewFolderPrompt = true
                     } label: {
                         Image(systemName: "folder.badge.plus")
                     }
-                    .help("新規フォルダを作成") // [FM-01]
+                    .help("mainWindow.createNewFolder") // [FM-01]
                 }
                 // 右ペイン（インスペクタ）の表示/非表示。常にツールバー末尾
                 // （インスペクタが開いていればその上、閉じていればウインドウ右端）
@@ -248,7 +270,7 @@ struct MainWindowView: View {
                     } label: {
                         Image(systemName: "sidebar.trailing")
                     }
-                    .help(isRightPaneCollapsed ? "詳細を表示" : "詳細を隠す")
+                    .help(isRightPaneCollapsed ? "mainWindow.showInspector" : "mainWindow.hideInspector")
                 }
             }
         }
@@ -264,7 +286,8 @@ struct MainWindowView: View {
         .backForwardGestureSupport(
             onGoBack: { windowState.goBack() },
             onGoForward: { windowState.goForward() },
-            twoFingerSwipeForNavigation: twoFingerSwipeForNavigation
+            twoFingerSwipeForNavigation: twoFingerSwipeForNavigation,
+            swipeDirectionInverted: swipeDirectionInverted
         )
         .background {
             Group {
@@ -292,6 +315,23 @@ struct MainWindowView: View {
             }
             .frame(width: 0, height: 0)
             .opacity(0)
+        }
+        // アプリ起動時に開くフォルダ [ユーザー要望、環境設定「一般」タブ]。
+        // アプリ起動後、最初に開く（＝明示的なフォルダ指定を受けていない）
+        // ウインドウにだけ適用する [`hasAppliedStartupFolderThisLaunch` の
+        // コメント参照]。既定（仮想ホーム）のときは何もしない（不要な非同期
+        // 処理・チラつきを避ける）。
+        .task {
+            guard wasLaunchedWithoutExplicitFolder, !Self.hasAppliedStartupFolderThisLaunch else { return }
+            Self.hasAppliedStartupFolderThisLaunch = true
+            guard UserDefaults.standard.string(forKey: StartupFolderPreference.kindKey) != nil,
+                  UserDefaults.standard.string(forKey: StartupFolderPreference.kindKey) != StartupFolderKind.virtualHome.rawValue
+            else { return }
+            let (url, root) = await StartupFolderPreference.resolve()
+            guard let index = windowState.currentTabIndex else { return }
+            windowState.tabs[index].folder = url
+            windowState.tabs[index].navigationRoot = root
+            windowState.tabs[index].title = FileManager.default.displayName(atPath: url.path)
         }
     }
 }

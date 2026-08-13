@@ -56,6 +56,15 @@ public enum ActionID: String, Sendable, Codable, CaseIterable {
     case moveToVault
     case undo
     case redo
+    /// [1-12b フォローアップ] Finder/Edit メニュー整備の一環で追加。
+    case selectAll
+    case duplicate
+    case makeAlias
+    case compress
+    /// Finder の「選択項目で新規フォルダを作成」（既定は ⌃⌘N、既定キーの
+    /// 割り当ては本アプリでは行わない。File メニューからのみ呼べれば十分と
+    /// 判断したため、`combos: []` にしている）。
+    case newFolderWithSelection
 }
 
 public struct KeyBinding: Sendable, Codable, Identifiable, Equatable {
@@ -124,11 +133,22 @@ public enum DefaultKeyBindings {
         KeyBinding(id: .paste, combos: [KeyCombo(key: "v", modifiers: .command)]),
         KeyBinding(id: .cut, combos: [KeyCombo(key: "x", modifiers: .command)]),
         KeyBinding(id: .focusSearch, combos: [KeyCombo(key: "f", modifiers: .command)]),
-        KeyBinding(id: .toggleDisplayMode, combos: [KeyCombo(key: "l", modifiers: .command)]),
+        // ⌘L は Finder 標準の「エイリアスを作成」（`makeAlias`）に譲る
+        // [1-12b フォローアップでの衝突解消]。Finder はリスト/アイコン等の
+        // 表示切替に ⌘1〜⌘4（種類ごとの直接指定）を使い「トグル」の概念自体が
+        // 無いため、本アプリ独自のこの操作に借用すべき Finder 標準キーが無い。
+        // 未実装のまま（`toggleDisplayMode` は 2026-08 時点でどこからも
+        // 呼ばれていない）なので、既定は空にして衝突検出だけ有効にしておく。
+        KeyBinding(id: .toggleDisplayMode, combos: []),
         KeyBinding(id: .clearLabelFilter, combos: [KeyCombo(key: "k", modifiers: [.command, .shift])]), // [LF-07]
         KeyBinding(id: .moveToVault, combos: [KeyCombo(key: "a", modifiers: [.command, .control])]),
         KeyBinding(id: .undo, combos: [KeyCombo(key: "z", modifiers: .command)]),
         KeyBinding(id: .redo, combos: [KeyCombo(key: "z", modifiers: [.command, .shift])]),
+        KeyBinding(id: .selectAll, combos: [KeyCombo(key: "a", modifiers: .command)]), // Finder 標準
+        KeyBinding(id: .duplicate, combos: [KeyCombo(key: "d", modifiers: .command)]), // Finder 標準
+        KeyBinding(id: .makeAlias, combos: [KeyCombo(key: "l", modifiers: .command)]), // Finder 標準
+        KeyBinding(id: .compress, combos: []), // Finder 自身も既定キーを割り当てていない
+        KeyBinding(id: .newFolderWithSelection, combos: []), // File メニューからのみ呼べれば十分
     ]
 
     public static func binding(for action: ActionID) -> KeyBinding {

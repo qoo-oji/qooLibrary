@@ -1,6 +1,25 @@
 import Foundation
 import SwiftUI
 
+/// 現在のタブがどちらの入口から辿り着いたかを表す [ユーザー要望: 実体として
+/// 同じフォルダでも、ボリューム経由かライブラリ／テンポラリフォルダ経由かで
+/// 「フォルダツリーのどのグループが反応するか」「『上の階層へ』で登録
+/// フォルダの外へ出られるか」を分けたい]。フォルダの URL だけでは
+/// （フォルダツリーで手動でボリュームを辿って登録フォルダと同じ実フォルダに
+/// たどり着くこともあり得るため）どちらの入口から来たか判別できないため、
+/// タブの状態として明示的に持ち回る。
+public enum NavigationRoot: Sendable, Equatable {
+    case volume
+    case registeredFolder(id: UUID, rootURL: URL)
+}
+
+/// 戻る/進む履歴の1件 [KB-02 相当]。フォルダ URL だけでなく `NavigationRoot`
+/// も一緒に記録し、戻る/進むで当時の文脈も正しく復元する。
+struct TabHistoryEntry: Sendable, Equatable {
+    let url: URL
+    let navigationRoot: NavigationRoot
+}
+
 /// 1 タブ分の状態。フォルダごとに独立して選択・スクロール位置・検索文字列を持つ。
 public struct TabState: Identifiable, Sendable, Equatable {
     public let id: UUID
@@ -8,10 +27,12 @@ public struct TabState: Identifiable, Sendable, Equatable {
     public var title: String
     public var selection: Set<URL> = []
     public var searchText: String = ""
+    /// 現在のフォルダがどちらの入口から辿り着いたか [`NavigationRoot` 参照]。
+    public var navigationRoot: NavigationRoot = .volume
     /// 戻る/進む用の履歴 [KB-02 相当、Finder ツールバーの矢印ボタンと同等の機能]。
     /// タブごとに独立させる（タブ切替で他タブの履歴に影響しない）。
-    var backHistory: [URL] = []
-    var forwardHistory: [URL] = []
+    var backHistory: [TabHistoryEntry] = []
+    var forwardHistory: [TabHistoryEntry] = []
 
     public init(id: UUID = UUID(), folder: URL?, title: String) {
         self.id = id
@@ -24,7 +45,10 @@ public enum DisplayMode: Sendable, Equatable {
     case folder // [VM-01 以降] ライブラリ表示モードは 2-9 でラベル基盤ができてから
 }
 
-public enum ListStyle: Sendable, Equatable {
+/// `String` を rawValue にしているのは、1-12 環境設定「表示」タブの既定表示
+/// モード設定を `@AppStorage` で直接扱えるようにするため（`RawRepresentable`
+/// かつ `RawValue == String` であれば `@AppStorage` が素直に対応する）。
+public enum ListStyle: String, Sendable, Equatable {
     case icon, list // [LV-04]
 }
 
@@ -46,13 +70,36 @@ public final class WindowState {
     // 何にも参照されておらず（`Table` が常に表示されていた）、実質的な既定表示は
     // ずっとリストだった。アイコン表示の配線に合わせてここで初めて意味を持つ値に
     // なるため、今回の変更で見た目が急に変わらないよう明示的に `.list` にする。
-    public var listStyle: ListStyle = .list // [ST-22][LV-04]
-    public var iconSize: Double = 96 // [IV-04][ST-22]
+    //
+    // 1-12 で、この既定値自体を環境設定「表示」タブから変更できるようにした
+    // （`DisplayPreferencesTab.swift` 参照）。ウインドウ固有状態自体は
+    // 引き続き DB に保存しない [ST-20] が、「次に開くウインドウの既定値」だけは
+    // `UserDefaults` から `init` 時に一度だけ読む（`MainWindowView.init` の
+    // `isRightPaneCollapsed` と同じ「素の値を一度だけ読む」パターン。
+    // `@AppStorage` を `if` 条件内で直接使うと SwiftUI の Observation が
+    // 無限に再評価を繰り返す不具合を実機検証で確認済みのため、そのパターンは
+    // 避けている）。
+    public var listStyle: ListStyle // [ST-22][LV-04]
+    public var iconSize: Double // [IV-04][ST-22]
 
     public init(initialFolder: URL? = FileManager.default.homeDirectoryForCurrentUser) {
-        let firstTab = TabState(folder: initialFolder, title: initialFolder?.lastPathComponent ?? "新規タブ")
+        let firstTab = TabState(folder: initialFolder, title: initialFolder?.lastPathComponent ?? String(localized: "action.newTab", locale: AppLanguage.effectiveLocale))
         self.tabs = [firstTab]
         self.selectedTabID = firstTab.id
+        self.listStyle = Self.loadDefaultListStyle()
+        self.iconSize = Self.loadDefaultIconSize()
+    }
+
+    private static let defaultListStyleKey = "qoo.preferences.defaultListStyle"
+    private static let defaultIconSizeKey = "qoo.preferences.defaultIconSize"
+
+    private static func loadDefaultListStyle() -> ListStyle {
+        UserDefaults.standard.string(forKey: defaultListStyleKey).flatMap(ListStyle.init(rawValue:)) ?? .list
+    }
+
+    private static func loadDefaultIconSize() -> Double {
+        let stored = UserDefaults.standard.double(forKey: defaultIconSizeKey)
+        return stored > 0 ? stored : 96
     }
 
     public var currentTabIndex: Int? {
@@ -72,14 +119,22 @@ public final class WindowState {
     /// 両方から使う共通経路。呼ぶたびに戻る履歴へ積み、進む履歴は破棄する
     /// （ブラウザ・Finder と同じ規則）。`goBack`/`goForward` 自身はこのメソッドを
     /// 経由しない（履歴を壊さずに移動するため）。
-    public func navigateCurrentTab(to url: URL) {
+    ///
+    /// `root` は `NavigationRoot` を明示的に切り替えたいとき（フォルダツリーの
+    /// ボリューム行／登録フォルダ行をクリックしたとき）だけ渡す。`nil`
+    /// （既定）は「現在のタブの文脈を引き継ぐ」ことを意味し、中央ペインでの
+    /// ダブルクリック・Enter・「1階層上へ」など、ツリーを経由しないナビゲー
+    /// ションではこちらを使う。
+    public func navigateCurrentTab(to url: URL, root: NavigationRoot? = nil) {
         guard let index = currentTabIndex else { return }
+        let resolvedRoot = root ?? tabs[index].navigationRoot
         if let current = tabs[index].folder, current != url {
-            tabs[index].backHistory.append(current)
+            tabs[index].backHistory.append(TabHistoryEntry(url: current, navigationRoot: tabs[index].navigationRoot))
             tabs[index].forwardHistory.removeAll()
         }
         tabs[index].folder = url
         tabs[index].title = url.lastPathComponent
+        tabs[index].navigationRoot = resolvedRoot
     }
 
     public var canGoBack: Bool {
@@ -99,30 +154,42 @@ public final class WindowState {
     private static let sandboxHomeDirectory = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL
 
     /// 仮想ホームより上には昇らない（昇っても読めない場所しかなく、
-    /// ユーザーにとって意味のある行き先ではないため）。
+    /// ユーザーにとって意味のある行き先ではないため）。**登録フォルダ
+    /// （ライブラリ／テンポラリ）経由でたどり着いた場合は、その登録ルートより
+    /// 上にも昇らない**［ユーザー要望: 登録フォルダはそこが最上位として扱われ
+    /// てほしい。ボリューム経由で実体として同じ場所に来た場合はこの制限を
+    /// 適用しない — `navigationRoot` で入口を区別しているため、同じ URL でも
+    /// 挙動が変わり得る、意図した設計]。
     public var canGoToParent: Bool {
-        guard let folder = currentTab?.folder else { return false }
-        return folder.standardizedFileURL != Self.sandboxHomeDirectory
+        guard let tab = currentTab, let folder = tab.folder else { return false }
+        if folder.standardizedFileURL == Self.sandboxHomeDirectory { return false }
+        if case .registeredFolder(_, let rootURL) = tab.navigationRoot,
+           folder.standardizedFileURL == rootURL.standardizedFileURL {
+            return false
+        }
+        return true
     }
 
     /// Finder ツールバーの「戻る」相当 [KB-02]。
     public func goBack() {
         guard let index = currentTabIndex, let previous = tabs[index].backHistory.popLast() else { return }
         if let current = tabs[index].folder {
-            tabs[index].forwardHistory.append(current)
+            tabs[index].forwardHistory.append(TabHistoryEntry(url: current, navigationRoot: tabs[index].navigationRoot))
         }
-        tabs[index].folder = previous
-        tabs[index].title = previous.lastPathComponent
+        tabs[index].folder = previous.url
+        tabs[index].navigationRoot = previous.navigationRoot
+        tabs[index].title = previous.url.lastPathComponent
     }
 
     /// Finder ツールバーの「進む」相当 [KB-02]。
     public func goForward() {
         guard let index = currentTabIndex, let next = tabs[index].forwardHistory.popLast() else { return }
         if let current = tabs[index].folder {
-            tabs[index].backHistory.append(current)
+            tabs[index].backHistory.append(TabHistoryEntry(url: current, navigationRoot: tabs[index].navigationRoot))
         }
-        tabs[index].folder = next
-        tabs[index].title = next.lastPathComponent
+        tabs[index].folder = next.url
+        tabs[index].navigationRoot = next.navigationRoot
+        tabs[index].title = next.url.lastPathComponent
     }
 
     /// `⌘↑` 相当 [KB-02]。`goBack`/`goForward` と同じく `navigateCurrentTab(to:)`
@@ -146,7 +213,7 @@ public final class WindowState {
     }
 
     public func openTab(for folder: URL?) {
-        let tab = TabState(folder: folder, title: folder?.lastPathComponent ?? "新規タブ")
+        let tab = TabState(folder: folder, title: folder?.lastPathComponent ?? String(localized: "action.newTab", locale: AppLanguage.effectiveLocale))
         tabs.append(tab)
         selectedTabID = tab.id
     }
@@ -194,7 +261,7 @@ public final class SessionState {
     /// なる事象があった。ウインドウ単位の `reloadToken` だった名残]。
     public var reloadToken: Int = 0
 
-    /// カット（⌘X）で選択された項目の URL 集合 [FM-02 相当]。ペースト時に
+    /// カット（⌘X）で選択された項目の識別子集合 [FM-02 相当]。ペースト時に
     /// 現在のペーストボードの内容がこの集合と一致すれば「カット→ペースト」と
     /// 判断してコピーではなく移動を行う。Finder 自身のカット判定はプライベート
     /// API 頼りで他アプリと相互運用できないため、アプリ内で完結する簡易な
@@ -202,5 +269,13 @@ public final class SessionState {
     /// コピー自体は標準の `NSPasteboard` ファイル URL 経由で相互運用できる）。
     /// アプリ全体で 1 つ（ウインドウをまたいでカット→別ウインドウでペーストも
     /// 成立させるため、`reloadToken` と同じ理由でセッション全体の状態にしている）。
-    public var cutURLs: Set<URL> = []
+    ///
+    /// **`Set<URL>` ではなく `Set<String>`（`standardizedFileURL.path`）で
+    /// 持つ** [実機検証で発見したバグの修正]。`NSPasteboard.readObjects`
+    /// でペーストボードから読み戻した `URL` は、カット時に書き込んだ元の
+    /// `URL` と（末尾スラッシュの有無など）表現が異なることがあり、生の
+    /// `URL` 同士の `==` 比較では一致せず「カットしたのにコピーになる」
+    /// 不具合が起きていた。`FolderTreeRow.isSelected` と同じ
+    /// `standardizedFileURL.path` 文字列比較に揃えることで解消した。
+    public var cutURLs: Set<String> = []
 }

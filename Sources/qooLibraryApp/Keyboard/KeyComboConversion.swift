@@ -35,6 +35,33 @@ extension KeyCombo {
     }
 }
 
+/// `KeyPress`（`.onKeyPress` で捕捉した実際のキー入力）から `KeyCombo` への
+/// 逆変換 [1-12 環境設定「キーボード」タブのキーレコーダー向け、`KeyComboRecorder.swift`
+/// 参照]。上の `swiftUIKeyEquivalent` と対になる、名前付きキーの逆引き。
+extension KeyPress {
+    var qooKeyCombo: KeyCombo {
+        let keyString: String
+        switch key {
+        case .space: keyString = "space"
+        case .return: keyString = "return"
+        case .delete: keyString = "delete"
+        case .upArrow: keyString = "up"
+        case .downArrow: keyString = "down"
+        case .leftArrow: keyString = "left"
+        case .rightArrow: keyString = "right"
+        case .escape: keyString = "escape"
+        case .tab: keyString = "tab"
+        default: keyString = String(key.character)
+        }
+        var mods: KeyModifiers = []
+        if modifiers.contains(.command) { mods.insert(.command) }
+        if modifiers.contains(.shift) { mods.insert(.shift) }
+        if modifiers.contains(.option) { mods.insert(.option) }
+        if modifiers.contains(.control) { mods.insert(.control) }
+        return KeyCombo(key: keyString, modifiers: mods)
+    }
+}
+
 /// `action` に登録されているキーの組み合わせぶんだけ、不可視のボタンを生成する
 /// [KB-01: 1つの操作に複数のショートカットを割り当てられる。例: 戻る = ⌘[ と
 /// ⌘←]。可視要素を持たないボタンとして配線する標準的な SwiftUI のパターン。

@@ -261,4 +261,110 @@ import Testing
             try await LibarchiveBackend.shared.readEntry(archiveURL, entry: target, encoding: listing.detectedEncoding, maxBytes: 100)
         }
     }
+
+    // MARK: - compress [環境設定「圧縮／展開」タブ、AR-10/AR-11 の拡張]
+
+    @Test func compressWritesReadableZipAtEachLevel() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sourceFile = root.appendingPathComponent("page.txt")
+        try Data("hello".utf8).write(to: sourceFile)
+
+        for level in ZipCompressionLevel.allCases {
+            let archiveURL = root.appendingPathComponent("book-\(level.rawValue).zip")
+            let options = CompressionOptions(format: .zip, zipLevel: level)
+            try await LibarchiveBackend.shared.compress([sourceFile], to: archiveURL, options: options)
+
+            let listing = try await LibarchiveBackend.shared.listEntries(archiveURL)
+            #expect(listing.entries.map(\.pathname) == ["page.txt"])
+        }
+    }
+
+    @Test(arguments: [SevenZipCodec.ppmd, .bzip2, .deflate, .copy])
+    func compressWritesReadableSevenZipWithEachCodec(_ codec: SevenZipCodec) async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sourceFile = root.appendingPathComponent("page.txt")
+        try Data("hello 7z".utf8).write(to: sourceFile)
+        let archiveURL = root.appendingPathComponent("book.7z")
+
+        let options = CompressionOptions(format: .sevenZip, sevenZipCodec: codec)
+        try await LibarchiveBackend.shared.compress([sourceFile], to: archiveURL, options: options)
+
+        let staging = root.appendingPathComponent("staging-\(codec.rawValue)", isDirectory: true)
+        let result = try await LibarchiveBackend.shared.extract(archiveURL, to: staging, options: ExtractOptions(destination: staging))
+        #expect(result.extractedCount == 1)
+        let content = try String(contentsOf: staging.appendingPathComponent("page.txt"), encoding: .utf8)
+        #expect(content == "hello 7z")
+    }
+
+    @Test(arguments: [ArchiveEncryptionMethod.zipTraditional, .aes128, .aes256])
+    func compressWithEncryptionRequiresCorrectPassphraseToExtract(_ encryption: ArchiveEncryptionMethod) async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sourceFile = root.appendingPathComponent("secret.txt")
+        try Data("classified".utf8).write(to: sourceFile)
+        let archiveURL = root.appendingPathComponent("secret.zip")
+
+        let options = CompressionOptions(format: .zip, encryption: encryption)
+        try await LibarchiveBackend.shared.compress([sourceFile], to: archiveURL, options: options, passphrase: "sesame")
+
+        // パスワード無しでは中身を正しく読めない [ExtractError.passwordProtected]。
+        let stagingNoPassword = root.appendingPathComponent("staging-none", isDirectory: true)
+        await #expect(throws: ExtractError.passwordProtected) {
+            try await LibarchiveBackend.shared.extract(
+                archiveURL, to: stagingNoPassword, options: ExtractOptions(destination: stagingNoPassword)
+            )
+        }
+
+        // 誤ったパスワードでは復号に失敗する [ExtractError.incorrectPassphrase]。
+        let stagingWrongPassword = root.appendingPathComponent("staging-wrong", isDirectory: true)
+        await #expect(throws: ExtractError.incorrectPassphrase) {
+            try await LibarchiveBackend.shared.extract(
+                archiveURL, to: stagingWrongPassword,
+                options: ExtractOptions(destination: stagingWrongPassword, passphrase: "wrong")
+            )
+        }
+
+        // 正しいパスワードでは展開できる。
+        let stagingCorrect = root.appendingPathComponent("staging-correct", isDirectory: true)
+        let result = try await LibarchiveBackend.shared.extract(
+            archiveURL, to: stagingCorrect,
+            options: ExtractOptions(destination: stagingCorrect, passphrase: "sesame")
+        )
+        #expect(result.extractedCount == 1)
+        let content = try String(contentsOf: stagingCorrect.appendingPathComponent("secret.txt"), encoding: .utf8)
+        #expect(content == "classified")
+    }
+
+    @Test func compressWithEncryptionButNoPassphraseThrows() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sourceFile = root.appendingPathComponent("secret.txt")
+        try Data("classified".utf8).write(to: sourceFile)
+        let archiveURL = root.appendingPathComponent("secret.zip")
+
+        await #expect(throws: ExtractError.passwordProtected) {
+            try await LibarchiveBackend.shared.compress(
+                [sourceFile], to: archiveURL, options: CompressionOptions(format: .zip, encryption: .aes256)
+            )
+        }
+    }
+
+    /// 7z は libarchive の書き込み側に暗号化オプションが存在しないため、
+    /// `options.encryption` が設定されていても無視される
+    /// （防御的な設計、CLAUDE.md 参照）。
+    @Test func compressIgnoresEncryptionForSevenZip() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sourceFile = root.appendingPathComponent("page.txt")
+        try Data("hello".utf8).write(to: sourceFile)
+        let archiveURL = root.appendingPathComponent("book.7z")
+
+        let options = CompressionOptions(format: .sevenZip, encryption: .aes256)
+        try await LibarchiveBackend.shared.compress([sourceFile], to: archiveURL, options: options)
+
+        let listing = try await LibarchiveBackend.shared.listEntries(archiveURL)
+        #expect(listing.entries.map(\.pathname) == ["page.txt"])
+    }
 }

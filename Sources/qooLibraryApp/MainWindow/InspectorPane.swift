@@ -16,6 +16,7 @@ import UniformTypeIdentifiers
 /// 未実装。カバー画像の「表示」（CV2-01 相当）のみ、1-9 で作った
 /// `ThumbnailService`/`FileIconProvider` を再利用して実装する。
 struct InspectorPane: View {
+    @Environment(\.locale) private var locale
     let folder: URL?
     let selection: Set<URL>
 
@@ -29,7 +30,7 @@ struct InspectorPane: View {
     var body: some View {
         Group {
             if targets.isEmpty {
-                PlaceholderPane(title: "詳細情報", subtitle: "")
+                PlaceholderPane(title: String(localized: "inspector.title", locale: locale), subtitle: "")
             } else if targets.count == 1 {
                 SingleItemInspector(url: targets[0])
             } else {
@@ -56,20 +57,20 @@ private struct SingleItemInspector: View {
 
                 if let info {
                     Divider()
-                    LabeledContent("種類", value: info.kindDescription) // [DT-04]
+                    LabeledContent("column.kind", value: info.kindDescription) // [DT-04]
                     if !info.isDirectory {
-                        LabeledContent("サイズ", value: Self.sizeFormatter.string(fromByteCount: info.size ?? 0)) // [DT-03]
+                        LabeledContent("column.size", value: Self.sizeFormatter.string(fromByteCount: info.size ?? 0)) // [DT-03]
                     }
-                    LabeledContent("作成日", value: info.creationDate.map { Self.dateFormatter.string(from: $0) } ?? "—") // [DT-01]
-                    LabeledContent("変更日", value: info.modificationDate.map { Self.dateFormatter.string(from: $0) } ?? "—") // [DT-02]
+                    LabeledContent("column.creationDate", value: info.creationDate.map { Self.dateFormatter.string(from: $0) } ?? "—") // [DT-01]
+                    LabeledContent("column.modificationDate", value: info.modificationDate.map { Self.dateFormatter.string(from: $0) } ?? "—") // [DT-02]
 
                     if info.isDirectory || info.isArchive {
                         Divider()
                         if let containedCounts {
-                            LabeledContent("含まれるファイル数", value: "\(containedCounts.fileCount)") // [DT-05]
-                            LabeledContent("含まれるサブフォルダ数", value: "\(containedCounts.folderCount)") // [DT-06]
+                            LabeledContent("inspector.containedFileCount", value: "\(containedCounts.fileCount)") // [DT-05]
+                            LabeledContent("inspector.containedFolderCount", value: "\(containedCounts.folderCount)") // [DT-06]
                             if info.isDirectory {
-                                LabeledContent("内容の合計サイズ", value: Self.sizeFormatter.string(fromByteCount: containedCounts.totalSize))
+                                LabeledContent("inspector.totalContentSize", value: Self.sizeFormatter.string(fromByteCount: containedCounts.totalSize))
                             }
                         } else {
                             ProgressView().controlSize(.small)
@@ -77,12 +78,12 @@ private struct SingleItemInspector: View {
                     }
 
                     Divider()
-                    LabeledContent("場所") {
+                    LabeledContent("inspector.location") {
                         Text(url.deletingLastPathComponent().path)
                             .font(.system(size: Tokens.fontSize.caption, design: .monospaced))
                             .textSelection(.enabled)
                     }
-                    LabeledContent("フルパス") { // [DT-10]
+                    LabeledContent("inspector.fullPath") { // [DT-10]
                         Text(url.path)
                             .font(.system(size: Tokens.fontSize.caption, design: .monospaced))
                             .textSelection(.enabled)
@@ -127,12 +128,14 @@ private struct SingleItemInspector: View {
     /// 専用の共有ヘルパーに切り出すほどの規模ではないため、意図的にここでも
     /// 同じ数行を持つ（`ThumbnailService.identity(of:)` と同じ理由）。
     private static func kindDescription(for url: URL, isDirectory: Bool) -> String {
-        if isDirectory { return "フォルダ" }
+        let locale = AppLanguage.effectiveLocale
+        if isDirectory { return String(localized: "kind.folder", locale: locale) }
         let ext = url.pathExtension
         if !ext.isEmpty, let type = UTType(filenameExtension: ext), let description = type.localizedDescription {
             return description
         }
-        return ext.isEmpty ? "書類" : "\(ext.uppercased()) ファイル"
+        guard !ext.isEmpty else { return String(localized: "kind.document", locale: locale) }
+        return String(format: String(localized: "kind.extensionFile", locale: locale), ext.uppercased())
     }
 
     /// [DT-05][DT-06] 遅延読み込み。仕様書は DB キャッシュを前提とするが、
@@ -221,14 +224,15 @@ private struct ContainedCounts {
 /// 複数選択時は共通情報のみ [RP-02]。ラベルの一括付与・削除は Phase 2
 /// （ラベルドメイン型が無いため）。
 private struct MultiItemInspector: View {
+    @Environment(\.locale) private var locale
     let urls: [URL]
 
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.m) {
-            Text("\(urls.count) 項目を選択中")
+            Text(String(format: String(localized: "inspector.itemsSelected", locale: locale), urls.count))
                 .font(.system(size: Tokens.fontSize.title2, weight: .semibold))
             Divider()
-            LabeledContent("合計サイズ", value: Self.sizeFormatter.string(fromByteCount: Self.totalSize(of: urls)))
+            LabeledContent("inspector.totalSize", value: Self.sizeFormatter.string(fromByteCount: Self.totalSize(of: urls)))
         }
         .padding(Tokens.spacing.m)
         .frame(maxWidth: .infinity, alignment: .topLeading)

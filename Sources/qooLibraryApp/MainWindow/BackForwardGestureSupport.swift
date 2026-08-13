@@ -42,6 +42,9 @@ private final class BackForwardGestureView: NSView {
     /// どちらに使うか選べるようにしたい。トレードオフをユーザー自身に選ばせる、
     /// という原則に基づく]。
     var twoFingerSwipeForNavigation: Bool = true
+    /// `true`: マウスのサイドボタン・トラックパッドスワイプの向きと戻る/進むの
+    /// 対応を入れ替える [1-12 環境設定「一般」タブ、ユーザー要望]。
+    var swipeDirectionInverted: Bool = false
     /// ウインドウ幅に依存しない固定のピクセル数。かつては個人差を吸収するため
     /// ユーザーが調整できるスライダーを設けていたが、根本原因（`Table` が横
     /// スクロールとして信号の大半を消費してしまっていたこと、上記型コメント
@@ -90,12 +93,11 @@ private final class BackForwardGestureView: NSView {
         removeMonitor()
         guard let window else { return }
         Self.log("installed for window=\(window)")
-        // **診断専用**: Logi Options+ の既定設定で Finder/Chrome は戻る/進むが
-        // 機能しているのに、このアプリでは `otherMouseDown`（buttonNumber 3/4）
-        // が一度も届かないため、実際に何のイベントが送られてきているかを
-        // 広く観測する。`.systemDefined`（HID の Consumer Usage "AC Back"/
-        // "AC Forward" 相当がこの型で届く可能性がある）・`otherMouseDown` の
-        // 全ボタン番号・`otherMouseUp` も対象に含める。
+        // `.systemDefined`/`.otherMouseUp` も監視対象に含めている。実機検証で
+        // Logi Options+ 経由のマウスボタンが `otherMouseDown` ではなく `.swipe`
+        // として届くことが判明した経緯があり（`handleMouseButton`/`handleSwipe`
+        // のコメント参照）、他のマウス/ユーティリティで別の経路が使われた場合に
+        // 実機ログから即座に切り分けられるよう、広めに監視したままにしている。
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.otherMouseDown, .otherMouseUp, .systemDefined, .scrollWheel, .swipe]) { [weak self, weak window] event in
             guard let self, event.window === window else { return event }
             switch event.type {
@@ -157,9 +159,22 @@ private final class BackForwardGestureView: NSView {
     /// 素の `otherMouseDown` が届く環境向けに残している。
     private func handleMouseButton(_ event: NSEvent) {
         switch event.buttonNumber {
-        case 3: onGoBack?()
-        case 4: onGoForward?()
+        case 3: fireNavigation(back: true)
+        case 4: fireNavigation(back: false)
         default: break
+        }
+    }
+
+    /// 戻る/進むを実際に発火する共通の入口。3つの検出経路
+    /// （`handleMouseButton`/`handleSwipe`/`finishGesture`）がすべてここを
+    /// 経由することで、`swipeDirectionInverted`（1-12 環境設定）の反転処理を
+    /// 一箇所に集約している。
+    private func fireNavigation(back: Bool) {
+        let goBack = swipeDirectionInverted ? !back : back
+        if goBack {
+            onGoBack?()
+        } else {
+            onGoForward?()
         }
     }
 
@@ -228,11 +243,7 @@ private final class BackForwardGestureView: NSView {
         guard abs(dx) >= Self.swipeThreshold else { return }
         // 縦方向優位だった場合（2本指の通常の縦スクロール）は無視する。
         guard abs(dx) > abs(dy) else { return }
-        if dx > 0 {
-            onGoBack?()
-        } else {
-            onGoForward?()
-        }
+        fireNavigation(back: dx > 0)
     }
 
     /// 「ページ間をスワイプ」が3本指/4本指設定の場合の専用イベント種別。
@@ -252,11 +263,7 @@ private final class BackForwardGestureView: NSView {
         let now = Date()
         if let lastSwipeTriggerAt, now.timeIntervalSince(lastSwipeTriggerAt) < Self.swipeCooldown { return }
         lastSwipeTriggerAt = now
-        if event.deltaX > 0 {
-            onGoBack?()
-        } else {
-            onGoForward?()
-        }
+        fireNavigation(back: event.deltaX > 0)
     }
 
     private func removeMonitor() {
@@ -274,12 +281,14 @@ private struct BackForwardGestureSupport: NSViewRepresentable {
     let onGoBack: () -> Void
     let onGoForward: () -> Void
     let twoFingerSwipeForNavigation: Bool
+    let swipeDirectionInverted: Bool
 
     func makeNSView(context: Context) -> BackForwardGestureView {
         let view = BackForwardGestureView()
         view.onGoBack = onGoBack
         view.onGoForward = onGoForward
         view.twoFingerSwipeForNavigation = twoFingerSwipeForNavigation
+        view.swipeDirectionInverted = swipeDirectionInverted
         return view
     }
 
@@ -287,6 +296,7 @@ private struct BackForwardGestureSupport: NSViewRepresentable {
         nsView.onGoBack = onGoBack
         nsView.onGoForward = onGoForward
         nsView.twoFingerSwipeForNavigation = twoFingerSwipeForNavigation
+        nsView.swipeDirectionInverted = swipeDirectionInverted
     }
 }
 
@@ -296,8 +306,9 @@ extension View {
     /// 1回だけ適用すること** — タブごとに再生成されうる `FolderContentView` に
     /// 付けるとジェスチャーの途中でモニタが再設置され、イベントストリームが
     /// 途切れることを実機検証で確認した（上記型コメント参照）。
-    /// `twoFingerSwipeForNavigation` は `BackForwardGestureView` 参照。
-    func backForwardGestureSupport(onGoBack: @escaping () -> Void, onGoForward: @escaping () -> Void, twoFingerSwipeForNavigation: Bool) -> some View {
-        background(BackForwardGestureSupport(onGoBack: onGoBack, onGoForward: onGoForward, twoFingerSwipeForNavigation: twoFingerSwipeForNavigation))
+    /// `twoFingerSwipeForNavigation`/`swipeDirectionInverted` は
+    /// `BackForwardGestureView` 参照。
+    func backForwardGestureSupport(onGoBack: @escaping () -> Void, onGoForward: @escaping () -> Void, twoFingerSwipeForNavigation: Bool, swipeDirectionInverted: Bool) -> some View {
+        background(BackForwardGestureSupport(onGoBack: onGoBack, onGoForward: onGoForward, twoFingerSwipeForNavigation: twoFingerSwipeForNavigation, swipeDirectionInverted: swipeDirectionInverted))
     }
 }

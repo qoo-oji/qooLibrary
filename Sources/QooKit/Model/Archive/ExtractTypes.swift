@@ -64,17 +64,27 @@ public struct ExtractOptions: Sendable {
     /// シンボリックリンクを展開するか。既定は展開せずスキップする [EX-12]。
     public var followSymlinks: Bool
     public var limits: ExtractLimits
+    /// zip の暗号化エントリを復号するためのパスフレーズ [環境設定「圧縮／展開」
+    /// タブ]。`nil`（既定）でパスワード保護されたアーカイブに遭遇すると
+    /// `ExtractError.passwordProtected` を投げる。呼び出し側はこれを受けて
+    /// ユーザーにパスワードを尋ね、`passphrase` を埋めて再試行する（毎回の
+    /// 展開で一律にパスワード入力を求めない設計）。libarchive 自身は zip の
+    /// エントリ一覧（ファイル名）は暗号化しないため、`listEntries` は
+    /// パスフレーズ無しでも成功する。
+    public var passphrase: String?
 
     public init(
         destination: URL,
         encoding: String.Encoding? = nil,
         followSymlinks: Bool = false,
-        limits: ExtractLimits = .default
+        limits: ExtractLimits = .default,
+        passphrase: String? = nil
     ) {
         self.destination = destination
         self.encoding = encoding
         self.followSymlinks = followSymlinks
         self.limits = limits
+        self.passphrase = passphrase
     }
 }
 
@@ -110,7 +120,13 @@ public struct ExtractResult: Sendable, Equatable {
 /// ものは展開全体を継続できないため必ず中断する。
 public enum ExtractError: Error, Sendable, Equatable {
     case unsupportedFormat
-    case passwordProtected // [AB-04][OS-09]
+    /// パスワードで保護されたエントリに遭遇したが、パスフレーズが渡されて
+    /// いない [AB-04][OS-09]。呼び出し側はこれを受けてユーザーにパスワード
+    /// 入力を促し、`passphraseProvider` 経由で再試行する
+    /// [環境設定「圧縮／展開」タブ、`ArchivePasswordSheet` 参照]。
+    case passwordProtected
+    /// パスフレーズを渡したが復号に失敗した（誤ったパスワード）。
+    case incorrectPassphrase
     case insufficientFreeSpace(required: Int64, available: Int64) // [EX-23]
     case tooManyEntries(limit: Int) // [EX-21]
     case expansionLimitExceeded(limit: Int64) // [EX-20][EX-21]

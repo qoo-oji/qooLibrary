@@ -39,7 +39,7 @@ struct TabBarView: View {
             }
             .buttonStyle(.borderless)
             .frame(width: Self.addButtonWidth)
-            .help("新規タブ")
+            .help("action.newTab")
         }
         .frame(height: Self.barHeight)
         .padding(.horizontal, Tokens.spacing.s)
@@ -88,10 +88,10 @@ private struct TabChip: View {
         .onTapGesture(perform: onSelect)
         .onHover { isHovering = $0 }
         .contextMenu {
-            Button("新規タブ") { onNewTab() }
+            Button("action.newTab") { onNewTab() }
             if canClose {
-                Button("タブを閉じる") { onClose() }
-                Button("他のタブを閉じる") { onCloseOthers() }
+                Button("tabBar.closeTab") { onClose() }
+                Button("tabBar.closeOtherTabs") { onCloseOthers() }
             }
         }
     }
