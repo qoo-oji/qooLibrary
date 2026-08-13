@@ -90,11 +90,22 @@ private final class BackForwardGestureView: NSView {
         removeMonitor()
         guard let window else { return }
         Self.log("installed for window=\(window)")
-        monitor = NSEvent.addLocalMonitorForEvents(matching: [.otherMouseDown, .scrollWheel, .swipe]) { [weak self, weak window] event in
+        // **診断専用**: Logi Options+ の既定設定で Finder/Chrome は戻る/進むが
+        // 機能しているのに、このアプリでは `otherMouseDown`（buttonNumber 3/4）
+        // が一度も届かないため、実際に何のイベントが送られてきているかを
+        // 広く観測する。`.systemDefined`（HID の Consumer Usage "AC Back"/
+        // "AC Forward" 相当がこの型で届く可能性がある）・`otherMouseDown` の
+        // 全ボタン番号・`otherMouseUp` も対象に含める。
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.otherMouseDown, .otherMouseUp, .systemDefined, .scrollWheel, .swipe]) { [weak self, weak window] event in
             guard let self, event.window === window else { return event }
             switch event.type {
             case .otherMouseDown:
+                Self.log("otherMouseDown buttonNumber=\(event.buttonNumber)")
                 self.handleMouseButton(event)
+            case .otherMouseUp:
+                Self.log("otherMouseUp buttonNumber=\(event.buttonNumber)")
+            case .systemDefined:
+                Self.log("systemDefined subtype=\(event.subtype.rawValue) data1=\(event.data1) data2=\(event.data2)")
             case .scrollWheel:
                 Self.log("scroll phase=\(event.phase.rawValue) momentum=\(event.momentumPhase.rawValue) dx=\(event.scrollingDeltaX) dy=\(event.scrollingDeltaY) locationInWindow=\(event.locationInWindow)")
                 // `twoFingerSwipeForNavigation` が false の場合、2本指の横スワイプは
@@ -134,13 +145,16 @@ private final class BackForwardGestureView: NSView {
     }
 
     /// 多くのマウスで「戻る」= ボタン3、「進む」= ボタン4 [13章 §13.6「将来検討」の記録通り]。
+    /// `otherMouseDown` として届く場合のみここに来る。
     ///
-    /// **既知の制約**: Logitech Options+ など、サイドボタンをアプリ側で独自にリマップする
-    /// メーカー製ユーティリティを使っている場合、生の `otherMouseDown`（ボタン3/4）
-    /// イベント自体がこのアプリに一切届かないことを実機検証で確認した（ユーティリティ側が
-    /// ボタンを横取りするため）。この場合は OS レベルでの回避策が無く、ユーティリティ側の
-    /// 設定で対象ボタンを「戻る」「進む」相当のキーボードショートカット（`⌘[`/`⌘]` または
-    /// `⌘←`/`⌘→`、1-8 で実装済み）に割り当ててもらう必要がある。
+    /// **実機検証で判明**: Logi Options+（Logicool のマウス用ユーティリティ）の
+    /// 既定設定を使っていると、サイドボタン押下は生の `otherMouseDown`
+    /// （ボタン3/4）としては一切届かず、代わりに `.swipe`（3本指スワイプと
+    /// 同じイベント種別）として届く。Finder/Chrome 等は既にこの経路で戻る/
+    /// 進むが機能しており、ユーティリティ側の設定変更をユーザーに求める必要は
+    /// 無い（`handleSwipe` が同じ入口を処理する、そちらのコメント参照）。
+    /// このメソッド自体は、`.swipe` を使わない別のマウス/ユーティリティで
+    /// 素の `otherMouseDown` が届く環境向けに残している。
     private func handleMouseButton(_ event: NSEvent) {
         switch event.buttonNumber {
         case 3: onGoBack?()
@@ -224,13 +238,23 @@ private final class BackForwardGestureView: NSView {
     /// 「ページ間をスワイプ」が3本指/4本指設定の場合の専用イベント種別。
     /// 1回のフリックで複数回発火しうるためクールダウンを設ける
     /// [qooViewer `handleSwipe` と同じ設計]。
+    ///
+    /// **実機検証で判明**: Logi Options+（Logicool のマウス用ユーティリティ）の
+    /// 既定設定では、マウスの戻る/進むボタン押下がこの `.swipe`
+    /// イベント経路（3本指スワイプと同じ）として届く。1回のボタン押下で
+    /// `deltaX=0.0`（予備動作、方向情報なし）→ 数ミリ秒後に `deltaX=±1.0`
+    /// （実際の方向）という2つのイベントが連続して発生するが、`deltaX == 0`
+    /// のイベントでもクールダウンを消費していたため、直後に届く本来の
+    /// イベントが握りつぶされ、常に不発になっていた。`deltaX != 0`
+    /// のイベントだけをクールダウン判定・消費の対象にすることで解消した。
     private func handleSwipe(_ event: NSEvent) {
+        guard event.deltaX != 0 else { return }
         let now = Date()
         if let lastSwipeTriggerAt, now.timeIntervalSince(lastSwipeTriggerAt) < Self.swipeCooldown { return }
         lastSwipeTriggerAt = now
         if event.deltaX > 0 {
             onGoBack?()
-        } else if event.deltaX < 0 {
+        } else {
             onGoForward?()
         }
     }
