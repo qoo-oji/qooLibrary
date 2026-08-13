@@ -2257,6 +2257,86 @@
         }
       }
     },
+    "preferences.associations.add": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "追加"
+          }
+        }
+      }
+    },
+    "preferences.associations.addExtensionPlaceholder": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Extension (e.g. mp4)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拡張子（例: mp4）"
+          }
+        }
+      }
+    },
+    "preferences.associations.customFooter": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add any extension qooLibrary should manage — for example video formats, if you use qooLibrary as a video library rather than a comic library."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "qooLibrary で管理したい任意の拡張子を追加できます。例えば、コミックライブラリではなく動画ライブラリとして使う場合、動画形式を追加してください。"
+          }
+        }
+      }
+    },
+    "preferences.associations.customHeader": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Custom Extensions"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "カスタム拡張子"
+          }
+        }
+      }
+    },
+    "preferences.associations.duplicateExtension": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This extension has already been added."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この拡張子は既に追加されています。"
+          }
+        }
+      }
+    },
     "preferences.associations.footer": {
       "localizations": {
         "en": {
@@ -2285,6 +2365,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "ファイルの関連付け"
+          }
+        }
+      }
+    },
+    "preferences.associations.invalidExtension": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter a valid extension using letters and numbers only."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "英数字のみで有効な拡張子を入力してください。"
           }
         }
       }

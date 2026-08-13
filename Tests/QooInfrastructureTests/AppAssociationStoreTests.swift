@@ -87,4 +87,75 @@ import Testing
 
         #expect(primary?.bundleID == stableBundleID)
     }
+
+    /// [ユーザー要望] 動画ライブラリとしても使えるよう、任意の拡張子を
+    /// 関連付けタブの管理対象に追加できる。
+    @Test func addCustomExtensionAddsToTheList() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = AppAssociationStore(storageURL: root.appendingPathComponent("state.json"))
+
+        try await store.addCustomExtension("MP4")
+
+        let extensions = await store.customExtensions()
+        #expect(extensions == ["mp4"]) // 大文字小文字を区別せず小文字化して保持
+    }
+
+    @Test func customExtensionsAreSortedAndDeduplicated() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = AppAssociationStore(storageURL: root.appendingPathComponent("state.json"))
+
+        try await store.addCustomExtension("mkv")
+        try await store.addCustomExtension("avi")
+        try await store.addCustomExtension("mkv") // 重複追加
+
+        let extensions = await store.customExtensions()
+        #expect(extensions == ["avi", "mkv"])
+    }
+
+    @Test func removeCustomExtensionRemovesFromListAndClearsItsPrimary() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = AppAssociationStore(storageURL: root.appendingPathComponent("state.json"))
+        try await store.addCustomExtension("mp4")
+        try await store.setPrimary(stableBundleID, for: "mp4")
+
+        try await store.removeCustomExtension("mp4")
+
+        let extensions = await store.customExtensions()
+        #expect(extensions.isEmpty)
+        let primary = await store.primary(for: "mp4")
+        #expect(primary == nil)
+    }
+
+    @Test func customExtensionsPersistAcrossStoreInstances() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let storageURL = root.appendingPathComponent("state.json")
+        let firstStore = AppAssociationStore(storageURL: storageURL)
+        try await firstStore.addCustomExtension("mov")
+
+        let secondStore = AppAssociationStore(storageURL: storageURL)
+        let extensions = await secondStore.customExtensions()
+
+        #expect(extensions == ["mov"])
+    }
+
+    /// カスタム拡張子リストを導入する前の `[String: String]` 単体の JSON
+    /// 形式（既存ユーザーの永続化ファイル）も引き続き読み込める。
+    @Test func loadsLegacyPlainDictionaryFormat() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let storageURL = root.appendingPathComponent("state.json")
+        let legacyJSON = try JSONEncoder().encode(["cbz": stableBundleID])
+        try legacyJSON.write(to: storageURL)
+        let store = AppAssociationStore(storageURL: storageURL)
+
+        let primary = await store.primary(for: "cbz")
+        let extensions = await store.customExtensions()
+
+        #expect(primary?.bundleID == stableBundleID)
+        #expect(extensions.isEmpty)
+    }
 }

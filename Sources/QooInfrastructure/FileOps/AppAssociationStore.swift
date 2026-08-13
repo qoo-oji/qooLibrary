@@ -8,17 +8,28 @@ import UniformTypeIdentifiers
 /// 同じ理由・同じパターン（SwiftData が無い Phase 1 の間に合わせとして JSON
 /// で永続化する `actor`）で、同じディレクトリに置く。
 ///
-/// 拡張子 → bundleID の対応表のみを永続化する。JSON ファイルへの書き込みは
-/// アプリ内部の永続化データであり、期待変更台帳・Undo・操作履歴の対象外
-/// （ユーザーへ見える最終位置ではない）ため、`RegisteredFolderStore`/
-/// `SecureExtractor`/`CoverImageCache` と同じ理由で `FileOperationService` を
-/// 経由しない。この理由により、本ファイルは FileOps 隔離検査（B-10）の対象外
-/// ディレクトリ（`QooInfrastructure/FileOps/`）に置く。
+/// 拡張子 → bundleID の対応表と、ユーザーが追加したカスタム拡張子の一覧を
+/// 永続化する。JSON ファイルへの書き込みはアプリ内部の永続化データであり、
+/// 期待変更台帳・Undo・操作履歴の対象外（ユーザーへ見える最終位置ではない）
+/// ため、`RegisteredFolderStore`/`SecureExtractor`/`CoverImageCache` と同じ
+/// 理由で `FileOperationService` を経由しない。この理由により、本ファイルは
+/// FileOps 隔離検査（B-10）の対象外ディレクトリ（`QooInfrastructure/FileOps/`）
+/// に置く。
 public actor AppAssociationStore: AppAssociationService {
     public static let shared = AppAssociationStore()
 
+    /// [設計判断] 当初は `[String: String]`（拡張子 → bundleID）のみを直接
+    /// 永続化していたが、カスタム拡張子リストを追加する際に構造体へ拡張した。
+    /// 既存ユーザーの `[String: String]` 形式のファイルもそのまま読める
+    /// よう、`ensureLoaded()` でフォールバックデコードする。
+    private struct StorageDTO: Codable {
+        var associations: [String: String]
+        var customExtensions: [String]
+    }
+
     private let storageURL: URL
     private var associations: [String: String] = [:] // 拡張子（小文字） → bundleID
+    private var customExtensionSet: Set<String> = [] // ユーザーが追加した拡張子（小文字）
     private var didLoad = false
 
     public init(storageURL: URL? = nil) {
@@ -68,7 +79,6 @@ public actor AppAssociationStore: AppAssociationService {
         } else {
             resolvedBundleID = nil
         }
-
         guard let resolvedBundleID, let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: resolvedBundleID) else {
             // システムの既定アプリで開く。`open(_ urls:)` の複数 URL 版は
             // 単一アプリを指定できないため、1件ずつ開く。
@@ -87,6 +97,25 @@ public actor AppAssociationStore: AppAssociationService {
         }
     }
 
+    public func customExtensions() async -> [String] {
+        ensureLoaded()
+        return customExtensionSet.sorted()
+    }
+
+    public func addCustomExtension(_ ext: String) async throws {
+        ensureLoaded()
+        customExtensionSet.insert(ext.lowercased())
+        try save()
+    }
+
+    public func removeCustomExtension(_ ext: String) async throws {
+        ensureLoaded()
+        let key = ext.lowercased()
+        customExtensionSet.remove(key)
+        associations.removeValue(forKey: key)
+        try save()
+    }
+
     private static func candidate(for appURL: URL) -> AppCandidate? {
         guard let bundle = Bundle(url: appURL), let bundleID = bundle.bundleIdentifier else { return nil }
         let name = FileManager.default.displayName(atPath: appURL.path)
@@ -97,14 +126,21 @@ public actor AppAssociationStore: AppAssociationService {
         guard !didLoad else { return }
         didLoad = true
         guard let data = try? Data(contentsOf: storageURL) else { return }
-        associations = (try? JSONDecoder().decode([String: String].self, from: data)) ?? [:]
+        if let dto = try? JSONDecoder().decode(StorageDTO.self, from: data) {
+            associations = dto.associations
+            customExtensionSet = Set(dto.customExtensions)
+        } else {
+            // 拡張前（`[String: String]` 単体）の旧形式へのフォールバック。
+            associations = (try? JSONDecoder().decode([String: String].self, from: data)) ?? [:]
+        }
     }
 
     private func save() throws {
         try FileManager.default.createDirectory(
             at: storageURL.deletingLastPathComponent(), withIntermediateDirectories: true
         )
-        let data = try JSONEncoder().encode(associations)
+        let dto = StorageDTO(associations: associations, customExtensions: customExtensionSet.sorted())
+        let data = try JSONEncoder().encode(dto)
         try data.write(to: storageURL, options: .atomic)
     }
 }

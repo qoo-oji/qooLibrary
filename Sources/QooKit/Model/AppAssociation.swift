@@ -37,4 +37,17 @@ public protocol AppAssociationService: Sendable {
     /// 指定したアプリで開く。`bundleID` が `nil` なら `primary(for:)` →
     /// 無ければシステムの既定アプリの順にフォールバックする [FM-06]。
     func open(_ urls: [URL], with bundleID: String?) async throws
+
+    /// ユーザーが環境設定「関連付け」タブに任意で追加した拡張子の一覧
+    /// （小文字、追加順ではなく `sorted()` 済み）［ユーザー要望: 本アプリは
+    /// コミック向けが主だが、動画ライブラリとしても使えるよう任意の拡張子を
+    /// 関連付け対象に追加できるようにする］。組み込みのコミック／アーカイブ
+    /// 拡張子はここには含まない。
+    func customExtensions() async -> [String]
+    /// 拡張子を関連付けタブの管理対象に追加する（大文字小文字を区別しない、
+    /// 既に追加済みなら何もしない）。
+    func addCustomExtension(_ ext: String) async throws
+    /// 拡張子を関連付けタブの管理対象から外す。設定済みの `primary` も
+    /// あわせて削除する。
+    func removeCustomExtension(_ ext: String) async throws
 }
