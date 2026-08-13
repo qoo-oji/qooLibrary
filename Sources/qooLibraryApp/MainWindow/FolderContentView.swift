@@ -36,6 +36,11 @@ struct FolderContentView: View {
     /// （ウインドウ単位、タブをまたいで共有 [ST-22]）が保持する。
     @Binding var listStyle: ListStyle
     @Binding var iconSize: Double
+    /// 新規フォルダ作成ダイアログの状態 [FM-01]。ボタン自体はウインドウの
+    /// 実ツールバー（`MainWindowView`）に移したため、状態は上位で持ち上げ、
+    /// このビューはダイアログ本体（`.alert`）と実際の作成処理のみを担う。
+    @Binding var showingNewFolderPrompt: Bool
+    @Binding var newFolderName: String
 
     @State private var entries: [FolderEntry] = []
     @State private var loadError: String?
@@ -47,8 +52,6 @@ struct FolderContentView: View {
     /// （＝別のクリック）が割り込んだら保留中のリネーム開始タイマーを
     /// 無効化する（`handleSingleClick`/`rowCell`/`IconGridView` 参照）。
     @State private var pendingRenameGeneration = 0
-    @State private var showingNewFolderPrompt = false
-    @State private var newFolderName = "新規フォルダ"
     @State private var isDropTargeted = false
     @FocusState private var isListFocused: Bool
     /// Shift クリックでの範囲選択の起点 [LV-06 相当]。
@@ -80,57 +83,8 @@ struct FolderContentView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if let folder {
-                HStack {
-                    Text(folder.path)
-                        .font(.system(size: Tokens.fontSize.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.head)
-                    Spacer()
-                    if listStyle == .icon { // [IV-04]
-                        Slider(value: $iconSize, in: Tokens.iconSize.min...Tokens.iconSize.max, step: Tokens.iconSize.step)
-                            .frame(width: 100)
-                            .help("アイコンサイズ")
-                    }
-                    Picker("表示", selection: $listStyle) { // [TB-04][LV-04]
-                        Image(systemName: "list.bullet").tag(ListStyle.list)
-                        Image(systemName: "square.grid.2x2").tag(ListStyle.icon)
-                    }
-                    .pickerStyle(.segmented)
-                    .fixedSize()
-                    .labelsHidden()
-                    if listStyle == .list {
-                        Menu {
-                            Toggle("更新日", isOn: $showModificationDateColumn)
-                            Toggle("サイズ", isOn: $showSizeColumn)
-                            Toggle("種類", isOn: $showKindColumn)
-                            Divider()
-                            Toggle("フォルダを上にまとめる", isOn: $groupFoldersAtTop) // [LV-03]
-                        } label: {
-                            Image(systemName: "line.3.horizontal.decrease.circle")
-                        }
-                        .menuStyle(.borderlessButton)
-                        .fixedSize()
-                        .help("表示するカラム") // [LV-02]
-                    }
-                    Button {
-                        newFolderName = "新規フォルダ"
-                        showingNewFolderPrompt = true
-                    } label: {
-                        Image(systemName: "folder.badge.plus")
-                    }
-                    .buttonStyle(.borderless)
-                    .help("新規フォルダを作成") // [FM-01]
-                }
-                .padding(.horizontal, Tokens.spacing.m)
-                .padding(.vertical, Tokens.spacing.xs)
-            }
-
             if let loadError {
                 PlaceholderPane(title: "読み込みエラー", subtitle: loadError)
-            } else if entries.isEmpty {
-                PlaceholderPane(title: "空のフォルダ", subtitle: "")
             } else if listStyle == .icon {
                 // アイコン表示 [IV-01/08/09、PF-10]。`Table` と違い選択・D&D・
                 // コンテキストメニューの AppKit 標準機能が無いため、それぞれ
@@ -286,6 +240,37 @@ struct FolderContentView: View {
                     selectFirstOrLastIfNoneSelected(first: false) ? .handled : .ignored
                 }
             }
+
+            if let folder {
+                Divider()
+                HStack(spacing: Tokens.spacing.s) {
+                    PathBarView(folder: folder, onNavigate: onNavigate) // [ユーザー要望: Finder 流のパスバー]
+                    // リスト/アイコン表示モード依存のコントロールをパスバーの右端に統一
+                    // [ユーザー要望: 上段の行をリスト/アイコンどちらでも同じ配置にしたい
+                    // ため、以前は上段に置いていたこの2つをここへ移動]。
+                    if listStyle == .icon { // [IV-04]
+                        Slider(value: $iconSize, in: Tokens.iconSize.min...Tokens.iconSize.max, step: Tokens.iconSize.step)
+                            .frame(width: 100)
+                            .help("アイコンサイズ")
+                    } else {
+                        Menu {
+                            Toggle("更新日", isOn: $showModificationDateColumn)
+                            Toggle("サイズ", isOn: $showSizeColumn)
+                            Toggle("種類", isOn: $showKindColumn)
+                            Divider()
+                            Toggle("フォルダを上にまとめる", isOn: $groupFoldersAtTop) // [LV-03]
+                        } label: {
+                            Image(systemName: "line.3.horizontal.decrease.circle")
+                        }
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
+                        .help("表示するカラム") // [LV-02]
+                    }
+                }
+                .padding(.horizontal, Tokens.spacing.m)
+                .padding(.vertical, Tokens.spacing.xs)
+                .background(.thinMaterial)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background {
@@ -395,6 +380,16 @@ struct FolderContentView: View {
             result = result.filter(\.isDirectory) + result.filter { !$0.isDirectory }
         }
         return result
+    }
+
+    /// 空きスペースの右クリックメニュー「並び替え」用 [LV-01]。`Table` のカラム
+    /// ヘッダクリックと違い昇順/降順の切替は持たず、選択したキーで常に昇順に
+    /// リセットする（Finder の「整頓順序」メニューと同じ割り切り）。
+    private var sortKeyBinding: Binding<FolderSortComparator.Key> {
+        Binding(
+            get: { sortOrder.first?.key ?? .name },
+            set: { sortOrder = [FolderSortComparator(key: $0)] }
+        )
     }
 
     /// 各カラムのセルに共通の行操作（選択・ダブルクリック・コンテキストメニュー・
@@ -524,7 +519,33 @@ struct FolderContentView: View {
     @ViewBuilder
     private func contextMenuContent(for urls: Set<URL>) -> some View {
         if urls.isEmpty {
-            // 空きスペースの右クリック。
+            // 空きスペースの右クリック。表示切替・並び替えも Finder に揃える
+            // [ユーザー要望、要件定義書には無い]。`Picker` を `Menu` の中で
+            // `.pickerStyle(.inline)` にすると、サブメニューとして現在の
+            // 選択にチェックマークが付く標準の見た目になる。
+            Menu("表示") { // [LV-04]
+                Picker("表示", selection: $listStyle) {
+                    Label("リスト", systemImage: "list.bullet").tag(ListStyle.list)
+                    Label("アイコン", systemImage: "square.grid.2x2").tag(ListStyle.icon)
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
+            }
+            Menu("並び替え") { // [LV-01]
+                Picker("並び替え", selection: sortKeyBinding) {
+                    Text("名前").tag(FolderSortComparator.Key.name)
+                    Text("更新日").tag(FolderSortComparator.Key.modificationDate)
+                    Text("サイズ").tag(FolderSortComparator.Key.size)
+                    Text("種類").tag(FolderSortComparator.Key.kind)
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
+                Divider()
+                // アイコン表示にはこの設定への導線が無かったため、ここに置くことで
+                // リスト・アイコン両方から到達できるようにした [LV-03 の導線拡張]。
+                Toggle("フォルダを上にまとめる", isOn: $groupFoldersAtTop)
+            }
+            Divider()
             Button("新規フォルダ") {
                 newFolderName = "新規フォルダ"
                 showingNewFolderPrompt = true
@@ -1008,5 +1029,72 @@ struct DropIntoFolderModifier: ViewModifier {
         } else {
             content
         }
+    }
+}
+
+/// Finder の「パスバー」相当。ウインドウ下端に現在のフォルダまでの各階層を
+/// ボタンとして並べ、任意の階層をクリックすると直接その階層へジャンプできる
+/// [ユーザー要望、要件定義書には無い]。長いパスは折り返さず横スクロールする
+/// （Finder は収まりきらない中間階層を省略記号にまとめるが、そこまでは
+/// 踏み込まない単純化）。
+struct PathBarView: View {
+    let folder: URL
+    let onNavigate: (URL) -> Void
+
+    /// ルート（ボリューム）から `folder` までの各階層。`deletingLastPathComponent()`
+    /// を繰り返す実装を最初に試したが、**ルート `/` に対して呼ぶと `/` 自身では
+    /// なく `/..` を返す**という `Foundation` の既知の挙動
+    /// （[Apple 公式ドキュメント](https://developer.apple.com/documentation/foundation/url/1780471-deletinglastpathcomponent)
+    /// に「削除できる要素が無い場合は `/..` を追加することがある」旨の記載あり、
+    /// 実機検証でも `/` → `/..` → `/../..` → … と際限なく伸び続けることを
+    /// 確認した）により、`parent.path == current.path` での終了判定が
+    /// 一度も成立せず無限ループしてしまっていた（アプリ起動直後にウインドウが
+    /// 表示されず CPU 100% に張り付く不具合として発見）。`pathComponents`
+    /// （`["/", "Users", "name", ...]` の配列）から先頭を起点に1つずつ
+    /// 積み上げる実装に変更し、この不具合ごと回避している。
+    private var pathComponents: [URL] {
+        let components = folder.standardizedFileURL.pathComponents
+        guard let first = components.first else { return [folder] }
+        var current = URL(fileURLWithPath: first)
+        var result = [current]
+        for component in components.dropFirst() {
+            current = current.appendingPathComponent(component)
+            result.append(current)
+        }
+        return result
+    }
+
+    var body: some View {
+        let components = pathComponents
+        HStack(spacing: 2) {
+            ForEach(Array(components.enumerated()), id: \.element) { index, url in
+                if index > 0 {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                Button {
+                    onNavigate(url)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(nsImage: FileIconProvider.shared.icon(for: url))
+                            .resizable()
+                            .frame(width: 14, height: 14)
+                        // Finder 準拠のローカライズされた表示名(ルートはボリューム名になる)
+                        // [`FileIconProvider` と同じ設計判断: 追加の entitlement 不要]。
+                        Text(FileManager.default.displayName(atPath: url.path))
+                            .font(.system(size: Tokens.fontSize.caption))
+                            .fontWeight(url == components.last ? .semibold : .regular)
+                            .lineLimit(1)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        // 余白・背景は呼び出し側（`FolderContentView`）が行全体（この breadcrumb +
+        // 右端のモード依存コントロール）へまとめて適用するため、ここでは持たない
+        // [ユーザー要望: モード依存コントロールをパスバー行の右端へ統合]。
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .clipped()
     }
 }
