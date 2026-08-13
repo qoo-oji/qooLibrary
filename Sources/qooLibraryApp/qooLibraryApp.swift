@@ -26,6 +26,9 @@ struct QooLibraryApp: App {
         Task {
             await RegisteredFolderStore.shared.loadAndActivateAll()
         }
+        // [ER-01] エラー・通知の提示はこのコントローラ1箇所からのみ行う
+        // （`NotificationRouterPresenterController` のコメント参照）。
+        NotificationRouterPresenterController.shared.start()
     }
 
     var body: some Scene {

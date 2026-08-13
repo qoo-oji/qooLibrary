@@ -1,5 +1,7 @@
 import AppKit
+import QooApplication
 import QooInfrastructure
+import QooKit
 import SwiftUI
 
 /// 左ペイン上半分: フォルダツリー [14章 §14.2]。
@@ -19,8 +21,6 @@ struct FolderTreePane: View {
     @State private var volumes: [FolderTreeNode] = []
     @State private var libraryEntries: [RegisteredFolderEntry] = []
     @State private var temporaryEntries: [RegisteredFolderEntry] = []
-    @State private var dropError: String?
-    @State private var registrationError: String?
     @State private var renamingFolder: RegisteredFolder?
     @State private var renameText = ""
 
@@ -31,7 +31,7 @@ struct FolderTreePane: View {
                     ForEach(volumes) { node in
                         FolderTreeRow(
                             node: node, expandedIDs: $expandedNodeIDs, selectedURL: selectedURL, onSelect: onSelect,
-                            onDropFailure: { dropError = $0 }
+                            onDropFailure: { presentFailureMessage($0) }
                         )
                     }
                 }
@@ -65,16 +65,6 @@ struct FolderTreePane: View {
             volumes = FolderTreeNode.mountedVolumes()
             await reloadRegisteredFolders()
         }
-        .alert("操作に失敗しました", isPresented: Binding(get: { dropError != nil }, set: { if !$0 { dropError = nil } })) {
-            Button("OK") {}
-        } message: {
-            Text(dropError ?? "")
-        }
-        .alert("登録できませんでした", isPresented: Binding(get: { registrationError != nil }, set: { if !$0 { registrationError = nil } })) {
-            Button("OK") {}
-        } message: {
-            Text(registrationError ?? "")
-        }
         .alert("表示名を変更", isPresented: Binding(get: { renamingFolder != nil }, set: { if !$0 { renamingFolder = nil } })) {
             TextField("表示名", text: $renameText)
             Button("変更") { commitRenameRegisteredFolder() }
@@ -91,7 +81,7 @@ struct FolderTreePane: View {
                 if let node = entry.node {
                     FolderTreeRow(
                         node: node, expandedIDs: $expandedNodeIDs, selectedURL: selectedURL, onSelect: onSelect,
-                        onDropFailure: { dropError = $0 },
+                        onDropFailure: { presentFailureMessage($0) },
                         registeredFolder: entry.folder,
                         onRename: { beginRenameRegisteredFolder(entry.folder) },
                         onUnregister: { unregisterFolder(entry.folder) }
@@ -121,7 +111,10 @@ struct FolderTreePane: View {
                 _ = try await RegisteredFolderStore.shared.register(url: url, kind: kind, displayName: nil)
                 await reloadRegisteredFolders()
             } catch {
-                registrationError = Self.errorMessage(for: error)
+                await NotificationRouter.shared.present(NotificationItem(
+                    category: .error, severity: .sheet,
+                    title: "登録できませんでした", body: Self.errorMessage(for: error)
+                ))
             }
         }
     }
@@ -130,6 +123,15 @@ struct FolderTreePane: View {
         Task {
             try? await RegisteredFolderStore.shared.unregister(folder.id)
             await reloadRegisteredFolders()
+        }
+    }
+
+    /// [ER-01] エラー提示は必ず `NotificationRouter` 経由にする。
+    private func presentFailureMessage(_ message: String) {
+        Task {
+            await NotificationRouter.shared.present(
+                NotificationItem(category: .error, severity: .sheet, title: "操作に失敗しました", body: message)
+            )
         }
     }
 

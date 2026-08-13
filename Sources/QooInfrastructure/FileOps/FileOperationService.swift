@@ -7,10 +7,11 @@ import QooKit
 /// （`Scripts/check-fileops-isolation.swift`、B-10）が `QooInfrastructure/FileOps/`
 /// 以外からの呼び出しを検出したらビルドを失敗させる [FO-02]。
 ///
-/// フェーズ 1 (1-5) の時点では `ExpectedChangeLedger`（自己変更識別、2-2 で実装）・
-/// `CommandStack`/操作履歴（1-11 で実装）・`NotificationRouter`（1-12b で実装）は
-/// まだ無いため、`OpReceipt` を返すところまでを担う。呼び出し側がそれを使って
-/// Undo を組み立てる、という設計 [FS2-01] はそのまま踏襲している。
+/// フェーズ 1 (1-5) の時点では `ExpectedChangeLedger`（自己変更識別、2-2 で実装）は
+/// まだ無いため、`OpReceipt` を返すところまでを担う。呼び出し側（`QooApplication`
+/// の `Command` 群、1-11 で実装）がそれを使って Undo を組み立てる、という設計
+/// [FS2-01] はそのまま踏襲している。エラーの提示自体は呼び出し側が
+/// `NotificationRouter`（1-12b で実装）経由で行う。
 public actor FileOperationService {
     /// アプリ全体で単一のインスタンスを使う想定（`CommandStack.shared`/`LockManager.shared`
     /// と同じ方針 [11章 §11.2, §11.3]）。テストでは `init()` で独立インスタンスを作れる。
@@ -22,6 +23,14 @@ public actor FileOperationService {
 
     @discardableResult
     public func createDirectory(at url: URL, options: OpOptions = .init()) async throws -> OpReceipt {
+        // `withIntermediateDirectories: true` は対象がすでに存在していても
+        // エラーを投げない（Foundation の標準動作）。「新規フォルダ」は
+        // Finder と同じく既存の同名項目との衝突をエラーとして扱うべきのため、
+        // 事前に明示チェックする [実機検証で発見: 同名フォルダを重複作成しても
+        // 何も起きなかった]。
+        guard !FileManager.default.fileExists(atPath: url.path) else {
+            throw FileOperationError.operationFailed("「\(url.lastPathComponent)」という名前の項目はすでに存在します。")
+        }
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true) // [FM-01]
         return OpReceipt(before: nil, after: try? identity(of: url), fromURL: url, toURL: url, kind: .createDirectory)
     }

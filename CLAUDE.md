@@ -4,7 +4,7 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
 
 ## 0. 現在の状態
 
-**フェーズ 0（基盤検証）完了。フェーズ 1（ファイルマネージャー）着手済み（1-1〜1-11・1-13 完了。1-12/1-12b は依存関係上ブロックされていないため 1-13 を先に着手した）。**
+**フェーズ 0（基盤検証）完了。フェーズ 1（ファイルマネージャー）着手済み（1-1〜1-13 完了。1-12 のみ未着手、依存関係上ブロックされていない 1-12b/1-13 を先に着手した）。**
 
 ### フェーズ 0（`17_実装ロードマップ.md` §17.2、全項目完了）
 
@@ -15,7 +15,7 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
 - 静的検査 `Scripts/check-fileops-isolation.swift`（B-10）・`check-layer-dependencies.swift`（B-11）・`check-json-completeness.swift`（B-13, 現状はプレースホルダ）と CI（`.github/workflows/ci.yml`）を用意した。
 - **既知の懸念（要フォローアップ）**: libarchive 3.8.9 は特定の壊れた RAR 入力（use-after-free の回帰テストファイル）でクラッシュする（エラーを返さず異常終了）。`SecureExtractor`（09章 §9.3）実装時に対処を検討する必要がある。詳細は `Spikes/README.md` の T-12 節。
 
-### フェーズ 1（`17_実装ロードマップ.md` §17.3、1-1〜1-11・1-13 完了・1-12/1-12b/1-14/1-15 未着手）
+### フェーズ 1（`17_実装ロードマップ.md` §17.3、1-1〜1-11・1-12b・1-13 完了・1-12/1-14/1-15 未着手）
 
 - **1-1 プロジェクト基盤が完了。** `qooLibrary.xcodeproj` は `project.yml` から `xcodegen generate` で生成する（**git-ignore 対象、手で pbxproj を編集しない**。ThirdParty の xcframework と同じ「生成物はコミットしない」方針）。ローカルの SwiftPM パッケージ（`QooKit`/`QooPersistence`/`QooInfrastructure`/`QooApplication`）を local package dependency として参照し、実機で起動確認済み。
 - App Sandbox entitlement（`Sources/qooLibraryApp/qooLibrary.entitlements`）を付与済み。`codesign -d --entitlements :-` で署名済みバイナリに実際に反映されていることを確認済み [SB-01]。
@@ -216,6 +216,22 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
   - `Sources/qooLibraryApp/qooLibraryApp.swift`: 起動時に `RegisteredFolderStore.shared.loadAndActivateAll()` を呼ぶ（`SecureExtractor.cleanupResidualStaging()` と同じ `init()` 内の `Task`）。
   - `Tests/QooInfrastructureTests/RegisteredFolderStoreTests.swift`（新規8件）: 登録・種別ごとの一覧取得・入れ子禁止（祖先・子孫の両方向）・登録解除・表示名変更・別インスタンス間での永続化・FS 非対応時の拒否（フェイクの `VolumeEligibilityChecking` で模擬）を検証。実際の Security-Scoped Bookmark 生成・解決は非サンドボックスの `swift test` プロセスでも成功する（サンドボックス外ではスコープ強制自体が無効なだけで API 自体は動く、既存の `SecurityScopedBookmarkResolverTests` と同じ前提）ため、フェイクを使わず実装をそのままテストしている。
   - **実機検証（ユーザーによる手動確認）で完了。** 「+」ボタンでのライブラリ／テンポラリ登録、登録フォルダのツリー表示・展開、登録解除、表示名変更のいずれも確認済み。
+- **1-12b（エラー処理と通知の共通基盤、ER-01〜ER-34）が、DB に依存しない範囲で完了した。** ロードマップの依存関係上 1-13 より先に着手できたが、実際には 1-13 の後に実装した（1-11 完了時点でのユーザーとの相談で 1-13 を先に選んだため）。
+  - `Sources/QooKit/Model/Notification.swift`（新規）: `NotificationSeverity`（強度1〜5）・`UserPresentableError` プロトコル・`RecoveryAction`・`NotificationItem`。仕様書の `RecoveryAction.Kind` には `.openWindow(WindowRoute)`/`.runCommand(ManualCommandID)` もあるが、`WindowRoute`（ウインドウルーティング基盤）も `ManualCommandID`（11章 §11.6）もまだ無いフェーズ1では組み込めないため、`.retry`/`.openSystemSettings(String)`/`.dismiss` の3種類のみに絞った。
+  - `Sources/QooInfrastructure/Log.swift`（新規）: OSLog カテゴリの集約（`Log.ui`/`Log.fileOps` 等）[MT-05]。
+  - `Sources/QooApplication/NotificationRouter.swift`（新規）: `@MainActor @Observable` の `CommandStack` と同じ方針。**severity に応じてどう見せるかを判断する部分（`QooApplication`、AppKit/SwiftUI 非依存）と、実際にどう描画するか（`qooLibraryApp`）を分離した**。専用の「一時通知（トースト）」UI がまだ無いため、フェーズ1では `.appModal`/`.sheet`/`.inline` の3段階すべてを同じアラートで表示する（データモデル上は区別を保持済み、UI が揃い次第描き分けられる）。`.transient`/`.logOnly` は OSLog のみで UI には出さない。`UserPresentableError` に未準拠の素の `Error` から最小限の `NotificationItem` を組み立てる `presentError(_:whatHappened:)` を用意し、既存のエラー型（`FileOperationError` 等）を ER-03 の三要素文言（何が/なぜ/次に何ができるか）に完全準拠させる作業は別途の課題として残した。
+  - **[CB-11] 強度4以上（一時通知／ログのみ）だけをメモリ内の簡易履歴に記録する。** アプリモーダル・シート・インラインはその場でユーザーが直接見ているため、別途の履歴を必要としないという仕様書の判断軸に従った。DB（`NotificationHistoryStore`、07章）がまだ無いフェーズ1では、1-11 の `CommandStack.operationHistory` と同じ「メモリのみ・上限あり・閲覧UIなし」の簡易版。
+  - **`Sources/qooLibraryApp/DesignSystem/NotificationRouterPresenter.swift`（新規）は、当初 SwiftUI の `.alert(isPresented:)` を `MainWindowView` に適用する設計だったが、実機検証で2つの問題が見つかり、AppKit の `NSAlert` を直接使う命令的な方式に作り直した。**
+    1. `NotificationRouter.shared` はアプリ全体で単一（`CommandStack` と同じ方針 [UD-02]）のため、複数ウインドウを開いていると、それぞれのウインドウが同じ `currentModalItem` を見て**両方に同じエラーダイアログが表示された**。
+    2. `@Environment(\.controlActiveState)` でキーウインドウかどうかを判定してこれを1つに絞ろうとしたところ、今度は**アラート自体がまったく表示されなくなった**（この深いビュー階層＋複数の `NSViewRepresentable` 橋渡しの組み合わせでの信頼性を安全に検証できる状況ではなかった）。
+    - 最終的に、`NotificationRouterPresenterController`（`@MainActor` のシングルトン）が `withObservationTracking` で `NotificationRouter.currentModalItem` を監視し、変化のたびに `NSApp.keyWindow` をその場で問い合わせて `NSAlert.beginSheetModal` を1回だけ呼ぶ方式にした。「表示する瞬間に一度だけ、命令的にどのウインドウに出すか決める」ことで、複数ウインドウでの重複や宣言的バインディングのタイミング問題を構造的に回避している。`QooLibraryApp.init()` から `NotificationRouterPresenterController.shared.start()` を一度だけ呼ぶ。
+  - **既存の各画面が独自に持っていたエラーアラート（ER-01 が禁じる「機能ごとに独自の提示方法」）をすべて `NotificationRouter` 経由に置き換えた。** `FolderContentView.swift`（`actionError` 状態と専用 `.alert` を削除、10箇所の `catch` 節と D&D 失敗コールバックを移行）・`FolderTreePane.swift`（`dropError`/`registrationError` を削除）・`DropHandling.swift`（`onFailure` の既定値が以前は `print` でコンソールに出すだけ＝**ユーザーには一切見えていなかった**バグを修正）。
+  - **実機検証でさらに2件の実装バグを発見・修正した**（1-12b の作業そのものではなく、通知経路を通してテストした結果見つかった既存コードのバグ）:
+    1. 上記の「複数ウインドウで重複表示される」問題（`NotificationRouterPresenterController` 参照）。
+    2. **同名フォルダを重複作成してもエラーが出なかった。** `FileOperationService.createDirectory` が `FileManager.createDirectory(at:withIntermediateDirectories: true)` を使っており、これは対象がすでに存在していてもエラーを投げない Foundation の標準動作だった（`options: OpOptions` パラメータ自体も無視されており、衝突判定が一切無かった）。Finder と同じく既存項目との衝突をエラー扱いする事前チェックを追加した。
+  - **未実装（スコープ外、CLAUDE.md に記録のみ）**: `BatchNotificationSession`（ER-10〜16、「以降すべてに適用」・結果サマリ）は、現時点でこれを必要とする一括処理フロー自体が無い（既存の一括処理は単純な「最初の失敗で中断」のみ）ため、具体的な呼び出し元の無いまま作る投機的な実装になってしまうと判断し見送った。`NotificationHistoryStore`（SwiftData 版）・通知履歴ウインドウ（NW-01〜08）・`SystemNotificationGate`（ER-30〜34、システム通知）もフェーズ2以降。既存のエラー型を `UserPresentableError` に完全準拠させる作業（ER-03 の三要素文言）も未着手。
+  - `Tests/QooApplicationTests/NotificationRouterTests.swift`（新規7件）: モーダル severity での表示・`resolve` によるアクション返却・`.transient`/`.logOnly` が UI を出さないこと・[CB-11] の履歴記録範囲・複数アイテムのキューイング・`presentError` の橋渡し（`UserPresentableError` 準拠時とそうでない場合の両方）を検証。
+  - **実機検証（ユーザーによる複数回の手動確認）で完了。** D&D 失敗・重複フォルダ作成のいずれもエラーダイアログが表示されること、複数ウインドウでの重複表示が解消されたことを確認済み。
 - `QooApplication` は 1-11 で `Command`/`CommandStack`（ファイル操作の Undo 基盤）が実装され、プレースホルダの段階を脱した。`QooKit`/`QooPersistence` の中身はまだプレースホルダ（モジュール依存関係を検証するための最小限のマーカー型のみ）で、ドメインロジック・SwiftData モデルは一切実装していない。`QooInfrastructure` はサンドボックス／FS 検証・ファイル操作・アーカイブ・サムネイルを実装済み（DB 依存部分のみ未実装）。
 
 作業を始める際は、対象領域の仕様書（下記 §2 の一覧）を該当箇所だけ `Read` してから着手する。仕様書は合計 18 ファイルあり、全部を毎回読み込む必要はない。要件定義書本体は `docs/Requirements/qooLibrary_要件定義書_v2.8.md` にある（約 2,900 行）。矛盾したときの優先順位は §1 参照。
@@ -361,7 +377,7 @@ Swift 6 言語モード、`StrictConcurrency` 有効。
 
 ```
 フェーズ0 基盤検証        T-13/T-12 の技術検証、ゴールデンサンプル収集開始、プロジェクト骨格 ← 完了
-フェーズ1 ファイルマネージャー  Finder 代替として日常使用できる状態             ← 進行中（1-1〜1-11・1-13 完了）
+フェーズ1 ファイルマネージャー  Finder 代替として日常使用できる状態             ← 進行中（1-1〜1-11・1-12b・1-13 完了）
 フェーズ2 ライブラリマネージャー ラベル管理が実用レベル
 フェーズ3 テンポラリフォルダ   取り込み〜投入のワークフロー完結
 ```
@@ -382,7 +398,8 @@ Swift 6 言語モード、`StrictConcurrency` 有効。
 | 1-10 | 右ペイン（詳細情報表示、DT-01〜DT-07/DT-10） | 完了 |
 | 1-11 | Undo 基盤（ファイル操作のみ、UD-01〜UD-11/HS-01〜HS-04） | 完了 |
 | 1-13 | ライブラリ／テンポラリフォルダの登録・削除（エイリアス相当、RG-01〜RG-08） | 完了 |
-| 1-12/1-12b/1-14/1-15 | 環境設定、通知基盤、Quick Look 等、診断ログ | 未着手 |
+| 1-12b | エラー処理と通知の共通基盤（ER-01〜ER-34 の実装可能な範囲） | 完了 |
+| 1-12/1-14/1-15 | 環境設定、Quick Look 等、診断ログ | 未着手 |
 
 - フェーズ 1 の 4 制約（DP-01 Undo 基盤 / DP-05 FileOps 集約 / DP-07 mainContext 構成 / DP-08 通知基盤）は機能追加より先に固める。後付けは大規模改修になる。DP-05（FileOps 集約）は 1-5 で、DP-01（Undo 基盤）は 1-11 でそれぞれ完了済み。DP-07（mainContext 構成）は SwiftData 導入（フェーズ2）まで対象外、DP-08（通知基盤）は 1-12b が対象。
 - フェーズ 2 の最初に `VersionedSchema` を導入する。パーサ（`QooKit`）は永続化と並行実装できるため早期着手を推奨。

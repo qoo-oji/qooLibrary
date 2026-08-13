@@ -1,6 +1,7 @@
 import AppKit
 import QooApplication
 import QooInfrastructure
+import QooKit
 import SwiftUI
 
 /// D&D の共通処理 [DD-01〜DD-05]。すべて `FileOperationService` 経由 [FO-01]。
@@ -20,8 +21,15 @@ enum DropHandling {
         into destination: URL,
         onComplete: @escaping @MainActor () -> Void,
         onFailure: @escaping @MainActor (String) -> Void = { message in
-            // 1-12b（NotificationRouter）実装までの既定はログのみ [ER-20 の趣旨に近い暫定対応]。
-            print("D&D operation failed: \(message)")
+            // すべての呼び出し元は現状 `onFailure` を明示的に渡しているため
+            // 通常はここに到達しないが、渡し忘れた場合の保険として
+            // `NotificationRouter` 経由にしておく（以前はログのみで、
+            // D&D の失敗がユーザーに一切見えなかった [ER-01 違反、1-12b で解消]）。
+            Task {
+                await NotificationRouter.shared.present(NotificationItem(
+                    category: .error, severity: .sheet, title: "操作に失敗しました", body: message
+                ))
+            }
         }
     ) {
         let targets = urls.filter {

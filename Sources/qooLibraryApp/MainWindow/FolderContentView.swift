@@ -39,7 +39,6 @@ struct FolderContentView: View {
 
     @State private var entries: [FolderEntry] = []
     @State private var loadError: String?
-    @State private var actionError: String?
     @State private var renamingEntry: FolderEntry?
     @State private var renameText = ""
     @FocusState private var isRenameFieldFocused: Bool
@@ -145,7 +144,7 @@ struct FolderContentView: View {
                     onNavigate: onNavigate,
                     onSingleClick: { handleSingleClick($0) },
                     onReload: { reloadAndBroadcast() },
-                    onDropFailure: { actionError = $0 },
+                    onDropFailure: { presentFailureMessage($0) },
                     contextMenuContent: { urls in contextMenuContent(for: urls) },
                     renamingURL: renamingEntry?.url,
                     renameText: $renameText,
@@ -346,7 +345,7 @@ struct FolderContentView: View {
         }
         .dropDestination(for: URL.self) { items, _ in // [DD-03] Finder・他アプリからの取り込み
             guard let folder else { return false }
-            DropHandling.performDrop(items, into: folder, onComplete: { reloadAndBroadcast() }, onFailure: { actionError = $0 })
+            DropHandling.performDrop(items, into: folder, onComplete: { reloadAndBroadcast() }, onFailure: { presentFailureMessage($0) })
             return true
         } isTargeted: { isDropTargeted = $0 }
         .task(id: folder) {
@@ -369,11 +368,6 @@ struct FolderContentView: View {
             TextField("フォルダ名", text: $newFolderName)
             Button("作成") { createNewFolder() }
             Button("キャンセル", role: .cancel) {}
-        }
-        .alert("操作に失敗しました", isPresented: Binding(get: { actionError != nil }, set: { if !$0 { actionError = nil } })) {
-            Button("OK") {}
-        } message: {
-            Text(actionError ?? "")
         }
     }
 
@@ -444,7 +438,7 @@ struct FolderContentView: View {
                 .modifier(DropIntoFolderModifier(
                     entry: entry,
                     reload: { reloadAndBroadcast() },
-                    onFailure: { actionError = $0 }
+                    onFailure: { presentFailureMessage($0) }
                 ))
         }
     }
@@ -625,6 +619,23 @@ struct FolderContentView: View {
         SessionState.shared.reloadToken += 1
     }
 
+    /// [ER-01] エラー提示は必ず `NotificationRouter` 経由にする。以前は
+    /// `@State private var actionError: String?` + 専用の `.alert` を
+    /// このビュー自身が持っていたが、それこそが ER-01 が禁じる「機能ごとに
+    /// 独自の提示方法を作る」状態だったため、1-12b でここへ一本化した。
+    private func presentError(_ error: Error, whatHappened: String) {
+        Task { await NotificationRouter.shared.presentError(error, whatHappened: whatHappened) }
+    }
+
+    /// D&D 失敗など、`Error` ではなく素の `String` しか渡されてこない経路用。
+    private func presentFailureMessage(_ message: String) {
+        Task {
+            await NotificationRouter.shared.present(
+                NotificationItem(category: .error, severity: .sheet, title: "操作に失敗しました", body: message)
+            )
+        }
+    }
+
     private func copyPaths(_ urls: [URL]) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(urls.map(\.path).joined(separator: "\n"), forType: .string)
@@ -651,7 +662,7 @@ struct FolderContentView: View {
                 _ = try await CommandStack.shared.run(CopyFilesCommand(items: urls, destination: folder))
                 reloadAndBroadcast()
             } catch {
-                actionError = error.localizedDescription
+                presentError(error, whatHappened: "ペーストに失敗しました")
             }
         }
     }
@@ -669,7 +680,7 @@ struct FolderContentView: View {
                 _ = try await CommandStack.shared.run(command)
                 reloadAndBroadcast()
             } catch {
-                actionError = error.localizedDescription
+                presentError(error, whatHappened: "エイリアスの作成に失敗しました")
             }
         }
     }
@@ -684,7 +695,7 @@ struct FolderContentView: View {
                 _ = try await CommandStack.shared.run(SetLockedCommand(items: targets.map(\.url), locked: shouldLock))
                 reloadAndBroadcast()
             } catch {
-                actionError = error.localizedDescription
+                presentError(error, whatHappened: shouldLock ? "ロックに失敗しました" : "ロック解除に失敗しました")
             }
         }
     }
@@ -740,7 +751,7 @@ struct FolderContentView: View {
                 _ = try await CommandStack.shared.run(RenameCommand(item: entry.url, newName: renameText))
                 reloadAndBroadcast()
             } catch {
-                actionError = error.localizedDescription
+                presentError(error, whatHappened: "名前の変更に失敗しました")
             }
         }
     }
@@ -756,7 +767,7 @@ struct FolderContentView: View {
                 _ = try await CommandStack.shared.run(CopyFilesCommand(items: urls, destination: folder))
                 reloadAndBroadcast()
             } catch {
-                actionError = error.localizedDescription
+                presentError(error, whatHappened: "複製に失敗しました")
             }
         }
     }
@@ -767,7 +778,7 @@ struct FolderContentView: View {
                 _ = try await CommandStack.shared.run(TrashCommand(items: urls))
                 reloadAndBroadcast()
             } catch {
-                actionError = error.localizedDescription
+                presentError(error, whatHappened: "ゴミ箱への移動に失敗しました")
             }
         }
     }
@@ -779,7 +790,7 @@ struct FolderContentView: View {
                 _ = try await CommandStack.shared.run(CreateFolderCommand(url: folder.appendingPathComponent(newFolderName)))
                 reloadAndBroadcast()
             } catch {
-                actionError = error.localizedDescription
+                presentError(error, whatHappened: "フォルダの作成に失敗しました")
             }
         }
     }
@@ -814,8 +825,9 @@ struct FolderContentView: View {
 
     /// 展開先フォルダを新規作成する場合は `CreateFolderCommand` + `ExtractCommand`
     /// を 1 つの Undo 単位にまとめる [UD-04]。複数アーカイブの一括展開も
-    /// まとめて 1 単位にする（`MX2-08` の精神、途中で失敗したら残りは中断する
-    /// 暫定対応 [ER-20 の趣旨に近い、1-12b の通知基盤が無いため]）。
+    /// まとめて 1 単位にする（`MX2-08` の精神）。途中で失敗したら残りは中断する
+    /// 暫定対応 [ER-20 の趣旨に近い、`BatchNotificationSession`〈結果サマリ・
+    /// 部分失敗の集約〉はまだ実装していないため]。
     private func extractArchives(_ urls: [URL], destination: @escaping (URL) -> URL) {
         busyMessage = urls.count == 1 ? "展開しています…" : "展開しています…（\(urls.count) 件）"
         var children: [any Command] = []
@@ -836,7 +848,7 @@ struct FolderContentView: View {
             do {
                 _ = try await CommandStack.shared.run(command)
             } catch {
-                actionError = error.localizedDescription
+                presentError(error, whatHappened: "展開に失敗しました")
             }
             reloadAndBroadcast()
         }
@@ -876,7 +888,7 @@ struct FolderContentView: View {
                 )
                 reloadAndBroadcast()
             } catch {
-                actionError = error.localizedDescription
+                presentError(error, whatHappened: "圧縮に失敗しました")
             }
         }
     }
@@ -908,7 +920,7 @@ struct FolderContentView: View {
                 )
                 reloadAndBroadcast()
             } catch {
-                actionError = error.localizedDescription
+                presentError(error, whatHappened: "圧縮に失敗しました")
             }
         }
     }

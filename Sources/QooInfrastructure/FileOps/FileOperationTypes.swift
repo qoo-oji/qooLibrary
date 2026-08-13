@@ -21,9 +21,11 @@ public enum ConflictPolicy: Sendable, Equatable {
 public struct OpOptions: Sendable {
     public var conflictPolicy: ConflictPolicy
     /// `.ask` が選ばれた場合に呼ばれる、衝突 1 件ごとの解決手段。
-    /// `NotificationRouter`/`BatchNotificationSession`（1-12b で実装）がまだ無いため、
-    /// 暫定的に呼び出し側が直接解決ロジックを渡す形にしている。「以降すべてに適用」
-    /// [FM-12] は 1-12b で `BatchNotificationSession` 側が担う。
+    /// `BatchNotificationSession`（1-12b でも未実装、具体的な利用箇所が無い
+    /// ままの投機的実装を避けたため）がまだ無いため、暫定的に呼び出し側が
+    /// 直接解決ロジックを渡す形にしている。「以降すべてに適用」[FM-12] は
+    /// `BatchNotificationSession` 側が担う予定（実際に `.ask` を使う一括処理
+    /// フローができたタイミングで導入する）。
     public var conflictResolver: (@Sendable (_ source: URL, _ destination: URL) async -> ConflictPolicy)?
 
     public init(
