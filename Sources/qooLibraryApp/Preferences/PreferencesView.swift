@@ -67,6 +67,13 @@ struct PreferencesView: View {
         NavigationSplitView(columnVisibility: .constant(.all)) {
             List(PreferencesCategory.allCases, selection: $selection) { category in
                 Label(category.titleKey, systemImage: category.systemImage)
+                    // [ユーザー指摘の修正] `QooLibraryApp.init()` で登録した
+                    // `NSTableViewDefaultSizeMode`（フォルダツリーの行間を
+                    // 詰めるための設定）はアプリ全体の `.sidebar` スタイル
+                    // リストに影響するため、この環境設定サイドバーの文字も
+                    // 一緒に縮んでしまっていた。`FolderTreePane` と同じく
+                    // 明示的にサイズを指定して切り離す。
+                    .font(.system(size: Tokens.fontSize.body))
                     .tag(category)
             }
             .toolbar(removing: .sidebarToggle)
