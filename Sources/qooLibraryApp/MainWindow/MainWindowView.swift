@@ -130,7 +130,16 @@ struct MainWindowView: View {
                         selectedURL: windowState.currentTabIndex.flatMap { windowState.tabs[$0].folder },
                         navigationRoot: windowState.currentTabIndex.map { windowState.tabs[$0].navigationRoot } ?? .volume,
                         skipsInitialAutoExpand: hasPendingStartupFolderOverride,
-                        onSelect: { url, root in windowState.navigateCurrentTab(to: url, root: root) }
+                        onSelect: { url, root in windowState.navigateCurrentTab(to: url, root: root) },
+                        // ツリーのコンテキストメニュー「新規タブ／ウインドウで
+                        // 開く」[ユーザー要望]。新規タブは `NavigationRoot` も
+                        // 引き継ぐ（ライブラリ／テンポラリ配下から開いたタブが
+                        // `.volume` に戻らないように）。新規ウインドウは
+                        // `WindowGroup(for: URL.self)` の値型が `URL` 固定の
+                        // ため引き継げない [既知の制限、CLAUDE.md
+                        // フェーズ1完了前監査の記録と同じ項目]。
+                        onOpenInNewTab: { url, root in windowState.openTab(for: url, root: root) },
+                        onOpenInNewWindow: { openWindow(value: $0) }
                     )
                     PlaceholderPane(
                         title: String(localized: "mainWindow.labelFilter", locale: locale),
@@ -160,7 +169,12 @@ struct MainWindowView: View {
                             canGoForward: windowState.canGoForward,
                             onGoToParent: { windowState.goToParent() },
                             canGoToParent: windowState.canGoToParent,
-                            onOpenInNewTab: { windowState.openTab(for: $0) },
+                            relocateIfFolderVanished: { windowState.relocateCurrentTabIfFolderVanished() },
+                            // 現在のタブの `NavigationRoot` を新しいタブへ
+                            // 引き継ぐ [フェーズ1完了前監査で記録した
+                            // 「登録フォルダ配下のサブフォルダを新規タブで
+                            // 開くと `.volume` に戻る」抜け穴の修正]。
+                            onOpenInNewTab: { windowState.openTab(for: $0, root: windowState.currentTab?.navigationRoot ?? .volume) },
                             onOpenInNewWindow: { openWindow(value: $0) },
                             listStyle: $windowState.listStyle,
                             iconSize: $windowState.iconSize,

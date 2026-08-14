@@ -51,6 +51,10 @@ struct FolderContentView: View {
     /// [実機検証で発見したバグの修正、`goToParent()` の旧実装のコメント参照]。
     let onGoToParent: () -> Void
     let canGoToParent: Bool
+    /// 表示中のフォルダ自体が消えていたら、存在する直近の祖先へ移動して
+    /// `true` を返す [`WindowState.relocateCurrentTabIfFolderVanished()` 参照]。
+    /// `reload()` が読み込みに失敗したときだけ呼ぶ。
+    let relocateIfFolderVanished: () -> Bool
     /// コンテキストメニューの「新規タブで開く」「新規ウインドウで開く」
     /// [MW-01/MW-04 の周辺、要件定義書には無いがユーザー要望で追加]。
     let onOpenInNewTab: (URL) -> Void
@@ -90,9 +94,10 @@ struct FolderContentView: View {
     /// [DD-02][設計判断: macOS 26 で追加された API、詳細は `.draggable(containerItemID:)` の
     /// 呼び出し箇所のコメント参照]。
     @Namespace private var dragNamespace
-    /// 圧縮・展開など数秒かかることがある処理の実行中表示 [UI-09]。
-    /// バイト単位の進捗（`ProgressReporter`）はまだ無いため不定進捗のみ。
-    @State private var busyMessage: String?
+    /// ファイル操作の共通レイヤ [`FolderOperations` 参照]。フォルダツリー
+    /// （`FolderTreePane`）とまったく同じ実装を共有し、実行中表示・パスワード
+    /// シートの状態もこのオブジェクトが持つ（描画は `.folderOperationsHost(_:)`）。
+    @State private var operations = FolderOperations()
     /// リスト表示の現在のソート順 [LV-01]。タブ切替をまたいで保持されて構わない
     /// 軽微な状態のため `WindowState`/`TabState` へは持ち上げず、他の一時的な
     /// `@State`（`selectionAnchor` 等）と同じくこのビュー内で完結させる。
@@ -116,23 +121,6 @@ struct FolderContentView: View {
     /// 名前列が長すぎるときの省略位置 [ユーザー要望、環境設定「表示」タブ
     /// `NameTruncationMode` と同じキーを共有する]。
     @AppStorage("qoo.folderList.nameTruncationMode") private var nameTruncationMode: NameTruncationMode = .tail
-    /// 圧縮・展開の既定値 [環境設定「圧縮／展開」タブ、`CompressionPreferencesTab`
-    /// と同じ `UserDefaults` キーを共有]。
-    @AppStorage("qoo.preferences.compression.format") private var compressionFormat: CompressibleFormat = .zip
-    @AppStorage("qoo.preferences.compression.zipLevel") private var compressionZipLevel: ZipCompressionLevel = .normal
-    @AppStorage("qoo.preferences.compression.sevenZipCodec") private var compressionSevenZipCodec: SevenZipCodec = .ppmd
-    @AppStorage("qoo.preferences.compression.encryption") private var compressionEncryption: ArchiveEncryptionMethod = .none
-    @AppStorage("qoo.preferences.extraction.maxUncompressedGB") private var extractionMaxUncompressedGB: Double = Double(AppLimits.Extraction.defaultMaxUncompressedBytes) / 1_000_000_000
-    @AppStorage("qoo.preferences.extraction.maxEntries") private var extractionMaxEntries: Double = Double(AppLimits.Extraction.defaultMaxEntries)
-    @AppStorage("qoo.preferences.extraction.ratioWarn") private var extractionRatioWarn: Double = AppLimits.Extraction.defaultRatioWarn
-    @AppStorage("qoo.preferences.extraction.ratioAbort") private var extractionRatioAbort: Double = AppLimits.Extraction.defaultRatioAbort
-    /// 単一アーカイブ展開でパスワードが必要だった場合の再試行状態
-    /// [環境設定「圧縮／展開」タブ]。複数選択の一括展開では対話的な
-    /// パスワード再試行を提供しない（`extractArchives` のコメント参照、
-    /// スコープを絞った設計判断）。
-    @State private var pendingExtractionPassword: PendingExtractionPassword?
-    /// 圧縮時にパスワードを尋ねている状態。
-    @State private var pendingCompression: PendingCompression?
     /// 非 `nil` の間だけ、その URL までスクロールする [`.onChange(of: pendingScrollTarget)`
     /// 参照]。ユーザー自身のクリックによる選択ではスクロールしないよう、
     /// プログラム的に選択を変える呼び出し元（`runCompress` 等）だけが設定する。
@@ -510,19 +498,9 @@ struct FolderContentView: View {
                     .allowsHitTesting(false)
             }
         }
-        .overlay {
-            // 圧縮・展開は数秒かかることがあり、無表示だとアプリが固まった
-            // ように見える。バイト単位の進捗が無いため不定進捗のみ表示する。
-            if let busyMessage {
-                ZStack {
-                    Color.black.opacity(0.15)
-                    QooProgressPresenter(title: busyMessage)
-                        .background(.regularMaterial)
-                        .clipShape(RoundedRectangle(cornerRadius: Tokens.radius.m))
-                }
-                .ignoresSafeArea()
-            }
-        }
+        // 実行中表示（不定進捗 [UI-09]）と圧縮／展開のパスワードシート。
+        // 実体は `FolderOperations` が持ち、フォルダツリーとも共有している。
+        .folderOperationsHost(operations)
         .dropDestination(for: URL.self) { items, _ in // [DD-03] Finder・他アプリからの取り込み
             // `folder`（構造体に保持された値）ではなく `currentFolder()` を
             // 読む必要がある [フェーズ1完了時の監査で発見: 高速なナビゲーション
@@ -556,21 +534,6 @@ struct FolderContentView: View {
             TextField("folder.namePlaceholder", text: $newFolderName)
             Button("common.create") { createNewFolder() }
             Button("common.cancel", role: .cancel) {}
-        }
-        // 圧縮時のパスワード設定 [環境設定「圧縮／展開」タブ]。
-        .sheet(item: $pendingCompression) { pending in
-            ArchivePasswordSheet(mode: .setPassword) { password in
-                runCompress(
-                    pending.items, destinationName: pending.destinationName, destinationFolder: pending.destinationFolder,
-                    options: pending.options, passphrase: password, conflictPolicy: pending.conflictPolicy
-                )
-            }
-        }
-        // 展開時のパスワード入力・誤りパスワードの再試行 [同上]。
-        .sheet(item: $pendingExtractionPassword) { pending in
-            ArchivePasswordSheet(mode: .unlock(retryErrorMessage: pending.retryErrorMessage)) { password in
-                extractArchives([pending.archiveURL], destination: { _ in pending.target }, passphrase: password)
-            }
         }
         // 「戻る」「1階層上へ」で親フォルダへ移動した直後のスクロール
         // [`WindowState.pendingRevealURL` 参照、ユーザー要望]。既存の
@@ -1051,6 +1014,13 @@ struct FolderContentView: View {
             let currentURLs = Set(entries.map(\.url))
             selection.formIntersection(currentURLs)
         } catch {
+            // 表示中のフォルダ自体が消えている場合（ツリーや別ウインドウから
+            // ゴミ箱へ入れた・名前を変更した、アプリ外の Finder で削除した等）は、
+            // エラー表示で行き止まりにせず存在する直近の祖先へ移動する
+            // [`WindowState.relocateCurrentTabIfFolderVanished()` 参照]。移動すると
+            // `folder` が変わり `.task(id: folder)` 経由でここが再実行されるため、
+            // 続きの処理は次の呼び出しに任せて打ち切ってよい。
+            if relocateIfFolderVanished() { return }
             entries = []
             loadError = error.localizedDescription
         }
@@ -1087,66 +1057,29 @@ struct FolderContentView: View {
     }
 
     private func copyPaths(_ urls: [URL]) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(urls.map(\.path).joined(separator: "\n"), forType: .string)
+        operations.copyPaths(urls) // [FM-10]
     }
 
-    /// `⌘C`/コンテキストメニュー「コピー」。標準の `NSPasteboard` にファイル URL
-    /// として書き込むため、Finder との相互運用（Finder へ貼り付け／Finder で
-    /// コピーしたものをここへ貼り付け）が両方とも成立する。
+    /// `⌘C`/コンテキストメニュー「コピー」。
     private func copySelectionToPasteboard(_ urls: [URL]) {
-        guard !urls.isEmpty else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.writeObjects(urls as [NSURL])
-        // 素のコピーはカット状態を打ち消す（さもないと直前のカットが
-        // 後続のペーストで誤って移動として処理されてしまう）。
-        SessionState.shared.cutURLs = []
+        operations.copyToPasteboard(urls)
     }
 
     /// `⌘X`/コンテキストメニュー「カット」[Finder/Edit メニュー整備の一環で追加]。
-    /// Finder 自身のカット判定はプライベート API 頼りで他アプリと相互運用
-    /// できないため、`SessionState.cutURLs`（アプリ内で完結する簡易な独自実装、
-    /// 型のコメント参照）で「次のペーストは移動にする」ことだけを覚えておく。
-    /// ペーストボードへの書き込み自体は `copySelectionToPasteboard` と同じ
-    /// （Finder への貼り付け自体はコピーとして成立する。カットの伝搬は
-    /// アプリ内ペースト時のみ有効）。
     private func cutSelectionToPasteboard(_ urls: [URL]) {
-        guard !urls.isEmpty else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.writeObjects(urls as [NSURL])
-        SessionState.shared.cutURLs = Set(urls.map { $0.standardizedFileURL.path })
+        operations.cutToPasteboard(urls)
     }
 
-    /// `⌘V`/コンテキストメニュー「ペースト」。ペーストボード上のファイル URL が
-    /// 直前にカットされた集合と一致すれば移動、そうでなければコピー
-    /// （Finder の `⌘V` と同じ既定）。**パス文字列（`standardizedFileURL.path`）で
-    /// 比較する** — 生の `URL` 同士の `==` はペーストボード往復後の表現差異
-    /// （末尾スラッシュ等）で一致しないことがあった [実機検証で発見、
-    /// `SessionState.cutURLs` のコメント参照]。
+    /// `⌘V`/コンテキストメニュー「ペースト」。ペースト先は `folder`（構造体に
+    /// 保持された値）ではなく `currentFolder()` を読む [実機検証で発見した
+    /// バグの修正、`currentFolder` の宣言部のコメント参照]。
     private func pasteFromPasteboard() {
-        guard let folder = currentFolder(),
-              let urls = NSPasteboard.general.readObjects(forClasses: [NSURL.self]) as? [URL],
-              !urls.isEmpty
-        else { return }
-        let isCutPaste = !SessionState.shared.cutURLs.isEmpty
-            && Set(urls.map { $0.standardizedFileURL.path }) == SessionState.shared.cutURLs
-        Task {
-            do {
-                if isCutPaste {
-                    _ = try await CommandStack.shared.run(MoveFilesCommand(items: urls, destination: folder))
-                    SessionState.shared.cutURLs = []
-                } else {
-                    _ = try await CommandStack.shared.run(CopyFilesCommand(items: urls, destination: folder))
-                }
-                reloadAndBroadcast()
-            } catch {
-                presentError(error, whatHappened: String(localized: "error.pasteFailed", locale: locale))
-            }
-        }
+        guard let folder = currentFolder() else { return }
+        operations.paste(into: folder) { reload() }
     }
 
     private var canPaste: Bool {
-        NSPasteboard.general.canReadObject(forClasses: [NSURL.self], options: nil)
+        operations.canPaste
     }
 
     /// `⌘A`/空きスペースの右クリック「すべて選択」[Finder/Edit メニュー整備]。
@@ -1156,46 +1089,17 @@ struct FolderContentView: View {
     }
 
     /// Finder の「選択項目で新規フォルダを作成」[Finder/Edit メニュー整備]。
-    /// 新規フォルダの作成と選択項目の移動を 1 つの Undo 単位にまとめる [UD-04]。
-    /// 衝突時にコマンド自体が失敗しないよう、事前にフォルダ名の空きを探す
-    /// （Finder の「新規フォルダ」「新規フォルダ 2」…と同じ体裁）。
     private func newFolderWithSelection(_ urls: [URL]) {
-        guard let folder = currentFolder(), !urls.isEmpty else { return }
-        let baseName = String(localized: "action.newFolderWithSelection.baseName", locale: locale)
-        var candidate = folder.appendingPathComponent(baseName)
-        var suffix = 2
-        while FileManager.default.fileExists(atPath: candidate.path) {
-            candidate = folder.appendingPathComponent("\(baseName) \(suffix)")
-            suffix += 1
-        }
-        let children: [any Command] = [
-            CreateFolderCommand(url: candidate),
-            MoveFilesCommand(items: urls, destination: candidate),
-        ]
-        guard let command = Self.singleOrComposite(children, displayName: String(localized: "action.newFolderWithSelection", locale: locale)) else { return }
-        Task {
-            do {
-                _ = try await CommandStack.shared.run(command)
-                selection = [candidate]
-                reloadAndBroadcast()
-            } catch {
-                presentError(error, whatHappened: String(localized: "error.newFolderWithSelectionFailed", locale: locale))
-            }
+        guard let folder = currentFolder() else { return }
+        operations.newFolderWithSelection(urls, in: folder) { created in
+            selection = [created]
+            reload()
         }
     }
 
     private func createAliases(for urls: [URL]) {
         guard let folder = currentFolder() else { return }
-        let children: [any Command] = urls.map { CreateAliasCommand(source: $0, destinationFolder: folder) }
-        guard let command = Self.singleOrComposite(children, displayName: String(localized: "folder.createAlias", locale: locale)) else { return }
-        Task {
-            do {
-                _ = try await CommandStack.shared.run(command)
-                reloadAndBroadcast()
-            } catch {
-                presentError(error, whatHappened: String(localized: "error.createAliasFailed", locale: locale))
-            }
-        }
+        operations.createAliases(for: urls, in: folder) { reload() }
     }
 
     /// 対象が全てロック済みなら解除、そうでなければロックする（Finder と同じ
@@ -1203,14 +1107,7 @@ struct FolderContentView: View {
     private func toggleLock(_ targets: [FolderEntry]) {
         guard !targets.isEmpty else { return }
         let shouldLock = !targets.allSatisfy(\.isLocked)
-        Task {
-            do {
-                _ = try await CommandStack.shared.run(SetLockedCommand(items: targets.map(\.url), locked: shouldLock))
-                reloadAndBroadcast()
-            } catch {
-                presentError(error, whatHappened: String(localized: shouldLock ? "error.lockFailed" : "error.unlockFailed", locale: locale))
-            }
-        }
+        operations.setLocked(targets.map(\.url), locked: shouldLock) { reload() }
     }
 
     private func beginRename(_ entry: FolderEntry) {
@@ -1277,15 +1174,7 @@ struct FolderContentView: View {
     private func commitRename() {
         guard let entry = renamingEntry else { return }
         renamingEntry = nil
-        guard !renameText.isEmpty, renameText != entry.name else { return }
-        Task {
-            do {
-                _ = try await CommandStack.shared.run(RenameCommand(item: entry.url, newName: renameText))
-                reloadAndBroadcast()
-            } catch {
-                presentError(error, whatHappened: String(localized: "error.renameFailed", locale: locale))
-            }
-        }
+        operations.rename(entry.url, to: renameText) { reload() }
     }
 
     private func cancelRename() {
@@ -1294,37 +1183,16 @@ struct FolderContentView: View {
 
     private func duplicate(_ urls: [URL]) {
         guard let folder = currentFolder() else { return }
-        Task {
-            do {
-                _ = try await CommandStack.shared.run(CopyFilesCommand(items: urls, destination: folder))
-                reloadAndBroadcast()
-            } catch {
-                presentError(error, whatHappened: String(localized: "error.duplicateFailed", locale: locale))
-            }
-        }
+        operations.duplicate(urls, into: folder) { reload() }
     }
 
     private func moveToTrash(_ urls: [URL]) {
-        Task {
-            do {
-                _ = try await CommandStack.shared.run(TrashCommand(items: urls))
-                reloadAndBroadcast()
-            } catch {
-                presentError(error, whatHappened: String(localized: "error.trashFailed", locale: locale))
-            }
-        }
+        operations.moveToTrash(urls) { reload() }
     }
 
     private func createNewFolder() {
-        guard let folder = currentFolder(), !newFolderName.isEmpty else { return }
-        Task {
-            do {
-                _ = try await CommandStack.shared.run(CreateFolderCommand(url: folder.appendingPathComponent(newFolderName)))
-                reloadAndBroadcast()
-            } catch {
-                presentError(error, whatHappened: String(localized: "error.createFolderFailed", locale: locale))
-            }
-        }
+        guard let folder = currentFolder() else { return }
+        operations.createFolder(named: newFolderName, in: folder) { reload() }
     }
 
     // MARK: - 圧縮・展開 [9.4 節]
@@ -1338,199 +1206,50 @@ struct FolderContentView: View {
     }
 
     /// `.tar.gz` のような複合拡張子も含めてアーカイブ名から拡張子を除いた
-    /// ベース名を返す（展開先フォルダ名に使う）[AR-21]。
+    /// ベース名を返す（展開先フォルダ名・メニューのラベルに使う）[AR-21]。
+    /// 実体はフォルダツリーとの共通層（`FolderOperations`）にある。
     private func archiveBaseName(_ url: URL) -> String {
-        let name = url.lastPathComponent
-        if name.lowercased().hasSuffix(".tar.gz") {
-            return String(name.dropLast(".tar.gz".count))
-        }
-        return url.deletingPathExtension().lastPathComponent
-    }
-
-    /// 複数のコマンドを 1 回の操作として 1 つの Undo 単位にまとめる [UD-04]。
-    /// 1 件ならそのまま返し、0 件なら `nil`（実行するものが無い）。
-    private static func singleOrComposite(_ commands: [any Command], displayName: String) -> (any Command)? {
-        if commands.isEmpty { return nil }
-        if commands.count == 1 { return commands[0] }
-        return CompositeCommand(displayName: displayName, children: commands)
-    }
-
-    /// 展開時の安全上限 [環境設定「圧縮／展開」タブ]。GB 単位で保存している
-    /// ため `ExtractLimits.maxUncompressedBytes`（バイト単位）へ変換する。
-    private var currentExtractLimits: ExtractLimits {
-        ExtractLimits(
-            maxUncompressedBytes: Int64(extractionMaxUncompressedGB * 1_000_000_000),
-            maxEntries: Int(extractionMaxEntries),
-            ratioWarn: extractionRatioWarn,
-            ratioAbort: extractionRatioAbort
-        )
-    }
-
-    /// 展開先フォルダを新規作成する場合は `CreateFolderCommand` + `ExtractCommand`
-    /// を 1 つの Undo 単位にまとめる [UD-04]。複数アーカイブの一括展開も
-    /// まとめて 1 単位にする（`MX2-08` の精神）。途中で失敗したら残りは中断する
-    /// 暫定対応 [ER-20 の趣旨に近い、`BatchNotificationSession`〈結果サマリ・
-    /// 部分失敗の集約〉はまだ実装していないため]。
-    ///
-    /// **パスワードの対話的な再試行は単一アーカイブ展開時のみ提供する**
-    /// [環境設定「圧縮／展開」タブ、設計判断]。複数選択の一括展開中に
-    /// パスワード保護されたアーカイブに遭遇した場合、どれが原因か・途中まで
-    /// 成功した分をどう扱うかの UX が複雑になるため、通常のエラー表示に
-    /// 留める（対話的な再試行は行わない）。
-    private func extractArchives(_ urls: [URL], destination: @escaping (URL) -> URL, passphrase: String? = nil) {
-        busyMessage = urls.count == 1
-            ? String(localized: "folder.extractingOne", locale: locale)
-            : String(format: String(localized: "folder.extractingCount", locale: locale), urls.count)
-        let limits = currentExtractLimits
-        var children: [any Command] = []
-        for url in urls {
-            let target = destination(url)
-            if !FileManager.default.fileExists(atPath: target.path) {
-                children.append(CreateFolderCommand(url: target))
-            }
-            let entryPassphrase = urls.count == 1 ? passphrase : nil
-            children.append(ExtractCommand(archiveURL: url, destination: target, limits: limits, passphrase: entryPassphrase))
-        }
-        let name = urls.count == 1
-            ? String(format: String(localized: "folder.extractCommandName", locale: locale), urls[0].lastPathComponent)
-            : String(format: String(localized: "folder.extractCommandNameCount", locale: locale), urls.count)
-        guard let command = Self.singleOrComposite(children, displayName: name) else {
-            busyMessage = nil
-            return
-        }
-        Task {
-            defer { busyMessage = nil }
-            do {
-                _ = try await CommandStack.shared.run(command)
-                reloadAndBroadcast()
-            } catch let error as ExtractError where urls.count == 1 && (error == .passwordProtected || error == .incorrectPassphrase) {
-                let retryMessage = error == .incorrectPassphrase ? String(localized: "error.incorrectPassphrase", locale: locale) : nil
-                pendingExtractionPassword = PendingExtractionPassword(
-                    archiveURL: urls[0], target: destination(urls[0]), retryErrorMessage: retryMessage
-                )
-            } catch {
-                presentError(error, whatHappened: String(localized: "error.extractFailed", locale: locale))
-                reloadAndBroadcast()
-            }
-        }
+        FolderOperations.archiveBaseName(url)
     }
 
     private func extractInPlace(_ urls: [URL]) {
         guard let folder = currentFolder() else { return }
-        extractArchives(urls) { _ in folder } // [AR-20]
+        operations.extract(urls, destination: { _ in folder }) { reload() } // [AR-20]
     }
 
     private func extractToNamedFolders(_ urls: [URL]) {
         guard let folder = currentFolder() else { return }
-        extractArchives(urls) { folder.appendingPathComponent(archiveBaseName($0)) } // [AR-21][AR-23]
+        // [AR-21][AR-23]
+        operations.extract(urls, destination: { folder.appendingPathComponent(FolderOperations.archiveBaseName($0)) }) { reload() }
     }
 
     private func extractToChosenDestination(_ urls: [URL]) {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.prompt = String(localized: "folder.extractPanelPrompt", locale: locale)
-        panel.message = String(localized: "folder.chooseExtractDestination", locale: locale)
-        guard panel.runModal() == .OK, let destination = panel.url else { return }
-        extractArchives(urls) { _ in destination } // [AR-22]
+        operations.extractToChosenDestination(urls) { reload() } // [AR-22]
     }
 
-    /// 現在の環境設定から `CompressionOptions` を組み立てる
-    /// [環境設定「圧縮／展開」タブ]。
-    private var currentCompressionOptions: CompressionOptions {
-        CompressionOptions(
-            format: compressionFormat, zipLevel: compressionZipLevel,
-            sevenZipCodec: compressionSevenZipCodec, encryption: compressionEncryption
-        )
-    }
-
-    /// 単一選択時は項目名、複数選択時はカレントフォルダ名 [AR-10]。暗号化が
-    /// 有効な場合はパスワードシートを挟んでから実行する
-    /// [環境設定「圧縮／展開」タブ]。
+    /// [AR-10] 「ここに圧縮」。単一選択時は項目名、複数選択時はカレント
+    /// フォルダ名を既定のアーカイブ名にする。暗号化が有効な場合は
+    /// パスワードシートを挟む（判断は `FolderOperations` 側）。
     private func compressHere(_ urls: [URL]) {
-        guard let folder = currentFolder(), !urls.isEmpty else { return }
-        let name = urls.count == 1 ? archiveBaseName(urls[0]) : folder.lastPathComponent
-        let options = currentCompressionOptions
-        guard options.encryption != .none else {
-            runCompress(urls, destinationName: name, destinationFolder: folder, options: options, passphrase: nil)
-            return
-        }
-        pendingCompression = PendingCompression(items: urls, destinationName: name, destinationFolder: folder, options: options, conflictPolicy: .keepBoth)
+        guard let folder = currentFolder() else { return }
+        operations.compressHere(urls, into: folder) { selectCompressionResult($0) }
     }
 
-    /// ファイル名・保存先を指定するダイアログ。zip/7z は環境設定の既定形式に
-    /// 従う [AR-11]。
+    /// [AR-11] ファイル名・保存先を指定するダイアログ。
     private func compressWithDialog(_ urls: [URL]) {
-        guard let folder = currentFolder(), !urls.isEmpty else { return }
-        let options = currentCompressionOptions
-        let ext = options.format == .zip ? "zip" : "7z"
-        let defaultName = urls.count == 1 ? archiveBaseName(urls[0]) : folder.lastPathComponent
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = "\(defaultName).\(ext)"
-        panel.allowedContentTypes = options.format == .zip ? [.zip] : []
-        panel.directoryURL = folder
-        panel.prompt = String(localized: "folder.compressPanelPrompt", locale: locale)
-        panel.message = String(localized: "folder.chooseSaveDestination", locale: locale)
-        guard panel.runModal() == .OK, let destinationURL = panel.url else { return }
-        let destinationFolder = destinationURL.deletingLastPathComponent()
-        let name = destinationURL.deletingPathExtension().lastPathComponent
-        // NSSavePanel は既存ファイルの上書き確認を既に行っているため、
-        // ここでは `.keepBoth`（自動連番）ではなく `.replace` にする。
-        guard options.encryption != .none else {
-            runCompress(urls, destinationName: name, destinationFolder: destinationFolder, options: options, passphrase: nil, conflictPolicy: .replace)
-            return
-        }
-        pendingCompression = PendingCompression(items: urls, destinationName: name, destinationFolder: destinationFolder, options: options, conflictPolicy: .replace)
+        guard let folder = currentFolder() else { return }
+        operations.compressWithDialog(urls, startingIn: folder) { selectCompressionResult($0) }
     }
 
-    private func runCompress(
-        _ items: [URL], destinationName: String, destinationFolder: URL,
-        options: CompressionOptions, passphrase: String?, conflictPolicy: ConflictPolicy = .keepBoth
-    ) {
-        busyMessage = String(localized: "folder.compressing", locale: locale)
-        Task {
-            defer { busyMessage = nil }
-            do {
-                // 完了後に作成したアーカイブを選択状態にするため、`CommandStack`
-                // に渡す前に具体的な型のまま変数へ保持しておく（`CompressCommand`
-                // は `final class` のため、`run(_:)` 実行後も同じインスタンスの
-                // `resultURL` を読める）[ユーザー要望]。
-                let command = CompressCommand(
-                    items: items, destinationName: destinationName, destinationFolder: destinationFolder,
-                    options: options, passphrase: passphrase, conflictPolicy: conflictPolicy
-                )
-                _ = try await CommandStack.shared.run(command)
-                reloadAndBroadcast()
-                if let resultURL = command.resultURL {
-                    selection = [resultURL]
-                    pendingScrollTarget = resultURL
-                }
-            } catch {
-                presentError(error, whatHappened: String(localized: "error.compressFailed", locale: locale))
-            }
-        }
+    /// 圧縮の完了後に、作成されたアーカイブを選択してその位置までスクロール
+    /// する [ユーザー要望]。`pendingScrollTarget` を経由するのは「プログラム的な
+    /// 選択変更のときだけスクロールする」ため（`.onChange(of: pendingScrollTarget)`
+    /// のコメント参照）。
+    private func selectCompressionResult(_ url: URL) {
+        reload()
+        selection = [url]
+        pendingScrollTarget = url
     }
-}
-
-/// 圧縮時にパスワードシートを表示するための保留状態
-/// [環境設定「圧縮／展開」タブ]。
-private struct PendingCompression: Identifiable {
-    let id = UUID()
-    let items: [URL]
-    let destinationName: String
-    let destinationFolder: URL
-    let options: CompressionOptions
-    let conflictPolicy: ConflictPolicy
-}
-
-/// 単一アーカイブ展開でパスワードが必要だった場合の再試行状態
-/// [環境設定「圧縮／展開」タブ]。
-private struct PendingExtractionPassword: Identifiable {
-    let id = UUID()
-    let archiveURL: URL
-    let target: URL
-    let retryErrorMessage: String?
 }
 
 /// 「アプリケーションで開く」サブメニュー [12章 §12.9、ユーザー要望]。
@@ -1548,7 +1267,12 @@ private struct PendingExtractionPassword: Identifiable {
 /// 実際の非同期処理を伴わないため、`AppAssociationService` 側の型を
 /// `async` から同期関数へ変更し、`body` 評価時（＝コンテキストメニューが
 /// 実際に構築される時点）に確定させることで解消した。
-private struct OpenWithMenu: View {
+/// **`private` を外してモジュール内可視にしている** — フォルダツリーの
+/// コンテキストメニュー（`FolderTreeContextMenu`）でも同じサブメニューを
+/// 使うため [ユーザー要望: ツリーのメニューを中央ペインに原則あわせる。
+/// `FolderEntry`/`DropIntoFolderModifier` を `IconGridView` と共有している
+/// のと同じパターン]。
+struct OpenWithMenu: View {
     @Environment(\.locale) private var locale
     let url: URL
     let isDirectory: Bool

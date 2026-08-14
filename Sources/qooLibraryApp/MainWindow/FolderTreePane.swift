@@ -9,6 +9,12 @@ import SwiftUI
 ///
 /// テンポラリ・ライブラリフォルダの登録・削除は 1-13 で実装した
 /// [RG-01〜RG-08、`RegisteredFolderStore` 参照]。
+///
+/// 各行の右クリックメニューは `FolderTreeContextMenu` が組み立てる
+/// [ユーザー要望: 中央ペインのフォルダ用メニューに原則あわせつつ、
+/// ボリューム／テンポラリ／ライブラリのどれに属する行かで項目を
+/// 切り替えられる仕組みにする]。ファイル操作の実装自体は中央ペインと
+/// 共通の `FolderOperations` に集約している。
 struct FolderTreePane: View {
     /// `String(localized:)`/`NSOpenPanel`/`NotificationItem` 等 `Text` の
     /// `LocalizedStringKey` 解決を経由しない箇所向け [1-12 ローカライズ方針、
@@ -42,6 +48,13 @@ struct FolderTreePane: View {
     /// 改めて（今度は正しい `navigationRoot` で）自動展開される。
     let skipsInitialAutoExpand: Bool
     let onSelect: (URL, NavigationRoot) -> Void
+    /// コンテキストメニューの「新規タブで開く」「新規ウインドウで開く」
+    /// [ユーザー要望: 中央ペインのメニューに原則あわせる]。中央ペインと違い
+    /// `NavigationRoot` も一緒に渡す——ライブラリ／テンポラリ配下の行から
+    /// 開いた新規タブが、`.volume` に戻ってしまわないようにするため
+    /// （「1階層上へ」の境界・ツリーの自動展開スコープに効く）。
+    let onOpenInNewTab: (URL, NavigationRoot) -> Void
+    let onOpenInNewWindow: (URL) -> Void
 
     @State private var volumesExpanded = true
     @State private var temporaryExpanded = true
@@ -56,8 +69,13 @@ struct FolderTreePane: View {
     @State private var volumes: [FolderTreeNode] = []
     @State private var libraryEntries: [RegisteredFolderEntry] = []
     @State private var temporaryEntries: [RegisteredFolderEntry] = []
-    @State private var renamingFolder: RegisteredFolder?
-    @State private var renameText = ""
+    /// 表示中の入力ダイアログ [`FolderTreePrompt` 参照]。
+    @State private var prompt: FolderTreePrompt?
+    @State private var promptText = ""
+    /// ファイル操作の共通レイヤ [`FolderOperations` 参照]。中央ペインと
+    /// まったく同じ実装を共有する。実行中表示・パスワードシートの描画は
+    /// `.folderOperationsHost(_:)` が担う。
+    @State private var operations = FolderOperations()
     /// [ユーザー要望、環境設定「表示」タブ] 中央ペインでフォルダを移動した
     /// とき、現在のフォルダまでツリーを自動展開してスクロールする。
     @AppStorage("qoo.preferences.autoExpandTreeToCurrentFolder") private var autoExpandTreeToCurrentFolder = true
@@ -70,8 +88,9 @@ struct FolderTreePane: View {
                         ForEach(volumes) { node in
                             FolderTreeRow(
                                 node: node, expandedIDs: $expandedNodeIDs, visibleIDs: $visibleNodeIDs, selectedURL: selectedURL,
-                                rowNavigationRoot: .volume, onSelect: onSelect,
-                                onDropFailure: { presentFailureMessage($0) }
+                                branch: .volume, role: .volumeRoot, onSelect: onSelect,
+                                onDropFailure: { presentFailureMessage($0) },
+                                operations: operations, menuActions: menuActions
                             )
                         }
                     }
@@ -81,7 +100,7 @@ struct FolderTreePane: View {
 
                 Section {
                     if temporaryExpanded {
-                        registeredFolderRows(temporaryEntries)
+                        registeredFolderRows(temporaryEntries, kind: .temporary)
                     }
                 } header: {
                     GroupHeader(title: String(localized: "folderTree.temporaryFolders", locale: locale), isExpanded: $temporaryExpanded, showsAddButton: true) {
@@ -91,7 +110,7 @@ struct FolderTreePane: View {
 
                 Section {
                     if libraryExpanded {
-                        registeredFolderRows(libraryEntries)
+                        registeredFolderRows(libraryEntries, kind: .library)
                     }
                 } header: {
                     GroupHeader(title: String(localized: "folderTree.libraryFolders", locale: locale), isExpanded: $libraryExpanded, showsAddButton: true) {
@@ -107,11 +126,16 @@ struct FolderTreePane: View {
                 guard !skipsInitialAutoExpand else { return }
                 revealSelectionIfNeeded(scrollProxy: scrollProxy)
             }
-            .alert("folderTree.renameDisplayName", isPresented: Binding(get: { renamingFolder != nil }, set: { if !$0 { renamingFolder = nil } })) {
-                TextField("folderTree.displayName", text: $renameText)
-                Button("action.rename") { commitRenameRegisteredFolder() }
+            // 入力を伴うダイアログは 3 種類（登録フォルダの表示名変更・実
+            // フォルダ名の変更・新規フォルダ）あるが、**同じビューに複数の
+            // `.alert` を重ねると表示が不安定になる**ため、`FolderTreePrompt`
+            // という 1 つの状態にまとめて単一の `.alert` で扱う [設計判断]。
+            .alert(promptTitle, isPresented: Binding(get: { prompt != nil }, set: { if !$0 { prompt = nil } })) {
+                TextField(promptPlaceholder, text: $promptText)
+                Button(promptConfirmTitle) { commitPrompt() }
                 Button("common.cancel", role: .cancel) {}
             }
+            .folderOperationsHost(operations)
             .onChange(of: selectedURL) { _, _ in
                 revealSelectionIfNeeded(scrollProxy: scrollProxy)
             }
@@ -206,7 +230,7 @@ struct FolderTreePane: View {
     }
 
     @ViewBuilder
-    private func registeredFolderRows(_ entries: [RegisteredFolderEntry]) -> some View {
+    private func registeredFolderRows(_ entries: [RegisteredFolderEntry], kind: RegisteredFolderKind) -> some View {
         if entries.isEmpty {
             EmptyGroupRow(message: String(localized: "folderTree.noneRegistered", locale: locale))
         } else {
@@ -214,11 +238,12 @@ struct FolderTreePane: View {
                 if let node = entry.node {
                     FolderTreeRow(
                         node: node, expandedIDs: $expandedNodeIDs, visibleIDs: $visibleNodeIDs, selectedURL: selectedURL,
-                        rowNavigationRoot: .registeredFolder(id: entry.folder.id, rootURL: node.url), onSelect: onSelect,
+                        branch: .registered(kind: kind, id: entry.folder.id, rootURL: node.url),
+                        role: .registeredRoot,
+                        onSelect: onSelect,
                         onDropFailure: { presentFailureMessage($0) },
-                        registeredFolder: entry.folder,
-                        onRename: { beginRenameRegisteredFolder(entry.folder) },
-                        onUnregister: { unregisterFolder(entry.folder) }
+                        operations: operations, menuActions: menuActions,
+                        registeredFolder: entry.folder
                     )
                 } else {
                     // ブックマーク解決失敗（ボリューム未接続等）[SB-05]。
@@ -228,6 +253,87 @@ struct FolderTreePane: View {
                 }
             }
         }
+    }
+
+    // MARK: - コンテキストメニューの配線
+
+    /// `FolderOperations` では完結しない項目（ナビゲーション・入力ダイアログ・
+    /// 登録ストア操作）の橋渡し [`FolderTreeContextMenuActions` 参照]。
+    private var menuActions: FolderTreeContextMenuActions {
+        FolderTreeContextMenuActions(
+            open: { onSelect($0.url, $0.navigationRoot) },
+            openInNewTab: { onOpenInNewTab($0.url, $0.navigationRoot) },
+            openInNewWindow: { onOpenInNewWindow($0.url) },
+            beginRenameFolder: { context in
+                prompt = .renameFolder(url: context.url)
+                promptText = context.url.lastPathComponent
+            },
+            beginNewFolder: { context in
+                prompt = .newFolder(parent: context.url)
+                promptText = String(localized: "action.newFolder", locale: locale)
+            },
+            beginRenameDisplayName: { folder in
+                prompt = .renameDisplayName(folder)
+                promptText = folder.displayName
+            },
+            unregister: { unregisterFolder($0) }
+        )
+    }
+
+    // MARK: - 入力ダイアログ（3 種類を単一の `.alert` で扱う）
+
+    private var promptTitle: String {
+        switch prompt {
+        case .renameDisplayName: String(localized: "folderTree.renameDisplayName", locale: locale)
+        case .renameFolder: String(localized: "folderTree.renameFolder", locale: locale)
+        case .newFolder, .none: String(localized: "action.newFolder", locale: locale)
+        }
+    }
+
+    private var promptPlaceholder: String {
+        switch prompt {
+        case .renameDisplayName: String(localized: "folderTree.displayName", locale: locale)
+        case .renameFolder, .newFolder, .none: String(localized: "folder.namePlaceholder", locale: locale)
+        }
+    }
+
+    private var promptConfirmTitle: String {
+        switch prompt {
+        case .renameDisplayName, .renameFolder: String(localized: "action.rename", locale: locale)
+        case .newFolder, .none: String(localized: "common.create", locale: locale)
+        }
+    }
+
+    private func commitPrompt() {
+        guard let prompt else { return }
+        let name = promptText
+        self.prompt = nil
+        switch prompt {
+        case .renameDisplayName(let folder): // [RG-05]
+            guard !name.isEmpty else { return }
+            Task {
+                try? await RegisteredFolderStore.shared.rename(folder.id, to: name)
+                await reloadRegisteredFolders()
+            }
+        case .renameFolder(let url): // [FM-05]
+            operations.rename(url, to: name) { reloadTreeAfterMutation() }
+        case .newFolder(let parent): // [FM-01]
+            operations.createFolder(named: name, in: parent) {
+                // 作成先の行を開いておく——折りたたんだ行に対して実行した場合、
+                // 開かないと「何も起きなかった」ように見えるため。既に展開済み
+                // なら `SessionState.reloadToken` 側で、折りたたみ済みなら
+                // 展開を検知した `FolderTreeRow` 側で、どちらも子が読み直される。
+                expandedNodeIDs.insert(parent.standardizedFileURL.path)
+                reloadTreeAfterMutation()
+            }
+        }
+    }
+
+    /// ツリー自身の表示更新は各行が `SessionState.reloadToken` を監視して行う
+    /// （`FolderTreeRow` の `.onChange(of:)` 参照）。登録ルート行だけはこの
+    /// ペインが直接保持しているため、こちらは明示的に読み直す。
+    private func reloadTreeAfterMutation() {
+        Task { await reloadRegisteredFolders() }
     }
 
     private func presentRegistrationPanel(kind: RegisteredFolderKind) {
@@ -269,19 +375,6 @@ struct FolderTreePane: View {
         }
     }
 
-    private func beginRenameRegisteredFolder(_ folder: RegisteredFolder) {
-        renamingFolder = folder
-        renameText = folder.displayName
-    }
-
-    private func commitRenameRegisteredFolder() {
-        guard let folder = renamingFolder, !renameText.isEmpty else { return }
-        Task {
-            try? await RegisteredFolderStore.shared.rename(folder.id, to: renameText)
-            await reloadRegisteredFolders()
-        }
-    }
-
     private func reloadRegisteredFolders() async {
         async let libraries = RegisteredFolderStore.shared.folders(kind: .library)
         async let temporaries = RegisteredFolderStore.shared.folders(kind: .temporary)
@@ -313,6 +406,19 @@ struct FolderTreePane: View {
             return error.localizedDescription
         }
     }
+}
+
+/// ツリーから開く入力ダイアログの種類。`.alert` を種類ごとに重ねると表示が
+/// 不安定になるため、単一の `.alert` をこの状態で切り替える [設計判断]。
+private enum FolderTreePrompt {
+    /// 登録フォルダの表示名を変更する [RG-05]。実フォルダ名は変えない。
+    case renameDisplayName(RegisteredFolder)
+    /// 実フォルダの名前を変更する [FM-05]。中央ペインは Finder 流のインライン
+    /// 編集だが、ツリーにはその基盤が無いためアラート方式にしている
+    /// [ユーザー判断]。
+    case renameFolder(url: URL)
+    /// `parent` の中に新規フォルダを作る [FM-01]。
+    case newFolder(parent: URL)
 }
 
 /// 登録済みフォルダ 1 件（表示名・Security-Scoped Bookmark）と、解決済みの
@@ -408,20 +514,24 @@ private struct FolderTreeRow: View {
     /// 自分自身の ID を増減させる [`FolderTreePane.visibleNodeIDs` 参照]。
     @Binding var visibleIDs: Set<String>
     let selectedURL: URL?
-    /// この行（および再帰的に読み込まれる子孫すべて）が属する
-    /// `NavigationRoot`。`registeredFolder`/`onRename`/`onUnregister` と違い
-    /// **子孫にもそのまま伝播する**（クリックした行がツリーのどの枝に
-    /// 属するかを常に正しく `onSelect` へ伝えるため）。
-    let rowNavigationRoot: NavigationRoot
+    /// この行（および再帰的に読み込まれる子孫すべて）が属するツリーの枝
+    /// [`FolderTreeBranch` 参照]。`registeredFolder` と違い**子孫にもそのまま
+    /// 伝播させる**（クリックした行がツリーのどの枝に属するかを常に正しく
+    /// `onSelect` へ伝え、かつコンテキストメニューをグループごとに
+    /// 出し分けるため）。
+    let branch: FolderTreeBranch
+    /// この行の役割 [`FolderTreeRowRole` 参照]。子孫は常に `.plainFolder`。
+    let role: FolderTreeRowRole
     let onSelect: (URL, NavigationRoot) -> Void
     let onDropFailure: @MainActor @Sendable (String) -> Void
+    /// ファイル操作の共通レイヤ。ペイン全体で 1 つを共有する。
+    let operations: FolderOperations
+    let menuActions: FolderTreeContextMenuActions
     /// ライブラリ／テンポラリの**登録ルート行**のときだけ渡される
     /// [RG-05][RG-06]。再帰的に読み込まれる子孫フォルダの行では `nil` の
     /// ままにし、登録解除・表示名変更のメニューが実フォルダの深い階層に
     /// 誤って出ないようにする。
     var registeredFolder: RegisteredFolder?
-    var onRename: (() -> Void)?
-    var onUnregister: (() -> Void)?
 
     @State private var children: [FolderTreeNode]?
     @State private var accessDenied = false
@@ -442,6 +552,12 @@ private struct FolderTreeRow: View {
                 }
             }
         )
+    }
+
+    /// コンテキストメニューの出し分けに必要な情報一式
+    /// [`FolderTreeRowContext` 参照]。
+    private var menuContext: FolderTreeRowContext {
+        FolderTreeRowContext(node: node, branch: branch, role: role, registeredFolder: registeredFolder)
     }
 
     @ViewBuilder
@@ -489,7 +605,7 @@ private struct FolderTreeRow: View {
             .background(isDropTargeted ? Tokens.Colors.accent.opacity(0.35) : (isSelected ? Color(nsColor: .selectedContentBackgroundColor) : Color.clear))
             .clipShape(RoundedRectangle(cornerRadius: Tokens.radius.s))
             .contentShape(Rectangle())
-            .onTapGesture { onSelect(node.url, rowNavigationRoot) } // [LP-06]
+            .onTapGesture { onSelect(node.url, branch.navigationRoot) } // [LP-06]
             .dropDestination(for: URL.self) { items, _ in // [DD-05] ツリーへドロップで移動
                 DropHandling.performDrop(
                     items, into: node.url,
@@ -512,8 +628,9 @@ private struct FolderTreeRow: View {
                 ForEach(children) { child in
                     FolderTreeRow(
                         node: child, expandedIDs: $expandedIDs, visibleIDs: $visibleIDs, selectedURL: selectedURL,
-                        rowNavigationRoot: rowNavigationRoot, onSelect: onSelect,
-                        onDropFailure: onDropFailure
+                        branch: branch, role: .plainFolder, onSelect: onSelect,
+                        onDropFailure: onDropFailure,
+                        operations: operations, menuActions: menuActions
                     )
                 }
             } else {
@@ -521,21 +638,14 @@ private struct FolderTreeRow: View {
                     .controlSize(.small)
             }
         } label: {
-            // 登録ルート行のときだけ右クリックメニューを付ける。空の
-            // `.contextMenu` を全行に付けると、登録フォルダでない行を
-            // 右クリックしたときに空のメニューが出てしまうため、
-            // `registeredFolder` の有無で分岐して回避する。
-            if registeredFolder != nil {
-                rowLabel.contextMenu {
-                    if let onRename {
-                        Button("folderTree.renameDisplayNameEllipsis") { onRename() } // [RG-05]
-                    }
-                    if let onUnregister {
-                        Button("folderTree.unregister") { onUnregister() } // [RG-06 の簡易版]
-                    }
-                }
-            } else {
-                rowLabel
+            // 右クリックメニューは全行に付ける [ユーザー要望: 中央ペインの
+            // フォルダ用メニューに原則あわせる]。以前は登録ルート行だけが
+            // 「表示名を変更…」「登録解除」を持ち、それ以外の行は
+            // 右クリックしても何も出なかった。項目の出し分けは
+            // `FolderTreeContextMenu` が `branch`（グループ）と `role`
+            // （ルートか通常フォルダか）から判断する。
+            rowLabel.contextMenu {
+                FolderTreeContextMenu(context: menuContext, operations: operations, actions: menuActions)
             }
         }
         .disabled(node.isSymlink) // [SL-05]
@@ -553,6 +663,8 @@ private struct FolderTreeRow: View {
         // ままで、アプリを再起動するまで「アクセス権がありません」に戻らなかった。
         // 他ウインドウ／ペインをまたいだ変更の反映と同じ `SessionState.reloadToken`
         // 経由で、読み込み済み／アクセス拒否済みの行だけを再読み込みする。
+        // コンテキストメニュー由来のファイル操作（新規フォルダ・複製・ゴミ箱
+        // 等）の結果がツリーへ反映されるのも、この経路。
         .onChange(of: SessionState.shared.reloadToken) {
             guard children != nil || accessDenied else { return }
             accessDenied = false

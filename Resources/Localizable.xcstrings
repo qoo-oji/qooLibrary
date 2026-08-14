@@ -1169,6 +1169,22 @@
         }
       }
     },
+    "folder.compressSubmenu": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compress"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "圧縮"
+          }
+        }
+      }
+    },
     "folder.compressing": {
       "localizations": {
         "en": {
@@ -1885,6 +1901,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "表示名を変更…"
+          }
+        }
+      }
+    },
+    "folderTree.renameFolder": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rename Folder"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "フォルダ名を変更"
           }
         }
       }

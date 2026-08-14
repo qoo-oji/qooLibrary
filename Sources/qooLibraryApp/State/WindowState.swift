@@ -240,6 +240,57 @@ public final class WindowState {
         tabs[index].pendingRevealURL = folder
     }
 
+    /// 表示中のフォルダ自体が消えていたら、存在する直近の祖先へ静かに移動して
+    /// `true` を返す。消えていなければ何もせず `false`。
+    ///
+    /// [フォルダツリーにコンテキストメニューを追加したことに伴う対応]
+    /// 表示中のフォルダをゴミ箱に入れる・名前を変更する経路がツリーから直接
+    /// 届くようになり（他ウインドウでの操作・Finder 側での削除でも同じことが
+    /// 起きる）、そのままだと中央ペインが読み込みエラーのまま行き止まりに
+    /// なっていた。**発生源ごとに手当てするのではなく、実際に読み込みに失敗
+    /// した `FolderContentView.reload()` の 1 箇所から呼ぶ**ことで、経路
+    /// （ツリー／中央ペイン／D&D／別ウインドウ／アプリ外）に関わらず自己修復
+    /// する。
+    ///
+    /// - 履歴には積まない（消えた場所へ「戻る」ことに意味が無いため）。
+    ///   併せて、既に積まれている履歴のうち実体を失ったものも取り除く。
+    /// - 名前変更の場合、Finder はウインドウを新しい名前へ追従させるが、
+    ///   それには変更前後を同一視するファイル ID の追跡（2-2 の
+    ///   `FSEventsWatcher`/`IdentityResolver`）が要る。フェーズ1では
+    ///   「親フォルダへ退避する」という安全側の単純な挙動に留める [設計判断]。
+    @discardableResult
+    public func relocateCurrentTabIfFolderVanished() -> Bool {
+        guard let index = currentTabIndex, let folder = tabs[index].folder else { return false }
+        let fileManager = FileManager.default
+        guard !fileManager.fileExists(atPath: folder.path) else { return false }
+        guard let target = Self.nearestExistingAncestor(of: folder) else { return false }
+        tabs[index].folder = target
+        tabs[index].title = target.lastPathComponent
+        tabs[index].selection = []
+        tabs[index].backHistory.removeAll { !fileManager.fileExists(atPath: $0.url.path) }
+        tabs[index].forwardHistory.removeAll { !fileManager.fileExists(atPath: $0.url.path) }
+        return true
+    }
+
+    /// `url` の祖先のうち、実際に存在する最も深いもの（`url` 自身は除く）。
+    ///
+    /// **`URL.deletingLastPathComponent()` を繰り返す実装にしない** — ルート
+    /// `/` に対して呼ぶと `/` 自身ではなく `/..` を返すことがある（Apple の
+    /// ドキュメントに明記された挙動で、本プロジェクトでは 1-8 のパスバーと
+    /// `FolderTreePane.ancestorPaths` で 2 度、無限ループとして踏んでいる）。
+    /// `PathBarView.pathComponents` と同じく `pathComponents` から積み上げる。
+    private static func nearestExistingAncestor(of url: URL) -> URL? {
+        let components = url.standardizedFileURL.pathComponents
+        guard let first = components.first else { return nil }
+        var current = URL(fileURLWithPath: first)
+        var ancestors = [current]
+        for component in components.dropFirst() {
+            current = current.appendingPathComponent(component)
+            ancestors.append(current)
+        }
+        return ancestors.dropLast().last { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
     /// `leavingFolder` が `newFolder` の直下（親子関係）である場合だけ、
     /// `leavingFolder` を選択・スクロール対象にする [`goBack()`/`goToParent()`
     /// 共通のヘルパー]。
@@ -251,8 +302,13 @@ public final class WindowState {
         tabs[index].pendingRevealURL = leavingFolder
     }
 
-    public func openTab(for folder: URL?) {
-        let tab = TabState(folder: folder, title: folder?.lastPathComponent ?? String(localized: "action.newTab", locale: AppLanguage.effectiveLocale))
+    /// `root` は新しいタブの入口 [`NavigationRoot` 参照]。ライブラリ／
+    /// テンポラリ配下のフォルダを「新規タブで開く」場合に、その登録フォルダを
+    /// 入口として引き継ぐために渡す（既定の `.volume` のままだと「1階層上へ」
+    /// の境界やフォルダツリーの自動展開スコープが失われる）。
+    public func openTab(for folder: URL?, root: NavigationRoot = .volume) {
+        var tab = TabState(folder: folder, title: folder?.lastPathComponent ?? String(localized: "action.newTab", locale: AppLanguage.effectiveLocale))
+        tab.navigationRoot = root
         tabs.append(tab)
         selectedTabID = tab.id
     }
