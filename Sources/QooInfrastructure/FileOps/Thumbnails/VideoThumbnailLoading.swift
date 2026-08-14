@@ -10,29 +10,28 @@ import QuickLookThumbnailing
 /// `QLThumbnailGenerator`（QuickLookThumbnailing framework）を使う。macOS
 /// 標準では mp4/mov 等の QuickTime 互換コンテナは確実にサムネイルが得られる。
 ///
-/// **mkv/webm/avi 等、対応する QuickLook 拡張（例: QLVideo,
-/// github.com/Marginal/QuickLookVideo）を要する形式は、実機検証の結果、
-/// 現状うまく機能しないことを確認済み。** QLVideo をインストール・有効化
-/// （`pluginkit` に登録、`com.apple.mediaextension.formatreader`）した状態でも、
-/// `representationTypes: .thumbnail`/`.lowQualityThumbnail` は
-/// `QLThumbnailErrorDomain code 102`（詳細未公開のエラー）で一貫して失敗する
-/// ——サンドボックス内外・qooLibrary 内外を問わず、素の非サンドボックス
-/// スクリプトからの直接呼び出しでも同じ結果になることを確認済みのため、
-/// qooLibrary 側のサンドボックス・アクセス権の問題ではない。`.icon` 表現型は
-/// 成功するが、`NSWorkspace.icon(forFile:)` と同様に**ファイルによらず同一の
-/// 汎用アイコン**（2つの異なる mkv で MD5 完全一致を確認済み）で、実質的な
-/// プレビューにはならない。`qlmanage -t`（CLI）も無反応でハングする。
+/// **mkv 等、対応する QuickLook 拡張を要する形式は、インストールされている
+/// 拡張の実装品質に完全に依存する**（qooLibrary 側のコードには依存しない）。
+/// 実機検証で複数の候補を比較した:
+/// - `QLVideo`（github.com/Marginal/QuickLookVideo）: `BUILDING.md` に
+///   明記の通り、v3 はサムネイル専用の QuickLook 拡張点（`thumbnailer`）を
+///   意図的に同梱していない（Media Extensions のみ）。`.thumbnail` は
+///   常に `QLThumbnailErrorDomain code 102` で失敗する。
+/// - `QLCodec-mkv`（github.com/Oil3/Mkv-Quicklook）: 正しい拡張点
+///   （`com.apple.quicklook.thumbnail`）を実装しているが、**同時に複数の
+///   サムネイルリクエストを投げると結果が別のファイルのものと入れ替わる**
+///   （`QLSupportsConcurrentRequests: true` を宣言しているにも関わらず）、
+///   かつ**画像が上下反転する**、という実装バグを実機で確認したため不採用。
+/// - `QLMedia`（Mac App Store、開発者 Sergey Dikov）: 上記のいずれの問題も
+///   無く、同時5件のリクエストでも正しく対応し、上下も正常だった。
+///   ただし**返される画像は常に正方形**で、動画の実際のアスペクト比を
+///   無視してスクイーズされる癖があるため、`MatroskaDimensionReader` で
+///   事前にコンテナから寸法を読み、リクエストサイズ自体をアスペクト比に
+///   合わせて補正している（下記 `requestSize(for:maxPixelSize:)` 参照）。
 ///
-/// 一方 **Finder の実際のアイコン表示は、ファイルごとに異なる本物の
-/// サムネイルを表示できている**（ユーザー実機で確認済み）。つまり Finder は
-/// 上記のいずれの公開 API とも異なる、サードパーティプロセスには公開されて
-/// いない内部的な経路を使っていると考えられる。QLVideo 側の Media
-/// Extensions 実装がまだ `QLThumbnailGenerator` の `.thumbnail` パスに
-/// 完全対応していない可能性が高い（QLVideo の GitHub Issue で報告する価値が
-/// ある具体的な再現手順・エラーコードは確保済み）。
-///
-/// 対応できない場合は `nil` を返すだけで、呼び出し側（`ThumbnailService`）が
-/// 既定アイコンへフォールバックする [IM-04 と同じ方針]。
+/// なお、上記のいずれの拡張も無い環境では mkv のサムネイルは得られず、
+/// 呼び出し側（`ThumbnailService`）が既定アイコンへフォールバックする
+/// [IM-04 と同じ方針]。
 public protocol VideoThumbnailLoading: Sendable {
     func makeThumbnail(for url: URL, maxPixelSize: Int) async -> CGImage?
 }
@@ -43,6 +42,28 @@ public struct QLVideoThumbnailLoader: VideoThumbnailLoading {
 
     public init(timeoutSeconds: Double = AppLimits.Thumbnail.defaultVideoThumbnailTimeoutSeconds) {
         self.timeoutSeconds = timeoutSeconds
+    }
+
+    /// リクエストする寸法をコンテナの実アスペクト比に合わせて計算する
+    /// [ユーザー要望: 「リクエストサイズを実際のアスペクト比にあわせて
+    /// ください」]。動画本体はデコードせず、コンテナのヘッダのみを読む
+    /// （`MatroskaDimensionReader`、mkv 以外・読み取り失敗時は `nil`）。
+    /// 取得できなければ、これまで通り正方形のリクエストにフォールバックする
+    /// （多くのサムネイル拡張は正方形リクエストでもアスペクト比を保って
+    /// 返してくれるが、`QLMedia` のように厳密にリクエストサイズへスクイーズ
+    /// する実装もあることが実機検証で判明したための対策）。
+    private func requestSize(for url: URL, maxPixelSize: Int) -> CGSize {
+        guard let dimensions = MatroskaDimensionReader.dimensions(of: url),
+              dimensions.width > 0, dimensions.height > 0
+        else {
+            return CGSize(width: maxPixelSize, height: maxPixelSize)
+        }
+        let aspect = dimensions.width / dimensions.height
+        if aspect >= 1 {
+            return CGSize(width: Double(maxPixelSize), height: Double(maxPixelSize) / aspect)
+        } else {
+            return CGSize(width: Double(maxPixelSize) * aspect, height: Double(maxPixelSize))
+        }
     }
 
     /// `QLThumbnailGenerator.Request` は `Sendable` 準拠が無いため、複数の
@@ -57,7 +78,7 @@ public struct QLVideoThumbnailLoader: VideoThumbnailLoading {
     public func makeThumbnail(for url: URL, maxPixelSize: Int) async -> CGImage? {
         let box = RequestBox(request: QLThumbnailGenerator.Request(
             fileAt: url,
-            size: CGSize(width: maxPixelSize, height: maxPixelSize),
+            size: requestSize(for: url, maxPixelSize: maxPixelSize),
             scale: 1,
             representationTypes: .thumbnail
         ))

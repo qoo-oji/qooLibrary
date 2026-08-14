@@ -34,5 +34,12 @@ public enum AppLimits {
         /// 応答せずハングする事例を確認したため、`PF-11` の同時実行スロットが
         /// 1件のハングで専有され続けないよう防御的に設けている。
         public static let defaultVideoThumbnailTimeoutSeconds: Double = 8
+        /// mkv（Matroska/EBML）コンテナのヘッダから `PixelWidth`/`PixelHeight`
+        /// を読むために先頭から読み込む上限バイト数（既定 8MB）[ユーザー要望:
+        /// サムネイルのアスペクト比を実際の動画に合わせたい]。動画本体は
+        /// デコードしない、コンテナのメタデータのみの軽量な読み取りのため、
+        /// ファイルサイズが数GBでもこの範囲で十分足りる想定。見つからなければ
+        /// 諦めて正方形のリクエストにフォールバックする。
+        public static let defaultMatroskaHeaderScanBytes: Int = 8 * 1_000 * 1_000
     }
 }
