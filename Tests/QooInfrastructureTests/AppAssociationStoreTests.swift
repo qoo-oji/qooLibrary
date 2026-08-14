@@ -88,62 +88,105 @@ import Testing
         #expect(primary?.bundleID == stableBundleID)
     }
 
+    /// [ユーザー要望] 初回起動時は、qooLibrary が実際に読める形式（zip/cbz・
+    /// 7z/cb7・rar/cbr）と qooViewer が対応する形式（pdf・epub）が既定で
+    /// この一覧に入っている。**[統合] 以前は「組み込み」として別管理して
+    /// いたが、「既定拡張子とカスタム拡張子を分離する意味はない」という
+    /// ユーザー指摘を受けて単一の一覧に統合した——以後は他の追加項目と
+    /// 全く同じ扱い（削除・追加が自由にできる）。**
+    @Test func freshStoreSeedsWithDefaultExtensions() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = AppAssociationStore(storageURL: root.appendingPathComponent("state.json"))
+
+        let extensions = await store.extensions()
+
+        #expect(extensions == ["7z", "cb7", "cbr", "cbz", "epub", "pdf", "rar", "zip"])
+    }
+
     /// [ユーザー要望] 動画ライブラリとしても使えるよう、任意の拡張子を
-    /// 関連付けタブの管理対象に追加できる。
-    @Test func addCustomExtensionAddsToTheList() async throws {
+    /// ビューアタブの管理対象に追加できる。
+    @Test func addExtensionAddsToTheList() async throws {
         let root = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: root) }
         let store = AppAssociationStore(storageURL: root.appendingPathComponent("state.json"))
 
-        try await store.addCustomExtension("MP4")
+        try await store.addExtension("MP4")
 
-        let extensions = await store.customExtensions()
-        #expect(extensions == ["mp4"]) // 大文字小文字を区別せず小文字化して保持
+        let extensions = await store.extensions()
+        #expect(extensions.contains("mp4")) // 大文字小文字を区別せず小文字化して保持
     }
 
-    @Test func customExtensionsAreSortedAndDeduplicated() async throws {
+    @Test func extensionsAreSortedAndDeduplicated() async throws {
         let root = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: root) }
         let store = AppAssociationStore(storageURL: root.appendingPathComponent("state.json"))
 
-        try await store.addCustomExtension("mkv")
-        try await store.addCustomExtension("avi")
-        try await store.addCustomExtension("mkv") // 重複追加
+        try await store.addExtension("mkv")
+        try await store.addExtension("avi")
+        try await store.addExtension("mkv") // 重複追加
 
-        let extensions = await store.customExtensions()
-        #expect(extensions == ["avi", "mkv"])
+        let extensions = await store.extensions()
+        #expect(extensions == extensions.sorted())
+        #expect(extensions.filter { $0 == "mkv" }.count == 1)
+        #expect(extensions.contains("avi"))
     }
 
-    @Test func removeCustomExtensionRemovesFromListAndClearsItsPrimary() async throws {
+    @Test func removeExtensionRemovesFromListAndClearsItsPrimary() async throws {
         let root = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: root) }
         let store = AppAssociationStore(storageURL: root.appendingPathComponent("state.json"))
-        try await store.addCustomExtension("mp4")
+        try await store.addExtension("mp4")
         try await store.setPrimary(stableBundleID, for: "mp4")
 
-        try await store.removeCustomExtension("mp4")
+        try await store.removeExtension("mp4")
 
-        let extensions = await store.customExtensions()
-        #expect(extensions.isEmpty)
+        let extensions = await store.extensions()
+        #expect(!extensions.contains("mp4"))
         let primary = await store.primary(for: "mp4")
         #expect(primary == nil)
     }
 
-    @Test func customExtensionsPersistAcrossStoreInstances() async throws {
+    /// [統合の核心] 既定で入っている拡張子（例: zip）も、ユーザーが追加した
+    /// 拡張子と全く同じように削除できる。削除後に別インスタンスで読み直しても
+    /// 復活しない（既定値の投入は初回起動時の1回きりで、以後は永続化された
+    /// 内容がそのまま尊重される——将来のバージョンで既定拡張子が増えても、
+    /// 既にこのファイルを持つユーザーの一覧を上書き・マージすることはない）。
+    @Test func removingADefaultExtensionRemovesItPermanently() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let storageURL = root.appendingPathComponent("state.json")
+        let store = AppAssociationStore(storageURL: storageURL)
+        let before = await store.extensions()
+        #expect(before.contains("zip"))
+
+        try await store.removeExtension("zip")
+
+        let after = await store.extensions()
+        #expect(!after.contains("zip"))
+
+        let reopened = AppAssociationStore(storageURL: storageURL)
+        let reloaded = await reopened.extensions()
+        #expect(!reloaded.contains("zip"))
+    }
+
+    @Test func extensionsPersistAcrossStoreInstances() async throws {
         let root = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: root) }
         let storageURL = root.appendingPathComponent("state.json")
         let firstStore = AppAssociationStore(storageURL: storageURL)
-        try await firstStore.addCustomExtension("mov")
+        try await firstStore.addExtension("mov")
 
         let secondStore = AppAssociationStore(storageURL: storageURL)
-        let extensions = await secondStore.customExtensions()
+        let extensions = await secondStore.extensions()
 
-        #expect(extensions == ["mov"])
+        #expect(extensions.contains("mov"))
     }
 
-    /// カスタム拡張子リストを導入する前の `[String: String]` 単体の JSON
-    /// 形式（既存ユーザーの永続化ファイル）も引き続き読み込める。
+    /// 拡張子リストを導入する前の `[String: String]` 単体の JSON 形式
+    /// （既存ユーザーの永続化ファイル）も引き続き読み込める。この形式には
+    /// 拡張子一覧という概念自体が無かったため、初回起動と同じく既定値で
+    /// 埋める。
     @Test func loadsLegacyPlainDictionaryFormat() async throws {
         let root = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -153,9 +196,39 @@ import Testing
         let store = AppAssociationStore(storageURL: storageURL)
 
         let primary = await store.primary(for: "cbz")
-        let extensions = await store.customExtensions()
+        let extensions = await store.extensions()
 
         #expect(primary?.bundleID == stableBundleID)
-        #expect(extensions.isEmpty)
+        #expect(extensions.contains("cbz"))
+    }
+
+    /// [ユーザー要望・重要な移行ケース] 「組み込み／カスタム」を分離して
+    /// 管理していた頃に保存されたファイル（組み込み形式が一度も
+    /// `customExtensions` に含まれていない——このセッション中に実機で
+    /// mp4/mkv の関連付けをテストした際に実際に作られたファイルと同じ形）
+    /// を読み込んでも、組み込みだった形式が一覧から消えたままにならない。
+    @Test func migratesPreUnificationFileByUnioningInDefaultExtensions() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let storageURL = root.appendingPathComponent("state.json")
+        let preUnificationJSON = """
+        {"associations":{"cbr":"com.example.viewer"},"customExtensions":["mkv","mp4"]}
+        """
+        try Data(preUnificationJSON.utf8).write(to: storageURL)
+        let store = AppAssociationStore(storageURL: storageURL)
+
+        let extensions = await store.extensions()
+
+        #expect(extensions.contains("mkv"))
+        #expect(extensions.contains("mp4"))
+        #expect(extensions.contains("zip")) // 組み込みだった形式も消えない
+        #expect(extensions.contains("pdf"))
+
+        // 移行は1回きり: zip を削除して読み直しても復活しない。
+        try await store.removeExtension("zip")
+        let reopened = AppAssociationStore(storageURL: storageURL)
+        let reloaded = await reopened.extensions()
+        #expect(!reloaded.contains("zip"))
+        #expect(reloaded.contains("mkv")) // 他の項目は保持される
     }
 }

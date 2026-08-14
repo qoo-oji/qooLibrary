@@ -11,67 +11,41 @@ import SwiftUI
 /// 上書きで、macOS システム全体の既定関連付けは変更しない**
 /// （`AppAssociationService` のコメント参照）。
 ///
-/// **[訂正] 「組み込み」の対象は「qooLibrary が実際に中身を読める形式」
-/// では定義していない。** 以前はそう説明していたが誤りで、ユーザーから
-/// 「この設定（＝どのアプリで開くか）とは無関係に、対象拡張子について
-/// 内部を参照する（サムネイル生成等）ことが期待されている」と明確な訂正を
-/// 受けた。**このタブの組み込み/カスタムの区別は、単に「qooLibrary が
-/// コミック・電子書籍ライブラリアプリとして常に対象とする中核形式か、
-/// それ以外の任意追加形式か」というタブ自体の UX 上の区別に過ぎず、
-/// `ThumbnailService` 側の内部読み取り対応（サムネイル生成）とは独立
-/// している。** 実際、組み込み形式（zip/cbz・7z/cb7・rar/cbr・pdf・epub）は
-/// いずれも `ThumbnailService` がサムネイルを生成できるが、それは別の
-/// 独立した実装（`ArchiveReading`/`PDFThumbnailLoading`/
-/// `EpubCoverResolver`）によるものであり、このタブの組み込みリストが
-/// その実装状況を参照して動的に決まっているわけではない。
+/// **[訂正・統合] 当初は「組み込み（常時表示・削除不可）」と「カスタム
+/// （ユーザー追加、削除可）」を別セクションで管理していたが、ユーザーから
+/// 「もう既定の拡張子とカスタム拡張子を分離する意味はない」との指摘を受け、
+/// 単一の一覧に統合した。** このタブは単に「ダブルクリック／Enter で開く
+/// アプリ」を指定するだけの設定であり、qooLibrary が中身を読めるかどうか
+/// （サムネイル生成対応など、`ThumbnailService` 側の別の独立した関心事）とは
+/// 無関係——「組み込み」を特別扱いする理由は元々無かった。zip/cbz・7z/cb7・
+/// rar/cbr・pdf/epub は初回起動時に `AppAssociationStore` が既定でこの一覧に
+/// 加えるだけの「最初から入っている項目」であり、他の項目と全く同じ操作
+/// （追加・削除）ができる。**既存の拡張子をユーザーが削除した後、将来の
+/// バージョンで既定拡張子が増えても、それによってユーザーの一覧が上書き・
+/// マージされることはない**（`AppAssociationStore.ensureLoaded` 参照 —
+/// 一度でも永続化ファイルが存在すればこの既定値は二度と参照されない）。
 ///
 /// `tar.gz` は複合拡張子で `UTType(filenameExtension:)` に単純に渡せない
 /// ため、このタブの対象からは除外している（比較的マイナーな形式でもあり、
 /// スコープを絞った）[設計判断]。
-///
-/// **任意の拡張子を追加できるカスタムセクションを持つ**［ユーザー要望:
-/// 本アプリはコミックライブラリ管理が主だが、きちんと設定すれば動画ライブ
-/// ラリとしても使える想定のため、任意の動画形式（mp4/mkv 等）を関連付け
-/// 対象に追加できるようにしてほしい］。組み込みの8形式は常に表示・削除
-/// 不可、カスタム拡張子は `AppAssociationStore` の永続化対象に追加/削除
-/// できる。ここで追加した拡張子は「開くアプリ」の設定対象になるだけで、
-/// Finder への qooLibrary 自身の登録（`project.yml` の
-/// `CFBundleDocumentTypes`）とは無関係。
 struct AssociationPreferencesTab: View {
     @Environment(\.locale) private var locale
     private let service: AppAssociationService = AppAssociationStore.shared
-    /// [ユーザー要望: 「qooLibrary はqooViewerのフロントエンドとして設計
-    /// しているので、qooViewerが対応しているファイル形式は網羅する必要が
-    /// ある」] pdf・epub を追加（qooViewer も対応する形式、`ThumbnailService`
-    /// 側にも対応するサムネイル生成を実装済み）。
-    private static let builtInExtensions = ["zip", "cbz", "7z", "cb7", "rar", "cbr", "pdf", "epub"]
 
     @State private var candidatesByExtension: [String: [AppCandidate]] = [:]
     @State private var primaryByExtension: [String: String] = [:] // 拡張子 → bundleID（未設定は無し）
-    @State private var customExtensions: [String] = []
+    @State private var extensions: [String] = []
     @State private var newExtensionText = ""
     @State private var addExtensionErrorKey: String?
 
     var body: some View {
         Form {
             Section {
-                ForEach(Self.builtInExtensions, id: \.self) { ext in
-                    associationRow(for: ext)
-                }
-            } header: {
-                Text("preferences.associations.header")
-            } footer: {
-                Text("preferences.associations.footer")
-                    .font(.system(size: Tokens.fontSize.caption))
-                    .foregroundStyle(.secondary)
-            }
-
-            Section {
-                ForEach(customExtensions, id: \.self) { ext in
+                ForEach(extensions, id: \.self) { ext in
                     HStack {
                         associationRow(for: ext)
                         Button {
-                            removeCustomExtension(ext)
+                            removeExtension(ext)
                         } label: {
                             Image(systemName: "minus.circle")
                         }
@@ -82,8 +56,9 @@ struct AssociationPreferencesTab: View {
 
                 HStack {
                     TextField("preferences.associations.addExtensionPlaceholder", text: $newExtensionText)
-                        .onSubmit { addCustomExtension() }
-                    Button("preferences.associations.add") { addCustomExtension() }
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit { addExtension() }
+                    Button("preferences.associations.add") { addExtension() }
                         .disabled(newExtensionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
                 if let addExtensionErrorKey {
@@ -92,9 +67,9 @@ struct AssociationPreferencesTab: View {
                         .foregroundStyle(.red)
                 }
             } header: {
-                Text("preferences.associations.customHeader")
+                Text("preferences.associations.header")
             } footer: {
-                Text("preferences.associations.customFooter")
+                Text("preferences.associations.footer")
                     .font(.system(size: Tokens.fontSize.caption))
                     .foregroundStyle(.secondary)
             }
@@ -145,42 +120,38 @@ struct AssociationPreferencesTab: View {
         return trimmed
     }
 
-    private func addCustomExtension() {
+    private func addExtension() {
         guard let ext = normalizeExtension(newExtensionText) else {
             addExtensionErrorKey = "preferences.associations.invalidExtension"
             return
         }
-        guard !Self.builtInExtensions.contains(ext), !customExtensions.contains(ext) else {
+        guard !extensions.contains(ext) else {
             addExtensionErrorKey = "preferences.associations.duplicateExtension"
             return
         }
         addExtensionErrorKey = nil
         newExtensionText = ""
-        customExtensions.append(ext)
-        customExtensions.sort()
+        extensions.append(ext)
+        extensions.sort()
         Task {
-            try? await service.addCustomExtension(ext)
+            try? await service.addExtension(ext)
             candidatesByExtension[ext] = await service.candidates(for: ext)
             primaryByExtension[ext] = await service.primary(for: ext)?.bundleID
         }
     }
 
-    private func removeCustomExtension(_ ext: String) {
-        customExtensions.removeAll { $0 == ext }
+    private func removeExtension(_ ext: String) {
+        extensions.removeAll { $0 == ext }
         candidatesByExtension.removeValue(forKey: ext)
         primaryByExtension.removeValue(forKey: ext)
         Task {
-            try? await service.removeCustomExtension(ext)
+            try? await service.removeExtension(ext)
         }
     }
 
     private func reload() async {
-        for ext in Self.builtInExtensions {
-            candidatesByExtension[ext] = await service.candidates(for: ext)
-            primaryByExtension[ext] = await service.primary(for: ext)?.bundleID
-        }
-        customExtensions = await service.customExtensions()
-        for ext in customExtensions {
+        extensions = await service.extensions()
+        for ext in extensions {
             candidatesByExtension[ext] = await service.candidates(for: ext)
             primaryByExtension[ext] = await service.primary(for: ext)?.bundleID
         }

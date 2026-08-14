@@ -38,16 +38,21 @@ public protocol AppAssociationService: Sendable {
     /// 無ければシステムの既定アプリの順にフォールバックする [FM-06]。
     func open(_ urls: [URL], with bundleID: String?) async throws
 
-    /// ユーザーが環境設定「関連付け」タブに任意で追加した拡張子の一覧
-    /// （小文字、追加順ではなく `sorted()` 済み）［ユーザー要望: 本アプリは
-    /// コミック向けが主だが、動画ライブラリとしても使えるよう任意の拡張子を
-    /// 関連付け対象に追加できるようにする］。組み込みのコミック／アーカイブ
-    /// 拡張子はここには含まない。
-    func customExtensions() async -> [String]
-    /// 拡張子を関連付けタブの管理対象に追加する（大文字小文字を区別しない、
-    /// 既に追加済みなら何もしない）。
-    func addCustomExtension(_ ext: String) async throws
-    /// 拡張子を関連付けタブの管理対象から外す。設定済みの `primary` も
-    /// あわせて削除する。
-    func removeCustomExtension(_ ext: String) async throws
+    /// 環境設定「ビューア」タブで管理している拡張子の一覧（小文字、
+    /// `sorted()` 済み）［ユーザー要望: 本アプリはコミック向けが主だが、
+    /// 動画ライブラリとしても使えるよう任意の拡張子を追加できるようにする］。
+    /// **[訂正] 以前は「組み込み（qooLibrary が実際に読める形式）」と
+    /// 「カスタム（ユーザーが任意追加）」を別管理していたが、この区別に
+    /// 意味が無いというユーザー指摘を受けて撤廃した——このタブは単に
+    /// 「ダブルクリック／Enter で開くアプリ」を指定するだけの設定であり、
+    /// qooLibrary が中身を読めるかどうか（サムネイル生成対応など）とは
+    /// 無関係の別の関心事のため。zip/cbz/7z/cb7/rar/cbr/pdf/epub は初回起動
+    /// 時に既定でこの一覧へ加えられるだけの「最初から入っている項目」に
+    /// すぎず、他の項目と全く同じ操作（削除・追加）ができる。**
+    func extensions() async -> [String]
+    /// 拡張子をこの一覧に追加する（大文字小文字を区別しない、既に追加済み
+    /// なら何もしない）。
+    func addExtension(_ ext: String) async throws
+    /// 拡張子をこの一覧から外す。設定済みの `primary` もあわせて削除する。
+    func removeExtension(_ ext: String) async throws
 }

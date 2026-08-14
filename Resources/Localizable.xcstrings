@@ -2369,38 +2369,6 @@
         }
       }
     },
-    "preferences.associations.customFooter": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Add any extension qooLibrary should manage — for example video formats, if you use qooLibrary as a video library rather than a comic library."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "qooLibrary で管理したい任意の拡張子を追加できます。例えば、コミックライブラリではなく動画ライブラリとして使う場合、動画形式を追加してください。"
-          }
-        }
-      }
-    },
-    "preferences.associations.customHeader": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Custom Extensions"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "カスタム拡張子"
-          }
-        }
-      }
-    },
     "preferences.associations.duplicateExtension": {
       "localizations": {
         "en": {
@@ -2422,13 +2390,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Choose which app opens each format when you double-click or press Enter. This only affects qooLibrary and doesn't change your Mac's system-wide default apps."
+            "value": "Choose which app opens each format when you double-click or press Enter, and add any extension you'd like qooLibrary to manage (for example video formats). This only affects qooLibrary and doesn't change your Mac's system-wide default apps."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ダブルクリックまたは Enter でファイルを開く際に使うアプリを選べます。この設定は qooLibrary 内のみに影響し、Mac のシステム全体の既定アプリは変更しません。"
+            "value": "ダブルクリックまたは Enter でファイルを開く際に使うアプリを選べます。qooLibrary で管理したい拡張子（例: 動画形式）も自由に追加できます。この設定は qooLibrary 内のみに影響し、Mac のシステム全体の既定アプリは変更しません。"
           }
         }
       }
