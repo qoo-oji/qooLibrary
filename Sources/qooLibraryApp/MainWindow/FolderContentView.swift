@@ -733,11 +733,13 @@ struct FolderContentView: View {
             let targets = Array(urls)
             let targetEntries = entries.filter { urls.contains($0.url) }
             Button("action.open") { openEntries(targetEntries) } // [KB-02 相当]
-            // 「アプリケーションで開く」[12章 §12.9、単一選択のファイルのみ。
-            // フォルダは拡張子を持たず `candidates(for:)` の対象にならない
-            // ため対象外にしている]。
-            if targets.count == 1, let only = targetEntries.first, !only.isDirectory {
-                OpenWithMenu(url: only.url)
+            // 「アプリケーションで開く」[12章 §12.9、単一選択のみ]。フォルダも
+            // 対象に含む——`OpenWithMenu` 側でフォルダかどうかに応じて拡張子
+            // ベース／`public.folder` ベースの候補列挙を切り替える
+            // [ユーザー指摘: フォルダの右クリックメニューにも「このアプリ
+            // ケーションで開く」が無いのはおかしい]。
+            if targets.count == 1, let only = targetEntries.first {
+                OpenWithMenu(url: only.url, isDirectory: only.isDirectory)
             }
             if targetEntries.allSatisfy(\.isDirectory) {
                 // 新規タブ/ウインドウで開くはフォルダのみ意味を持つ。Finder は
@@ -1309,18 +1311,32 @@ private struct PendingExtractionPassword: Identifiable {
 }
 
 /// 「アプリケーションで開く」サブメニュー [12章 §12.9、ユーザー要望]。
-/// `AppAssociationService.candidates(for:)` を非同期で読み込んで列挙する。
-/// `.task(id: url)` は `Menu` の中身として組み立てられた時点（右クリックで
-/// コンテキストメニューを開いた時点）で発火するため、候補アプリの探索は
-/// サブメニューへ実際にカーソルを合わせる前から先行して始まる。
+/// `AppAssociationService.candidates(for:)` を `body` 評価時に同期的に呼ぶ。
+///
+/// **[実機検証で発見・修正したバグ] 当初は `.task(id: url)` による非同期
+/// 読み込みだったが、実際に候補アプリが一切表示されず「その他…」しか
+/// 出ない不具合が実機で見つかった。** 一時的な診断ログで `candidates(for:)`
+/// 自体は正しい候補（例: mkv → Movist/Infuse/IINA/QuickTime Player 等）を
+/// 返していることを確認したため、原因はデータ取得側ではなく描画側——SwiftUI
+/// の `Menu`/`.contextMenu` は AppKit の `NSMenu` へブリッジされる際に一度
+/// 構築されると、`.task` の完了後に `@State` を更新しても、既に表示（また
+/// は表示準備）済みのサブメニューの中身が再構築されないことが原因だった。
+/// `candidates(for:)` 自体は `Launch Services` への同期的な問い合わせのみで
+/// 実際の非同期処理を伴わないため、`AppAssociationService` 側の型を
+/// `async` から同期関数へ変更し、`body` 評価時（＝コンテキストメニューが
+/// 実際に構築される時点）に確定させることで解消した。
 private struct OpenWithMenu: View {
     @Environment(\.locale) private var locale
     let url: URL
+    let isDirectory: Bool
 
     private let service: AppAssociationService = AppAssociationStore.shared
-    @State private var candidates: [AppCandidate] = []
 
     var body: some View {
+        // フォルダは拡張子を持たないため `candidates(for:)`（拡張子ベース）
+        // ではなく `candidatesForFolders()`（`public.folder` ベース）を使う
+        // [ユーザー指摘、`AppAssociationService.candidatesForFolders()` 参照]。
+        let candidates = isDirectory ? service.candidatesForFolders() : service.candidates(for: url.pathExtension)
         Menu("folder.openWithSubmenu") {
             ForEach(candidates) { candidate in
                 Button {
@@ -1337,9 +1353,6 @@ private struct OpenWithMenu: View {
                 Divider()
             }
             Button("folder.openWithOtherEllipsis") { chooseOtherApplication() }
-        }
-        .task(id: url) {
-            candidates = await service.candidates(for: url.pathExtension)
         }
     }
 

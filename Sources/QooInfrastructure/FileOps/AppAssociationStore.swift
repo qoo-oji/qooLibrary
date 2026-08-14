@@ -65,10 +65,22 @@ public actor AppAssociationStore: AppAssociationService {
         }
     }
 
-    public func candidates(for ext: String) async -> [AppCandidate] {
+    /// `nonisolated`: `associations`/`extensionSet`/`storageURL` のいずれにも
+    /// 触れず、`Launch Services` への同期的な問い合わせだけで完結するため、
+    /// actor 隔離を経由する理由が無い（`AppAssociationService` のコメント
+    /// 参照 — 同期関数にした理由そのもの）。
+    public nonisolated func candidates(for ext: String) -> [AppCandidate] {
         guard let type = UTType(filenameExtension: ext) else { return [] }
-        return NSWorkspace.shared.urlsForApplications(toOpen: type)
-            .compactMap { Self.candidate(for: $0) }
+        return Self.candidates(forUTType: type)
+    }
+
+    public nonisolated func candidatesForFolders() -> [AppCandidate] {
+        Self.candidates(forUTType: .folder)
+    }
+
+    private nonisolated static func candidates(forUTType type: UTType) -> [AppCandidate] {
+        NSWorkspace.shared.urlsForApplications(toOpen: type)
+            .compactMap { candidate(for: $0) }
     }
 
     public func primary(for ext: String) async -> AppCandidate? {

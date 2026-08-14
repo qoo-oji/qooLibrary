@@ -27,8 +27,22 @@ public struct AppCandidate: Sendable, Equatable, Identifiable {
 /// 同じ「実装可能な範囲に絞る」方針を踏襲、CLAUDE.md 参照］。
 public protocol AppAssociationService: Sendable {
     /// 拡張子（ドット無し、小文字）を開ける候補アプリを列挙する
-    /// [LSCopyApplicationURLsForURL 相当]。
-    func candidates(for ext: String) async -> [AppCandidate]
+    /// [LSCopyApplicationURLsForURL 相当]。**同期関数**（`Launch Services`
+    /// への問い合わせのみで実際の非同期処理を伴わないため）[実機検証で
+    /// 発見: 当初 `async` にしていたところ、中央ペインの「このアプリケー
+    /// ションで開く」サブメニューで実際に選ぶまで候補が一切表示されず
+    /// 「その他…」しか出ない不具合があった。原因は AppKit へブリッジされた
+    /// 一度表示済みのコンテキストメニュー（`NSMenu`）は、`.task` の非同期
+    /// 完了後に `@State` を更新しても再構築されないこと——`candidates(for:)`
+    /// 自体は正しい結果を返していたことをログで確認済み（`urlsForApplications`
+    /// は元々同期 API）。メニューを開く前（body 評価時）に同期的に結果を
+    /// 確定させる必要があるため、`async` を撤去した]。
+    func candidates(for ext: String) -> [AppCandidate]
+    /// フォルダを開ける候補アプリを列挙する（`public.folder` 準拠）
+    /// ［ユーザー指摘: フォルダのコンテキストメニューにも「このアプリケー
+    /// ションで開く」が無いのはおかしい］。`candidates(for:)` は拡張子
+    /// ベースのためフォルダには使えず、別メソッドとして分離している。
+    func candidatesForFolders() -> [AppCandidate]
     /// qooLibrary 内部で設定済みの既定アプリ。未設定なら `nil`
     /// （システムの関連付けに従う）[AS2-01]。
     func primary(for ext: String) async -> AppCandidate?

@@ -133,9 +133,9 @@ struct AssociationPreferencesTab: View {
         newExtensionText = ""
         extensions.append(ext)
         extensions.sort()
+        candidatesByExtension[ext] = service.candidates(for: ext)
         Task {
             try? await service.addExtension(ext)
-            candidatesByExtension[ext] = await service.candidates(for: ext)
             primaryByExtension[ext] = await service.primary(for: ext)?.bundleID
         }
     }
@@ -152,7 +152,7 @@ struct AssociationPreferencesTab: View {
     private func reload() async {
         extensions = await service.extensions()
         for ext in extensions {
-            candidatesByExtension[ext] = await service.candidates(for: ext)
+            candidatesByExtension[ext] = service.candidates(for: ext)
             primaryByExtension[ext] = await service.primary(for: ext)?.bundleID
         }
     }
