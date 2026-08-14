@@ -192,4 +192,118 @@ import Testing
 
         #expect(FileManager.default.fileExists(atPath: extractDestination.appendingPathComponent("page.jpg").path))
     }
+    // MARK: - 完全削除 [FM-14〜FM-18]
+
+    /// [UD-10][PD-05] 完全削除は Undo できない。**このコマンドだけが
+    /// `isUndoable == false`。**
+    @Test func deletePermanentlyCommandIsNotUndoable() async throws {
+        let command = DeletePermanentlyCommand(items: [])
+        #expect(command.isUndoable == false)
+        let undo = try await command.undo()
+        guard case .impossible = undo else {
+            Issue.record("完全削除の undo は .impossible でなければならない")
+            return
+        }
+    }
+
+    /// [PD-05] `CommandStack` は Undo スタックへ積まない。積んでしまうと
+    /// ⌘Z が「取り消せるように見えて実際には何も戻せない」状態になる。
+    @Test func commandStackDoesNotPushDeletePermanentlyOntoTheUndoStack() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let target = root.appendingPathComponent("gone.txt")
+        try Data("bye".utf8).write(to: target)
+
+        let stack = CommandStack()
+        // 登録フォルダを一切持たない独立ストアを使い、実際の登録に触れない。
+        let store = RegisteredFolderStore(storageURL: root.appendingPathComponent("registered.json"))
+        _ = try await stack.run(DeletePermanentlyCommand(
+            items: [target], options: .unattended, registeredFolders: store
+        ))
+
+        #expect(!FileManager.default.fileExists(atPath: target.path))
+        #expect(stack.canUndo == false)
+        #expect(stack.undoTitle == nil)
+        // [HS-01] 履歴には残る（Undo できないことと、記録が残らないことは別）。
+        #expect(stack.operationHistory.count == 1)
+    }
+
+    /// [ER-13][ER-14] 一部が失敗しても中断せず、結果を `.partial` で返す。
+    @Test func deletePermanentlyCommandReportsPartialResultWithoutAborting() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let present = root.appendingPathComponent("present.txt")
+        try Data("x".utf8).write(to: present)
+        let missing = root.appendingPathComponent("missing.txt")
+
+        let store = RegisteredFolderStore(storageURL: root.appendingPathComponent("registered.json"))
+        let command = DeletePermanentlyCommand(
+            items: [missing, present], options: .unattended, registeredFolders: store
+        )
+        let result = try await command.execute()
+
+        #expect(!FileManager.default.fileExists(atPath: present.path))
+        guard case .partial(let succeeded, let failed) = result else {
+            Issue.record("一部失敗は .partial で返るべき")
+            return
+        }
+        #expect(succeeded == 1)
+        #expect(failed.count == 1)
+        #expect(command.outcome?.succeededCount == 1)
+    }
+
+    /// [ユーザー要望] 完全削除で実体を失ったライブラリ／テンポラリ登録は
+    /// 強制的に解除する。
+    @Test func deletePermanentlyForciblyUnregistersDeletedRegisteredFolders() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let library = root.appendingPathComponent("MyLibrary", isDirectory: true)
+        try FileManager.default.createDirectory(at: library, withIntermediateDirectories: true)
+
+        let store = RegisteredFolderStore(storageURL: root.appendingPathComponent("registered.json"))
+        _ = try await store.register(url: library, kind: .library, displayName: "マイライブラリ")
+        #expect(await store.folders(kind: .library).count == 1)
+
+        let command = DeletePermanentlyCommand(
+            items: [library], options: .unattended, registeredFolders: store
+        )
+        _ = try await command.execute()
+
+        #expect(!FileManager.default.fileExists(atPath: library.path))
+        #expect(await store.folders(kind: .library).isEmpty)
+        #expect(command.unregisteredFolders.map(\.displayName) == ["マイライブラリ"])
+    }
+
+    /// 削除に**失敗した**登録フォルダの登録は残す（巻き添えで解除しない）。
+    @Test func deletePermanentlyKeepsRegistrationWhenTheDeletionItselfFailed() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let library = root.appendingPathComponent("MyLibrary", isDirectory: true)
+        try FileManager.default.createDirectory(at: library, withIntermediateDirectories: true)
+
+        let store = RegisteredFolderStore(storageURL: root.appendingPathComponent("registered.json"))
+        _ = try await store.register(url: library, kind: .library, displayName: "マイライブラリ")
+
+        // resolver が `.skip` を返す＝削除されない（ロック済み扱い）。
+        try setLocked(library, true)
+        defer { try? setLocked(library, false) }
+        let command = DeletePermanentlyCommand(
+            items: [library],
+            options: DeletePermanentlyOptions(lockedItemResolver: { _ in .skip }),
+            registeredFolders: store
+        )
+        _ = try await command.execute()
+
+        #expect(FileManager.default.fileExists(atPath: library.path))
+        #expect(await store.folders(kind: .library).count == 1)
+        #expect(command.unregisteredFolders.isEmpty)
+    }
+
+    private func setLocked(_ url: URL, _ locked: Bool) throws {
+        var mutable = url
+        var values = URLResourceValues()
+        values.isUserImmutable = locked
+        try mutable.setResourceValues(values)
+    }
+
 }

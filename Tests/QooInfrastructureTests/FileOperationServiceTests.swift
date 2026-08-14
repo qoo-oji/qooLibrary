@@ -113,6 +113,171 @@ import Testing
         #expect(!FileManager.default.fileExists(atPath: target.path))
     }
 
+    // MARK: - 完全削除 [FM-14〜FM-18、8章 §8.5]
+
+    /// [ER-13] 1 件の失敗で全体を中断しない。**完全削除で中断すると、
+    /// 「実際には消えているのに操作は失敗扱いで記録も残らない」項目が
+    /// 生まれ得るため、他の一括操作より強い要件になる。**
+    @Test func deletePermanentlyContinuesAfterAFailureAndReportsEachItem() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let first = root.appendingPathComponent("first.txt")
+        let third = root.appendingPathComponent("third.txt")
+        try write("1", to: first)
+        try write("3", to: third)
+        let missing = root.appendingPathComponent("does-not-exist.txt")
+
+        let outcome = try await service.deletePermanently([first, missing, third])
+
+        // 存在しない 2 番目で止まらず、3 番目まで削除されている。
+        #expect(!FileManager.default.fileExists(atPath: first.path))
+        #expect(!FileManager.default.fileExists(atPath: third.path))
+        #expect(outcome.succeededCount == 2)
+        #expect(outcome.failures.map(\.url) == [missing])
+        #expect(!outcome.isCompleteSuccess)
+    }
+
+    /// [PD-06] 確認手段が無いとき（resolver 未指定）はロック済み項目を
+    /// **消さずにスキップ**する。安全側の既定。
+    @Test func deletePermanentlySkipsLockedItemsWhenNoResolverIsProvided() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let locked = root.appendingPathComponent("locked.txt")
+        try write("keep me", to: locked)
+        try setLocked(locked, true)
+        defer { try? setLocked(locked, false) }
+
+        let outcome = try await service.deletePermanently([locked])
+
+        #expect(FileManager.default.fileExists(atPath: locked.path))
+        #expect(outcome.skipped == [locked])
+        #expect(outcome.succeededCount == 0)
+    }
+
+    /// [PD-06][ER-11] resolver が `.delete` を返したらロックを解除して削除する。
+    @Test func deletePermanentlyDeletesLockedItemWhenResolverApproves() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let locked = root.appendingPathComponent("locked.txt")
+        try write("bye", to: locked)
+        try setLocked(locked, true)
+
+        let asked = AskedURLs()
+        let outcome = try await service.deletePermanently(
+            [locked], options: DeletePermanentlyOptions(lockedItemResolver: { url in
+                await asked.record(url)
+                return .delete
+            })
+        )
+
+        #expect(!FileManager.default.fileExists(atPath: locked.path))
+        #expect(outcome.succeededCount == 1)
+        #expect(await asked.urls == [locked])
+    }
+
+    /// フォルダ自身はロックされていなくても、**中にロック済みの項目があれば
+    /// 尋ねる**。`FileManager.removeItem` はロック済みの子で失敗し、そこまでに
+    /// 消した子だけが失われた中途半端な状態を残すため、先に確認を取る。
+    @Test func deletePermanentlyAsksWhenAFolderContainsALockedDescendant() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let folder = root.appendingPathComponent("folder", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let plain = folder.appendingPathComponent("plain.txt")
+        let lockedChild = folder.appendingPathComponent("locked.txt")
+        try write("a", to: plain)
+        try write("b", to: lockedChild)
+        try setLocked(lockedChild, true)
+
+        let asked = AskedURLs()
+        let outcome = try await service.deletePermanently(
+            [folder], options: DeletePermanentlyOptions(lockedItemResolver: { url in
+                await asked.record(url)
+                return .delete
+            })
+        )
+
+        // 尋ねられるのは操作対象（フォルダ）であって、中の 1 件ではない。
+        #expect(await asked.urls == [folder])
+        #expect(!FileManager.default.fileExists(atPath: folder.path))
+        #expect(outcome.succeededCount == 1)
+    }
+
+    /// `.unattended`（ステージング等アプリ内部領域の後始末）はロック済みでも
+    /// 尋ねずに消す。既定の挙動でスキップされると残骸が永久に残るため。
+    @Test func unattendedOptionsDeleteLockedItemsWithoutAsking() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let locked = root.appendingPathComponent("residual.txt")
+        try write("residual", to: locked)
+        try setLocked(locked, true)
+
+        let outcome = try await service.deletePermanently([locked], options: .unattended)
+
+        #expect(!FileManager.default.fileExists(atPath: locked.path))
+        #expect(outcome.isCompleteSuccess)
+    }
+
+    /// リンク切れのシンボリックリンクも削除できる。存在チェックに
+    /// `fileExists`（リンクを辿る）を使うと「項目が見つかりません」になり
+    /// 永久に消せなくなる [レビューで発見した退行]。
+    @Test func deletePermanentlyRemovesADanglingSymlink() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let link = root.appendingPathComponent("dangling")
+        try FileManager.default.createSymbolicLink(
+            at: link, withDestinationURL: root.appendingPathComponent("no-such-target")
+        )
+        // リンク先は存在しない = fileExists は false を返す。
+        #expect(FileManager.default.fileExists(atPath: link.path) == false)
+
+        let outcome = try await service.deletePermanently([link])
+
+        #expect(outcome.succeededCount == 1)
+        #expect(outcome.failures.isEmpty)
+        #expect((try? FileManager.default.attributesOfItem(atPath: link.path)) == nil)
+    }
+
+    /// 削除に失敗したら、そのために外したロックを元に戻す。さもないと
+    /// 「消えてもいないのにロックだけ解除された」状態が残る [レビューで発見]。
+    @Test func deletePermanentlyRestoresTheLockWhenTheDeletionFails() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let readOnlyDir = root.appendingPathComponent("readonly", isDirectory: true)
+        try FileManager.default.createDirectory(at: readOnlyDir, withIntermediateDirectories: true)
+        let locked = readOnlyDir.appendingPathComponent("locked.txt")
+        try write("x", to: locked)
+        try setLocked(locked, true)
+        // 親ディレクトリを書き込み不可にすると、子の削除自体が失敗する。
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: readOnlyDir.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: readOnlyDir.path)
+            try? setLocked(locked, false)
+        }
+
+        let outcome = try await service.deletePermanently([locked], options: .unattended)
+
+        #expect(outcome.succeededCount == 0)
+        #expect(outcome.failures.count == 1)
+        #expect(FileManager.default.fileExists(atPath: locked.path))
+        let stillLocked = (try? locked.resourceValues(forKeys: [.isUserImmutableKey]))?.isUserImmutable
+        #expect(stillLocked == true) // ロックが戻っている
+    }
+
+    private func setLocked(_ url: URL, _ locked: Bool) throws {
+        var mutable = url
+        var values = URLResourceValues()
+        values.isUserImmutable = locked
+        try mutable.setResourceValues(values)
+    }
+
     // MARK: - 衝突処理 [FM-11〜FM-13]
 
     @Test func conflictSkipLeavesDestinationUntouched() async throws {
@@ -243,4 +408,11 @@ import Testing
 
         #expect(receipts[0].toURL.lastPathComponent == "a 2.txt")
     }
+}
+
+/// `@Sendable` な `lockedItemResolver` から呼ばれた URL を集める。並行に
+/// 呼ばれても安全に記録できるよう actor にしている。
+private actor AskedURLs {
+    var urls: [URL] = []
+    func record(_ url: URL) { urls.append(url) }
 }

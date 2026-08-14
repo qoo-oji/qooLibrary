@@ -109,7 +109,11 @@ public actor SecureExtractor {
             at: root, includingPropertiesForKeys: nil
         ) else { return }
         for child in children {
-            _ = try? await FileOperationService.shared.deletePermanently([child])
+            // ステージングはユーザー非可視のアプリ内部領域のため、ロック済みでも
+            // 尋ねずに消す（`.unattended` のコメント参照）。既定の
+            // `DeletePermanentlyOptions()` だとロック済み項目がスキップされ、
+            // 残骸が永久に残ってしまう。
+            _ = try? await FileOperationService.shared.deletePermanently([child], options: .unattended)
         }
     }
 

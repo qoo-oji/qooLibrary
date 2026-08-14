@@ -203,6 +203,18 @@ private struct FileMenuCommands: View {
         Divider()
         Button("folder.moveToTrash", role: .destructive) { actions?.moveToTrash() }
             .disabled(actions?.canMoveToTrash != true)
+        // 中央ペイン／フォルダツリーのコンテキストメニューと同じ構成にそろえる
+        // [ユーザー要望]。Finder ではどちらも ⌥ でだけ現れる項目だが、SwiftUI
+        // では ⌥ による入れ替えが実装できない（メニュー内容は初回構築後に
+        // キャッシュされ body が再評価されないことを実測で確認）ため、
+        // サブメニューへ退避する。
+        Menu("folder.moreSubmenu") {
+            Button("folder.copyPath") { actions?.copyPath() } // [FM-10]
+                .disabled(actions?.canCopyPath != true)
+            Divider()
+            Button("folder.deletePermanentlyEllipsis", role: .destructive) { actions?.deletePermanently() } // [FM-14]
+                .disabled(actions?.canDeletePermanently != true)
+        }
     }
 }
 

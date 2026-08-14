@@ -97,14 +97,124 @@ public actor FileOperationService {
         }
     }
 
-    public func deletePermanently(_ items: [URL], options: OpOptions = .init()) async throws -> [OpReceipt] {
+    /// ゴミ箱を経由しない完全削除 [FM-14][8章 §8.5]。**取り消せない** —
+    /// 呼び出し側は必ず事前確認を経ること [FM-15][PD-02][UD-10]。
+    ///
+    /// 他の一括操作と違い、**1 件の失敗で全体を中断しない** [ER-13]。成功・
+    /// 失敗・スキップを `DeletionOutcome` に個別に集めて返し、呼び出し側が
+    /// 結果サマリを提示する [ER-12][ER-14]。部分的な成功はロールバックしない
+    /// （そもそも復元手段が無い）[ER-16]。
+    ///
+    /// ロック済み項目（`.isUserImmutableKey`）は `options.lockedItemResolver`
+    /// に判断を委ねる [PD-06]。フォルダについては**中にロック済みの項目を
+    /// 含む場合も**尋ねる — `FileManager.removeItem` はロック済みの子に
+    /// 当たった時点で失敗し、そこまでに消した子だけが失われた中途半端な
+    /// 状態を残すため、先に確認を取ってからまとめてロックを解除する。
+    @discardableResult
+    public func deletePermanently(
+        _ items: [URL], options: DeletePermanentlyOptions = .init()
+    ) async throws -> DeletionOutcome {
         var receipts: [OpReceipt] = []
+        var failures: [DeletionFailure] = []
+        var skipped: [URL] = []
+
         for item in items {
+            guard itemExists(at: item) else {
+                failures.append(DeletionFailure(url: item, reason: "項目が見つかりません"))
+                continue
+            }
+            var unlocked: [URL] = []
+            if hasAnyLockedItem(at: item) {
+                let decision = await options.lockedItemResolver?(item) ?? .skip
+                guard decision == .delete else {
+                    skipped.append(item)
+                    continue
+                }
+                // 削除の途中でロックに当たって中断しないよう、先にまとめて外す。
+                unlocked = unlockRecursively(item)
+            }
             let before = try? identity(of: item)
-            try FileManager.default.removeItem(at: item) // [FM-14]
-            receipts.append(OpReceipt(before: before, after: nil, fromURL: item, toURL: item, kind: .deletePermanently))
+            do {
+                try FileManager.default.removeItem(at: item) // [FM-14]
+                receipts.append(OpReceipt(before: before, after: nil, fromURL: item, toURL: item, kind: .deletePermanently))
+            } catch {
+                // 削除できなかった以上、外したロックは元に戻す。さもないと
+                // 「消えてもいないのにロックだけ解除された」状態が残る
+                // [完全削除実装時のレビューで発見]。
+                relock(unlocked)
+                // [ER-12][ER-13] 判断の要らない失敗（権限・I/O）は中断せず記録し、
+                // 呼び出し側が完了後にまとめて提示する。
+                failures.append(DeletionFailure(url: item, reason: error.localizedDescription))
+            }
         }
-        return receipts
+        return DeletionOutcome(receipts: receipts, failures: failures, skipped: skipped)
+    }
+
+    /// シンボリックリンク自体の存在も「ある」と判定する。
+    /// `FileManager.fileExists(atPath:)` はリンクを**辿る**ため、リンク切れの
+    /// シンボリックリンクを「無い」と誤判定し、削除できなくなってしまう
+    /// [完全削除実装時のレビューで発見。素の `removeItem` にはこの問題が
+    /// 無かったので、存在チェックを足したことによる退行だった]。
+    private func itemExists(at url: URL) -> Bool {
+        (try? FileManager.default.attributesOfItem(atPath: url.path)) != nil
+    }
+
+    /// `url` 自身、またはその配下のいずれかがロックされているか。
+    /// 見つかった時点で打ち切るため、通常は即座に返る。
+    private func hasAnyLockedItem(at url: URL) -> Bool {
+        if isLocked(url) { return true }
+        return lockedDescendants(of: url, stopAtFirst: true).isEmpty == false
+    }
+
+    /// ロック解除は**削除の直前にだけ**行い、実際に解除した URL を返す。
+    /// 削除が失敗した場合は呼び出し側が `relock(_:)` で元に戻す。
+    private func unlockRecursively(_ url: URL) -> [URL] {
+        var cleared: [URL] = []
+        if isLocked(url) {
+            setImmutable(url, false)
+            cleared.append(url)
+        }
+        for child in lockedDescendants(of: url, stopAtFirst: false) {
+            setImmutable(child, false)
+            cleared.append(child)
+        }
+        return cleared
+    }
+
+    private func relock(_ urls: [URL]) {
+        for url in urls where itemExists(at: url) {
+            setImmutable(url, true)
+        }
+    }
+
+    /// 配下のロック済み項目。**シンボリックリンクの先へは入らない** —
+    /// `.isDirectoryKey` はリンクを辿るため、これを使ってディレクトリ判定を
+    /// すると「ディレクトリへのシンボリックリンク」でリンク先を列挙して
+    /// しまい、削除対象ですらないリンク先のロックを外しかねない
+    /// （`removeItem` はリンク自体しか消さない）[レビューで発見]。
+    private func lockedDescendants(of url: URL, stopAtFirst: Bool) -> [URL] {
+        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+        guard values?.isSymbolicLink != true, values?.isDirectory == true else { return [] }
+        guard let enumerator = FileManager.default.enumerator(
+            at: url, includingPropertiesForKeys: [.isUserImmutableKey], options: []
+        ) else { return [] }
+        var result: [URL] = []
+        for case let child as URL in enumerator where isLocked(child) {
+            result.append(child)
+            if stopAtFirst { return result }
+        }
+        return result
+    }
+
+    private func isLocked(_ url: URL) -> Bool {
+        (try? url.resourceValues(forKeys: [.isUserImmutableKey]))?.isUserImmutable == true
+    }
+
+    private func setImmutable(_ url: URL, _ locked: Bool) {
+        var mutable = url
+        var values = URLResourceValues()
+        values.isUserImmutable = locked
+        try? mutable.setResourceValues(values)
     }
 
     /// Finder の「エイリアスを作成」相当。`URL.bookmarkData(options: .suitableForBookmarkFile)`

@@ -42,8 +42,21 @@ final class FolderOperations {
     var pendingCompression: PendingCompression?
     /// 単一アーカイブ展開でパスワードが必要だった場合の再試行状態。
     var pendingExtractionPassword: PendingExtractionPassword?
+    /// 完全削除の一連のダイアログ（確認 → ロック済み項目の判断）。
+    ///
+    /// **1 つの `@State` に enum でまとめる** — 確認シートを閉じた直後に
+    /// ロック確認シートを出す、という連続した遷移になるため、別々の
+    /// `.sheet` 修飾子を重ねると表示が不安定になりやすい
+    /// [`FolderTreePane.FolderTreePrompt` が `.alert` で同じ理由の対処を
+    /// している。既存の圧縮／展開パスワードシートは互いに独立した経路で
+    /// 連続遷移しないため、そのまま個別の `.sheet` に残している]。
+    var pendingDeletionStep: PermanentDeletionStep?
 
     private var locale: Locale { AppLanguage.effectiveLocale }
+
+    /// [ER-11]「以降すべてに適用」が選ばれたあとの一括判断。1 回の完全削除
+    /// 操作の間だけ有効で、次の操作の開始時にリセットする。
+    private var lockedItemBlanketDecision: LockedItemDecision?
 
     // MARK: - コマンド実行の共通経路
 
@@ -91,6 +104,116 @@ final class FolderOperations {
     func moveToTrash(_ urls: [URL], onSuccess: @escaping @MainActor () -> Void = {}) {
         guard !urls.isEmpty else { return }
         run(TrashCommand(items: urls), failure: "error.trashFailed", onSuccess: onSuccess)
+    }
+
+    // MARK: - 完全削除 [FM-14〜FM-18、8章 §8.5]
+
+    /// [FM-14] ゴミ箱を経由しない完全削除。**必ず確認シートを挟む**
+    /// [FM-15][PD-02][UD-10] — ここでは実行せず、確認状態を立てるだけ。
+    /// 実際の実行は `runPermanentDeletion(_:)`（シートの決定ボタン）から。
+    func deletePermanently(_ urls: [URL], onSuccess: @escaping @MainActor () -> Void = {}) {
+        guard !urls.isEmpty else { return }
+        pendingDeletionStep = .confirm(PendingPermanentDeletion(urls: urls, onSuccess: onSuccess))
+    }
+
+    /// 確認シートで「削除」が押されたあとの実行本体。
+    ///
+    /// `CommandStack` 経由で実行するのは他の操作と同じだが、
+    /// `DeletePermanentlyCommand.isUndoable == false` のため Undo スタックには
+    /// 積まれない [PD-05]。操作履歴 [HS-01] には残る。
+    func runPermanentDeletion(_ request: PendingPermanentDeletion) {
+        // 「以降すべてに適用」は 1 回の削除操作ごとにリセットする [ER-11]。
+        lockedItemBlanketDecision = nil
+        busyMessage = String(localized: "permanentDelete.deleting", locale: locale)
+        let command = DeletePermanentlyCommand(
+            items: request.urls,
+            options: DeletePermanentlyOptions(lockedItemResolver: { [self] url in
+                await askLockedItemDecision(url)
+            })
+        )
+        Task {
+            defer { busyMessage = nil }
+            do {
+                _ = try await CommandStack.shared.run(command)
+                request.onSuccess()
+                SessionState.shared.reloadToken += 1
+                await presentDeletionSummaryIfNeeded(command)
+            } catch {
+                await NotificationRouter.shared.presentError(
+                    error, whatHappened: String(localized: "error.deletePermanentlyFailed", locale: locale)
+                )
+                SessionState.shared.reloadToken += 1
+            }
+        }
+    }
+
+    /// [PD-06][ER-11] ロック済み項目 1 件ごとの判断。「以降すべてに適用」が
+    /// 選ばれていれば以後は尋ねずにその判断を使う。
+    ///
+    /// **継続（`CheckedContinuation`）は必ず 1 回だけ再開しなければならない。**
+    /// シートを Esc 等で閉じた場合にボタンのコールバックが呼ばれないまま
+    /// 終わると、この `await` が永久に返らずアプリが固まる。そのため
+    /// `PendingLockedItem` 側で「一度しか呼ばれない」ことを保証し、
+    /// 閉じられた場合は安全側の `.skip` で再開する。
+    private func askLockedItemDecision(_ url: URL) async -> LockedItemDecision {
+        if let blanket = lockedItemBlanketDecision { return blanket }
+        return await withCheckedContinuation { continuation in
+            let pending = PendingLockedItem(url: url) { [self] decision, applyToAll in
+                if applyToAll { lockedItemBlanketDecision = decision }
+                continuation.resume(returning: decision)
+            }
+            pendingDeletionStep = .lockedItem(pending)
+            // **シートが実際に現れなかった場合の保険。**
+            // 直前に確認シートを閉じたばかりのタイミングで次のシートを要求する
+            // ため、SwiftUI が「閉じながら開く」要求を取りこぼすと、シートが
+            // 一度も現れず `.onDisappear` の安全網も働かない。そうなると
+            // ここの `await` が永久に返らず、「削除しています…」の表示のまま
+            // アプリが操作不能になる（削除処理の途中なので影響も大きい）。
+            //
+            // 現れたかどうかは `didAppear` で判定するため、**ユーザーが
+            // 長考している場合にこの保険が誤発動することはない**。
+            Task { [weak pending] in
+                try? await Task.sleep(for: .seconds(2))
+                guard let pending, !pending.didAppear else { return }
+                Log.ui.error("ロック確認シートが表示されませんでした。安全側にスキップします: \(url.lastPathComponent, privacy: .public)")
+                pending.resolve(.skip, applyToAll: false)
+                if case .lockedItem(let current) = pendingDeletionStep, current === pending {
+                    pendingDeletionStep = nil
+                }
+            }
+        }
+    }
+
+    /// [ER-12][ER-14] 完了後の結果サマリ。全件成功なら何も出さない
+    /// （成功を報告するだけのダイアログは邪魔なため）。失敗・スキップが
+    /// あった場合と、登録フォルダを強制解除した場合にだけ提示する。
+    private func presentDeletionSummaryIfNeeded(_ command: DeletePermanentlyCommand) async {
+        guard let outcome = command.outcome else { return }
+        var lines: [String] = []
+        if !outcome.failures.isEmpty || !outcome.skipped.isEmpty {
+            lines.append(String(
+                format: String(localized: "permanentDelete.summaryCounts", locale: locale),
+                outcome.succeededCount, outcome.failures.count, outcome.skipped.count
+            ))
+            // [ER-14] 失敗は理由別の内訳が分かるようにまとめる。
+            let byReason = Dictionary(grouping: outcome.failures, by: \.reason)
+            for (reason, items) in byReason.sorted(by: { $0.value.count > $1.value.count }) {
+                lines.append("• \(reason)（\(items.count)）: \(items.prefix(3).map { $0.url.lastPathComponent }.joined(separator: ", "))")
+            }
+        }
+        if !command.unregisteredFolders.isEmpty {
+            lines.append(String(
+                format: String(localized: "permanentDelete.summaryUnregistered", locale: locale),
+                command.unregisteredFolders.map(\.displayName).joined(separator: ", ")
+            ))
+        }
+        guard !lines.isEmpty else { return }
+        await NotificationRouter.shared.present(NotificationItem(
+            category: outcome.failures.isEmpty ? .info : .warning,
+            severity: .sheet,
+            title: String(localized: "permanentDelete.summaryTitle", locale: locale),
+            body: lines.joined(separator: "\n")
+        ))
     }
 
     /// [FM-05] 名前を変更。名前が空、または変わっていなければ何もしない
@@ -435,6 +558,50 @@ struct PendingCompression: Identifiable {
     let onCompleted: @MainActor (URL) -> Void
 }
 
+/// 完全削除の一連のダイアログ。確認 → （ロック済み項目があれば）その判断、
+/// という順に遷移する [FM-15][PD-06]。
+enum PermanentDeletionStep: Identifiable {
+    case confirm(PendingPermanentDeletion)
+    case lockedItem(PendingLockedItem)
+
+    var id: UUID {
+        switch self {
+        case .confirm(let request): request.id
+        case .lockedItem(let request): request.id
+        }
+    }
+}
+
+/// ロック済み項目 1 件分の判断待ち [PD-06][ER-11]。
+///
+/// **`resolve` は高々 1 回しか下流へ伝わらない。** 呼び出し側は
+/// `CheckedContinuation` を再開するためにこれを使っており、2 回再開すると
+/// クラッシュ、0 回だと永久に待ち続けてアプリが固まる。シートのボタンと
+/// `onDismiss`（Esc で閉じられた場合）の両方から呼ばれても安全なように、
+/// ここで一度きりを保証する。
+@MainActor
+final class PendingLockedItem: Identifiable {
+    let id = UUID()
+    let url: URL
+    /// シートが実際に表示されたか。表示されないまま終わった場合の保険
+    /// （`FolderOperations.askLockedItemDecision` の見張り）が、ユーザーの
+    /// 長考と「そもそも出なかった」を取り違えないようにするための印。
+    var didAppear = false
+    private var callback: ((LockedItemDecision, Bool) -> Void)?
+
+    init(url: URL, onResolve: @escaping (LockedItemDecision, Bool) -> Void) {
+        self.url = url
+        self.callback = onResolve
+    }
+
+    /// - Parameter applyToAll: 「以降すべてに適用」[ER-11]
+    func resolve(_ decision: LockedItemDecision, applyToAll: Bool) {
+        guard let callback else { return }
+        self.callback = nil
+        callback(decision, applyToAll)
+    }
+}
+
 /// 単一アーカイブ展開でパスワードが必要だった場合の再試行状態
 /// [環境設定「圧縮／展開」タブ]。
 struct PendingExtractionPassword: Identifiable {
@@ -486,6 +653,18 @@ private struct FolderOperationsHostModifier: ViewModifier {
                         [pending.archiveURL], destination: { _ in pending.target },
                         passphrase: password, onSuccess: pending.onSuccess
                     )
+                }
+            }
+            // 完全削除の確認とロック済み項目の判断は連続して遷移するため、
+            // 1 つの `.sheet` で切り替える（`PermanentDeletionStep` のコメント参照）。
+            .sheet(item: $operations.pendingDeletionStep) { step in
+                switch step {
+                case .confirm(let request):
+                    PermanentDeleteConfirmationSheet(request: request) {
+                        operations.runPermanentDeletion(request)
+                    }
+                case .lockedItem(let request):
+                    LockedItemDecisionSheet(request: request)
                 }
             }
     }

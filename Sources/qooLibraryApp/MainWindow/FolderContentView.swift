@@ -456,6 +456,13 @@ struct FolderContentView: View {
                 KeyBindingButtons(action: .moveToTrash, store: keyBindingStore, isDisabled: selection.isEmpty, role: .destructive) {
                     moveToTrash(Array(selection))
                 }
+                // [FM-16] 既定では未割り当て。環境設定「キーボード」タブで
+                // ユーザーが自分で割り当てた場合にだけ実際に効く
+                // （`KeyBindingButtons` は `combos` が空ならボタンを 1 つも
+                // 生成しない）。割り当てても確認シートは必ず経由する [FM-15]。
+                KeyBindingButtons(action: .deletePermanently, store: keyBindingStore, isDisabled: selection.isEmpty, role: .destructive) {
+                    deletePermanently(Array(selection))
+                }
                 KeyBindingButtons(action: .newFolder, store: keyBindingStore, isDisabled: folder == nil) {
                     newFolderName = String(localized: "action.newFolder", locale: locale)
                     showingNewFolderPrompt = true
@@ -607,6 +614,8 @@ struct FolderContentView: View {
         actions.canMakeAlias = !selection.isEmpty
         actions.canCompress = !selection.isEmpty
         actions.canMoveToTrash = !selection.isEmpty
+        actions.canDeletePermanently = !selection.isEmpty // [FM-14]
+        actions.canCopyPath = !selection.isEmpty // [FM-10]
         actions.canCopy = !selection.isEmpty
         actions.canCut = !selection.isEmpty
         actions.canPaste = canPaste && folder != nil
@@ -625,6 +634,8 @@ struct FolderContentView: View {
         actions.makeAlias = { createAliases(for: selected) }
         actions.compress = { compressHere(selected) }
         actions.moveToTrash = { moveToTrash(selected) }
+        actions.deletePermanently = { deletePermanently(selected) }
+        actions.copyPath = { copyPaths(selected) }
         actions.copy = { copySelectionToPasteboard(selected) }
         actions.cut = { cutSelectionToPasteboard(selected) }
         actions.paste = { pasteFromPasteboard() }
@@ -983,9 +994,21 @@ struct FolderContentView: View {
             }
             Divider()
             Button("folder.revealInFinder") { NSWorkspace.shared.activateFileViewerSelecting(targets) } // [FM-09]
-            Button("folder.copyPath") { copyPaths(targets) } // [FM-10]
             ShareLink("folder.shareEllipsis", items: targets) // [共有、既定ラベルが英語 "Share..." になるため明示的に指定]
             Button("folder.createAlias") { createAliases(for: targets) }
+            // Finder では「パスをコピー」も「すぐに削除」もどちらも ⌥ を押した
+            // ときだけ現れる項目。SwiftUI では ⌥ での入れ替えが実装できない
+            // ことを実測で確認したため（メニュー内容は初回表示時に構築されて
+            // キャッシュされ、以後 body が再評価されない）、この 2 つを
+            // サブメニューへ退避してトップレベルの誤クリックを遠ざける
+            // [ユーザー判断]。
+            Menu("folder.moreSubmenu") {
+                Button("folder.copyPath") { copyPaths(targets) } // [FM-10]
+                Divider()
+                Button("folder.deletePermanentlyEllipsis", role: .destructive) { // [FM-14]
+                    deletePermanently(targets)
+                }
+            }
             Divider()
             Button(targetEntries.allSatisfy(\.isLocked) ? "folder.unlock" : "folder.lock") {
                 toggleLock(targetEntries)
@@ -1224,6 +1247,12 @@ struct FolderContentView: View {
 
     private func moveToTrash(_ urls: [URL]) {
         operations.moveToTrash(urls) { reload() }
+    }
+
+    /// [FM-14] 完全削除。確認シートは `FolderOperations` 側が出す
+    /// [FM-15][PD-02] ため、ここでは対象を渡すだけ。
+    private func deletePermanently(_ urls: [URL]) {
+        operations.deletePermanently(urls) { reload() }
     }
 
     private func createNewFolder() {

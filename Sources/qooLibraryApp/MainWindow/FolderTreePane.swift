@@ -139,6 +139,21 @@ struct FolderTreePane: View {
             .onChange(of: selectedURL) { _, _ in
                 revealSelectionIfNeeded(scrollProxy: scrollProxy)
             }
+            // 登録ルート行の一覧は、このペインが `@State` に抱えている実体の
+            // コピーなので、**このペイン以外が登録を変えたときには誰も
+            // 読み直さない**。各行が監視している `SessionState.reloadToken`
+            // （`FolderTreeRow` の `.onChange(of:)`）は行の中身を更新するだけで、
+            // 一覧そのものには効かない。
+            //
+            // 中央ペインから登録フォルダを完全削除すると
+            // `DeletePermanentlyCommand` が登録を強制解除する [FM-14] ため、
+            // これが無いと「ストアからは消えているのに左ペインには残り続ける」
+            // 状態になる（実機検証で発見）。登録の追加・解除・改名を伴う経路は
+            // 他にもあり得るので、発生源ごとに手当てするのではなく、他の
+            // ペインと同じ共通シグナルを見て読み直す。
+            .onChange(of: SessionState.shared.reloadToken) { _, _ in
+                Task { await reloadRegisteredFolders() }
+            }
         }
     }
 

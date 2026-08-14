@@ -18,6 +18,19 @@ public struct RegisteredFolder: Codable, Sendable, Identifiable, Equatable {
     }
 }
 
+/// 完全削除で実体を失う登録フォルダと、その削除前の解決済みパス
+/// [`RegisteredFolderStore.registrationsInvalidated(byDeleting:)` 参照]。
+public struct InvalidatedRegistration: Sendable, Equatable {
+    public let folder: RegisteredFolder
+    /// 削除**前**に解決したパス。削除後は解決できないため、ここに控えておく。
+    public let resolvedPath: String
+
+    public init(folder: RegisteredFolder, resolvedPath: String) {
+        self.folder = folder
+        self.resolvedPath = resolvedPath
+    }
+}
+
 public enum RegisteredFolderError: Error, Sendable, Equatable {
     case nestedRegistration // [RG-03][RG-04]
     case unsupportedFileSystem(VolumeRejection) // [RG-08]
@@ -43,7 +56,12 @@ public actor RegisteredFolderStore {
     private let bookmarks: BookmarkResolving
     private let volumeChecker: VolumeEligibilityChecking
     private var folders: [RegisteredFolder] = []
-    private var activeAccessURLs: Set<URL> = []
+    /// アクセスを開始したままにしている URL を**登録 ID で**引けるようにする。
+    /// URL の集合として持つと、実体が消えた登録（完全削除された
+    /// ライブラリ／テンポラリ）を解除するときにブックマークを再解決できず、
+    /// `stopAccessingSecurityScopedResource()` を呼べないまま
+    /// エントリだけが残り続ける [完全削除 FM-14 実装時のレビューで発見]。
+    private var activeAccessURLs: [UUID: URL] = [:]
     private var didLoad = false
 
     /// テストでは独立したストレージ・依存を注入できる（`SecureExtractor`/
@@ -119,12 +137,53 @@ public actor RegisteredFolderStore {
     public func unregister(_ id: UUID) throws {
         ensureLoaded()
         guard let folder = folders.first(where: { $0.id == id }) else { return }
-        if let url = resolvedURL(for: folder), activeAccessURLs.contains(url) {
+        // 実体が既に消えていてもスコープを確実に閉じられるよう、ブックマークの
+        // 再解決ではなく登録 ID から引く（`activeAccessURLs` のコメント参照）。
+        if let url = activeAccessURLs.removeValue(forKey: folder.id) {
             url.stopAccessingSecurityScopedResource()
-            activeAccessURLs.remove(url)
         }
         folders.removeAll { $0.id == id }
         try save()
+    }
+
+    /// `urls` を完全削除すると実体が失われる登録フォルダを列挙する
+    /// [完全削除 FM-14 の事前確認用]。対象そのものが登録フォルダである場合と、
+    /// 対象が登録フォルダの祖先である（＝配下ごと消える）場合の両方を拾う。
+    ///
+    /// **解決済みのパスも一緒に返す。** 削除後にはブックマークを解決できず
+    /// 「どの登録が該当したか」を再判定できないため、呼び出し側は削除の前に
+    /// この結果を保持しておく必要がある（`unregisterAll(ids:)` 参照）。
+    ///
+    /// 比較は `URL` 同士の `==` ではなくパス文字列で行う — 末尾スラッシュの
+    /// 有無やシンボリックリンクの解決状態で表現が揺れるため
+    /// [`SessionState.cutURLs` で実際に踏んだ問題と同じ理由]。
+    public func registrationsInvalidated(byDeleting urls: [URL]) -> [InvalidatedRegistration] {
+        ensureLoaded()
+        let deletedPaths = urls.map { $0.resolvingSymlinksInPath().standardizedFileURL.path }
+        return folders.compactMap { folder in
+            guard let folderURL = resolvedURL(for: folder) else { return nil }
+            let folderPath = folderURL.resolvingSymlinksInPath().standardizedFileURL.path
+            let isDoomed = deletedPaths.contains { deleted in
+                folderPath == deleted || folderPath.hasPrefix(deleted + "/")
+            }
+            guard isDoomed else { return nil }
+            return InvalidatedRegistration(folder: folder, resolvedPath: folderPath)
+        }
+    }
+
+    /// 完全削除で実体を失った登録を強制的に解除する [ユーザー要望: 完全削除を
+    /// 実行することになった場合はライブラリ／テンポラリの登録も強制解除する]。
+    ///
+    /// **対象は削除の実行「前」に `registrationsInvalidated(byDeleting:)` で
+    /// 捉えておき、その ID をここへ渡すこと。** 登録の照合は
+    /// Security-Scoped Bookmark の解決に依存するため、実体が消えた後では
+    /// どの登録が該当したのかを判定できなくなる。逆に解除を削除より先に
+    /// 行うとアクセススコープが閉じて削除自体が権限エラーになるため、
+    /// 「先に調べ、後で解除する」というこの順序でなければならない。
+    public func unregisterAll(ids: [UUID]) {
+        for id in ids {
+            try? unregister(id)
+        }
     }
 
     /// [RG-05] 実フォルダ名とは別の表示名に変更する。
@@ -151,7 +210,7 @@ public actor RegisteredFolderStore {
     private func activateAccessIfPossible(_ folder: RegisteredFolder) {
         guard let url = resolvedURL(for: folder) else { return }
         if url.startAccessingSecurityScopedResource() {
-            activeAccessURLs.insert(url)
+            activeAccessURLs[folder.id] = url
         }
     }
 

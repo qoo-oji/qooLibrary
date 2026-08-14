@@ -254,12 +254,25 @@ struct FolderTreeContextMenu: View {
     private var utilitySection: some View {
         Divider()
         Button("folder.revealInFinder") { operations.revealInFinder([context.url]) } // [FM-09]
-        Button("folder.copyPath") { operations.copyPaths([context.url]) } // [FM-10]
         if context.allowsItemOperations {
             ShareLink("folder.shareEllipsis", items: [context.url])
         }
         if context.allowsStructuralOperations {
             Button("folder.createAlias") { operations.createAliases(for: [context.url], in: context.parentURL) }
+        }
+        // 中央ペインと同じ構成 [ユーザー要望]。「完全削除」は構造を変える操作
+        // なので、ゴミ箱と同じくボリュームのマウントポイントと登録ルートには
+        // 出さない（`allowsStructuralOperations` のコメント参照）— 特に登録
+        // ルートを完全削除すると復元手段が無く、`OfflineRegisteredFolderRow`
+        // へのフォールバック [SB-05] すら意味を成さなくなる。
+        Menu("folder.moreSubmenu") {
+            Button("folder.copyPath") { operations.copyPaths([context.url]) } // [FM-10]
+            if context.allowsStructuralOperations {
+                Divider()
+                Button("folder.deletePermanentlyEllipsis", role: .destructive) { // [FM-14]
+                    operations.deletePermanently([context.url])
+                }
+            }
         }
     }
 

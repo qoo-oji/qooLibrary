@@ -26,6 +26,10 @@ struct FolderMenuActions {
     var canMakeAlias = false
     var canCompress = false
     var canMoveToTrash = false
+    /// [FM-14] 完全削除。`canMoveToTrash` と条件は同じだが、意味が異なる
+    /// （取り消せない操作）ため別のフラグとして持つ。
+    var canDeletePermanently = false
+    var canCopyPath = false
     var canCopy = false
     var canCut = false
     var canPaste = false
@@ -41,6 +45,8 @@ struct FolderMenuActions {
     var makeAlias: () -> Void = {}
     var compress: () -> Void = {}
     var moveToTrash: () -> Void = {}
+    var deletePermanently: () -> Void = {}
+    var copyPath: () -> Void = {}
     var copy: () -> Void = {}
     var cut: () -> Void = {}
     var paste: () -> Void = {}

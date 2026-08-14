@@ -157,6 +157,71 @@ import Testing
         #expect(backups.count == 1)
         #expect(!FileManager.default.fileExists(atPath: storageURL.path))
     }
+    // MARK: - 完全削除に伴う強制解除 [FM-14、ユーザー要望]
+
+    /// 登録フォルダ**そのもの**を完全削除する場合。
+    @Test func registrationsInvalidatedFindsTheRegisteredFolderItself() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let target = root.appendingPathComponent("Lib", isDirectory: true)
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        let store = makeStore(storageURL: root.appendingPathComponent("state.json"))
+        let registered = try await store.register(url: target, kind: .library, displayName: nil)
+
+        let doomed = await store.registrationsInvalidated(byDeleting: [target])
+
+        #expect(doomed.map(\.folder.id) == [registered.id])
+    }
+
+    /// 登録フォルダの**祖先**を削除する場合（配下ごと消えるため登録も無効）。
+    @Test func registrationsInvalidatedFindsRegistrationsUnderADeletedAncestor() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let parent = root.appendingPathComponent("parent", isDirectory: true)
+        let nested = parent.appendingPathComponent("Lib", isDirectory: true)
+        try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+        let store = makeStore(storageURL: root.appendingPathComponent("state.json"))
+        let registered = try await store.register(url: nested, kind: .library, displayName: nil)
+
+        let doomed = await store.registrationsInvalidated(byDeleting: [parent])
+
+        #expect(doomed.map(\.folder.id) == [registered.id])
+    }
+
+    /// 名前が前方一致するだけの別フォルダを巻き込まない
+    /// （"Lib" を消しても "Library2" の登録は無効にならない）。
+    @Test func registrationsInvalidatedIgnoresSiblingsWithACommonNamePrefix() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let lib = root.appendingPathComponent("Lib", isDirectory: true)
+        let other = root.appendingPathComponent("Library2", isDirectory: true)
+        try FileManager.default.createDirectory(at: lib, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+        let store = makeStore(storageURL: root.appendingPathComponent("state.json"))
+        _ = try await store.register(url: other, kind: .library, displayName: nil)
+
+        let doomed = await store.registrationsInvalidated(byDeleting: [lib])
+
+        #expect(doomed.isEmpty)
+    }
+
+    @Test func unregisterAllRemovesTheGivenRegistrations() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let a = root.appendingPathComponent("A", isDirectory: true)
+        let b = root.appendingPathComponent("B", isDirectory: true)
+        try FileManager.default.createDirectory(at: a, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: b, withIntermediateDirectories: true)
+        let store = makeStore(storageURL: root.appendingPathComponent("state.json"))
+        let first = try await store.register(url: a, kind: .library, displayName: nil)
+        let second = try await store.register(url: b, kind: .library, displayName: nil)
+
+        await store.unregisterAll(ids: [first.id])
+
+        let remaining = await store.folders(kind: .library)
+        #expect(remaining.map(\.id) == [second.id])
+    }
+
 }
 
 private struct RejectingVolumeChecker: VolumeEligibilityChecking {

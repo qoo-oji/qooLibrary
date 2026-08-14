@@ -160,6 +160,89 @@ public final class TrashCommand: Command {
     }
 }
 
+/// ゴミ箱を経由しない完全削除 [FM-14][8章 §8.5]。
+///
+/// **このコマンドだけが `isUndoable == false`** [UD-10][PD-05]。`CommandStack`
+/// は Undo スタックへ積まないが、`run` 経由で実行することで操作履歴 [HS-01]
+/// には残る。取り消せないこと自体は実行前の確認ダイアログで明示する
+/// [FM-15][PD-02]（提示は UI 層の責務、`PermanentDeleteConfirmationSheet`）。
+///
+/// `isUndoable == false` のため `CommandStack` が Undo スタックへ積まず、
+/// 結果として `redo()`（既定実装は `execute()` の再実行）も到達しない。
+///
+/// 削除で実体を失うライブラリ／テンポラリ登録は、ここで強制的に解除する
+/// [ユーザー要望]。**対象の照合は削除の前に行い、解除は削除の後に行う** —
+/// 照合は Security-Scoped Bookmark の解決に依存するため実体が消えた後では
+/// 判定できず、逆に先に解除するとアクセススコープが閉じて削除自体が
+/// 権限エラーになるため（`RegisteredFolderStore.unregisterAll(ids:)` 参照）。
+public final class DeletePermanentlyCommand: Command {
+    private let items: [URL]
+    private let options: DeletePermanentlyOptions
+    private let fileOps: FileOperationService
+    private let registeredFolders: RegisteredFolderStore
+
+    /// 実行結果。呼び出し側が結果サマリ [ER-14] を出すために読む。
+    public private(set) var outcome: DeletionOutcome?
+    /// 実際に強制解除した登録フォルダ（表示名を結果サマリに出すため）。
+    public private(set) var unregisteredFolders: [RegisteredFolder] = []
+
+    public init(
+        items: [URL],
+        options: DeletePermanentlyOptions = .init(),
+        fileOps: FileOperationService = .shared,
+        registeredFolders: RegisteredFolderStore = .shared
+    ) {
+        self.items = items
+        self.options = options
+        self.fileOps = fileOps
+        self.registeredFolders = registeredFolders
+    }
+
+    public var displayName: String {
+        items.count == 1 ? "「\(items[0].lastPathComponent)」を完全に削除" : "\(items.count) 件を完全に削除"
+    }
+    /// [UD-10][PD-05] 取り消せない。
+    public let isUndoable = false
+
+    public func execute() async throws -> CommandResult {
+        // ① 削除前に、実体を失う登録フォルダを特定しておく。
+        let doomed = await registeredFolders.registrationsInvalidated(byDeleting: items)
+        // 正規化も**削除前に**済ませる。`resolvingSymlinksInPath()` は実体が
+        // 無いパスに対しては途中までしか解決できず、削除後に計算すると
+        // `doomed` 側（削除前に解決したもの）と文字列が食い違い得るため。
+        var normalizedByItem: [URL: String] = [:]
+        for item in items {
+            normalizedByItem[item] = item.resolvingSymlinksInPath().standardizedFileURL.path
+        }
+
+        // ② 削除本体。1 件の失敗で中断しない [ER-13]。
+        let result = try await fileOps.deletePermanently(items, options: options)
+        outcome = result
+
+        // ③ 実際に消えたものだけを対象に登録を強制解除する。削除に失敗した
+        //    項目の登録まで巻き添えで消さないよう、成功した URL で絞り込む。
+        let deletedPaths = result.receipts.compactMap { normalizedByItem[$0.fromURL] }
+        let actuallyGone = doomed.filter { candidate in
+            deletedPaths.contains { candidate.resolvedPath == $0 || candidate.resolvedPath.hasPrefix($0 + "/") }
+        }
+        await registeredFolders.unregisterAll(ids: actuallyGone.map(\.folder.id))
+        unregisteredFolders = actuallyGone.map(\.folder)
+
+        if result.failures.isEmpty && result.skipped.isEmpty { return .success }
+        return .partial(
+            succeeded: result.succeededCount,
+            failed: result.failures.map { FailedItem(item: $0.url.lastPathComponent, reason: $0.reason) }
+        )
+    }
+
+    /// [UD-10] 取り消せない。`isUndoable == false` のため `CommandStack` は
+    /// この経路に到達しないが、将来 `isUndoable` を取り違えて変更した場合に
+    /// 黙って何かが起きるより明示的に不能を返すほうが安全。
+    public func undo() async throws -> UndoResult {
+        .impossible(reason: "完全に削除された項目は元に戻せません")
+    }
+}
+
 /// [UD-03] 空でなければ削除を拒否する（ユーザーが中身を追加していた場合に
 /// 誤って消さないため）。
 public final class CreateFolderCommand: Command {
