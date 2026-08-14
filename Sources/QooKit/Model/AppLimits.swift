@@ -42,4 +42,17 @@ public enum AppLimits {
         /// 諦めて正方形のリクエストにフォールバックする。
         public static let defaultMatroskaHeaderScanBytes: Int = 8 * 1_000 * 1_000
     }
+
+    /// Quick Look [9.7 節、QL-01〜QL-10]。
+    public enum QuickLook {
+        /// 独自カバープレビュー用に書き出したファイルを溜めておく上限（既定 200MB）。
+        ///
+        /// このキャッシュはアプリ起動のたびに丸ごと捨てるセッション限りのもの
+        /// （`QuickLookCoverStore` のコメント参照）だが、1 セッション中に大量の
+        /// アーカイブをプレビューした場合の際限ない肥大を防ぐため、サムネイル
+        /// キャッシュ [IV-09] と同じく上限を設けて古いものから削除する。
+        /// 原画像をそのまま書き出す（再エンコードしない）ため 1 件あたりが
+        /// サムネイル（PNG 縮小版）より大きく、別の上限にしている。
+        public static let defaultCoverCacheMaxSize: Int64 = 200 * 1_000 * 1_000
+    }
 }

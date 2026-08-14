@@ -65,6 +65,12 @@ struct QooLibraryApp: App {
         Task {
             await VolumeAccessStore.shared.loadAndActivateAll()
         }
+        // Quick Look の独自カバープレビュー用に書き出したファイルは
+        // セッション限りのキャッシュ [QL-03、`QuickLookCoverStore` のコメント
+        // 参照]。ステージングと同じく、起動時に前回の残りを丸ごと片付ける。
+        Task {
+            await QuickLookCoverStore.shared.purgeAll()
+        }
         // [ER-01] エラー・通知の提示はこのコントローラ1箇所からのみ行う
         // （`NotificationRouterPresenterController` のコメント参照）。
         NotificationRouterPresenterController.shared.start()
@@ -180,6 +186,8 @@ private struct FileMenuCommands: View {
         Divider()
         Button("action.open") { actions?.open() }
             .disabled(actions?.canOpen != true)
+        Button("action.quickLook") { actions?.quickLook() } // [QL-01]
+            .disabled(actions?.canQuickLook != true)
         Divider()
         Button("action.rename") { actions?.rename() }
             .disabled(actions?.canRename != true)

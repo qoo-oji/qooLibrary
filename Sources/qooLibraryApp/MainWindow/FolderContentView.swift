@@ -59,6 +59,11 @@ struct FolderContentView: View {
     /// [MW-01/MW-04 の周辺、要件定義書には無いがユーザー要望で追加]。
     let onOpenInNewTab: (URL) -> Void
     let onOpenInNewWindow: (URL) -> Void
+    /// Quick Look [QL-01]。このウインドウ専用のコントローラ（`MainWindowView`
+    /// が `WindowState` と 1 対 1 で生成する）。このビューは Space キー・
+    /// メニューからの起動と、矢印キーでの選択移動 [QL-07] に必要な
+    /// 「一覧の表示順」の受け渡し（`publishQuickLookOrder()`）だけを担う。
+    let quickLook: QuickLookController
     /// リスト/アイコン切替 [LV-04] とアイコンサイズ [IV-04]。`WindowState`
     /// （ウインドウ単位、タブをまたいで共有 [ST-22]）が保持する。
     @Binding var listStyle: ListStyle
@@ -198,10 +203,8 @@ struct FolderContentView: View {
                 // [実機検証で発見]。
                 .focusable()
                 .focused($isListFocused)
-                .onKeyPress(keyBindingStore.binding(for: .open).combos.first?.swiftUIKeyEquivalent ?? .return) {
-                    openSelection()
-                    return .handled
-                }
+                .onKeyBindingPress(.open, store: keyBindingStore) { openSelection() }
+                .onKeyBindingPress(.quickLook, store: keyBindingStore) { quickLook.toggle() } // [QL-01]
                 .onKeyPress(.downArrow) {
                     selectFirstOrLastIfNoneSelected(first: true) ? .handled : .ignored
                 }
@@ -391,10 +394,11 @@ struct FolderContentView: View {
                 }
                 // [KB-02] 選択中の項目を開く。ディレクトリはダブルクリックと同じ
                 // ナビゲーション、ファイルは既定アプリで開く（Finder と同じ）。
-                .onKeyPress(keyBindingStore.binding(for: .open).combos.first?.swiftUIKeyEquivalent ?? .return) {
-                    openSelection()
-                    return .handled
-                }
+                .onKeyBindingPress(.open, store: keyBindingStore) { openSelection() }
+                // [QL-01] Space でプレビューを開閉する。パネルが前面にある間は
+                // 一覧がフォーカスを失うため、閉じる側は `QLPreviewPanel` 自身の
+                // Space 処理が受け持つ（Finder と同じ）。
+                .onKeyBindingPress(.quickLook, store: keyBindingStore) { quickLook.toggle() }
                 // Finder 流: 何も選択していない状態で↓/↑を押すと先頭/末尾を選択する
                 // [実機検証時のユーザー要望]。何か選択済みなら `.ignored` を返し、
                 // `Table` 標準の行選択移動（AppKit の既定キーハンドリング）に譲る。
@@ -530,6 +534,13 @@ struct FolderContentView: View {
         .onChange(of: SessionState.shared.reloadToken) {
             reload()
         }
+        // Quick Look の矢印キー移動 [QL-07] が使う一覧の表示順を届ける。
+        // `displayedEntries` は `entries`・`sortOrder`・`groupFoldersAtTop` の
+        // 3 つから決まるので、`reload()`（＝ `entries` の更新）とこの 2 つの
+        // `.onChange` が揃って初めて漏れが無い（`publishQuickLookOrder()` の
+        // コメント参照）。
+        .onChange(of: sortOrder) { _, _ in publishQuickLookOrder() }
+        .onChange(of: groupFoldersAtTop) { _, _ in publishQuickLookOrder() }
         .alert("action.newFolder", isPresented: $showingNewFolderPrompt) {
             TextField("folder.namePlaceholder", text: $newFolderName)
             Button("common.create") { createNewFolder() }
@@ -588,6 +599,7 @@ struct FolderContentView: View {
         let selected = Array(selection)
         var actions = FolderMenuActions()
         actions.canOpen = !selection.isEmpty
+        actions.canQuickLook = !selection.isEmpty // [QL-01]
         actions.canNewFolder = folder != nil
         actions.canNewFolderWithSelection = folder != nil && !selection.isEmpty
         actions.canRename = selection.count == 1
@@ -602,6 +614,7 @@ struct FolderContentView: View {
         actions.canRevealInFinder = !selection.isEmpty
 
         actions.open = { openSelection() }
+        actions.quickLook = { quickLook.toggle() }
         actions.newFolder = {
             newFolderName = String(localized: "action.newFolder", locale: locale)
             showingNewFolderPrompt = true
@@ -912,6 +925,14 @@ struct FolderContentView: View {
             let targets = Array(urls)
             let targetEntries = entries.filter { urls.contains($0.url) }
             Button("action.open") { openEntries(targetEntries) } // [KB-02 相当]
+            // [QL-01] 右クリックした対象が現在の選択と違う場合は、まず選択を
+            // 合わせてから開く——Quick Look の対象は「現在の選択」であり
+            // （`QuickLookController` 参照）、`.contextMenu(forSelectionType:)`
+            // が渡してくる対象と食い違ったままでは別のファイルが出てしまう。
+            Button("action.quickLook") {
+                selection = urls
+                quickLook.show()
+            }
             // 「アプリケーションで開く」[12章 §12.9、単一選択のみ]。フォルダも
             // 対象に含む——`OpenWithMenu` 側でフォルダかどうかに応じて拡張子
             // ベース／`public.folder` ベースの候補列挙を切り替える
@@ -978,6 +999,7 @@ struct FolderContentView: View {
         guard let folder else {
             entries = []
             loadError = nil
+            publishQuickLookOrder() // タブにフォルダが無い状態でも表示順は空に揃える
             tableIdentity = folder
             return
         }
@@ -1024,12 +1046,26 @@ struct FolderContentView: View {
             entries = []
             loadError = error.localizedDescription
         }
+        publishQuickLookOrder()
         recomputeAutoFitColumnWidths() // [ユーザー指摘の修正] 列幅を内容に合わせて再計測する。
         // 幅の計算を終えたあとで更新する（`tableIdentity` 宣言部と `.id(...)`
         // 呼び出し箇所のコメント参照）。同一フォルダ内の再読み込み（D&D 等）
         // では `folder` の値自体は変わらないため、`Table` は作り直されず
         // スクロール位置等も保たれる。
         tableIdentity = folder
+    }
+
+    /// Quick Look の矢印キー移動 [QL-07] に必要な「一覧の表示順」を
+    /// `QuickLookController` へ届ける。
+    ///
+    /// `QuickLookController` 側が `displayedEntries` をその場で計算する形
+    /// （クロージャを渡す等）にはしていない——このビューは値型で作り直される
+    /// ため、参照を保持すると 1 世代古いインスタンスを読んでしまう既知の罠
+    /// （`currentFolder` のコメント参照）に嵌る。並び替えは
+    /// `localizedStandardCompare` を伴い安くないので、`body` の評価ごとに
+    /// 計算し直すのではなく、順序が実際に変わる 3 箇所からだけ押し込む。
+    private func publishQuickLookOrder() {
+        quickLook.orderedURLs = displayedEntries.map(\.url)
     }
 
     /// 自分自身の再読み込みに加えて、他のウインドウ／ペインにも変更を知らせる

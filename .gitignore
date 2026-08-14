@@ -2,6 +2,10 @@
 .build/
 .swiftpm/
 DerivedData/
+# `xcodebuild` の成果物は通常 DerivedData へ出るが、設定次第でリポジトリ直下の
+# `build/` にも出る。古い `build/` が残っていると、そちらの stale なアプリを
+# 誤って起動する事故が起きるため（実際に起きた、CLAUDE.md 参照）無視しておく。
+build/
 *.xcuserstate
 xcuserdata/
 *.xcworkspace/xcuserdata/

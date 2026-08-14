@@ -18,6 +18,7 @@ import SwiftUI
 /// 一覧から外れている場面でも File/Edit メニューが機能する必要があるため。
 struct FolderMenuActions {
     var canOpen = false
+    var canQuickLook = false
     var canNewFolder = false
     var canNewFolderWithSelection = false
     var canRename = false
@@ -32,6 +33,7 @@ struct FolderMenuActions {
     var canRevealInFinder = false
 
     var open: () -> Void = {}
+    var quickLook: () -> Void = {}
     var newFolder: () -> Void = {}
     var newFolderWithSelection: () -> Void = {}
     var rename: () -> Void = {}

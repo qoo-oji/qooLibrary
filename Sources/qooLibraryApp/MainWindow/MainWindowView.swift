@@ -26,6 +26,10 @@ struct MainWindowView: View {
     /// 箇所向け [1-12 ローカライズ方針、CLAUDE.md 参照]。
     @Environment(\.locale) private var locale
     @State private var windowState: WindowState
+    /// Quick Look [QL-01]。`QLPreviewPanel` はアプリ全体で共有だが「何を
+    /// プレビューするか」はウインドウごとに違うため、このウインドウの
+    /// `windowState` と 1 対 1 で生成する（`QuickLookController` のコメント参照）。
+    @State private var quickLook: QuickLookController
     /// `⌘T` 新規タブ [KB-02 相当]。`FolderContentView` の他のショートカットと
     /// 同じく、可視要素を持たないボタンとして配線する。
     private let keyBindingStore: KeyBindingStore = UserDefaultsKeyBindingStore.shared
@@ -84,7 +88,9 @@ struct MainWindowView: View {
     nonisolated(unsafe) private static var hasAppliedStartupFolderThisLaunch = false
 
     init(initialFolder: URL?) {
-        _windowState = State(initialValue: initialFolder.map(WindowState.init(initialFolder:)) ?? WindowState())
+        let state = initialFolder.map(WindowState.init(initialFolder:)) ?? WindowState()
+        _windowState = State(initialValue: state)
+        _quickLook = State(initialValue: QuickLookController(windowState: state))
         _isRightPaneCollapsed = State(initialValue: UserDefaults.standard.bool(forKey: Self.isRightPaneCollapsedKey))
         wasLaunchedWithoutExplicitFolder = initialFolder == nil
     }
@@ -176,6 +182,7 @@ struct MainWindowView: View {
                             // 開くと `.volume` に戻る」抜け穴の修正]。
                             onOpenInNewTab: { windowState.openTab(for: $0, root: windowState.currentTab?.navigationRoot ?? .volume) },
                             onOpenInNewWindow: { openWindow(value: $0) },
+                            quickLook: quickLook,
                             listStyle: $windowState.listStyle,
                             iconSize: $windowState.iconSize,
                             showingNewFolderPrompt: $showingNewFolderPrompt,
@@ -320,6 +327,9 @@ struct MainWindowView: View {
             twoFingerSwipeForNavigation: twoFingerSwipeForNavigation,
             swipeDirectionInverted: swipeDirectionInverted
         )
+        // `QLPreviewPanel` の制御権をこのウインドウの `quickLook` へ渡すための
+        // レスポンダ差し込み [QL-01、`QuickLookPanelInstaller` のコメント参照]。
+        .background(QuickLookPanelInstaller(controller: quickLook))
         .background {
             Group {
                 KeyBindingButtons(action: .newTab, store: keyBindingStore) {

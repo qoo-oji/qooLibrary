@@ -1,7 +1,6 @@
 import CoreGraphics
 import Foundation
 import QooKit
-import UniformTypeIdentifiers
 
 /// フォルダ表示モードでの先頭画像サムネイル生成 [9.6 節、IV-01][IV-08][IV-09]。
 ///
@@ -56,6 +55,10 @@ public actor ThumbnailService {
     /// PDF は `PDFThumbnailLoading`（CoreGraphics でページ1を直接描画）、
     /// EPUB は `EpubCoverResolver`（zip コンテナとして読み、spine の先頭
     /// ページの画像データを取り出して以降は通常の画像デコード経路に合流）。
+    ///
+    /// 種別の判定は `PreviewableFileKind`、「中の先頭画像 1 枚」の取り出しは
+    /// `CoverImageSourceResolver` に委ねる（どちらも Quick Look の独自カバー
+    /// プレビュー [QL-03][QL-08] と共有する。1-14 で切り出した）。
     public func thumbnail(for url: URL, maxPixelSize: Int) async -> CGImage? {
         guard let identity = try? Self.identity(of: url) else { return nil }
         if let cached = cache.loadCachedImage(for: identity) {
@@ -71,16 +74,14 @@ public actor ThumbnailService {
         // スロット取得直後にここで打ち切る。
         if Task.isCancelled { return nil }
 
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else { return nil }
-
         let generated: CGImage?
-        if !isDirectory.boolValue, Self.isVideoFilename(url.lastPathComponent) {
+        switch PreviewableFileKind.of(url) {
+        case .video:
             generated = await videoThumbnailLoader.makeThumbnail(for: url, maxPixelSize: maxPixelSize)
-        } else if !isDirectory.boolValue, Self.isPDFFilename(url.lastPathComponent) {
+        case .pdf:
             generated = await pdfThumbnailLoader.makeThumbnail(for: url, maxPixelSize: maxPixelSize)
-        } else {
-            guard let data = await Self.resolveFirstImageData(for: url) else { return nil }
+        case .folder, .image, .epub, .archive, .other:
+            guard let data = await CoverImageSourceResolver.firstImageData(for: url) else { return nil }
             let loader = imageLoader
             let task = Task.detached(priority: .utility) { () -> CGImage in
                 try loader.makeThumbnail(from: data, maxPixelSize: maxPixelSize)
@@ -144,83 +145,7 @@ public actor ThumbnailService {
         }
     }
 
-    // MARK: - 先頭画像の解決 [IV-01]
-
-    /// フォルダなら配下の自然順先頭の画像ファイル、アーカイブならエントリの
-    /// 自然順先頭の画像エントリ、画像ファイル自身ならその内容をそのまま読む
-    /// （IV-01 は「圧縮ファイルやフォルダも」とあるが、画像ファイル自体の
-    /// プレビューは実装しない理由が無いため自然な拡張として含めている）。
-    private static func resolveFirstImageData(for url: URL) async -> Data? {
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else { return nil }
-
-        if isDirectory.boolValue {
-            return firstImageDataInFolder(url)
-        }
-        if isImageFilename(url.lastPathComponent) {
-            return try? Data(contentsOf: url)
-        }
-        if isEpubFilename(url.lastPathComponent) {
-            // EPUB は zip コンテナだが「自然順で先頭の画像」ではなく spine
-            // （読み順）の先頭ページを取る必要があるため、`firstImageDataInArchive`
-            // （汎用アーカイブ向け、自然順ソート）とは別の専用経路にする
-            // [`EpubCoverResolver` のコメント参照]。
-            return await EpubCoverResolver.firstPageImageData(
-                for: url, maxBytes: AppLimits.Thumbnail.defaultMaxEntryReadBytes
-            )
-        }
-        return try? await firstImageDataInArchive(url)
-    }
-
-    private static func firstImageDataInFolder(_ folder: URL) -> Data? {
-        guard let children = try? FileManager.default.contentsOfDirectory(
-            at: folder, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]
-        ) else { return nil }
-        let imageChildren = children.filter { isImageFilename($0.lastPathComponent) }
-        let sorted = imageChildren.sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
-        guard let firstImage = sorted.first else { return nil }
-        return try? Data(contentsOf: firstImage)
-    }
-
-    private static func firstImageDataInArchive(_ url: URL) async throws -> Data? {
-        guard let backend = ArchiveBackendRegistry.reader(for: url) else { return nil }
-        let listing = try await backend.listEntries(url)
-        let imageEntries = listing.entries.filter {
-            !$0.isDirectory && !$0.isSymlink && !$0.isSpecialEntry && isImageFilename($0.pathname)
-        }
-        let sorted = imageEntries.sorted { $0.pathname.localizedStandardCompare($1.pathname) == .orderedAscending }
-        guard let firstImageEntry = sorted.first else { return nil }
-        return try await backend.readEntry(
-            url, entry: firstImageEntry, encoding: listing.detectedEncoding,
-            maxBytes: AppLimits.Thumbnail.defaultMaxEntryReadBytes
-        )
-    }
-
-    private static func isImageFilename(_ name: String) -> Bool {
-        let ext = (name as NSString).pathExtension
-        guard !ext.isEmpty, let type = UTType(filenameExtension: ext) else { return false }
-        return type.conforms(to: .image)
-    }
-
-    private static func isVideoFilename(_ name: String) -> Bool {
-        let ext = (name as NSString).pathExtension
-        guard !ext.isEmpty, let type = UTType(filenameExtension: ext) else { return false }
-        return type.conforms(to: .movie)
-    }
-
-    private static func isPDFFilename(_ name: String) -> Bool {
-        let ext = (name as NSString).pathExtension
-        guard !ext.isEmpty, let type = UTType(filenameExtension: ext) else { return false }
-        return type.conforms(to: .pdf)
-    }
-
-    /// EPUB は `UTType` に共通の静的定数（`.pdf`/`.movie` 等と違い）が
-    /// 標準搭載されていないため、拡張子の直接比較にしている
-    /// （`org.idpf.epub-container` という UTI 自体は macOS 標準搭載だが、
-    /// `UTType(filenameExtension:)` 経由の解決に不必要に依存しないため）。
-    private static func isEpubFilename(_ name: String) -> Bool {
-        (name as NSString).pathExtension.lowercased() == "epub"
-    }
+    // MARK: - 内部
 
     /// `FileOperationService.identity(of:)` と同じ計算 [ID-01]。専用の共有
     /// ヘルパーに切り出すほどの規模ではないため、意図的にここでも同じ数行を

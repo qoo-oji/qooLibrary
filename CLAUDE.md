@@ -11,7 +11,7 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
 
 ## 0. 現在の状態
 
-**フェーズ 0（基盤検証）完了。フェーズ 1（ファイルマネージャー）はほぼ完了（1-1〜1-13・1-12b 完了、1-12 は実装可能な範囲を実装済み。残るは 1-14/1-15・1-16 のみ）。**
+**フェーズ 0（基盤検証）完了。フェーズ 1（ファイルマネージャー）はほぼ完了（1-1〜1-13・1-12b 完了、1-12 は実装可能な範囲を実装済み。1-14 は Quick Look 連携のみ完了。残るは 1-14 の残り〈完全削除・サムネイル表示制御〉・1-15・1-16）。**
 
 ### フェーズ 0（`17_実装ロードマップ.md` §17.2、全項目完了）
 
@@ -22,7 +22,7 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
 - 静的検査 `Scripts/check-fileops-isolation.swift`（B-10）・`check-layer-dependencies.swift`（B-11）・`check-json-completeness.swift`（B-13, 現状はプレースホルダ）と CI（`.github/workflows/ci.yml`）を用意した。
 - **既知の懸念（要フォローアップ）**: libarchive 3.8.9 は特定の壊れた RAR 入力（use-after-free の回帰テストファイル）でクラッシュする（エラーを返さず異常終了）。`SecureExtractor`（09章 §9.3）実装時に対処を検討する必要がある。詳細は `Spikes/README.md` の T-12 節。
 
-### フェーズ 1（`17_実装ロードマップ.md` §17.3、1-1〜1-13・1-12b 完了（1-12 は実装可能な範囲のみ）・1-14/1-15/1-16 未着手）
+### フェーズ 1（`17_実装ロードマップ.md` §17.3、1-1〜1-13・1-12b 完了（1-12 は実装可能な範囲のみ）・1-14 は Quick Look 連携のみ完了・1-15/1-16 未着手）
 
 - **1-1 プロジェクト基盤が完了。** `qooLibrary.xcodeproj` は `project.yml` から `xcodegen generate` で生成する（**git-ignore 対象、手で pbxproj を編集しない**。ThirdParty の xcframework と同じ「生成物はコミットしない」方針）。ローカルの SwiftPM パッケージ（`QooKit`/`QooPersistence`/`QooInfrastructure`/`QooApplication`）を local package dependency として参照し、実機で起動確認済み。
 - App Sandbox entitlement（`Sources/qooLibraryApp/qooLibrary.entitlements`）を付与済み。`codesign -d --entitlements :-` で署名済みバイナリに実際に反映されていることを確認済み [SB-01]。
@@ -475,6 +475,25 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
     - **祖先の探索は `URL.deletingLastPathComponent()` を繰り返さず `pathComponents` から積み上げる**（ルート `/` に対して `/..` を返し得る Apple の既知挙動。本プロジェクトでは 1-8 のパスバーと `FolderTreePane.ancestorPaths` で 2 度、無限ループとして踏んでいる）。孤立した Swift スクリプトで、削除された末端・2 階層まとめて削除・ルート直下・ルート自身・500 階層の存在しないパス（6.6ms で終了、無限ループしない）を検証してから実機へ反映した。
     - **`code-review` のもう 1 件（同じ実フォルダにボリュームの枝から到達すると `role` が `.plainFolder` になり、登録ルートでも破壊的操作が出る）は修正せず、`allowsStructuralOperations` のコメントに既知の限界として明記した。** 中央ペインでも同じフォルダをそのままゴミ箱へ入れられる（1-13 以来の既存の挙動）ため、ツリーの一方の枝だけを塞いでも一貫性が無く、Finder のサイドバー（登録項目でも実体は普通に削除できる）とも食い違う。登録フォルダの実体が失われた場合はブックマークの解決に失敗し `OfflineRegisteredFolderRow`（グレーアウト＋登録解除）へ自動的にフォールバックする [SB-05] ため復旧不能にはならない。
   - **検証**: `xcodegen generate && xcodebuild`（Debug、成功、新規追加分の警告なし）、`swift test`（174件、全通過）、静的検査2件（OK）。**実機検証（ユーザーによる手動確認）を依頼予定。**
+- **1-14 のうち Quick Look 連携（QL-01〜QL-10）が完了した。** 同じ 1-14 に含まれる完全削除（FM-14〜18）とサムネイル表示制御（DS-01〜07）は未着手のまま。
+  - **仕様書の実装方式が実際の API と食い違っていたため、仕様書側を訂正してから実装した**（CLAUDE.md §1 の「矛盾を見つけたら仕様書側を直す」に従う。1-8 の `KeyBinding.shortcut` と同じ扱い）。仕様書 9.7 節 QL2-08 は「`QLPreviewPanel` の `previewItem` に独自ビューを持つ `NSViewController` を返す方式」としていたが、**`QLPreviewPanel` に項目ごとの独自ビューを差し込む API は存在しない**（SDK の `QLPreviewPanel.h` を直接読んで確認。データ源は `QLPreviewItem` のみで、その実体は `previewItemURL` ＝ファイル URL）。App Extension を使わないという QL2-08 の設計判断自体は維持し、独自プレビューは「**中の先頭画像を実ファイルとして書き出し、その URL を渡す**」方式に置き換えた。
+  - **独自プレビューの対象範囲を要件 QL-03 より広げた**［ユーザー判断］。要件は `.cbz`/`.cbr`/`.cb7` のみを挙げるが、本アプリは `.zip` と `.cbz` を `ArchiveFormat` の同一値として扱い、アイコン表示のサムネイルも同じ経路で生成しているため、拡張子だけで Quick Look の挙動が変わるとアプリ内で説明のつかない不整合になる。**「アイコン表示でサムネイルを生成できるが、標準 Quick Look では中身を見せられないもの」＝対応アーカイブ全般＋フォルダ**を対象にした（フォルダを含めることで QL-08 のブックフォルダも、フェーズ 2 の概念導入を待たずに満たせる）。pdf/epub/画像/動画は QL-02 通り標準 Quick Look に委ねる。
+  - **`ThumbnailService` の private ヘルパーを 2 つの共有型へ切り出した**（Quick Look と 2 箇所に同じ判定・解決を持つと片方だけ直される事故が起きるため）。`Sources/QooInfrastructure/FileOps/Thumbnails/PreviewableFileKind.swift`（フォルダ／画像／動画／PDF／EPUB／アーカイブ／その他の分類と、`needsCustomCoverPreview`）・`CoverImageSourceResolver.swift`（「中の先頭画像 1 枚」の解決）。`ThumbnailService` はこの 2 つへ委譲するだけになった（挙動は不変、既存テストで確認）。
+  - `Sources/QooInfrastructure/FileOps/Thumbnails/QuickLookCoverStore.swift`（新規、`actor`）: カバー画像を `Application Support/qooLibrary/quicklook/` へ書き出す。**再エンコードせず原画像のバイト列そのものを書く**（サムネイルキャッシュの縮小 PNG を流用すると Quick Look の大きな表示でぼやけるため）。拡張子は**エントリ名ではなく実データの UTI** から決める（アーカイブ内のエントリ名は実体と食い違うことがあり、Quick Look は拡張子で描画方法を選ぶため）。キーは `volumeUUID-inode-mtime`。**セッション限りのキャッシュ**とし、アプリ起動時に `purgeAll()` で丸ごと捨てる（`SecureExtractor.cleanupResidualStaging()` と同じ、異常終了しても次回起動で必ず片付く方式）。1 セッション中の肥大を防ぐため合計サイズ上限（既定 200MB、`AppLimits.QuickLook`）を設け、古いものから削除する——**ただし今書き出したばかりのファイルは削除対象から外す**（上限が 1 件ぶんも無い場合に、これから渡す当のファイルを消して実体の無い URL を返してしまうため）。`FileManager` の変更系 API を使うため B-10 の許可ディレクトリ配下に置いている（`SecureExtractor`/`CoverImageCache` と同じ設計判断）。
+  - `Sources/qooLibraryApp/QuickLook/`（新規）: `QuickLookPreviewItem`（`sourceURL` と実際に渡す `previewURL` を分けて持ち、タイトルは常に元のファイル名）、`QuickLookController`（`QLPreviewPanelDataSource`/`Delegate`、ウインドウごとに 1 つ）、`QuickLookPanelInstaller`（レスポンダ差し込み）。
+  - **レスポンダチェーンへの差し込み位置を実測で決めた。** `QLPreviewPanel` は「レスポンダチェーンをたどり最初に `acceptsPreviewPanelControl:` へ `true` を返したオブジェクト」を制御者に選ぶが、SwiftUI にはそこへ置ける自前のレスポンダが無い（`.background { NSViewRepresentable }` で置いた `NSView` は中央ペインの `Table` にとって「兄弟」であって祖先ではないため一度も尋ねられない——`TableHorizontalScrollDisabler` で確認済みの構造的制約と同じ）。**最小の AppKit アプリを組んで、①ファーストレスポンダのビュー自身／②`window.nextResponder` への差し込み／③ウインドウデリゲート／④アプリデリゲート の 4 箇所に同時に実装して計測した結果**: パネルを前面に出した時点で探索が走る（`updateController()` を明示的に呼んでもパネルが非表示なら何も起きない）、①が `true` を返すとそこで止まる、**①が `false` なら②が尋ねられ制御権が渡る**（`currentController` も②になる）、③④はどちらの場合も一度も尋ねられない、と判明した。②を採用している。念のため、制御権が渡ってこなかった場合はデータソースを直接設定する保険と警告ログも入れてある。
+  - **QL-07（矢印キーで選択移動）は `previewPanel(_:handle:)` で受ける。** 一覧の表示順（`FolderContentView` が `publishQuickLookOrder()` で押し込む）に沿って選択を隣へ動かし、`pendingRevealURL` 経由で中央ペインもその項目までスクロールさせる。複数選択中は ← → をパネル自身が「選択内の前後」に使うためここには届かない（＝ ↑ ↓ だけが一覧の選択移動になる）——Finder と同じ挙動。**delegate メソッドは optional 要件のため Swift 名を間違えてもコンパイルが通り黙って呼ばれなくなる**ので、`class_getInstanceMethod` で 4 つの selector（`previewPanel:handleEvent:` 等）が実際に生えていることを実行時に確認してから進めた。
+  - **QL-09（未生成時のプレースホルダ）は「差し替え前は元のファイル URL をそのまま渡す」ことで実現**した。標準 Quick Look がアーカイブ／フォルダのアイコンを出し、カバーが用意できた時点で `refreshCurrentPreviewItem()` により差し替わる。解決は `previewPanel(_:previewItemAt:)` が呼ばれた項目だけを対象にする遅延方式（選択が 100 件あってもユーザーが見た分しか読み込まない）。
+  - **QL-06（タイトル・シリーズ名・巻数・評価・ラベル・ファイルサイズの併記）は未実装**。上記の方式ではパネルへメタデータを重ねられず、フェーズ 1 に存在するのはファイル名（パネルのタイトルに出る）とファイルサイズ（常設インスペクタに出る）だけのため実害は無い。**フェーズ 2 でラベル・評価が入った時点で「カバー＋メタデータを 1 枚の画像／PDF に合成して渡す」か「独自パネルへ移行する」かの判断が必要になる**［フォローアップ］。
+  - `[QL-10][IM-05]` Quick Look 用の読み込みにも画像の安全上限を適用する。上限超過は縮小せず**諦めて `nil`**（IM-01 の「超過は生成をスキップ」と同じ方針）→ 呼び出し側は元の URL のまま標準 Quick Look に委ねる。上限の判定は `ImageLoading` に追加した `isWithinPixelCountLimit(_:)` に集約し、`QuickLookCoverStore` が上限値を自前で持ち直さないようにした。
+  - **配線**: 中央ペインのリスト／アイコン両表示に Space（`ActionID.quickLook`、1-8 で登録済みだったものを初めて実配線）、コンテキストメニュー「クイックルック」、File メニュー「クイックルック」。**コンテキストメニューだけは `toggle()` ではなく `show()` を呼ぶ**（対象を明示して選んだのに、既に開いていると閉じてしまうため）。
+  - **`KeyBindingPress`（`KeyComboConversion.swift`）を新設し、`.open` の配線もこれに移した。** `Enter`/`Space` のような修飾キー無しのキーは `KeyBindingButtons`（不可視ボタン＋`.keyboardShortcut`）では扱えず `.onKeyPress` が必要だが、従来の `.onKeyPress(binding.combos.first?.swiftUIKeyEquivalent ?? .return)` には ①未割り当てにしても既定キーが効き続ける ②修飾キーを見ないため ⌘Y に再割り当てすると素の `y` でも発火する、の 2 つの穴があった。`.onKeyPress(keys:phases:)`（キーでの絞り込みは SwiftUI に任せたまま、修飾キーだけ自分で照合する）に置き換えて両方を塞いだ。
+  - **`code-review`（high）の指摘 5 件をすべて修正した**: ①ウインドウ間で制御権が移ったとき `currentPreviewItemIndex` が範囲外のまま残り何も表示されない、②上記の `KeyBindingPress` の修飾キー無視、③レスポンダの取り外しがチェーンの尾を切る／再差し込みで輪ができ得る（前任者を探して繋ぎ直す方式に変更、走査長も区切った）、④フォルダのキャッシュキーの限界がコメントと食い違う（コメントを実態に合わせて訂正）、⑤`reload()` の `folder == nil` 早期 return で表示順の押し込みが漏れる。
+  - **実機検証で発見・修正した最重要のバグ: Space キーでプレビューを開いた瞬間に `EXC_BREAKPOINT` で即死した。** クラッシュログのフォルティングスレッドは**メインスレッドではなく `NSOperationQueue` のワーカー**で、呼び出し元は `-[QLPreviewView shouldUseAsyncLoading]` → `-[QLPreviewDocument startLoadingWithForcedDisplayBundleID:hints:]` → `NSFileCoordinator` の調整アクセスブロック → `@objc QuickLookPreviewItem.previewItemURL.getter` → `_checkExpectedExecutor` だった。**QuickLook は `previewItemURL` を非同期ロードの判定のためバックグラウンドから読む**のに、`QuickLookPreviewItem` を `@MainActor`（＋隔離付き適合）で書いていたためアクター隔離チェックがトラップしていた。この型を `nonisolated`（`@unchecked Sendable` + `NSLock` で可変な `previewURL` だけを保護）に直して解消。**同じ前提に依存する箇所を残さないため、データ源も `QuickLookItemSource`（ロック保護、メインアクター非隔離）へ切り出し、`sourceFrameOnScreenFor` も `nonisolated` にした**（`QLPreviewPanelDelegate` のうちキーイベント・`windowWillClose` は本質的に UI イベントなので `@MainActor` のまま）。修正の前後を使い捨てのプローブで確認済み（旧設計はバックグラウンド読み出しで SIGTRAP／新設計は正しく読める）。**教訓: AppKit / QuickLook のコールバックが常にメインスレッドで来るとは限らない。`delegate`（UI イベント）と違い、データ源として渡すオブジェクトは任意のスレッドから読まれ得ると考えること。**
+  - **同じ検証中に踏んだビルド運用の罠: リポジトリ直下の `build/Debug/qooLibrary.app` は古い成果物で、`xcodebuild` の実際の出力先は DerivedData だった。** `xcodebuild` は毎回 BUILD SUCCEEDED と表示していたが、`open build/Debug/qooLibrary.app` で起動していたのは修正前のバイナリで、修正後も同じクラッシュが再現し「直っていない」と誤認した（バイナリの mtime がソース編集より 15 分以上古いことに気づいて発覚）。**起動前に `xcodebuild -showBuildSettings | grep BUILT_PRODUCTS_DIR` で出力先を確認し、バイナリの mtime がソース編集より新しいことを必ず確かめること**（`.xcstrings` の反映漏れで一度記録した「BUILD SUCCEEDED を信じない」と同根の罠）。紛らわしい `build/` は削除し、`.gitignore` に追加した。
+  - **テスト**: `PreviewableFileKindTests`（新規 7 件）・`CoverImageSourceResolverTests`（新規 5 件）・`QuickLookCoverStoreTests`（新規 8 件）。`QLPreviewPanel` 自体を要する部分（パネルの表示・矢印キー・レスポンダ探索）は自動テストの対象外で、上記の通り使い捨ての最小 AppKit アプリでの実測と実機検証で担保する。
+  - **実機検証で完了。** まず `System Events` によるスクリプト操作で、File メニューの「クイックルック」・Space キーのどちらでもパネルが開き、Escape / Space で閉じて再度開けること、クラッシュしないことを確認した（パネルが実際に開くこと自体が、レスポンダチェーン差し込みが実アプリでも機能している裏付けになる——制御権が渡らなければパネルは何も表示しない）。続いて**ユーザーによる手動確認**で、①アーカイブ／画像入りフォルダでカバーが大きく表示されタイトルが元のファイル名になること、②pdf/画像/動画が標準 Quick Look に委ねられること、③プレビュー表示中の矢印キーで選択が移動し中央ペインも追従すること、④`.open` の配線を `KeyBindingPress` へ差し替えたことによる Enter キーの回帰が無いこと、をいずれも確認済み。
+  - **検証**: `swift build`/`swift test`（195 件、全通過）、静的検査 2 件（OK）、`xcodegen generate && xcodebuild`（Debug、成功、新規追加分の警告なし）、実機検証（上記の通り完了）。
 
 作業を始める際は、対象領域の仕様書（下記 §2 の一覧）を該当箇所だけ `Read` してから着手する。仕様書は合計 18 ファイルあり、全部を毎回読み込む必要はない。要件定義書本体は `docs/Requirements/qooLibrary_要件定義書_v2.8.md` にある（約 2,900 行）。矛盾したときの優先順位は §1 参照。
 
@@ -642,7 +661,8 @@ Swift 6 言語モード、`StrictConcurrency` 有効。
 | 1-13 | ライブラリ／テンポラリフォルダの登録・削除（エイリアス相当、RG-01〜RG-08） | 完了 |
 | 1-12b | エラー処理と通知の共通基盤（ER-01〜ER-34 の実装可能な範囲） | 完了 |
 | 1-12 | 環境設定（一般・表示・キーボード・キャッシュの実装可能な範囲、関連付け/スキャン/データ/通知/詳細は Phase 2 以降） | 完了（実装可能な範囲） |
-| 1-14/1-15 | Quick Look 等、診断ログ | 未着手 |
+| 1-14 | Quick Look 連携（QL-01〜QL-10）／完全削除（FM-14〜18）／サムネイル表示制御（DS-01〜07） | Quick Look 連携のみ完了。完全削除・サムネイル表示制御は未着手 |
+| 1-15 | 診断ログ（LG2-01〜08） | 未着手 |
 | 1-16 | Finder 対比監査で「B（技術的には実装できるが未着手）」と分類した項目を、可能な範囲で実装する（要件定義書には無い、ユーザー要望） | 未着手 |
 
 - フェーズ 1 の 4 制約（DP-01 Undo 基盤 / DP-05 FileOps 集約 / DP-07 mainContext 構成 / DP-08 通知基盤）は機能追加より先に固める。後付けは大規模改修になる。DP-05（FileOps 集約）は 1-5 で、DP-01（Undo 基盤）は 1-11 でそれぞれ完了済み。DP-07（mainContext 構成）は SwiftData 導入（フェーズ2）まで対象外、DP-08（通知基盤）は 1-12b が対象。

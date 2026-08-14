@@ -1,0 +1,84 @@
+import Foundation
+import Testing
+
+@testable import QooInfrastructure
+@testable import QooKit
+
+/// 「中の先頭画像 1 枚」の解決。`ThumbnailService`（アイコン表示）と
+/// `QuickLookCoverStore`（Quick Look の独自プレビュー）が共有する唯一の
+/// 解決点なので、種別ごとの振る舞いを直接押さえておく。
+///
+/// 生成結果（デコード済みサムネイル）まで含めた経路は `ThumbnailServiceTests`
+/// が、実ファイルとしての書き出しは `QuickLookCoverStoreTests` が見ているため、
+/// ここでは「どのバイト列を返すか／返さないか」だけに絞る。
+@Suite struct CoverImageSourceResolverTests {
+    private func makeRoot() throws -> URL {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("qoo-cover-source-test-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        return root
+    }
+
+    @Test func picksTheNaturalOrderFirstImageInAFolder() async throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        // 文字列順では "page10" が "page2" より前に来るが、自然順では page2 が先。
+        let expected = TestImageFixture.makePNGData(width: 10, height: 10, red: 1)
+        try Data("readme".utf8).write(to: root.appendingPathComponent("00-readme.txt"))
+        try TestImageFixture.makePNGData(width: 10, height: 10, red: 0).write(to: root.appendingPathComponent("page10.png"))
+        try expected.write(to: root.appendingPathComponent("page2.png"))
+
+        #expect(await CoverImageSourceResolver.firstImageData(for: root) == expected)
+    }
+
+    @Test func picksTheNaturalOrderFirstImageEntryInAnArchive() async throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let archiveURL = root.appendingPathComponent("book.cbz")
+        let expected = TestImageFixture.makePNGData(width: 10, height: 10, red: 1)
+        try ArchiveFixtureBuilder.makeZip(at: archiveURL, entries: [
+            .file("page10.png", contents: TestImageFixture.makePNGData(width: 10, height: 10, red: 0)),
+            .file("page2.png", contents: expected),
+            .file("notes.txt", contents: Data("ignore me".utf8)),
+        ])
+
+        #expect(await CoverImageSourceResolver.firstImageData(for: archiveURL) == expected)
+    }
+
+    @Test func returnsTheFileItselfForAPlainImage() async throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let expected = TestImageFixture.makePNGData(width: 5, height: 5)
+        let imageURL = root.appendingPathComponent("photo.png")
+        try expected.write(to: imageURL)
+
+        #expect(await CoverImageSourceResolver.firstImageData(for: imageURL) == expected)
+    }
+
+    /// 動画・PDF は「中から画像バイト列を取り出す」対象ではなく、専用の
+    /// レンダラ（`VideoThumbnailLoading`/`PDFThumbnailLoading`）を通す。
+    /// この解決器はそれらを扱わないことを明示しておく。
+    @Test func returnsNilForKindsThatHaveTheirOwnRenderer() async throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let videoURL = root.appendingPathComponent("clip.mp4")
+        let pdfURL = root.appendingPathComponent("doc.pdf")
+        let textURL = root.appendingPathComponent("notes.txt")
+        for url in [videoURL, pdfURL, textURL] {
+            try Data("placeholder".utf8).write(to: url)
+        }
+
+        #expect(await CoverImageSourceResolver.firstImageData(for: videoURL) == nil)
+        #expect(await CoverImageSourceResolver.firstImageData(for: pdfURL) == nil)
+        #expect(await CoverImageSourceResolver.firstImageData(for: textURL) == nil)
+    }
+
+    @Test func returnsNilWhenNothingCanBeResolved() async throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let emptyFolder = root.appendingPathComponent("empty", isDirectory: true)
+        try FileManager.default.createDirectory(at: emptyFolder, withIntermediateDirectories: true)
+
+        #expect(await CoverImageSourceResolver.firstImageData(for: emptyFolder) == nil)
+        #expect(await CoverImageSourceResolver.firstImageData(for: root.appendingPathComponent("missing.cbz")) == nil)
+    }
+}
