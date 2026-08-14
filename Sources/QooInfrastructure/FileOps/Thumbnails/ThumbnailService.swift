@@ -17,6 +17,7 @@ public actor ThumbnailService {
     private let cache: CoverImageCache
     private let imageLoader: ImageLoading
     private let videoThumbnailLoader: VideoThumbnailLoading
+    private let pdfThumbnailLoader: PDFThumbnailLoading
 
     // PF-11: 同時実行数を制限したタスクキュー。実際の重い処理（アーカイブ
     // 読み込み・デコード）はアクター分離の外（`Task.detached`）で行うが、
@@ -28,12 +29,14 @@ public actor ThumbnailService {
         maxConcurrent: Int = AppLimits.Thumbnail.defaultMaxConcurrent,
         cache: CoverImageCache = DefaultCoverImageCache.shared,
         imageLoader: ImageLoading = DefaultImageLoader(),
-        videoThumbnailLoader: VideoThumbnailLoading = QLVideoThumbnailLoader()
+        videoThumbnailLoader: VideoThumbnailLoading = QLVideoThumbnailLoader(),
+        pdfThumbnailLoader: PDFThumbnailLoading = CoreGraphicsPDFThumbnailLoader()
     ) {
         self.maxConcurrent = maxConcurrent
         self.cache = cache
         self.imageLoader = imageLoader
         self.videoThumbnailLoader = videoThumbnailLoader
+        self.pdfThumbnailLoader = pdfThumbnailLoader
     }
 
     /// `url` はフォルダ、または対応アーカイブ形式のファイル。フォルダ表示モード
@@ -46,6 +49,13 @@ public actor ThumbnailService {
     /// としての利用を見据えた拡張］。フォルダ／アーカイブ内の「先頭の動画」を
     /// カバーとして使う対応は対象外（IV-01 が要求する「先頭画像」の範囲を
     /// 超えるため、必要になれば別途検討する）。
+    ///
+    /// `url` 自身が PDF・EPUB の場合もそれぞれ専用の経路で生成する
+    /// ［ユーザー要望: qooLibrary は qooViewer のフロントエンドであり、
+    /// qooViewer が対応する形式は qooLibrary 側でも網羅する必要がある］。
+    /// PDF は `PDFThumbnailLoading`（CoreGraphics でページ1を直接描画）、
+    /// EPUB は `EpubCoverResolver`（zip コンテナとして読み、spine の先頭
+    /// ページの画像データを取り出して以降は通常の画像デコード経路に合流）。
     public func thumbnail(for url: URL, maxPixelSize: Int) async -> CGImage? {
         guard let identity = try? Self.identity(of: url) else { return nil }
         if let cached = cache.loadCachedImage(for: identity) {
@@ -67,6 +77,8 @@ public actor ThumbnailService {
         let generated: CGImage?
         if !isDirectory.boolValue, Self.isVideoFilename(url.lastPathComponent) {
             generated = await videoThumbnailLoader.makeThumbnail(for: url, maxPixelSize: maxPixelSize)
+        } else if !isDirectory.boolValue, Self.isPDFFilename(url.lastPathComponent) {
+            generated = await pdfThumbnailLoader.makeThumbnail(for: url, maxPixelSize: maxPixelSize)
         } else {
             guard let data = await Self.resolveFirstImageData(for: url) else { return nil }
             let loader = imageLoader
@@ -148,6 +160,15 @@ public actor ThumbnailService {
         if isImageFilename(url.lastPathComponent) {
             return try? Data(contentsOf: url)
         }
+        if isEpubFilename(url.lastPathComponent) {
+            // EPUB は zip コンテナだが「自然順で先頭の画像」ではなく spine
+            // （読み順）の先頭ページを取る必要があるため、`firstImageDataInArchive`
+            // （汎用アーカイブ向け、自然順ソート）とは別の専用経路にする
+            // [`EpubCoverResolver` のコメント参照]。
+            return await EpubCoverResolver.firstPageImageData(
+                for: url, maxBytes: AppLimits.Thumbnail.defaultMaxEntryReadBytes
+            )
+        }
         return try? await firstImageDataInArchive(url)
     }
 
@@ -185,6 +206,20 @@ public actor ThumbnailService {
         let ext = (name as NSString).pathExtension
         guard !ext.isEmpty, let type = UTType(filenameExtension: ext) else { return false }
         return type.conforms(to: .movie)
+    }
+
+    private static func isPDFFilename(_ name: String) -> Bool {
+        let ext = (name as NSString).pathExtension
+        guard !ext.isEmpty, let type = UTType(filenameExtension: ext) else { return false }
+        return type.conforms(to: .pdf)
+    }
+
+    /// EPUB は `UTType` に共通の静的定数（`.pdf`/`.movie` 等と違い）が
+    /// 標準搭載されていないため、拡張子の直接比較にしている
+    /// （`org.idpf.epub-container` という UTI 自体は macOS 標準搭載だが、
+    /// `UTType(filenameExtension:)` 経由の解決に不必要に依存しないため）。
+    private static func isEpubFilename(_ name: String) -> Bool {
+        (name as NSString).pathExtension.lowercased() == "epub"
     }
 
     /// `FileOperationService.identity(of:)` と同じ計算 [ID-01]。専用の共有

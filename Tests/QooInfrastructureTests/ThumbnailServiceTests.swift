@@ -180,6 +180,91 @@ import Testing
         #expect(thumbnail == nil)
     }
 
+    private struct FakePDFThumbnailLoader: PDFThumbnailLoading {
+        let result: CGImage?
+        func makeThumbnail(for url: URL, maxPixelSize: Int) async -> CGImage? { result }
+    }
+
+    /// PDF ファイル自身もサムネイル生成の対象になる [ユーザー要望:
+    /// qooLibrary は qooViewer のフロントエンドであり、qooViewer が対応する
+    /// 形式（PDF・EPUB）は qooLibrary 側でも網羅する必要がある]。拡張子が
+    /// `public.pdf` 準拠の場合は `PDFThumbnailLoading` 経由になることを、
+    /// 画像デコード経路では失敗するはずのファイル（中身が画像ではない）で
+    /// 検証する。
+    @Test func resolvesThumbnailForAPDFFileViaPDFThumbnailLoader() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("qoo-thumbnail-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = DefaultCoverImageCache(baseDirectory: root.appendingPathComponent("cache"))
+        let expected = TestImageFixture.makeCGImage(width: 20, height: 20)
+        let service = ThumbnailService(
+            maxConcurrent: 2, cache: cache, imageLoader: DefaultImageLoader(),
+            pdfThumbnailLoader: FakePDFThumbnailLoader(result: expected)
+        )
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let pdfURL = root.appendingPathComponent("book.pdf")
+        try Data("not real PDF bytes".utf8).write(to: pdfURL)
+
+        let thumbnail = await service.thumbnail(for: pdfURL, maxPixelSize: 50)
+
+        #expect(thumbnail != nil)
+    }
+
+    @Test func doesNotUsePDFThumbnailLoaderForNonPDFFiles() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("qoo-thumbnail-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = DefaultCoverImageCache(baseDirectory: root.appendingPathComponent("cache"))
+        let expected = TestImageFixture.makeCGImage(width: 20, height: 20)
+        let service = ThumbnailService(
+            maxConcurrent: 2, cache: cache, imageLoader: DefaultImageLoader(),
+            pdfThumbnailLoader: FakePDFThumbnailLoader(result: expected)
+        )
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let textURL = root.appendingPathComponent("notes.txt")
+        try Data("plain text".utf8).write(to: textURL)
+
+        let thumbnail = await service.thumbnail(for: textURL, maxPixelSize: 50)
+
+        #expect(thumbnail == nil)
+    }
+
+    /// EPUB は専用の `EpubCoverResolver`（既定実装）経由で先頭ページの画像
+    /// データを取り出し、以降は通常の画像デコード経路（`imageLoader`）に
+    /// 合流する。フェイクを使わない end-to-end の確認。
+    @Test func resolvesThumbnailForAnEpubFileViaEpubCoverResolver() async throws {
+        let (service, root) = makeService()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let epubURL = root.appendingPathComponent("book.epub")
+        let containerXML = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+          <rootfiles>
+            <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+          </rootfiles>
+        </container>
+        """
+        let opf = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+          <manifest>
+            <item id="page1" href="images/page1.png" media-type="image/png"/>
+          </manifest>
+          <spine>
+            <itemref idref="page1"/>
+          </spine>
+        </package>
+        """
+        try ArchiveFixtureBuilder.makeZip(at: epubURL, entries: [
+            .file("META-INF/container.xml", contents: Data(containerXML.utf8)),
+            .file("OEBPS/content.opf", contents: Data(opf.utf8)),
+            .file("OEBPS/images/page1.png", contents: TestImageFixture.makePNGData(width: 30, height: 40)),
+        ])
+
+        let thumbnail = await service.thumbnail(for: epubURL, maxPixelSize: 50)
+
+        #expect(thumbnail != nil)
+    }
+
     /// [PF-11] 同時実行数の制限が実際に複数件を正しく処理できることの
     /// sanity チェック（自前実装のスロット管理がデッドロックしないことの確認）。
     @Test func handlesMoreRequestsThanMaxConcurrentWithoutDeadlock() async throws {

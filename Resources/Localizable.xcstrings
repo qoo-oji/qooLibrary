@@ -2422,13 +2422,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Choose which app opens each archive format inside qooLibrary. This only affects qooLibrary and doesn't change your Mac's system-wide default apps."
+            "value": "Choose which app opens each format when you double-click or press Enter. This only affects qooLibrary and doesn't change your Mac's system-wide default apps."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "qooLibrary 内で各アーカイブ形式を開くアプリを選べます。この設定は qooLibrary 内のみに影響し、Mac のシステム全体の既定アプリは変更しません。"
+            "value": "ダブルクリックまたは Enter でファイルを開く際に使うアプリを選べます。この設定は qooLibrary 内のみに影響し、Mac のシステム全体の既定アプリは変更しません。"
           }
         }
       }
@@ -2438,13 +2438,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "File Associations"
+            "value": "Supported Formats"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ファイルの関連付け"
+            "value": "対応形式"
           }
         }
       }
@@ -3526,13 +3526,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Associations"
+            "value": "Viewer"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "関連付け"
+            "value": "ビューア"
           }
         }
       }

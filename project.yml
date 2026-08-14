@@ -88,6 +88,18 @@ targets:
               - public.cbr-archive
             LSHandlerRank: Alternate
             CFBundleTypeRole: Viewer
+          # [ユーザー要望: qooLibrary は qooViewer のフロントエンドとして
+          # 設計されており、qooViewer が対応するファイル形式（PDF・EPUB）は
+          # qooLibrary 側でも網羅する必要がある]。`com.adobe.pdf`・
+          # `org.idpf.epub-container` はどちらも macOS 標準搭載の UTI
+          # （上記アーカイブ群と同じ調査方法、`mdls -name kMDItemContentType`
+          # で確認可能）で、独自 UTI 宣言は不要。
+          - CFBundleTypeName: Document
+            LSItemContentTypes:
+              - com.adobe.pdf
+              - org.idpf.epub-container
+            LSHandlerRank: Alternate
+            CFBundleTypeRole: Viewer
     settings:
       base:
         PRODUCT_NAME: qooLibrary

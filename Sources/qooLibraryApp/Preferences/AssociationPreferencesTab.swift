@@ -3,11 +3,27 @@ import QooInfrastructure
 import QooKit
 import SwiftUI
 
-/// 環境設定「関連付け」タブ [12章 §12.9、AS-01〜AS-07 の実装可能な範囲]。
-/// qooLibrary が実際に読めるアーカイブ拡張子（zip/cbz・7z/cb7・rar/cbr）ごとに
-/// 「このアプリで開く」を設定する。**qooLibrary 内部だけの上書きで、macOS
-/// システム全体の既定関連付けは変更しない**（`AppAssociationService` の
-/// コメント参照）。
+/// 環境設定「ビューア」タブ（旧「関連付け」。ユーザー指摘を受けて表示名を
+/// 変更 — 実体はダブルクリック／Enter でファイルを開くときの既定アプリ
+/// （対応するビューア）を指定するだけの設定であり、「関連付け」という名前は
+/// macOS の他の意味（Finder 全体の既定関連付け等）と紛らわしいため）
+/// [12章 §12.9、AS-01〜AS-07 の実装可能な範囲]。**qooLibrary 内部だけの
+/// 上書きで、macOS システム全体の既定関連付けは変更しない**
+/// （`AppAssociationService` のコメント参照）。
+///
+/// **[訂正] 「組み込み」の対象は「qooLibrary が実際に中身を読める形式」
+/// では定義していない。** 以前はそう説明していたが誤りで、ユーザーから
+/// 「この設定（＝どのアプリで開くか）とは無関係に、対象拡張子について
+/// 内部を参照する（サムネイル生成等）ことが期待されている」と明確な訂正を
+/// 受けた。**このタブの組み込み/カスタムの区別は、単に「qooLibrary が
+/// コミック・電子書籍ライブラリアプリとして常に対象とする中核形式か、
+/// それ以外の任意追加形式か」というタブ自体の UX 上の区別に過ぎず、
+/// `ThumbnailService` 側の内部読み取り対応（サムネイル生成）とは独立
+/// している。** 実際、組み込み形式（zip/cbz・7z/cb7・rar/cbr・pdf・epub）は
+/// いずれも `ThumbnailService` がサムネイルを生成できるが、それは別の
+/// 独立した実装（`ArchiveReading`/`PDFThumbnailLoading`/
+/// `EpubCoverResolver`）によるものであり、このタブの組み込みリストが
+/// その実装状況を参照して動的に決まっているわけではない。
 ///
 /// `tar.gz` は複合拡張子で `UTType(filenameExtension:)` に単純に渡せない
 /// ため、このタブの対象からは除外している（比較的マイナーな形式でもあり、
@@ -16,16 +32,19 @@ import SwiftUI
 /// **任意の拡張子を追加できるカスタムセクションを持つ**［ユーザー要望:
 /// 本アプリはコミックライブラリ管理が主だが、きちんと設定すれば動画ライブ
 /// ラリとしても使える想定のため、任意の動画形式（mp4/mkv 等）を関連付け
-/// 対象に追加できるようにしてほしい］。組み込みの6形式は常に表示・削除
+/// 対象に追加できるようにしてほしい］。組み込みの8形式は常に表示・削除
 /// 不可、カスタム拡張子は `AppAssociationStore` の永続化対象に追加/削除
 /// できる。ここで追加した拡張子は「開くアプリ」の設定対象になるだけで、
 /// Finder への qooLibrary 自身の登録（`project.yml` の
-/// `CFBundleDocumentTypes`）とは無関係 — qooLibrary が実際に読める形式を
-/// 増やすものではない点に注意。
+/// `CFBundleDocumentTypes`）とは無関係。
 struct AssociationPreferencesTab: View {
     @Environment(\.locale) private var locale
     private let service: AppAssociationService = AppAssociationStore.shared
-    private static let builtInExtensions = ["zip", "cbz", "7z", "cb7", "rar", "cbr"]
+    /// [ユーザー要望: 「qooLibrary はqooViewerのフロントエンドとして設計
+    /// しているので、qooViewerが対応しているファイル形式は網羅する必要が
+    /// ある」] pdf・epub を追加（qooViewer も対応する形式、`ThumbnailService`
+    /// 側にも対応するサムネイル生成を実装済み）。
+    private static let builtInExtensions = ["zip", "cbz", "7z", "cb7", "rar", "cbr", "pdf", "epub"]
 
     @State private var candidatesByExtension: [String: [AppCandidate]] = [:]
     @State private var primaryByExtension: [String: String] = [:] // 拡張子 → bundleID（未設定は無し）
