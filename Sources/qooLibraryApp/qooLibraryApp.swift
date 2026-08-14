@@ -19,6 +19,34 @@ struct QooLibraryApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     init() {
+        // フォルダツリー（`FolderTreePane`、`.listStyle(.sidebar)`）の行間を
+        // 詰める [ユーザー要望]。**[調査の経緯]** `.sidebar` の実体である
+        // `NSOutlineView`（`style = .sourceList`）は `rowHeight`/
+        // `intercellSpacing` を実行時に直接代入しても内部的に約32ptへ強制
+        // し戻すことを実機診断で確認済み（詳細は CLAUDE.md 参照）。一度は
+        // `rowSizeStyle = .custom` を実行時に代入する方法も試したが、これは
+        // SwiftUI が所有する `NSOutlineView` に対して AppKit 内部の
+        // `_updateForSizeModeChange`（すべての可視行の再レイアウトを同期的に
+        // 引き起こす）を発火させ、SwiftUI の AttributeGraph を再入させて
+        // `SIGABRT` するクラッシュを引き起こした（クラッシュログで確認済み）。
+        //
+        // **`NSTableViewDefaultSizeMode`**（システム設定の「サイドバー
+        // アイコンサイズ」＝Small/Medium/Large を裏で保持している
+        // `UserDefaults` キー、値は 1/2/3）を使うと、`.sourceList` の行の
+        // 高さは「実行時に既存のライブ NSOutlineView を書き換える」のでは
+        // なく、AppKit 自身がテーブル構築時にこのキーを読んで最初から
+        // 小さいプリセットで組み立てる——という安全な経路になることを実機
+        // 診断で確認した（`rowSizeStyle` が自動的に medium(2)→small(1) に
+        // なり、`rowHeight` は 32.0→24.0、実際の行の高さも 32.0→28.0 に
+        // 縮小。クラッシュの原因だった実行時の直接代入は一切行っていない）。
+        // `register(defaults:)` は最下位優先度の「登録ドメイン」に書き込む
+        // ため、ユーザーが明示的にこのアプリ向けに別の値を設定していれば
+        // 上書きしない。**サンドボックス下の `UserDefaults.standard` は
+        // このアプリ専用のドメインであり、Finder 等の他アプリやシステム
+        // 全体のこの設定には一切影響しない**（`defaults write -g` とは
+        // 異なる。CLAUDE.md「設計の大原則」——固定値を強制するのではなく、
+        // ここでは OS 自身が用意した「密度」プリセットに乗る形で解決した）。
+        UserDefaults.standard.register(defaults: ["NSTableViewDefaultSizeMode": 1])
         // 異常終了後に残ったステージングディレクトリを削除する
         // [RB-07][EX-03]。`Scene` は `.task` を持てないため `init()` から
         // 起動時に一度だけ実行する。

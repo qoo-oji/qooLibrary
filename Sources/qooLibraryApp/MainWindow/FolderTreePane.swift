@@ -338,7 +338,16 @@ private struct GroupHeader: View {
                 HStack(spacing: Tokens.spacing.xs) {
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                         .font(.system(size: 9))
+                    // [ユーザー指摘の修正] `.sidebar` 標準の見出し用スタイル
+                    // （グレーの小さい文字）はダークモードで読みづらく、
+                    // フォルダ行本体（`FolderTreeRow.rowLabel`）ともサイズが
+                    // 揃っていなかった。フォルダ行と同じ大きさ・色
+                    // （`Color.primary`、ライト/ダークとも自動追従）に統一する
+                    // [ユーザー指摘: フォルダの文字色に合わせてよい]。
                     Text(title)
+                        .font(.system(size: Tokens.fontSize.body))
+                        .foregroundStyle(Color.primary)
+                        .fontWeight(.bold) // [ユーザー要望] ライト/ダークとも太字にする。
                 }
             }
             .buttonStyle(.plain)
@@ -449,6 +458,17 @@ private struct FolderTreeRow: View {
                 .frame(width: 16, height: 16)
         }
         .opacity(node.isOnline ? 1 : 0.4) // [LP-04]
+            // [実機検証で発見・修正したバグ] `NSTableViewDefaultSizeMode`
+            // による行の高さ縮小（`QooLibraryApp.init()` 参照）は、Apple の
+            // Small/Medium/Large プリセットとして「行の高さ・アイコン・
+            // 文字サイズをまとめて一段階小さくする」設計になっており
+            // [Finder 自身のサイドバーアイコンサイズ設定と同じ挙動]、
+            // `.sidebar` の暗黙のフォントに任せていたこの行のテキストも
+            // 一緒に縮んでしまっていた（ユーザー指摘）。中央ペイン
+            // （`Table`）と大きさを揃えたいのはあくまで文字サイズだけの
+            // 話であり、行の高さは意図して縮めているため、ここだけ明示的に
+            // 中央ペインと同じサイズへ固定して暗黙の縮小から切り離す。
+            .font(.system(size: Tokens.fontSize.body))
             .fontWeight(isSelected ? .semibold : .regular)
             // 濃い青の背景に対して黒文字だとコントラストが低いため、
             // Finder と同じく選択中は白文字にする。
