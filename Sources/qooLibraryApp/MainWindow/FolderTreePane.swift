@@ -332,23 +332,22 @@ private struct GroupHeader: View {
 
     var body: some View {
         HStack(spacing: Tokens.spacing.xs) {
+            // [ユーザー要望] 見出し左の開閉三角（chevron）を削除した。開閉
+            // 状態を示す視覚的インジケータは無くなるが、見出しクリックでの
+            // 開閉自体はこのボタンがそのまま担う（`isExpanded.toggle()`）。
             Button {
                 isExpanded.toggle() // [LP-07] 各グループは折りたたみ可
             } label: {
-                HStack(spacing: Tokens.spacing.xs) {
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 9))
-                    // [ユーザー指摘の修正] `.sidebar` 標準の見出し用スタイル
-                    // （グレーの小さい文字）はダークモードで読みづらく、
-                    // フォルダ行本体（`FolderTreeRow.rowLabel`）ともサイズが
-                    // 揃っていなかった。フォルダ行と同じ大きさ・色
-                    // （`Color.primary`、ライト/ダークとも自動追従）に統一する
-                    // [ユーザー指摘: フォルダの文字色に合わせてよい]。
-                    Text(title)
-                        .font(.system(size: Tokens.fontSize.body))
-                        .foregroundStyle(Color.primary)
-                        .fontWeight(.bold) // [ユーザー要望] ライト/ダークとも太字にする。
-                }
+                // [ユーザー指摘の修正] `.sidebar` 標準の見出し用スタイル
+                // （グレーの小さい文字）はダークモードで読みづらく、
+                // フォルダ行本体（`FolderTreeRow.rowLabel`）ともサイズが
+                // 揃っていなかった。フォルダ行と同じ大きさ・色
+                // （`Color.primary`、ライト/ダークとも自動追従）に統一する
+                // [ユーザー指摘: フォルダの文字色に合わせてよい]。
+                Text(title)
+                    .font(.system(size: Tokens.fontSize.body))
+                    .foregroundStyle(Color.primary)
+                    .fontWeight(.bold) // [ユーザー要望] ライト/ダークとも太字にする。
             }
             .buttonStyle(.plain)
             Spacer()
