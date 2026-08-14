@@ -113,6 +113,9 @@ struct FolderContentView: View {
     @AppStorage("qoo.folderList.showCreationDateColumn") private var showCreationDateColumn = false
     @AppStorage("qoo.folderList.showAddedDateColumn") private var showAddedDateColumn = false
     @AppStorage("qoo.folderList.groupFoldersAtTop") private var groupFoldersAtTop = true
+    /// 名前列が長すぎるときの省略位置 [ユーザー要望、環境設定「表示」タブ
+    /// `NameTruncationMode` と同じキーを共有する]。
+    @AppStorage("qoo.folderList.nameTruncationMode") private var nameTruncationMode: NameTruncationMode = .tail
     /// 圧縮・展開の既定値 [環境設定「圧縮／展開」タブ、`CompressionPreferencesTab`
     /// と同じ `UserDefaults` キーを共有]。
     @AppStorage("qoo.preferences.compression.format") private var compressionFormat: CompressibleFormat = .zip
@@ -162,6 +165,12 @@ struct FolderContentView: View {
     @State private var nameColumnWidth: CGFloat = 280
     /// `otherColumnsWidth` 計算からの余白（列間の区切り線・スクロールバー等）。
     private static let tableChromePadding: CGFloat = 40
+    /// `Table` に `.id()` として渡す識別子 [`.id(folder)` だと不具合が
+    /// あった、実機検証で発見・修正したバグの説明は `.id(...)` の呼び出し
+    /// 箇所を参照]。`reload()` が `entries`/各列の `ideal` 幅の計算を
+    /// **終えたあと**でこの値を更新することで、`Table` が新しい列幅を
+    /// 使って作り直されるタイミングを、幅の計算完了後まで確実に遅らせる。
+    @State private var tableIdentity: URL?
 
     var body: some View {
         // 選択がプログラム的に変わったとき（例: 「ここに圧縮」完了後に
@@ -249,7 +258,9 @@ struct FolderContentView: View {
                                             }
                                         }
                                 } else {
+                                    // [ユーザー要望、環境設定「表示」タブ] 省略位置を選べるようにする。
                                     Text(entry.name)
+                                        .truncationMode(nameTruncationMode.swiftUIMode)
                                 }
                             }
                             .font(.system(size: Tokens.fontSize.body))
@@ -265,7 +276,16 @@ struct FolderContentView: View {
                                     .foregroundStyle(.secondary)
                             }
                         }
-                        .width(min: 110, ideal: modificationDateColumnWidth, max: 170)
+                        // [実機検証で発見・修正したバグ] `ideal` は macOS の
+                        // `Table` では一切反映されない（WebSearch で確認:
+                        // Apple Developer Forums の回答 "idealSize is totally
+                        // ignored on macOS"）。内容に合わせた幅を実際に効かせる
+                        // 唯一の方法は `min == max` で固定することだった
+                        // （この代わりにドラッグでの手動リサイズはできなくなる。
+                        // ユーザー確認済み: 区切り線ダブルクリックでの自動調整は
+                        // 別途取り下げ済みのため、常時自動調整で置き換える形で
+                        // 許容している）。
+                        .width(min: modificationDateColumnWidth, max: modificationDateColumnWidth)
                     }
 
                     if showSizeColumn {
@@ -277,7 +297,7 @@ struct FolderContentView: View {
                                     .foregroundStyle(.secondary)
                             }
                         }
-                        .width(min: 70, ideal: sizeColumnWidth, max: 90)
+                        .width(min: sizeColumnWidth, max: sizeColumnWidth)
                     }
 
                     if showKindColumn {
@@ -288,7 +308,7 @@ struct FolderContentView: View {
                                     .foregroundStyle(.secondary)
                             }
                         }
-                        .width(min: 90, ideal: kindColumnWidth, max: 140)
+                        .width(min: kindColumnWidth, max: kindColumnWidth)
                     }
 
                     if showCreationDateColumn { // [ユーザー要望: Finder に合わせてカラムを増やす]
@@ -299,7 +319,7 @@ struct FolderContentView: View {
                                     .foregroundStyle(.secondary)
                             }
                         }
-                        .width(min: 110, ideal: creationDateColumnWidth, max: 170)
+                        .width(min: creationDateColumnWidth, max: creationDateColumnWidth)
                     }
 
                     if showAddedDateColumn {
@@ -310,7 +330,7 @@ struct FolderContentView: View {
                                     .foregroundStyle(.secondary)
                             }
                         }
-                        .width(min: 110, ideal: addedDateColumnWidth, max: 170)
+                        .width(min: addedDateColumnWidth, max: addedDateColumnWidth)
                     }
                 }
                 // [ユーザー指摘の修正] `.width(ideal:)` は列（`NSTableColumn`）が
@@ -322,7 +342,23 @@ struct FolderContentView: View {
                 // `ideal` を適用させる。`selection`/`sortOrder`/`isListFocused`
                 // は `Table` の外側（`FolderContentView` 自身）の状態のため、
                 // ここで `Table` だけを作り直しても失われない。
-                .id(folder)
+                //
+                // [実機検証で発見・修正したバグ] 当初 `.id(folder)`（`folder`
+                // をそのまま使う）にしていたが、これだと「種類」列が
+                // "ComicBook Zip" のような長い文字列を途中で切ってしまう
+                // 不具合が起きた。原因は `.task(id: folder)`（`reload()` を
+                // 呼ぶ）が `body` の再評価より**後**に走ること——`folder` が
+                // 変わった瞬間の `body` 再評価では、`.id(folder)` により
+                // `Table` はその場で新しい identity で作り直されるが、この
+                // 時点では `entries`/`kindColumnWidth` 等はまだ**前の
+                // フォルダの値のまま**（`reload()` がまだ実行されていない）。
+                // その後 `reload()` が実行され正しい幅を計算しても、`folder`
+                // 自体はもう変化していないため `.id(folder)` は同じ値のままで
+                // `Table` は作り直されず、古い（誤った）幅を持つ列がそのまま
+                // 残ってしまっていた。`tableIdentity` は `reload()` が幅の
+                // 計算を終えた**あとで**更新するため、`Table` の作り直しが
+                // 必ず正しい幅の計算後に起きるようにしている。
+                .id(tableIdentity)
                 .focused($isListFocused)
                 // [ユーザー要望] 名前列に余った幅をすべて割り当てる。`Table`
                 // 自身の実測幅が変わるたび（ウインドウ／ペインのリサイズ）に
@@ -652,8 +688,13 @@ struct FolderContentView: View {
     private func recomputeAutoFitColumnWidths() {
         // [ユーザー指摘の修正] Finder のスクリーンショットを基準に、余白を
         // 従来より詰めた（`Tokens.spacing.m * 2 + Tokens.spacing.xs` = 28pt
-        // だったものを 16pt に縮小）。
-        let padding: CGFloat = Tokens.spacing.l
+        // だったものを 16pt に縮小）。**その後、実機診断で「種類」列の
+        // "ComicBook Zip" が末尾で切れる不具合が見つかった**——`NSString`
+        // での実測（92pt）に 16pt を足した 108pt は `Table` 内の実際のセルが
+        // 必要とする幅に対してまだ不足していた（`Table` 自身がセルの左右に
+        // 加える余白など、実測に含まれない分があると考えられる）。安全側に
+        // 倒して 24pt へ増やした。
+        let padding: CGFloat = Tokens.spacing.xl
 
         func fitWidth(header: String.LocalizationValue, values: [String]) -> CGFloat {
             let headerWidth = Self.measuredWidth(String(localized: header, locale: locale))
@@ -974,6 +1015,7 @@ struct FolderContentView: View {
         guard let folder else {
             entries = []
             loadError = nil
+            tableIdentity = folder
             return
         }
         do {
@@ -1013,6 +1055,11 @@ struct FolderContentView: View {
             loadError = error.localizedDescription
         }
         recomputeAutoFitColumnWidths() // [ユーザー指摘の修正] 列幅を内容に合わせて再計測する。
+        // 幅の計算を終えたあとで更新する（`tableIdentity` 宣言部と `.id(...)`
+        // 呼び出し箇所のコメント参照）。同一フォルダ内の再読み込み（D&D 等）
+        // では `folder` の値自体は変わらないため、`Table` は作り直されず
+        // スクロール位置等も保たれる。
+        tableIdentity = folder
     }
 
     /// 自分自身の再読み込みに加えて、他のウインドウ／ペインにも変更を知らせる

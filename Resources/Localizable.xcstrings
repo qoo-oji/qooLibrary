@@ -2849,6 +2849,70 @@
         }
       }
     },
+    "preferences.display.nameTruncationMode": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Truncate long names"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "名前が長い場合の省略位置"
+          }
+        }
+      }
+    },
+    "preferences.display.truncationHead": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "At the beginning"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "先頭を省略"
+          }
+        }
+      }
+    },
+    "preferences.display.truncationMiddle": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In the middle"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "中央を省略"
+          }
+        }
+      }
+    },
+    "preferences.display.truncationTail": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "At the end"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "末尾を省略"
+          }
+        }
+      }
+    },
     "preferences.display.columnsHeader": {
       "localizations": {
         "en": {

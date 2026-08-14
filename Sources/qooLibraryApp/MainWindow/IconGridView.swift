@@ -52,6 +52,9 @@ struct IconGridView<MenuContent: View>: View {
     /// 無いため、`FolderContentView` の `isListFocused` をそのまま受け取って
     /// 同じ判定をここでも再現する。
     let isFocused: Bool
+    /// 名前が長すぎるときの省略位置 [ユーザー要望、環境設定「表示」タブ・
+    /// `FolderContentView` の名前列と同じキーを共有する]。
+    @AppStorage("qoo.folderList.nameTruncationMode") private var nameTruncationMode: NameTruncationMode = .tail
 
     private var columns: [GridItem] {
         [GridItem(.adaptive(minimum: iconSize + 32), spacing: Tokens.spacing.m)]
@@ -113,6 +116,7 @@ struct IconGridView<MenuContent: View>: View {
                 Text(entry.name)
                     .font(.system(size: Tokens.fontSize.caption))
                     .lineLimit(2)
+                    .truncationMode(nameTruncationMode.swiftUIMode) // [ユーザー要望] 名前列と同じ設定を共有する。
                     .multilineTextAlignment(.center)
                     // 濃い青の背景に対して黒文字だとコントラストが低いため、
                     // Finder と同じくフォーカスありの選択中は白文字にする。
