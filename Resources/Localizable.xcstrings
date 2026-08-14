@@ -849,6 +849,70 @@
         }
       }
     },
+    "diagnostics.exportFailed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnostic export failed."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "診断情報の書き出しに失敗しました。"
+          }
+        }
+      }
+    },
+    "diagnostics.exportMenuItem": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export Diagnostics…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "診断情報を書き出す…"
+          }
+        }
+      }
+    },
+    "diagnostics.exportPanelMessage": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose where to save the diagnostic report"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "診断情報の保存先を選択してください"
+          }
+        }
+      }
+    },
+    "diagnostics.exportPanelPrompt": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "書き出す"
+          }
+        }
+      }
+    },
     "error.compressFailed": {
       "localizations": {
         "en": {
@@ -2721,6 +2785,214 @@
         }
       }
     },
+    "preferences.advanced.anonymizePaths": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anonymize file paths"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ファイルパスを匿名化"
+          }
+        }
+      }
+    },
+    "preferences.advanced.exportDiagnostics": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export Diagnostics…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "診断情報を書き出す…"
+          }
+        }
+      }
+    },
+    "preferences.advanced.exportFooter": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The report is a zip archive containing the log files and a summary of your Mac, this build, and your registered folders. Nothing is ever sent over the network — share the file yourself if you're reporting a problem."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "診断情報は、ログファイルと、この Mac・ビルド・登録フォルダの概要をまとめた zip ファイルです。ネットワークへ送信されることは一切ありません。不具合を報告する際は、書き出したファイルをご自身で共有してください。"
+          }
+        }
+      }
+    },
+    "preferences.advanced.exportHeader": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnostic Report"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "診断情報"
+          }
+        }
+      }
+    },
+    "preferences.advanced.logFooter": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "qooLibrary keeps a log file to help reproduce and report problems. Each level also includes the more severe ones above it, so “Debug” records the most detail. Logs rotate automatically and stay on this Mac."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不具合の再現と報告に役立てるため、qooLibrary は動作の記録をファイルに残します。各レベルはそれより重大なものも含み、「デバッグ」がもっとも詳しく記録します。ログは自動的にローテーションされ、この Mac の中だけに保存されます。"
+          }
+        }
+      }
+    },
+    "preferences.advanced.logHeader": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnostic Log"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "診断ログ"
+          }
+        }
+      }
+    },
+    "preferences.advanced.logLevel": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Log Level"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ログレベル"
+          }
+        }
+      }
+    },
+    "preferences.advanced.logLevelDebug": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Debug"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "デバッグ"
+          }
+        }
+      }
+    },
+    "preferences.advanced.logLevelError": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Error"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "エラー"
+          }
+        }
+      }
+    },
+    "preferences.advanced.logLevelInfo": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Info"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "情報"
+          }
+        }
+      }
+    },
+    "preferences.advanced.logLevelWarning": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Warning"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "警告"
+          }
+        }
+      }
+    },
+    "preferences.advanced.logSize": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current Size"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "現在のサイズ"
+          }
+        }
+      }
+    },
+    "preferences.advanced.revealLogs": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show Logs in Finder"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ログを Finder で表示"
+          }
+        }
+      }
+    },
     "preferences.associations.add": {
       "localizations": {
         "en": {
@@ -3933,6 +4205,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "アクセス権"
+          }
+        }
+      }
+    },
+    "preferences.tab.advanced": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Advanced"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "詳細"
           }
         }
       }

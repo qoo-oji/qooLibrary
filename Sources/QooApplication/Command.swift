@@ -1,4 +1,5 @@
 import Foundation
+import QooInfrastructure
 
 /// Undo/Redo 可能な操作の単位 [11章 §11.1、A-03][UD-01]。
 ///
@@ -26,6 +27,24 @@ import Foundation
 public protocol Command: AnyObject {
     /// Undo/Redo メニュー・操作履歴に出す説明。「12 件のファイルを移動」[UD-06]
     var displayName: String { get }
+
+    /// 診断ログ用の説明 [LG2-01][LG2-06]。
+    ///
+    /// **`displayName` と違い、対象を必ず「絶対パス」で表す。** 理由は 2 つ:
+    ///
+    /// 1. **匿名化の対象になる**。書き出し時のパス匿名化 [LG2-06] が拾えるのは
+    ///    絶対パスと `Log.redactable(_:)` の印だけで、`displayName` のように
+    ///    `lastPathComponent` を素で埋め込むとファイル名がそのまま書き出し
+    ///    バンドルに残ってしまう（1-15 実装後の実機確認で発覚した取りこぼし）。
+    /// 2. **診断に必要な情報が増える**。「どのファイルか」だけでなく
+    ///    「どこのファイルか」が分かる。同名ファイルが複数の場所にある
+    ///    ライブラリでは、名前だけでは事象を再現できない。
+    ///
+    /// 既定実装は `displayName` を返す（`CompositeCommand` のように、対象を
+    /// 単一の URL で表せないコマンド向け）。**対象の URL を持つコマンドは
+    /// 必ずオーバーライドすること。**
+    var logDescription: String { get }
+
     /// `false` の場合は `CommandStack.run` がスタックに積まない
     /// （完全削除等、Undo 不可能な操作用）[UD-10]。
     var isUndoable: Bool { get }
@@ -41,6 +60,23 @@ public protocol Command: AnyObject {
 extension Command {
     public func redo() async throws -> CommandResult {
         try await execute()
+    }
+
+    public var logDescription: String { displayName }
+
+    /// `logDescription` を組み立てる共通ヘルパー。
+    /// 例: `move: /Volumes/Ext/A.cbz, /Volumes/Ext/B.cbz → /Volumes/Ext/Sub`
+    ///
+    /// 件数が多いときに 1 行が際限なく伸びないよう、先頭数件で打ち切る
+    /// （全件は `FileOperationService` 側が項目ごとに `debug` で残す）。
+    static func logDescription(_ operation: String, _ urls: [URL], to destination: URL? = nil) -> String {
+        let limit = 5
+        var listed = urls.prefix(limit).map { Log.path($0) }.joined(separator: ", ")
+        if urls.count > limit {
+            listed += " ほか \(urls.count - limit) 件"
+        }
+        let target = destination.map { " → \(Log.path($0))" } ?? ""
+        return "\(operation): \(listed)\(target)"
     }
 }
 
@@ -76,6 +112,14 @@ public final class CompositeCommand: Command {
     }
 
     public var displayName: String { name }
+
+    /// 子の `logDescription` を並べる。**`name`（＝`displayName`）は使わない** —
+    /// `displayName` はユーザー向けの文言で、`lastPathComponent` を素で
+    /// 埋め込んでいることがあり、書き出し時に匿名化されないため [LG2-06]。
+    public var logDescription: String {
+        "composite[\(children.map(\.logDescription).joined(separator: " | "))]"
+    }
+
     public var isUndoable: Bool { children.allSatisfy(\.isUndoable) }
 
     public func execute() async throws -> CommandResult {

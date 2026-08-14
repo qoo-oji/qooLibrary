@@ -26,6 +26,9 @@ public actor SecureExtractor {
     /// ようにしている。
     private let stagingRoot: URL
 
+    /// 1 回の展開でログに書き出す拒否エントリの上限（`extract` のコメント参照）。
+    static let rejectionLogLimit = 20
+
     public init(fileOps: FileOperationService = .shared, stagingRoot: URL = SecureExtractor.defaultStagingRoot()) {
         self.fileOps = fileOps
         self.stagingRoot = stagingRoot
@@ -72,11 +75,41 @@ public actor SecureExtractor {
             extractOptions.encoding = listing.detectedEncoding
         }
 
+        // 注釈はパスの**前**に置く（パスの直後に文字を続けない）。
+        // ファイル名にはあらゆる文字が入り得るため、パスの後ろに注釈を足すと
+        // 匿名化がどこまでがパスなのかを判断しにくくなる [LG2-06]。
+        Log.archive.info(
+            "展開開始（\(format) / \(listing.entries.count) エントリ / エンコーディング \(extractOptions.encoding.map(String.init(describing:)) ?? "自動")）: \(Log.path(archiveURL)) → \(Log.path(options.destination))"
+        )
+
         let result = try await backend.extract(archiveURL, to: staging, options: extractOptions)
         if Task.isCancelled { throw ExtractError.cancelled } // [EX-24]
 
+        // 弾いたエントリ（パストラバーサル・絶対パス・シンボリックリンク等）は
+        // ユーザーには件数しか見えないため、**何をなぜ弾いたか**をログに残す
+        // [EX-10〜EX-15]。壊れた／悪意あるアーカイブの調査に直結する。
+        //
+        // **件数に上限を設ける**: 拒否は最大 `maxEntries`（既定 10 万件）まで
+        // 起こり得る。全件書くと 1 つの細工されたアーカイブだけで数 MB の
+        // ログが出て、ローテーションによって**まさに調べたい直前の履歴を
+        // 押し流してしまう** [LG2-04]。原因の特定には先頭の数件で足りる。
+        // エントリ名はアーカイブ内の名前で絶対パスではないため、匿名化の
+        // 対象になるよう印を付ける [LG2-06]。
+        for rejection in result.rejected.prefix(Self.rejectionLogLimit) {
+            Log.archive.warning("展開時にエントリを拒否（\(rejection.reason)）: \(Log.redactable(rejection.entry))")
+        }
+        if result.rejected.count > Self.rejectionLogLimit {
+            Log.archive.warning(
+                "展開時の拒否は全 \(result.rejected.count) 件。ログには先頭 \(Self.rejectionLogLimit) 件のみ記録しました"
+            )
+        }
+
         let receipts = try await fileOps.promoteFromStaging(
             staging, to: options.destination, options: OpOptions(conflictPolicy: .keepBoth)
+        )
+
+        Log.archive.info(
+            "展開完了（\(result.extractedCount) 件 / \(result.totalBytesWritten) バイト / 拒否 \(result.rejected.count) 件 / 改名 \(result.renamedForCaseCollision.count) 件）: \(Log.path(archiveURL))"
         )
 
         return ExtractResult(

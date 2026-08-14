@@ -102,7 +102,7 @@ public actor QuickLookCoverStore: QuickLookCoverProviding {
             try data.write(to: destination, options: .atomic)
             return destination
         } catch {
-            Log.ui.error("Quick Look 用カバーの書き出しに失敗: \(error.localizedDescription, privacy: .public)")
+            Log.image.error("Quick Look 用カバーの書き出しに失敗: \(Log.path(destination)) — \(error.localizedDescription)")
             return nil
         }
     }

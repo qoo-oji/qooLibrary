@@ -23,6 +23,8 @@ public final class MoveFilesCommand: Command {
     public var displayName: String {
         items.count == 1 ? "「\(items[0].lastPathComponent)」を移動" : "\(items.count) 件のファイルを移動"
     }
+
+    public var logDescription: String { Self.logDescription("move", items, to: destination) }
     public let isUndoable = true
 
     public func execute() async throws -> CommandResult {
@@ -75,6 +77,8 @@ public final class CopyFilesCommand: Command {
     public var displayName: String {
         items.count == 1 ? "「\(items[0].lastPathComponent)」を複製" : "\(items.count) 件のファイルを複製"
     }
+
+    public var logDescription: String { Self.logDescription("copy", items, to: destination) }
     public let isUndoable = true
 
     public func execute() async throws -> CommandResult {
@@ -107,6 +111,10 @@ public final class RenameCommand: Command {
     }
 
     public var displayName: String { "「\(item.lastPathComponent)」の名前を変更" }
+
+    public var logDescription: String {
+        "rename: \(Log.path(item)) → \(Log.path(item.deletingLastPathComponent().appendingPathComponent(newName)))"
+    }
     public let isUndoable = true
 
     public func execute() async throws -> CommandResult {
@@ -141,6 +149,8 @@ public final class TrashCommand: Command {
     public var displayName: String {
         items.count == 1 ? "「\(items[0].lastPathComponent)」をゴミ箱に入れる" : "\(items.count) 件のファイルをゴミ箱に入れる"
     }
+
+    public var logDescription: String { Self.logDescription("trash", items) }
     public let isUndoable = true
 
     public func execute() async throws -> CommandResult {
@@ -201,6 +211,8 @@ public final class DeletePermanentlyCommand: Command {
     public var displayName: String {
         items.count == 1 ? "「\(items[0].lastPathComponent)」を完全に削除" : "\(items.count) 件を完全に削除"
     }
+
+    public var logDescription: String { Self.logDescription("deletePermanently", items) }
     /// [UD-10][PD-05] 取り消せない。
     public let isUndoable = false
 
@@ -255,6 +267,8 @@ public final class CreateFolderCommand: Command {
     }
 
     public var displayName: String { "「\(url.lastPathComponent)」を作成" }
+
+    public var logDescription: String { "createFolder: \(Log.path(url))" }
     public let isUndoable = true
 
     public func execute() async throws -> CommandResult {
@@ -292,6 +306,8 @@ public final class CreateAliasCommand: Command {
     }
 
     public var displayName: String { "「\(source.lastPathComponent)」のエイリアスを作成" }
+
+    public var logDescription: String { "createAlias: \(Log.path(source)) → \(Log.path(destinationFolder))" }
     public let isUndoable = true
 
     public func execute() async throws -> CommandResult {
@@ -327,6 +343,8 @@ public final class SetLockedCommand: Command {
         let action = locked ? "ロック" : "ロック解除"
         return items.count == 1 ? "「\(items[0].lastPathComponent)」を\(action)" : "\(items.count) 件を\(action)"
     }
+
+    public var logDescription: String { Self.logDescription("setLocked(\(locked))", items) }
     public let isUndoable = true
 
     public func execute() async throws -> CommandResult {

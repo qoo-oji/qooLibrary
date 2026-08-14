@@ -129,16 +129,16 @@ public final class NotificationRouter {
         }
     }
 
-    /// [ER-04] 強度を問わずすべて OSLog には残す（無言で握りつぶさない）。
-    /// `.public` を明示しないと非 Apple 署名プロセスでは内容が `<private>` に
-    /// 伏字化され Console.app で読めない
-    /// [1-9 の実機検証で発見済みの教訓、`CLAUDE.md` 参照]。
+    /// [ER-04] 強度を問わずすべてログには残す（無言で握りつぶさない）。
+    /// 1-15 以降は `OSLog` に加えて診断ログのファイルにも残るため
+    /// [LG2-01]、ユーザーが「エラーが出た」と報告した際に、実際に表示された
+    /// 文言と提示強度をそのまま確認できる。
     private func logToConsole(_ item: NotificationItem) {
-        let message = "\(item.title): \(item.body)"
+        let message = "[強度\(item.severity.rawValue)] \(item.title): \(item.body)"
         switch item.category {
-        case .error: Log.ui.error("\(message, privacy: .public)")
-        case .warning: Log.ui.warning("\(message, privacy: .public)")
-        case .info: Log.ui.info("\(message, privacy: .public)")
+        case .error: Log.ui.error(message)
+        case .warning: Log.ui.warning(message)
+        case .info: Log.ui.info(message)
         }
     }
 }

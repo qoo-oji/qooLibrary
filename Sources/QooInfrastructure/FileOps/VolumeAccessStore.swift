@@ -111,12 +111,24 @@ public actor VolumeAccessStore {
         for grant in grants {
             activateAccessIfPossible(grant)
         }
+        Log.sandbox.info("ボリューム許可を読み込みました: \(grants.count) 件 / アクセス開始 \(activeAccessCounts.count) 件")
     }
 
     private func activateAccessIfPossible(_ grant: GrantedVolumeAccess) {
-        guard let url = resolvedURL(for: grant) else { return }
+        guard let url = resolvedURL(for: grant) else {
+            // 「アクセス権がありません」表示の原因がここに出る。許可したはずの
+            // ボリュームが未接続・削除されているのか、ブックマークが無効に
+            // なったのかを切り分けられるようにしておく [SB-05]。
+            // 解決できないので絶対パスが無い。表示名は書き出し時に匿名化
+            // されるよう印を付ける [LG2-06]。
+            Log.sandbox.warning("ボリューム許可のブックマークを解決できません: \(Log.redactable(grant.displayName))")
+            return
+        }
         if url.startAccessingSecurityScopedResource() {
             activeAccessCounts[url, default: 0] += 1
+            Log.sandbox.debug("ボリューム許可のアクセスを開始: \(Log.path(url))")
+        } else {
+            Log.sandbox.warning("ボリューム許可のセキュリティスコープを開始できません: \(Log.path(url))")
         }
     }
 
@@ -132,6 +144,9 @@ public actor VolumeAccessStore {
             let corruptBackup = storageURL.deletingLastPathComponent()
                 .appendingPathComponent("\(storageURL.lastPathComponent).corrupt-\(UUID().uuidString)")
             try? FileManager.default.moveItem(at: storageURL, to: corruptBackup)
+            Log.sandbox.error(
+                "ボリューム許可の永続化ファイルを読めません。\(corruptBackup.path) へ退避し、許可なしで続行します"
+            )
             return
         }
         grants = decoded

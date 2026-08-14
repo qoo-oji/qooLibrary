@@ -21,14 +21,20 @@ public struct SecurityScopedBookmarkResolver: BookmarkResolving {
                 relativeTo: nil,
                 bookmarkDataIsStale: &isStale
             )
+            if isStale {
+                Log.sandbox.debug("ブックマークが stale です（再作成が望ましい）: \(Log.path(url))")
+            }
             return .resolved(url: url, isStale: isStale)
         } catch let error as CocoaError where error.code == .fileNoSuchFile || error.code == .fileReadNoSuchFile {
             // ボリューム未接続時、解決先が見つからない形でエラーになる。
+            Log.sandbox.debug("ブックマークの解決に失敗（未接続と判定）: \(error.localizedDescription)")
             return .offline(reason: .volumeNotMounted)
         } catch {
             // [設計判断] CocoaError だけでは「権限拒否」と「ブックマーク自体が壊れている」を
             // 確実には区別できない（API が明確なコードを返さないため）。両者を区別する必要が
             // 生じたら、TCC 保護領域への読み取り試行（B-21 と同じ手法）を併用する。
+            // その判別材料として、生のエラーだけは診断ログに残しておく。
+            Log.sandbox.debug("ブックマークの解決に失敗（無効と判定）: \(error)")
             return .offline(reason: .invalidBookmark)
         }
     }

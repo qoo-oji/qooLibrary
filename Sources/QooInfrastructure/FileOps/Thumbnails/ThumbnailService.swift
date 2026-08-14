@@ -89,8 +89,20 @@ public actor ThumbnailService {
             generated = try? await task.value
         }
 
-        guard let generated else { return nil }
-        _ = try? cache.store(generated, for: identity)
+        guard let generated else {
+            // [IM-04] 生成できなくてもアプリは落とさず既定アイコンへ
+            // フォールバックする。ただし「なぜサムネイルが出ないのか」は
+            // 実機で頻繁に問われるため、診断ログには残す。既定レベル
+            // （`info`）では出さない — 対応していない形式のファイルが
+            // 並んでいるだけで大量に出てしまうため。
+            Log.image.debug("サムネイルを生成できません（\(PreviewableFileKind.of(url))）: \(Log.path(url))")
+            return nil
+        }
+        do {
+            _ = try cache.store(generated, for: identity)
+        } catch {
+            Log.image.warning("サムネイルのキャッシュ保存に失敗: \(Log.path(url)) — \(error.localizedDescription)")
+        }
         return generated
     }
 

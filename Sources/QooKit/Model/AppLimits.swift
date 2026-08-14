@@ -55,4 +55,24 @@ public enum AppLimits {
         /// サムネイル（PNG 縮小版）より大きく、別の上限にしている。
         public static let defaultCoverCacheMaxSize: Int64 = 200 * 1_000 * 1_000
     }
+
+    /// 診断ログ [2章 §2.6、LG2-01〜LG2-08]。
+    public enum Logging {
+        /// 既定のログレベル（`info`）[LG2-03]。
+        public static let defaultLevel: LogLevel = .info
+        /// ログファイル 1 本あたりの上限バイト数（既定 10MB）[LG2-04][CB-20]。
+        public static let defaultMaxFileBytes: Int64 = 10 * 1_000 * 1_000
+        /// 保持する世代数（既定 5、`qoo-0.log` … `qoo-4.log`）[LG2-04][CB-20]。
+        public static let defaultGenerations: Int = 5
+        /// 書き出し待ちレコードのバッファ上限。
+        ///
+        /// ログの書き込みは呼び出し元をブロックしないよう非同期の消費タスクへ
+        /// 渡す [CB-21] が、ディスクが極端に遅い・止まっている場合に待ち行列が
+        /// 無制限に伸びてメモリを食い潰さないよう上限を設ける。溢れた分は
+        /// 古いものから捨て、捨てた件数を後続の行に注記する（黙って失う方が
+        /// 危険なため）。
+        public static let maxBufferedRecords: Int = 4_096
+        /// 匿名化トークンの桁数（sha256 の先頭 8 桁）[CB-23]。
+        public static let anonymizationTokenLength: Int = 8
+    }
 }

@@ -179,7 +179,16 @@ public actor AppAssociationStore: AppAssociationService {
             // 拡張前（`[String: String]` 単体）の旧形式へのフォールバック。
             // この形式には拡張子一覧という概念自体が無かったため、初回起動と
             // 同じく既定値で埋める。
-            associations = (try? JSONDecoder().decode([String: String].self, from: data)) ?? [:]
+            let legacy = try? JSONDecoder().decode([String: String].self, from: data)
+            if legacy == nil {
+                // どちらの形式でも読めなかった＝ファイルが壊れている。
+                // ここは `RegisteredFolderStore`/`VolumeAccessStore` と違い
+                // 失っても再設定で済む種類の設定なので退避まではしないが、
+                // 「関連付けが勝手に消えた」と見える事象の原因になるため
+                // 必ずログに残す。
+                Log.fileOps.error("アプリ関連付けの永続化ファイルを読めません。既定値で続行します: \(Log.path(storageURL))")
+            }
+            associations = legacy ?? [:]
             extensionSet = Self.defaultExtensions
         }
     }

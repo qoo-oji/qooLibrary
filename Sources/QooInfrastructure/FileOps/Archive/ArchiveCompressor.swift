@@ -46,14 +46,32 @@ public actor ArchiveCompressor {
 
         let ext = options.format == .zip ? "zip" : "7z"
         let stagingArchive = stagingDir.appendingPathComponent("\(destinationName).\(ext)")
-        try await LibarchiveBackend.shared.compress(items, to: stagingArchive, options: options, passphrase: passphrase)
+        // 暗号化の有無は記録するが、**パスフレーズそのものは絶対にログへ
+        // 書かない**（診断ログはユーザーが第三者へ共有する前提の成果物）。
+        // 注釈はパスの**前**に（`SecureExtractor` と同じ理由）。宛先は
+        // 「フォルダ + 名前」を連結した完全なパスとして 1 つの印に収める。
+        Log.archive.info(
+            "圧縮開始（\(options.format) / 暗号化 \(options.encryption)）: \(items.count) 件 → \(Log.path(destinationFolder.appendingPathComponent("\(destinationName).\(ext)")))"
+        )
+        do {
+            try await LibarchiveBackend.shared.compress(items, to: stagingArchive, options: options, passphrase: passphrase)
+        } catch {
+            // 素のファイル名ではなく最終位置の絶対パスで書く（匿名化の対象に
+            // なるのは絶対パスだけのため [LG2-06]）。
+            Log.archive.error(
+                "圧縮に失敗: \(Log.path(destinationFolder.appendingPathComponent("\(destinationName).\(ext)"))) — \(error.localizedDescription)"
+            )
+            throw error
+        }
 
         let receipts = try await fileOps.move(
             [stagingArchive], to: destinationFolder, options: OpOptions(conflictPolicy: conflictPolicy)
         )
         guard let finalURL = receipts.first?.toURL else {
+            Log.archive.error("圧縮結果を最終位置へ移せませんでした: \(Log.path(destinationFolder))")
             throw ExtractError.backendFailure("failed to move compressed archive to destination")
         }
+        Log.archive.info("圧縮完了: \(Log.path(finalURL))")
         return finalURL
     }
 }

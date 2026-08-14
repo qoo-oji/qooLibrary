@@ -38,6 +38,14 @@ public final class CompressCommand: Command {
         let ext = options.format == .zip ? "zip" : "7z"
         return "「\(destinationName).\(ext)」を作成"
     }
+
+    public var logDescription: String {
+        let ext = options.format == .zip ? "zip" : "7z"
+        let target = destinationFolder.appendingPathComponent("\(destinationName).\(ext)")
+        // パスフレーズそのものは絶対に書かない（暗号化の有無だけ残す）。
+        return Self.logDescription("compress(\(options.format)/\(options.encryption))", items, to: target)
+    }
+
     public let isUndoable = true
 
     public func execute() async throws -> CommandResult {
@@ -86,6 +94,9 @@ public final class ExtractCommand: Command {
     }
 
     public var displayName: String { "「\(archiveURL.lastPathComponent)」を展開" }
+
+    public var logDescription: String { "extract: \(Log.path(archiveURL)) → \(Log.path(destination))" }
+
     public let isUndoable = true
 
     public func execute() async throws -> CommandResult {

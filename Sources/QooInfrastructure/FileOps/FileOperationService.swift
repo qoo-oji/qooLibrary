@@ -32,6 +32,7 @@ public actor FileOperationService {
             throw FileOperationError.operationFailed("「\(url.lastPathComponent)」という名前の項目はすでに存在します。")
         }
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true) // [FM-01]
+        Log.fileOps.info("createDirectory: \(Log.path(url))")
         return OpReceipt(before: nil, after: try? identity(of: url), fromURL: url, toURL: url, kind: .createDirectory)
     }
 
@@ -72,6 +73,7 @@ public actor FileOperationService {
         try withReplaceBackupCleanup(resolved) {
             try FileManager.default.moveItem(at: item, to: resolved.target) // [FM-05]
         }
+        Log.fileOps.info("rename: \(Log.path(item)) → \(Log.path(resolved.target))")
         return OpReceipt(before: before, after: try? identity(of: resolved.target), fromURL: item, toURL: resolved.target, kind: .rename)
     }
 
@@ -82,14 +84,24 @@ public actor FileOperationService {
         }
         // NSWorkspace.shared.recycle(_:completionHandler:) を使い、Finder の
         // 「元に戻す」と互換にする [FM-04][TR2-01]。
-        let mapping = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[URL: URL], Error>) in
-            NSWorkspace.shared.recycle(items) { urls, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume(returning: urls)
+        let mapping: [URL: URL]
+        do {
+            mapping = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[URL: URL], Error>) in
+                NSWorkspace.shared.recycle(items) { urls, error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else {
+                        continuation.resume(returning: urls)
+                    }
                 }
             }
+        } catch {
+            Log.fileOps.error("trash に失敗: \(items.map(\.path).joined(separator: ", ")) — \(error.localizedDescription)")
+            throw error
+        }
+        Log.fileOps.info("trash 完了: \(mapping.count)/\(items.count) 件")
+        for (original, trashed) in mapping {
+            Log.fileOps.debug("trash: \(Log.path(original)) → \(Log.path(trashed))")
         }
         return items.compactMap { original in
             guard let id = identities[original] else { return nil }
@@ -118,8 +130,11 @@ public actor FileOperationService {
         var failures: [DeletionFailure] = []
         var skipped: [URL] = []
 
+        // **取り消せない操作** [PD-05] のため、他の操作より詳しく記録する。
+        Log.fileOps.info("deletePermanently 開始: \(items.count) 件")
         for item in items {
             guard itemExists(at: item) else {
+                Log.fileOps.warning("deletePermanently: 項目が見つかりません \(Log.path(item))")
                 failures.append(DeletionFailure(url: item, reason: "項目が見つかりません"))
                 continue
             }
@@ -127,6 +142,7 @@ public actor FileOperationService {
             if hasAnyLockedItem(at: item) {
                 let decision = await options.lockedItemResolver?(item) ?? .skip
                 guard decision == .delete else {
+                    Log.fileOps.info("deletePermanently: ロック済みのためスキップ \(Log.path(item))")
                     skipped.append(item)
                     continue
                 }
@@ -136,6 +152,7 @@ public actor FileOperationService {
             let before = try? identity(of: item)
             do {
                 try FileManager.default.removeItem(at: item) // [FM-14]
+                Log.fileOps.info("deletePermanently: 削除しました \(Log.path(item))")
                 receipts.append(OpReceipt(before: before, after: nil, fromURL: item, toURL: item, kind: .deletePermanently))
             } catch {
                 // 削除できなかった以上、外したロックは元に戻す。さもないと
@@ -144,9 +161,13 @@ public actor FileOperationService {
                 relock(unlocked)
                 // [ER-12][ER-13] 判断の要らない失敗（権限・I/O）は中断せず記録し、
                 // 呼び出し側が完了後にまとめて提示する。
+                Log.fileOps.error("deletePermanently に失敗: \(Log.path(item)) — \(error.localizedDescription)")
                 failures.append(DeletionFailure(url: item, reason: error.localizedDescription))
             }
         }
+        Log.fileOps.info(
+            "deletePermanently 完了: 削除 \(receipts.count) 件 / 失敗 \(failures.count) 件 / スキップ \(skipped.count) 件"
+        )
         return DeletionOutcome(receipts: receipts, failures: failures, skipped: skipped)
     }
 
@@ -230,6 +251,7 @@ public actor FileOperationService {
         try withReplaceBackupCleanup(resolved) {
             try URL.writeBookmarkData(bookmarkData, to: resolved.target)
         }
+        Log.fileOps.info("createAlias: \(Log.path(source)) → \(Log.path(resolved.target))")
         return OpReceipt(before: nil, after: try? identity(of: resolved.target), fromURL: source, toURL: resolved.target, kind: .createAlias)
     }
 
@@ -240,9 +262,17 @@ public actor FileOperationService {
             var mutableItem = item
             var values = URLResourceValues()
             values.isUserImmutable = locked
-            try mutableItem.setResourceValues(values)
+            do {
+                try mutableItem.setResourceValues(values)
+            } catch {
+                Log.fileOps.error(
+                    "setLocked(\(locked)) が \(receipts.count) 件成功後に失敗: \(item.path) — \(error.localizedDescription)"
+                )
+                throw error
+            }
             receipts.append(OpReceipt(before: try? identity(of: item), after: try? identity(of: item), fromURL: item, toURL: item, kind: .setLocked))
         }
+        Log.fileOps.info("setLocked(\(locked)) 完了: \(receipts.count)/\(items.count) 件")
         return receipts
     }
 
@@ -250,7 +280,15 @@ public actor FileOperationService {
         var results: [OpReceipt] = []
         for receipt in receipts {
             guard let trashURL = receipt.trashURL else { continue }
-            try FileManager.default.moveItem(at: trashURL, to: receipt.originalURL) // [UD-08]
+            do {
+                try FileManager.default.moveItem(at: trashURL, to: receipt.originalURL) // [UD-08]
+            } catch {
+                Log.fileOps.error(
+                    "restoreFromTrash に失敗: \(trashURL.path) → \(receipt.originalURL.path) — \(error.localizedDescription)"
+                )
+                throw error
+            }
+            Log.fileOps.info("restoreFromTrash: \(Log.path(trashURL)) → \(Log.path(receipt.originalURL))")
             results.append(OpReceipt(
                 before: nil, after: try? identity(of: receipt.originalURL),
                 fromURL: trashURL, toURL: receipt.originalURL, kind: .restoreFromTrash
@@ -272,14 +310,29 @@ public actor FileOperationService {
         for item in items {
             let target = destination.appendingPathComponent(item.lastPathComponent)
             guard let resolved = try await resolveDestination(item, target, options: options) else {
+                Log.fileOps.debug("\(kind.logLabel): 衝突方針によりスキップ \(Log.path(item))")
                 continue // [ConflictPolicy.skip]
             }
             let before = try? identity(of: item)
-            try withReplaceBackupCleanup(resolved) {
-                try perform(item, resolved.target)
+            do {
+                try withReplaceBackupCleanup(resolved) {
+                    try perform(item, resolved.target)
+                }
+            } catch {
+                // **どの項目で止まったか**を必ず残す [LG2-01]。一括処理の
+                // 途中で失敗すると、それまでに成功した分の `OpReceipt` は
+                // 破棄されて Undo にも操作履歴にも残らない（フェーズ1完了前
+                // 監査で記録済みの既知の課題）。せめてログには、何件目まで
+                // 実際にファイルが動いたのかが残るようにしておく。
+                Log.fileOps.error(
+                    "\(kind.logLabel) が \(receipts.count) 件成功後に失敗: \(item.path) → \(resolved.target.path) — \(error.localizedDescription)"
+                )
+                throw error
             }
+            Log.fileOps.debug("\(kind.logLabel): \(Log.path(item)) → \(Log.path(resolved.target))")
             receipts.append(OpReceipt(before: before, after: try? identity(of: resolved.target), fromURL: item, toURL: resolved.target, kind: kind))
         }
+        Log.fileOps.info("\(kind.logLabel) 完了: \(receipts.count)/\(items.count) 件 → \(Log.path(destination))")
         return receipts
     }
 

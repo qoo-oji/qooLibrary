@@ -47,6 +47,12 @@ struct QooLibraryApp: App {
         // 異なる。CLAUDE.md「設計の大原則」——固定値を強制するのではなく、
         // ここでは OS 自身が用意した「密度」プリセットに乗る形で解決した）。
         UserDefaults.standard.register(defaults: ["NSTableViewDefaultSizeMode": 1])
+        // 診断ログ [LG2-01〜LG2-08、1-15]。**他の起動処理より先に**行う —
+        // 以降の初期化（ステージングの後始末、登録フォルダ／ボリューム許可の
+        // 読み込み）で起きた事象も、正しいログレベルで記録されるようにする
+        // ため。書き込み自体はバックグラウンドで行われるので起動は遅くならない
+        // [CB-21]。
+        Log.startSession()
         // 異常終了後に残ったステージングディレクトリを削除する
         // [RB-07][EX-03]。`Scene` は `.task` を持てないため `init()` から
         // 起動時に一度だけ実行する。
@@ -122,6 +128,13 @@ struct QooLibraryApp: App {
             CommandGroup(replacing: .pasteboard) {
                 EditMenuCommands()
             }
+            // [13章 §13.5 ヘルプメニュー、LG2-05] 標準の「qooLibrary ヘルプ」は
+            // ヘルプブックを同梱していないため何も起きない項目のまま残る。
+            // 実際に役立つ「診断ログを書き出す…」に置き換える。
+            // 「README を開く」[HP-07] は今回の対象外。
+            CommandGroup(replacing: .help) {
+                DiagnosticExportMenuButton()
+            }
         }
 
         Window("about.windowTitle", id: "about") {
@@ -165,6 +178,18 @@ private struct AboutMenuButton: View {
     var body: some View {
         Button("about.windowTitle") {
             openWindow(id: "about")
+        }
+    }
+}
+
+/// ヘルプメニューの「診断ログを書き出す…」[13章 §13.5、LG2-05]。
+/// 実処理は環境設定「詳細」タブと共有する（`DiagnosticExportAction` 参照）。
+private struct DiagnosticExportMenuButton: View {
+    @Environment(\.locale) private var locale
+
+    var body: some View {
+        Button("diagnostics.exportMenuItem") {
+            DiagnosticExportAction.run(locale: locale)
         }
     }
 }

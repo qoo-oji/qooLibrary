@@ -1,4 +1,5 @@
 import Foundation
+import QooInfrastructure
 
 /// Undo/Redo スタック本体 [11章 §11.2、UD-02][UD-05][UD-11]。アプリ全体で
 /// 単一のインスタンスを使う想定（`FileOperationService.shared`/
@@ -35,8 +36,17 @@ public final class CommandStack {
     /// 先は残さない）。
     @discardableResult
     public func run(_ command: any Command) async throws -> CommandResult {
-        let result = try await command.execute()
-        record(command.displayName, action: .executed)
+        let result: CommandResult
+        do {
+            result = try await command.execute()
+        } catch {
+            // 失敗したコマンドは `record` を通らないため、ここで明示的に残す
+            // [LG2-01]。ユーザーには `NotificationRouter` 経由でエラーが
+            // 提示されるが、ログには「どのコマンドが」失敗したかも要る。
+            Log.command.error("実行に失敗: \(command.logDescription) — \(error.localizedDescription)")
+            throw error
+        }
+        record(command, action: .executed)
         if command.isUndoable {
             undoStack.append(command)
             if undoStack.count > depth {
@@ -53,17 +63,17 @@ public final class CommandStack {
             let result = try await command.undo()
             switch result {
             case .complete:
-                record(command.displayName, action: .undone)
+                record(command, action: .undone)
                 redoStack.append(command)
             case .partial(let succeeded, let failed):
-                record(command.displayName, action: .undonePartially(succeeded: succeeded, failedCount: failed.count))
+                record(command, action: .undonePartially(succeeded: succeeded, failedCount: failed.count))
                 redoStack.append(command)
             case .impossible(let reason):
-                record(command.displayName, action: .undoFailed(reason: reason))
+                record(command, action: .undoFailed(reason: reason))
                 // スタックへ戻さない（同じコマンドの Undo を再試行しても直らないため）。
             }
         } catch {
-            record(command.displayName, action: .undoFailed(reason: error.localizedDescription))
+            record(command, action: .undoFailed(reason: error.localizedDescription))
         }
     }
 
@@ -71,15 +81,35 @@ public final class CommandStack {
         guard let command = redoStack.popLast() else { return }
         do {
             _ = try await command.redo()
-            record(command.displayName, action: .redone)
+            record(command, action: .redone)
             undoStack.append(command)
         } catch {
-            record(command.displayName, action: .redoFailed(reason: error.localizedDescription))
+            record(command, action: .redoFailed(reason: error.localizedDescription))
         }
     }
 
-    private func record(_ displayName: String, action: OperationHistoryEntry.Action) {
-        operationHistory.append(OperationHistoryEntry(date: Date(), displayName: displayName, action: action))
+    /// 操作履歴への記録は必ずここを通る [CS-05]。診断ログへの記録も同じ
+    /// 1 箇所で行うことで、経路（実行／取り消し／やり直し）が増えても
+    /// 記録漏れが構造的に起きない [FO-03 と同じ考え方]。
+    ///
+    /// 操作履歴（ユーザー向け・メモリのみ）と診断ログ（開発者向け・ファイル）は
+    /// **別のストア**であり相互参照しない [LG2-07][CB-25]。同じ事象を
+    /// それぞれの粒度で記録しているだけ。
+    /// **操作履歴には `displayName`、診断ログには `logDescription`** を使う。
+    /// 前者はユーザー向けの文言（「12 件のファイルを移動」）、後者は対象を
+    /// 絶対パスで表した診断用の文字列で、書き出し時の匿名化 [LG2-06] が
+    /// 効くのは後者だけ（`Command.logDescription` のコメント参照）。
+    private func record(_ command: any Command, action: OperationHistoryEntry.Action) {
+        let detail = command.logDescription
+        switch action {
+        case .executed, .undone, .redone:
+            Log.command.info("\(action.logLabel): \(detail)")
+        case .undonePartially(let succeeded, let failedCount):
+            Log.command.warning("\(action.logLabel): \(detail) — 成功 \(succeeded) 件 / 失敗 \(failedCount) 件")
+        case .undoFailed(let reason), .redoFailed(let reason):
+            Log.command.error("\(action.logLabel): \(detail) — \(reason)")
+        }
+        operationHistory.append(OperationHistoryEntry(date: Date(), displayName: command.displayName, action: action))
         if operationHistory.count > historyLimit {
             operationHistory.removeFirst()
         }
@@ -94,6 +124,19 @@ public struct OperationHistoryEntry: Sendable, Identifiable {
         case undoFailed(reason: String)
         case redone
         case redoFailed(reason: String)
+
+        /// 診断ログ用の安定した短い識別子 [LG2-01]。ユーザー向けの表示名では
+        /// ない（ローカライズしない・バージョン間で変えない）。
+        public var logLabel: String {
+            switch self {
+            case .executed: "実行"
+            case .undone: "取り消し"
+            case .undonePartially: "取り消し（部分）"
+            case .undoFailed: "取り消しに失敗"
+            case .redone: "やり直し"
+            case .redoFailed: "やり直しに失敗"
+            }
+        }
     }
 
     public let id = UUID()

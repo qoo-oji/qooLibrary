@@ -9,6 +9,24 @@ public enum OperationKind: Sendable, Equatable {
     case createAlias
     /// Finder の「ロック」/「ロック解除」相当（`.isUserImmutableKey`）。
     case setLocked
+
+    /// 診断ログ用の安定した短い識別子 [LG2-01]。**ユーザー向けの表示名では
+    /// ない**（ローカライズしない・バージョン間で変えない）。ログを機械的に
+    /// 絞り込めるようにするためのもの。
+    public var logLabel: String {
+        switch self {
+        case .createDirectory: "createDirectory"
+        case .copy: "copy"
+        case .move: "move"
+        case .rename: "rename"
+        case .trash: "trash"
+        case .deletePermanently: "deletePermanently"
+        case .restoreFromTrash: "restoreFromTrash"
+        case .promoteFromStaging: "promoteFromStaging"
+        case .createAlias: "createAlias"
+        case .setLocked: "setLocked"
+        }
+    }
 }
 
 public enum ConflictPolicy: Sendable, Equatable {

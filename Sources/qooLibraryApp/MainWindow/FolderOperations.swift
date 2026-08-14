@@ -175,7 +175,7 @@ final class FolderOperations {
             Task { [weak pending] in
                 try? await Task.sleep(for: .seconds(2))
                 guard let pending, !pending.didAppear else { return }
-                Log.ui.error("ロック確認シートが表示されませんでした。安全側にスキップします: \(url.lastPathComponent, privacy: .public)")
+                Log.ui.error("ロック確認シートが表示されませんでした。安全側にスキップします: \(Log.path(url))")
                 pending.resolve(.skip, applyToAll: false)
                 if case .lockedItem(let current) = pendingDeletionStep, current === pending {
                     pendingDeletionStep = nil

@@ -88,6 +88,7 @@ struct PreferencesView: View {
                 case .compression: CompressionPreferencesTab()
                 case .access: AccessPreferencesTab()
                 case .cache: CachePreferencesTab()
+                case .advanced: AdvancedPreferencesTab()
                 case .reset: ResetPreferencesTab()
                 case nil: EmptyView()
                 }
@@ -125,6 +126,8 @@ enum PreferencesCategory: CaseIterable, Identifiable {
     /// ことを受けての代替手段。
     case access
     case cache
+    /// [15.10 節、1-15] 診断ログ [LG2-01〜LG2-08]。`AdvancedPreferencesTab` 参照。
+    case advanced
     /// 一番下に置く [ユーザー要望、CLAUDE.md「将来検討」参照]。データベース
     /// （SwiftData、Phase 2）がまだ無いため現状はプレースホルダのみで、
     /// 一括削除ボタン自体はまだ実装しない。**エクスポート/インポート機能を
@@ -143,6 +146,7 @@ enum PreferencesCategory: CaseIterable, Identifiable {
         case .compression: "preferences.tab.compression"
         case .access: "preferences.tab.access"
         case .cache: "preferences.tab.cache"
+        case .advanced: "preferences.tab.advanced"
         case .reset: "preferences.tab.reset"
         }
     }
@@ -156,6 +160,7 @@ enum PreferencesCategory: CaseIterable, Identifiable {
         case .compression: "archivebox"
         case .access: "lock.open"
         case .cache: "internaldrive"
+        case .advanced: "wrench.and.screwdriver"
         case .reset: "arrow.counterclockwise.circle"
         }
     }

@@ -103,7 +103,25 @@ public actor RegisteredFolderStore {
             .sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
     }
 
+    /// 起動時にセキュリティスコープを開始できた登録の件数。
+    ///
+    /// **ブックマークの再解決を伴わない**（読み込み時の結果をそのまま数える）
+    /// ため、呼んでも副作用が無い。診断情報の収集 [CB-22] のように
+    /// 「今この瞬間に何件使えているか」を知りたいだけの用途はこちらを使うこと
+    /// — `resolvedURL(for:)` を全件に対して回すと、`.withoutMounting` を
+    /// 付けていない解決がイジェクト済みのボリュームを**再マウントしてしまう**
+    /// （実測済み、`08_インフラ_ファイル操作.md` §8.7.1 BM-5）。
+    public func activeAccessCount() -> Int {
+        ensureLoaded()
+        return activeAccessURLs.count
+    }
+
     /// 解決済みの URL。ボリューム未接続等でオフラインの場合は `nil` [SB-05]。
+    ///
+    /// **副作用に注意**: 現在の実装は `.withoutMounting` を付けずに解決する
+    /// ため、未接続のディスクイメージ等が再マウントされることがある
+    /// （§8.7.1 BM-5、1-17 で対処予定）。一覧の件数を数えるだけの用途では
+    /// `activeAccessCount()` を使うこと。
     public func resolvedURL(for folder: RegisteredFolder) -> URL? {
         guard case .resolved(let url, _) = bookmarks.resolve(folder.bookmarkData) else { return nil }
         return url
@@ -205,12 +223,29 @@ public actor RegisteredFolderStore {
         for folder in folders {
             activateAccessIfPossible(folder)
         }
+        Log.sandbox.info(
+            "登録フォルダを読み込みました: ライブラリ \(folders.count { $0.kind == .library }) 件 / テンポラリ \(folders.count { $0.kind == .temporary }) 件 / アクセス開始 \(activeAccessURLs.count) 件"
+        )
     }
 
     private func activateAccessIfPossible(_ folder: RegisteredFolder) {
-        guard let url = resolvedURL(for: folder) else { return }
+        guard let url = resolvedURL(for: folder) else {
+            // 実体を失った登録は「アクセス権がありません」とは別の縮退状態
+            // （ボリューム未接続／ゴミ箱／完全削除）[SB-05][1-17]。UI では
+            // グレーアウト行として現れるだけなので、原因追跡のためログには
+            // 必ず残す。
+            // 解決できないので絶対パスが無い。表示名は書き出し時に匿名化
+            // されるよう印を付ける [LG2-06]。
+            Log.sandbox.warning(
+                "登録フォルダのブックマークを解決できません: \(Log.redactable(folder.displayName)) (\(folder.kind))"
+            )
+            return
+        }
         if url.startAccessingSecurityScopedResource() {
             activeAccessURLs[folder.id] = url
+            Log.sandbox.debug("登録フォルダのアクセスを開始: \(Log.path(url))")
+        } else {
+            Log.sandbox.warning("登録フォルダのセキュリティスコープを開始できません: \(Log.path(url))")
         }
     }
 
@@ -242,6 +277,9 @@ public actor RegisteredFolderStore {
             let corruptBackup = storageURL.deletingLastPathComponent()
                 .appendingPathComponent("\(storageURL.lastPathComponent).corrupt-\(UUID().uuidString)")
             try? FileManager.default.moveItem(at: storageURL, to: corruptBackup)
+            Log.sandbox.error(
+                "登録フォルダの永続化ファイルを読めません。\(corruptBackup.path) へ退避し、登録なしで続行します"
+            )
             return
         }
         folders = decoded
