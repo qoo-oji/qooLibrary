@@ -140,6 +140,28 @@ struct FolderContentView: View {
     private let keyBindingStore: KeyBindingStore = UserDefaultsKeyBindingStore.shared
     /// アプリ関連付け [12章 §12.9]。`openEntries`/`OpenWithMenu` から使う。
     private let appAssociationService: AppAssociationService = AppAssociationStore.shared
+    /// 変更日／サイズ／種類／作成日／追加日カラムの「内容に合わせた幅」
+    /// [ユーザー指摘: 固定の `ideal` 値では実際の表示文字列に対して無駄に
+    /// 広かった]。フォールバック値は以前からの固定 `ideal` と同じにして
+    /// おき、`entries` が読み込まれる前・空フォルダの一瞬だけ極端に狭く
+    /// ならないようにしている。実際の計測は `recomputeAutoFitColumnWidths()`
+    /// が `entries`/カラム表示切替のたびに行う。
+    @State private var modificationDateColumnWidth: CGFloat = 170
+    @State private var sizeColumnWidth: CGFloat = 90
+    @State private var kindColumnWidth: CGFloat = 140
+    @State private var creationDateColumnWidth: CGFloat = 170
+    @State private var addedDateColumnWidth: CGFloat = 170
+    /// [ユーザー要望] 名前列に、他の列（内容に合わせて詰めた分）を差し引いた
+    /// 残りの幅をすべて割り当てる。**SwiftUI の `Table`（macOS）は「最後に
+    /// 宣言した列」だけを自動的に残り幅へ伸縮させる仕組みを持つが、名前列は
+    /// 先頭列のためこの恩恵を受けられない**（WebSearch で確認: "you simply
+    /// don't need to set width constraints on the last column—it will
+    /// automatically expand to fill all remaining space"）。そのため
+    /// `.onGeometryChange` で `Table` 自身の実測幅を取得し、他列の幅の合計を
+    /// 差し引いた残りを明示的にこの列の `ideal` として与える。
+    @State private var nameColumnWidth: CGFloat = 280
+    /// `otherColumnsWidth` 計算からの余白（列間の区切り線・スクロールバー等）。
+    private static let tableChromePadding: CGFloat = 40
 
     var body: some View {
         // 選択がプログラム的に変わったとき（例: 「ここに圧縮」完了後に
@@ -233,7 +255,7 @@ struct FolderContentView: View {
                             .font(.system(size: Tokens.fontSize.body))
                         }
                     }
-                    .width(min: 160, ideal: 280)
+                    .width(min: 160, ideal: nameColumnWidth)
 
                     if showModificationDateColumn {
                         TableColumn("column.modificationDate", sortUsing: FolderSortComparator(key: .modificationDate)) { entry in
@@ -243,18 +265,19 @@ struct FolderContentView: View {
                                     .foregroundStyle(.secondary)
                             }
                         }
-                        .width(min: 110, ideal: 170)
+                        .width(min: 110, ideal: modificationDateColumnWidth, max: 170)
                     }
 
                     if showSizeColumn {
                         TableColumn("column.size", sortUsing: FolderSortComparator(key: .size)) { entry in
-                            rowCell(entry, isRenaming: renamingEntry?.url == entry.url) {
+                            // [ユーザー要望: Finder に合わせてサイズ列は右詰め]
+                            rowCell(entry, isRenaming: renamingEntry?.url == entry.url, alignment: .trailing) {
                                 Text(entry.isDirectory ? "—" : Self.sizeFormatter.string(fromByteCount: entry.fileSize ?? 0))
                                     .font(.system(size: Tokens.fontSize.body))
                                     .foregroundStyle(.secondary)
                             }
                         }
-                        .width(min: 70, ideal: 90)
+                        .width(min: 70, ideal: sizeColumnWidth, max: 90)
                     }
 
                     if showKindColumn {
@@ -265,7 +288,7 @@ struct FolderContentView: View {
                                     .foregroundStyle(.secondary)
                             }
                         }
-                        .width(min: 90, ideal: 140)
+                        .width(min: 90, ideal: kindColumnWidth, max: 140)
                     }
 
                     if showCreationDateColumn { // [ユーザー要望: Finder に合わせてカラムを増やす]
@@ -276,7 +299,7 @@ struct FolderContentView: View {
                                     .foregroundStyle(.secondary)
                             }
                         }
-                        .width(min: 110, ideal: 170)
+                        .width(min: 110, ideal: creationDateColumnWidth, max: 170)
                     }
 
                     if showAddedDateColumn {
@@ -287,10 +310,41 @@ struct FolderContentView: View {
                                     .foregroundStyle(.secondary)
                             }
                         }
-                        .width(min: 110, ideal: 170)
+                        .width(min: 110, ideal: addedDateColumnWidth, max: 170)
                     }
                 }
+                // [ユーザー指摘の修正] `.width(ideal:)` は列（`NSTableColumn`）が
+                // 最初に作られたときにしか反映されず、以後 `ideal` の値を
+                // 再計算しても既存の列は追従しないと実機検証で判明した
+                // （`PaneWindows.swift` の `HSplitView.idealWidth` が初回
+                // レイアウト後は無視されたのと同じ種類の制約）。フォルダを
+                // 移動するたびに列を実際に作り直させることで、そのつど新しい
+                // `ideal` を適用させる。`selection`/`sortOrder`/`isListFocused`
+                // は `Table` の外側（`FolderContentView` 自身）の状態のため、
+                // ここで `Table` だけを作り直しても失われない。
+                .id(folder)
                 .focused($isListFocused)
+                // [ユーザー要望] 名前列に余った幅をすべて割り当てる。`Table`
+                // 自身の実測幅が変わるたび（ウインドウ／ペインのリサイズ）に
+                // `nameColumnWidth` を再計算する（`nameColumnWidth` 宣言部の
+                // コメント参照、SwiftUI の `Table` は最後の列しか自動で残り幅へ
+                // 伸縮しないため、名前列（先頭列）の分は明示的に計算する必要が
+                // ある）。
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.size.width
+                } action: { newWidth in
+                    updateNameColumnWidth(tableWidth: newWidth)
+                }
+                // [ユーザー指摘の修正] 変更日／サイズ／種類／作成日／追加日の
+                // 各列を、表示する文字列の長さに合わせて自動調整する。
+                // フォルダ再読み込み時は `reload()` 自身が呼ぶ（上記参照）。
+                // ここではカラム表示切替（`entries` 自体は変わらない）のときの
+                // 再計測だけを担う。
+                .onChange(of: showModificationDateColumn) { _, _ in recomputeAutoFitColumnWidths() }
+                .onChange(of: showSizeColumn) { _, _ in recomputeAutoFitColumnWidths() }
+                .onChange(of: showKindColumn) { _, _ in recomputeAutoFitColumnWidths() }
+                .onChange(of: showCreationDateColumn) { _, _ in recomputeAutoFitColumnWidths() }
+                .onChange(of: showAddedDateColumn) { _, _ in recomputeAutoFitColumnWidths() }
                 // [DD-02][設計判断] `URL` は既に `Transferable`。ドラッグされた行の
                 // `containerItemID`（＝ URL 自身）の配列がそのままペイロードになる。
                 .dragContainer(for: URL.self, itemID: \.self, in: dragNamespace) { draggedItemIDs in
@@ -580,6 +634,84 @@ struct FolderContentView: View {
         return formatter
     }()
 
+    /// カラムセルと同じフォント（`Tokens.fontSize.body`）でテキスト幅を実測
+    /// する [`recomputeAutoFitColumnWidths()` 参照]。
+    private static func measuredWidth(_ text: String) -> CGFloat {
+        let font = NSFont.systemFont(ofSize: Tokens.fontSize.body)
+        return (text as NSString).size(withAttributes: [.font: font]).width
+    }
+
+    /// [ユーザー指摘の修正] 変更日／サイズ／種類／作成日／追加日カラムが、
+    /// 実際に表示する文字列の長さに対して無駄に広かった（固定の `ideal`
+    /// 値をそのまま使っていたため）。現在の `entries`（フォルダ内の全項目、
+    /// 表示中の一部だけでなく全件を対象にする——スクロールで隠れている
+    /// 行の値がヘッダより長い場合に途中で列が詰まって見えるのを避けるため）
+    /// とカラム見出し自身の文字列幅を実測し、その最大値＋余白を `ideal` に
+    /// 反映する。`min`/`max` は既存の値のまま変更しない（`max` は以前の
+    /// 固定 `ideal` を流用しており、手動でのドラッグ拡大の余地を残す）。
+    private func recomputeAutoFitColumnWidths() {
+        // [ユーザー指摘の修正] Finder のスクリーンショットを基準に、余白を
+        // 従来より詰めた（`Tokens.spacing.m * 2 + Tokens.spacing.xs` = 28pt
+        // だったものを 16pt に縮小）。
+        let padding: CGFloat = Tokens.spacing.l
+
+        func fitWidth(header: String.LocalizationValue, values: [String]) -> CGFloat {
+            let headerWidth = Self.measuredWidth(String(localized: header, locale: locale))
+            let contentWidth = values.map(Self.measuredWidth).max() ?? 0
+            return max(headerWidth, contentWidth) + padding
+        }
+
+        if showModificationDateColumn {
+            modificationDateColumnWidth = fitWidth(
+                header: "column.modificationDate",
+                values: entries.map { $0.modificationDate.map { Self.dateFormatter.string(from: $0) } ?? "—" }
+            )
+        }
+        if showSizeColumn {
+            sizeColumnWidth = fitWidth(
+                header: "column.size",
+                values: entries.map { $0.isDirectory ? "—" : Self.sizeFormatter.string(fromByteCount: $0.fileSize ?? 0) }
+            )
+        }
+        if showKindColumn {
+            kindColumnWidth = fitWidth(header: "column.kind", values: entries.map(\.kindDescription))
+        }
+        if showCreationDateColumn {
+            creationDateColumnWidth = fitWidth(
+                header: "column.creationDate",
+                values: entries.map { $0.creationDate.map { Self.dateFormatter.string(from: $0) } ?? "—" }
+            )
+        }
+        if showAddedDateColumn {
+            addedDateColumnWidth = fitWidth(
+                header: "column.addedDate",
+                values: entries.map { $0.addedDate.map { Self.dateFormatter.string(from: $0) } ?? "—" }
+            )
+        }
+        updateNameColumnWidth(tableWidth: lastKnownTableWidth)
+    }
+
+    /// 名前列以外の、現在表示中の列の合計幅 [`nameColumnWidth` 参照]。
+    private var otherColumnsWidth: CGFloat {
+        var total: CGFloat = 0
+        if showModificationDateColumn { total += modificationDateColumnWidth }
+        if showSizeColumn { total += sizeColumnWidth }
+        if showKindColumn { total += kindColumnWidth }
+        if showCreationDateColumn { total += creationDateColumnWidth }
+        if showAddedDateColumn { total += addedDateColumnWidth }
+        return total
+    }
+
+    /// `Table` の実測幅（`.onGeometryChange` から渡される）。列の表示/非表示
+    /// 切替時にも `nameColumnWidth` を再計算できるよう保持しておく。
+    @State private var lastKnownTableWidth: CGFloat = 0
+
+    private func updateNameColumnWidth(tableWidth: CGFloat) {
+        guard tableWidth > 0 else { return }
+        lastKnownTableWidth = tableWidth
+        nameColumnWidth = max(160, tableWidth - otherColumnsWidth - Self.tableChromePadding)
+    }
+
     /// `entries` に現在のソート順 [LV-01] とフォルダをまとめる設定 [LV-03] を
     /// 適用した、実際に `Table` へ渡す並び。`filter` は相対順序を保つため、
     /// グルーピングを先にソートした結果へ適用しても各グループ内の順序は
@@ -608,17 +740,17 @@ struct FolderContentView: View {
     /// 独立したセルなので、Finder と同じく行のどこをクリックしても同じ挙動に
     /// なるよう、すべてのカラムのセルに同一の modifier 一式を付与する。
     @ViewBuilder
-    private func rowCell(_ entry: FolderEntry, isRenaming: Bool = false, @ViewBuilder content: () -> some View) -> some View {
+    private func rowCell(_ entry: FolderEntry, isRenaming: Bool = false, alignment: Alignment = .leading, @ViewBuilder content: () -> some View) -> some View {
         if isRenaming {
             // インライン編集中はこの行の選択・ダブルクリック・D&D 用ジェスチャを
             // すべて外す。`TextField` 自身のクリック（カーソル位置合わせ等）が
             // 誤って選択操作やリネームの再トリガーとして扱われるのを防ぐため
             // [ユーザー要望: Finder 流のインライン名前編集]。
             content()
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: alignment)
         } else {
             content()
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: alignment)
                 .contentShape(Rectangle())
                 .onTapGesture(count: 2) {
                     pendingRenameGeneration += 1 // ダブルクリックなら保留中のリネームは取り消す
@@ -880,6 +1012,7 @@ struct FolderContentView: View {
             entries = []
             loadError = error.localizedDescription
         }
+        recomputeAutoFitColumnWidths() // [ユーザー指摘の修正] 列幅を内容に合わせて再計測する。
     }
 
     /// 自分自身の再読み込みに加えて、他のウインドウ／ペインにも変更を知らせる
