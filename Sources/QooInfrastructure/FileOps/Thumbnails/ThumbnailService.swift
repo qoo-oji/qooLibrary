@@ -16,6 +16,7 @@ public actor ThumbnailService {
     private let maxConcurrent: Int
     private let cache: CoverImageCache
     private let imageLoader: ImageLoading
+    private let videoThumbnailLoader: VideoThumbnailLoading
 
     // PF-11: 同時実行数を制限したタスクキュー。実際の重い処理（アーカイブ
     // 読み込み・デコード）はアクター分離の外（`Task.detached`）で行うが、
@@ -26,17 +27,25 @@ public actor ThumbnailService {
     public init(
         maxConcurrent: Int = AppLimits.Thumbnail.defaultMaxConcurrent,
         cache: CoverImageCache = DefaultCoverImageCache.shared,
-        imageLoader: ImageLoading = DefaultImageLoader()
+        imageLoader: ImageLoading = DefaultImageLoader(),
+        videoThumbnailLoader: VideoThumbnailLoading = QLVideoThumbnailLoader()
     ) {
         self.maxConcurrent = maxConcurrent
         self.cache = cache
         self.imageLoader = imageLoader
+        self.videoThumbnailLoader = videoThumbnailLoader
     }
 
     /// `url` はフォルダ、または対応アーカイブ形式のファイル。フォルダ表示モード
     /// でのアイコン表示 [IV-01] から呼ばれる想定。キャッシュ済みなら即座に
     /// 返し、無ければ生成してキャッシュする。生成できない場合は `nil`
     /// （呼び出し側が既定アイコンにフォールバックする [IM-04]）。
+    ///
+    /// `url` 自身が動画ファイルの場合は `VideoThumbnailLoading`
+    /// （`QLThumbnailGenerator` 経由）で生成する［ユーザー要望、動画ライブラリ
+    /// としての利用を見据えた拡張］。フォルダ／アーカイブ内の「先頭の動画」を
+    /// カバーとして使う対応は対象外（IV-01 が要求する「先頭画像」の範囲を
+    /// 超えるため、必要になれば別途検討する）。
     public func thumbnail(for url: URL, maxPixelSize: Int) async -> CGImage? {
         guard let identity = try? Self.identity(of: url) else { return nil }
         if let cached = cache.loadCachedImage(for: identity) {
@@ -46,16 +55,22 @@ public actor ThumbnailService {
         await acquireSlot()
         defer { releaseSlot() }
 
-        guard let data = await Self.resolveFirstImageData(for: url) else { return nil }
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else { return nil }
 
-        let loader = imageLoader
-        let task = Task.detached(priority: .utility) { () -> CGImage in
-            try loader.makeThumbnail(from: data, maxPixelSize: maxPixelSize)
-        }
-        guard let generated = try? await task.value else {
-            return nil
+        let generated: CGImage?
+        if !isDirectory.boolValue, Self.isVideoFilename(url.lastPathComponent) {
+            generated = await videoThumbnailLoader.makeThumbnail(for: url, maxPixelSize: maxPixelSize)
+        } else {
+            guard let data = await Self.resolveFirstImageData(for: url) else { return nil }
+            let loader = imageLoader
+            let task = Task.detached(priority: .utility) { () -> CGImage in
+                try loader.makeThumbnail(from: data, maxPixelSize: maxPixelSize)
+            }
+            generated = try? await task.value
         }
 
+        guard let generated else { return nil }
         _ = try? cache.store(generated, for: identity)
         return generated
     }
@@ -137,6 +152,12 @@ public actor ThumbnailService {
         let ext = (name as NSString).pathExtension
         guard !ext.isEmpty, let type = UTType(filenameExtension: ext) else { return false }
         return type.conforms(to: .image)
+    }
+
+    private static func isVideoFilename(_ name: String) -> Bool {
+        let ext = (name as NSString).pathExtension
+        guard !ext.isEmpty, let type = UTType(filenameExtension: ext) else { return false }
+        return type.conforms(to: .movie)
     }
 
     /// `FileOperationService.identity(of:)` と同じ計算 [ID-01]。専用の共有

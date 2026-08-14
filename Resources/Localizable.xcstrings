@@ -1713,6 +1713,22 @@
         }
       }
     },
+    "folderTree.grantAccessEllipsis": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Grant Access…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アクセスを許可…"
+          }
+        }
+      }
+    },
     "folderTree.groupSettings": {
       "localizations": {
         "en": {
@@ -1789,22 +1805,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "見つかりません（ボリュームが接続されていない可能性があります）"
-          }
-        }
-      }
-    },
-    "folderTree.openSystemSettings": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Open System Settings"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "システム設定を開く"
           }
         }
       }
@@ -2253,6 +2253,86 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@を取り消す"
+          }
+        }
+      }
+    },
+    "preferences.access.addEllipsis": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "追加…"
+          }
+        }
+      }
+    },
+    "preferences.access.empty": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No volumes or folders have been granted access yet."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "まだアクセスを許可したボリューム・フォルダはありません。"
+          }
+        }
+      }
+    },
+    "preferences.access.footer": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Full Disk Access does not bypass qooLibrary's sandbox restrictions. To browse a volume or folder in the sidebar, grant access to it here — the same prompt also appears inline when you try to open a volume you haven't granted access to yet."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "フルディスクアクセスを付与しても、qooLibraryのサンドボックス制限は回避されません。左ペインでボリューム・フォルダを閲覧するには、ここでアクセスを許可してください。未許可のボリュームを開こうとしたときにも同じ操作をその場で行えます。"
+          }
+        }
+      }
+    },
+    "preferences.access.header": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Granted Volumes & Folders"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "許可済みのボリューム・フォルダ"
+          }
+        }
+      }
+    },
+    "preferences.access.panelMessage": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose a volume or folder to grant qooLibrary access to."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "qooLibraryにアクセスを許可するボリューム・フォルダを選んでください。"
           }
         }
       }
@@ -3421,6 +3501,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "既定に戻す"
+          }
+        }
+      }
+    },
+    "preferences.tab.access": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Access"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アクセス権"
           }
         }
       }

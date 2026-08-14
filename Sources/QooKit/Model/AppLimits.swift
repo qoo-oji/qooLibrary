@@ -28,5 +28,11 @@ public enum AppLimits {
         public static let defaultMaxConcurrent: Int = 4
         /// キャッシュディレクトリの合計サイズ上限（既定 500MB）[IV-09]。
         public static let defaultCacheMaxSize: Int64 = 500 * 1_000 * 1_000
+        /// 動画サムネイル生成（`QLThumbnailGenerator` 経由）1件あたりのタイムアウト
+        /// 秒数（既定 8秒）[ユーザー要望、要件定義書には無い]。実機検証で
+        /// `qlmanage -t`（旧 CLI）がサードパーティ QuickLook 拡張との組み合わせで
+        /// 応答せずハングする事例を確認したため、`PF-11` の同時実行スロットが
+        /// 1件のハングで専有され続けないよう防御的に設けている。
+        public static let defaultVideoThumbnailTimeoutSeconds: Double = 8
     }
 }

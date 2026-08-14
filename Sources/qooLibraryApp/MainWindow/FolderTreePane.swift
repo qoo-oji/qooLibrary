@@ -482,28 +482,49 @@ private struct FolderTreeRow: View {
             guard expanded, children == nil, !accessDenied else { return }
             loadChildren()
         }
+        // [実機検証で発見・修正したバグ] 環境設定「アクセス権」タブでアクセスを
+        // 取り消しても、既に読み込み済みのこの行の `children` はキャッシュされた
+        // ままで、アプリを再起動するまで「アクセス権がありません」に戻らなかった。
+        // 他ウインドウ／ペインをまたいだ変更の反映と同じ `SessionState.reloadToken`
+        // 経由で、読み込み済み／アクセス拒否済みの行だけを再読み込みする。
+        .onChange(of: SessionState.shared.reloadToken) {
+            guard children != nil || accessDenied else { return }
+            accessDenied = false
+            loadChildren()
+        }
     }
 
     private func loadChildren() {
         do {
             children = try FolderTreeNode.children(of: node)
         } catch {
+            children = nil
             accessDenied = true
         }
     }
 }
 
+/// [SB-04][LP2-09] **フルディスクアクセスへ誘導していた旧実装は撤去した**
+/// ——実機検証の結果、フルディスクアクセスは App Sandbox のカーネルレベルの
+/// ファイル読み取り制限を回避しないと判明したため（CLAUDE.md 1-4 節「将来
+/// 検討」の訂正参照）。**その場で `NSOpenPanel` を開く実装も一度作ったが、
+/// ユーザー要望で環境設定「アクセス権」タブへの遷移に置き換えた**
+/// （複数箇所に許可 UI が分散するより、一箇所に集約する方が分かりやすい
+/// という判断）。許可自体は `AccessPreferencesTab` の「追加…」から行う
+/// （既定でルート/Macintosh HD を指した状態で開く）。許可されると
+/// `SessionState.reloadToken` 経由でこの行も自動的に再読み込みされる
+/// （`FolderTreeRow` の `.onChange(of: SessionState.shared.reloadToken)` 参照）。
 private struct AccessDeniedRow: View {
+    @Environment(\.openWindow) private var openWindow
+
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
             Text("folderTree.accessDenied")
                 .font(.system(size: Tokens.fontSize.caption))
                 .foregroundStyle(Tokens.Colors.dangerText)
-            Button("folderTree.openSystemSettings") {
-                // [B-20] フルディスクアクセスは entitlement では取得できない。
-                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
-                    NSWorkspace.shared.open(url)
-                }
+            Button("folderTree.grantAccessEllipsis") {
+                PreferencesNavigation.shared.pendingCategory = .access
+                openWindow(id: "preferences")
             }
             .font(.system(size: Tokens.fontSize.caption))
         }

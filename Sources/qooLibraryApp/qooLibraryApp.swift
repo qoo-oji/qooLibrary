@@ -31,6 +31,12 @@ struct QooLibraryApp: App {
         Task {
             await RegisteredFolderStore.shared.loadAndActivateAll()
         }
+        // 環境設定「アクセス権」タブでユーザーが許可したボリューム／フォルダも
+        // 同様に、アプリ終了までアクセスを開始したままにする
+        // [ユーザー要望、`VolumeAccessStore` のコメント参照]。
+        Task {
+            await VolumeAccessStore.shared.loadAndActivateAll()
+        }
         // [ER-01] エラー・通知の提示はこのコントローラ1箇所からのみ行う
         // （`NotificationRouterPresenterController` のコメント参照）。
         NotificationRouterPresenterController.shared.start()

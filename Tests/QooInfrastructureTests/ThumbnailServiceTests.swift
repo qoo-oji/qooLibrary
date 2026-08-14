@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import Testing
 
@@ -103,6 +104,80 @@ import Testing
         await service.invalidate([folder])
 
         #expect(await cache.totalSize() == 0)
+    }
+
+    /// 動画ファイル用フェイク。`VideoThumbnailLoading` の実装差し替えだけで
+    /// `ThumbnailService` が動画ファイルを別経路（画像デコードではなく
+    /// `QLThumbnailGenerator` 相当）で処理することを検証する。実際の
+    /// `QLThumbnailGenerator` はサードパーティ QuickLook 拡張の有無に依存し
+    /// CI では再現できないため（`QLVideoThumbnailLoader` のコメント参照）、
+    /// 自動テストはこのフェイクで分岐ロジックのみを検証する。
+    private struct FakeVideoThumbnailLoader: VideoThumbnailLoading {
+        let result: CGImage?
+        func makeThumbnail(for url: URL, maxPixelSize: Int) async -> CGImage? { result }
+    }
+
+    /// 動画ファイル自身も（画像ファイルと同様に）サムネイル生成の対象になる
+    /// [ユーザー要望、動画ライブラリとしての利用を見据えた拡張]。拡張子が
+    /// 動画形式（`public.movie` 準拠）の場合は `VideoThumbnailLoading` 経由に
+    /// なることを、画像デコード経路では失敗するはずのファイル（中身が画像
+    /// ではない）で検証する。
+    @Test func resolvesThumbnailForAVideoFileViaVideoThumbnailLoader() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("qoo-thumbnail-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = DefaultCoverImageCache(baseDirectory: root.appendingPathComponent("cache"))
+        let expected = TestImageFixture.makeCGImage(width: 20, height: 20)
+        let service = ThumbnailService(
+            maxConcurrent: 2, cache: cache, imageLoader: DefaultImageLoader(),
+            videoThumbnailLoader: FakeVideoThumbnailLoader(result: expected)
+        )
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let videoURL = root.appendingPathComponent("clip.mkv")
+        try Data("not real video bytes".utf8).write(to: videoURL)
+
+        let thumbnail = await service.thumbnail(for: videoURL, maxPixelSize: 50)
+
+        #expect(thumbnail != nil)
+    }
+
+    /// 動画サムネイル生成が失敗した場合（拡張が無い等）は `nil` を返し、
+    /// 呼び出し側の既定アイコンへのフォールバックに委ねる [IM-04 と同じ方針]。
+    @Test func returnsNilWhenVideoThumbnailLoaderFails() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("qoo-thumbnail-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = DefaultCoverImageCache(baseDirectory: root.appendingPathComponent("cache"))
+        let service = ThumbnailService(
+            maxConcurrent: 2, cache: cache, imageLoader: DefaultImageLoader(),
+            videoThumbnailLoader: FakeVideoThumbnailLoader(result: nil)
+        )
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let videoURL = root.appendingPathComponent("clip.mp4")
+        try Data("not real video bytes".utf8).write(to: videoURL)
+
+        let thumbnail = await service.thumbnail(for: videoURL, maxPixelSize: 50)
+
+        #expect(thumbnail == nil)
+    }
+
+    /// 動画以外の拡張子では `VideoThumbnailLoading` 側へルーティングされない
+    /// ことの確認（フェイクが値を返せる状態でも、非動画ファイルでは使われず
+    /// 結果は `nil` のままになる）。
+    @Test func doesNotUseVideoThumbnailLoaderForNonVideoFiles() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("qoo-thumbnail-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = DefaultCoverImageCache(baseDirectory: root.appendingPathComponent("cache"))
+        let expected = TestImageFixture.makeCGImage(width: 20, height: 20)
+        let service = ThumbnailService(
+            maxConcurrent: 2, cache: cache, imageLoader: DefaultImageLoader(),
+            videoThumbnailLoader: FakeVideoThumbnailLoader(result: expected)
+        )
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let textURL = root.appendingPathComponent("notes.txt")
+        try Data("plain text".utf8).write(to: textURL)
+
+        let thumbnail = await service.thumbnail(for: textURL, maxPixelSize: 50)
+
+        #expect(thumbnail == nil)
     }
 
     /// [PF-11] 同時実行数の制限が実際に複数件を正しく処理できることの

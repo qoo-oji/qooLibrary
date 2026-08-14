@@ -33,6 +33,29 @@ struct PreferencesView: View {
     @State private var selection: PreferencesCategory? = .general
 
     var body: some View {
+        content
+            // フォルダツリーの「アクセスを許可…」等、ウインドウの外から特定の
+            // カテゴリを開いてほしいという要求を受け取る [ユーザー要望:
+            // 「ボリュームの『アクセスを許可』ボタンをクリックしたら、環境設定の
+            // アクセス権タブが開くようにできますか？」]。ウインドウが未作成
+            // （初回オープン）・既存ウインドウの再利用（既に開いていて前面に
+            // 来るだけ）のどちらでも反映されるよう、初回表示 `.task` と、
+            // 表示中の変化を拾う `.onChange` の両方で見る。
+            .task {
+                applyPendingCategoryIfNeeded()
+            }
+            .onChange(of: PreferencesNavigation.shared.pendingCategory) {
+                applyPendingCategoryIfNeeded()
+            }
+    }
+
+    private func applyPendingCategoryIfNeeded() {
+        guard let pending = PreferencesNavigation.shared.pendingCategory else { return }
+        selection = pending
+        PreferencesNavigation.shared.pendingCategory = nil
+    }
+
+    private var content: some View {
         // `columnVisibility: .constant(.all)` で常に両カラムを表示したまま
         // 固定する。macOS システム設定と同じく、サイドバーの表示/非表示を
         // 切り替えるトグルボタン自体を無くしたい [ユーザー要望]。
@@ -56,6 +79,7 @@ struct PreferencesView: View {
                 case .keyboard: KeyboardPreferencesTab()
                 case .associations: AssociationPreferencesTab()
                 case .compression: CompressionPreferencesTab()
+                case .access: AccessPreferencesTab()
                 case .cache: CachePreferencesTab()
                 case .reset: ResetPreferencesTab()
                 case nil: EmptyView()
@@ -67,8 +91,21 @@ struct PreferencesView: View {
     }
 }
 
+/// ウインドウの外（フォルダツリーの「アクセスを許可…」等）から、環境設定の
+/// 特定カテゴリを開いてほしいという要求を仲介する [ユーザー要望]。
+/// `PreferencesView` は `@Observable` の変化を `.onChange`/`.task` で監視し、
+/// 検出したら自身の `selection` に反映してこの値をクリアする。
+@MainActor
+@Observable
+final class PreferencesNavigation {
+    static let shared = PreferencesNavigation()
+    private init() {}
+
+    var pendingCategory: PreferencesCategory?
+}
+
 /// 環境設定のカテゴリ一覧 [設計判断、上記型コメント参照]。
-private enum PreferencesCategory: CaseIterable, Identifiable {
+enum PreferencesCategory: CaseIterable, Identifiable {
     case general
     case display
     case keyboard
@@ -76,6 +113,10 @@ private enum PreferencesCategory: CaseIterable, Identifiable {
     case associations
     /// [ユーザー要望、要件定義書には無い] `CompressionPreferencesTab` 参照。
     case compression
+    /// [ユーザー要望、要件定義書には無い] `AccessPreferencesTab` 参照。
+    /// フルディスクアクセスがサンドボックスの制限を回避しないと判明した
+    /// ことを受けての代替手段。
+    case access
     case cache
     /// 一番下に置く [ユーザー要望、CLAUDE.md「将来検討」参照]。データベース
     /// （SwiftData、Phase 2）がまだ無いため現状はプレースホルダのみで、
@@ -93,6 +134,7 @@ private enum PreferencesCategory: CaseIterable, Identifiable {
         case .keyboard: "preferences.tab.keyboard"
         case .associations: "preferences.tab.associations"
         case .compression: "preferences.tab.compression"
+        case .access: "preferences.tab.access"
         case .cache: "preferences.tab.cache"
         case .reset: "preferences.tab.reset"
         }
@@ -105,6 +147,7 @@ private enum PreferencesCategory: CaseIterable, Identifiable {
         case .keyboard: "keyboard"
         case .associations: "app.badge"
         case .compression: "archivebox"
+        case .access: "lock.open"
         case .cache: "internaldrive"
         case .reset: "arrow.counterclockwise.circle"
         }
