@@ -32,6 +32,13 @@ struct FolderContentView: View {
     /// 読み直す（`MainWindowView` 側の配線を参照）。
     let currentFolder: () -> URL?
     @Binding var selection: Set<URL>
+    /// 「戻る」「1階層上へ」で親フォルダへ移動した直後、直前までいた
+    /// フォルダまでスクロールするための信号 [`WindowState.pendingRevealURL`
+    /// 参照、ユーザー要望]。ハイライト自体は `selection` が既に伝えるため、
+    /// ここでは「スクロールが必要」という事実だけを受け取り、既存の
+    /// `pendingScrollTarget`（「ここに圧縮」で確立済みの、ユーザー自身の
+    /// クリックとプログラム的な選択変更を区別する仕組み）へ橋渡しする。
+    @Binding var pendingRevealURL: URL?
     let onNavigate: (URL) -> Void
     /// Finder ツールバーの矢印ボタンと同等の戻る/進む [KB-02]。履歴自体は
     /// `WindowState`（タブごと）が保持し、このビューは通知を受けて呼ぶだけ。
@@ -69,6 +76,13 @@ struct FolderContentView: View {
     /// 無効化する（`handleSingleClick`/`rowCell`/`IconGridView` 参照）。
     @State private var pendingRenameGeneration = 0
     @State private var isDropTargeted = false
+    /// リスト表示でファイルをフォルダ行へドラッグしているときの、行全体の
+    /// ハイライト対象 [`DropIntoFolderModifier` のコメント参照、ユーザー要望]。
+    @State private var dropTargetedFolderURL: URL?
+    /// `dropTargetedFolderURL` によって `selection` を一時的に上書きする前の、
+    /// 元の選択状態 [`DropIntoFolderModifier` のコメント参照]。ドラッグが
+    /// 終わったらこれに戻す。
+    @State private var selectionBeforeDropHighlight: Set<URL>?
     @FocusState private var isListFocused: Bool
     /// Shift クリックでの範囲選択の起点 [LV-06 相当]。
     @State private var selectionAnchor: URL?
@@ -468,6 +482,33 @@ struct FolderContentView: View {
                 extractArchives([pending.archiveURL], destination: { _ in pending.target }, passphrase: password)
             }
         }
+        // 「戻る」「1階層上へ」で親フォルダへ移動した直後のスクロール
+        // [`WindowState.pendingRevealURL` 参照、ユーザー要望]。既存の
+        // `pendingScrollTarget` 経路へそのまま橋渡しする。
+        .onChange(of: pendingRevealURL) { _, newValue in
+            guard let target = newValue else { return }
+            pendingScrollTarget = target
+            pendingRevealURL = nil
+        }
+        // リスト表示でファイルをフォルダ行へドラッグしている間、通常の選択と
+        // 同じ見た目（`Table` ネイティブの、列をまたいで連続したハイライト
+        // バー）を一時的に流用する [`DropIntoFolderModifier` のコメント参照、
+        // ユーザー指摘: 独自の半透明背景だと列ごとに分割されて見えて薄い。
+        // 「ドラッグ先として選択している、という意味では間違っていない」との
+        // 判断で選択そのものを差し替える方式にした]。ドラッグ終了・キャンセル
+        // いずれの場合も `dropTargetedFolderURL` は `nil` に戻るため、
+        // 必ず元の選択へ復元される。
+        .onChange(of: dropTargetedFolderURL) { _, newValue in
+            if let newValue {
+                if selectionBeforeDropHighlight == nil {
+                    selectionBeforeDropHighlight = selection
+                }
+                selection = [newValue]
+            } else if let saved = selectionBeforeDropHighlight {
+                selection = saved
+                selectionBeforeDropHighlight = nil
+            }
+        }
         // `pendingScrollTarget` が設定されたときだけスクロールする
         // [実機検証で発見したバグの修正: 以前は `.onChange(of: selection)` で
         // あらゆる選択変更のたびにスクロールしていたため、ユーザーが中央
@@ -608,7 +649,9 @@ struct FolderContentView: View {
                 .modifier(DropIntoFolderModifier(
                     entry: entry,
                     reload: { reloadAndBroadcast() },
-                    onFailure: { presentFailureMessage($0) }
+                    onFailure: { presentFailureMessage($0) },
+                    targetedURL: $dropTargetedFolderURL,
+                    paintsBackgroundHighlight: false
                 ))
         }
     }
@@ -1454,20 +1497,54 @@ private struct FolderSortComparator: SortComparator {
 }
 
 /// フォルダ行にだけドロップ先を付与する（ファイル行に落としても意味がないため）[DD-05 相当]。
+///
+/// **`targetedURL` は呼び出し元と共有するバインディング**［ユーザー要望:
+/// リスト表示でファイルをフォルダ行へドラッグしたとき、行全体をハイライト
+/// してほしい］。`Table` はカラムごとに独立したセルのため、この modifier は
+/// 1行につき（列の数だけ）複数回インスタンス化される——各インスタンスが
+/// 自前の `@State` でハイライト状態を持つと、実際にカーソルが乗っている
+/// 列のセルしかハイライトされず、他の列（サイズ・種類等）は反応しない。
+/// `FolderContentView` 側の1つの `@State`（`dropTargetedFolderURL`）を
+/// 全列で共有することで、どの列にカーソルがあっても行全体が反応する。
+///
+/// **[修正] 半透明の背景色オーバーレイでは、列ごとの隙間のせいでハイライトが
+/// 分割されて見え、かつ色も薄くて見づらいという指摘を受けた。** 「ドラッグ先
+/// として選択している、という意味では間違っていない」というユーザー判断で、
+/// `Table` の場合は独自の背景描画をやめ、代わりに通常の選択（`selection`）と
+/// 全く同じ見た目（`Table` がネイティブに描画する、列をまたいで連続した
+/// ハイライトバー）を一時的に流用する方式にした——`FolderContentView` 側で
+/// `dropTargetedFolderURL` の変化を監視し、ドラッグ中だけ `selection` を
+/// 対象フォルダに差し替え、ドラッグが終わったら元の選択に戻す
+/// （`selectionBeforeDropHighlight` 参照）。`paintsBackgroundHighlight` を
+/// `false` にするとこの modifier 自身は背景を描画しなくなる。アイコン表示
+/// （`IconGridView`）は1セル＝1エントリのため列分割の問題が無く、引き続き
+/// 独自の背景ハイライト（既定 `true`）を使う。
 struct DropIntoFolderModifier: ViewModifier {
     let entry: FolderEntry
     let reload: () -> Void
     let onFailure: @MainActor @Sendable (String) -> Void
-    @State private var isTargeted = false
+    @Binding var targetedURL: URL?
+    var paintsBackgroundHighlight: Bool = true
 
     func body(content: Content) -> some View {
         if entry.isDirectory {
             content
-                .background(isTargeted ? Tokens.Colors.accent.opacity(0.15) : Color.clear)
+                .background(
+                    paintsBackgroundHighlight && targetedURL == entry.url
+                        ? Tokens.Colors.accent.opacity(0.15) : Color.clear
+                )
                 .dropDestination(for: URL.self) { items, _ in
                     DropHandling.performDrop(items, into: entry.url, onComplete: { reload() }, onFailure: onFailure)
                     return true
-                } isTargeted: { isTargeted = $0 }
+                } isTargeted: { targeted in
+                    if targeted {
+                        targetedURL = entry.url
+                    } else if targetedURL == entry.url {
+                        // 別の列（同じ行）の enter が先に発火して既に自分の URL で
+                        // 上書きされている場合は誤って消さない。
+                        targetedURL = nil
+                    }
+                }
         } else {
             content
         }
@@ -1590,3 +1667,4 @@ private final class TableHorizontalScrollDisablerView: NSView {
         scrollView.horizontalScrollElasticity = .none
     }
 }
+

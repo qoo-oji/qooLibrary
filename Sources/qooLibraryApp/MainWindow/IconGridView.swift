@@ -159,6 +159,11 @@ struct IconGridView<MenuContent: View>: View {
         let onSingleClick: (FolderEntry) -> Void
         let onReload: () -> Void
         let onDropFailure: (String) -> Void
+        /// アイコン表示は1セル＝1エントリのため `Table` のような列分割の
+        /// 問題は無いが、`DropIntoFolderModifier` の API を統一するため
+        /// セルごとに専用の `@State` を経由したバインディングを渡す
+        /// [`DropIntoFolderModifier` のコメント参照]。
+        @State private var dropTargetedURL: URL?
 
         func body(content: Content) -> some View {
             if isEnabled {
@@ -173,7 +178,7 @@ struct IconGridView<MenuContent: View>: View {
                         onSingleClick(entry)
                     })
                     .draggable(containerItemID: entry.url, containerNamespace: dragNamespace)
-                    .modifier(DropIntoFolderModifier(entry: entry, reload: onReload, onFailure: onDropFailure))
+                    .modifier(DropIntoFolderModifier(entry: entry, reload: onReload, onFailure: onDropFailure, targetedURL: $dropTargetedURL))
             } else {
                 content
             }

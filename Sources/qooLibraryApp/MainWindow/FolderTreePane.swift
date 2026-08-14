@@ -23,12 +23,36 @@ struct FolderTreePane: View {
     /// （テンポラリ経由のときだけ適用）にも使う想定の基盤 [ユーザー指摘、
     /// CLAUDE.md 参照]。
     let navigationRoot: NavigationRoot
+    /// このペインが初めて現れた瞬間だけ、自動展開（`revealSelectionIfNeeded`）
+    /// を1回スキップする [実機検証で発見・修正したバグ: 「アプリ起動時に
+    /// 開くフォルダ」にテンポラリ／ライブラリフォルダを設定していても、
+    /// 起動直後は一瞬だけ既定の仮想ホーム（`navigationRoot == .volume`）が
+    /// 表示され、このペイン自身の `.task` がその一瞬の状態に対して
+    /// `revealSelectionIfNeeded` を呼んでしまっていた。`expandedNodeIDs`/
+    /// `volumesExpanded` は加算的にしか変化しない（`formUnion`、`= true`
+    /// を戻す経路が無い）ため、直後に `MainWindowView` 側の別の `.task` が
+    /// 正しい登録フォルダへ切り替えても、この一瞬の展開（Macintosh HD →
+    /// ユーザーの実ホームフォルダまで）だけが取り消されずに残り続けていた
+    /// ——ユーザー報告「テンポラリフォルダを指定しているのに、起動すると
+    /// ボリュームのMacintosh HDがユーザーのホームフォルダまでツリー展開
+    /// してしまう」。`MainWindowView.hasPendingStartupFolderOverride` が
+    /// 「これから上書きされる見込みがあるか」を`.task`実行前に同期的に
+    /// 判定し、上書きが見込まれる場合は初回の自動展開をスキップする——
+    /// 実際に上書きが適用された後は `.onChange(of: selectedURL)` 経由で
+    /// 改めて（今度は正しい `navigationRoot` で）自動展開される。
+    let skipsInitialAutoExpand: Bool
     let onSelect: (URL, NavigationRoot) -> Void
 
     @State private var volumesExpanded = true
     @State private var temporaryExpanded = true
     @State private var libraryExpanded = true
     @State private var expandedNodeIDs: Set<String> = [] // [LP-05]
+    /// 現在スクロール領域内に実際に描画されている行の ID（`FolderTreeNode.id`
+    /// と同じ正規化パス文字列）。`List` は行を遅延生成するため、各
+    /// `FolderTreeRow` の `.onAppear`/`.onDisappear` で増減させる
+    /// [`revealSelectionIfNeeded` が「既に表示範囲内なら再スクロールしない」
+    /// 判定に使う、ユーザー要望]。
+    @State private var visibleNodeIDs: Set<String> = []
     @State private var volumes: [FolderTreeNode] = []
     @State private var libraryEntries: [RegisteredFolderEntry] = []
     @State private var temporaryEntries: [RegisteredFolderEntry] = []
@@ -45,7 +69,7 @@ struct FolderTreePane: View {
                     if volumesExpanded {
                         ForEach(volumes) { node in
                             FolderTreeRow(
-                                node: node, expandedIDs: $expandedNodeIDs, selectedURL: selectedURL,
+                                node: node, expandedIDs: $expandedNodeIDs, visibleIDs: $visibleNodeIDs, selectedURL: selectedURL,
                                 rowNavigationRoot: .volume, onSelect: onSelect,
                                 onDropFailure: { presentFailureMessage($0) }
                             )
@@ -80,6 +104,7 @@ struct FolderTreePane: View {
             .task {
                 volumes = FolderTreeNode.mountedVolumes()
                 await reloadRegisteredFolders()
+                guard !skipsInitialAutoExpand else { return }
                 revealSelectionIfNeeded(scrollProxy: scrollProxy)
             }
             .alert("folderTree.renameDisplayName", isPresented: Binding(get: { renamingFolder != nil }, set: { if !$0 { renamingFolder = nil } })) {
@@ -127,9 +152,17 @@ struct FolderTreePane: View {
         // 数フレームかかることがある。`PaneWindows.swift`/`WindowFrameAutosave.swift`
         // と同じ「1サイクル遅らせて適用する」パターンだが、階層が深い場合は
         // 複数段のカスケードになるため、経験的に十分な余裕を持たせている。
+        let targetID = selectedURL.standardizedFileURL.path
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            // [ユーザー要望] ハイライトされた行が既に表示範囲内にあるなら
+            // スクロールしない。`visibleNodeIDs` は各 `FolderTreeRow` の
+            // `.onAppear`/`.onDisappear` で増減する（`List` の行virtualization
+            // を利用した「実際に画面に描画されているか」の判定、`List` に
+            // 標準の可視判定 API が無いための代替手段）。展開の反映を待つ
+            // ため、この判定も同じ 0.3 秒遅延の後に行う。
+            guard !visibleNodeIDs.contains(targetID) else { return }
             withAnimation {
-                scrollProxy.scrollTo(selectedURL.standardizedFileURL.path, anchor: .center)
+                scrollProxy.scrollTo(targetID, anchor: .center)
             }
         }
     }
@@ -180,7 +213,7 @@ struct FolderTreePane: View {
             ForEach(entries) { entry in
                 if let node = entry.node {
                     FolderTreeRow(
-                        node: node, expandedIDs: $expandedNodeIDs, selectedURL: selectedURL,
+                        node: node, expandedIDs: $expandedNodeIDs, visibleIDs: $visibleNodeIDs, selectedURL: selectedURL,
                         rowNavigationRoot: .registeredFolder(id: entry.folder.id, rootURL: node.url), onSelect: onSelect,
                         onDropFailure: { presentFailureMessage($0) },
                         registeredFolder: entry.folder,
@@ -363,6 +396,9 @@ private struct OfflineRegisteredFolderRow: View {
 private struct FolderTreeRow: View {
     let node: FolderTreeNode
     @Binding var expandedIDs: Set<String>
+    /// 現在画面に描画されている行の ID 集合。`.onAppear`/`.onDisappear` で
+    /// 自分自身の ID を増減させる [`FolderTreePane.visibleNodeIDs` 参照]。
+    @Binding var visibleIDs: Set<String>
     let selectedURL: URL?
     /// この行（および再帰的に読み込まれる子孫すべて）が属する
     /// `NavigationRoot`。`registeredFolder`/`onRename`/`onUnregister` と違い
@@ -417,6 +453,12 @@ private struct FolderTreeRow: View {
             // 濃い青の背景に対して黒文字だとコントラストが低いため、
             // Finder と同じく選択中は白文字にする。
             .foregroundStyle(isSelected ? Color(nsColor: .alternateSelectedControlTextColor) : Color.primary)
+            // [ユーザー要望] ハイライトを中央ペイン（`Table`）と同じく行
+            // 全体（アイコン＋名前の実幅だけでなく、ツリーの右端まで）に
+            // 広げる。`Label` はそのままだと自身の内容幅にしか収まらない
+            // ため、先に横幅いっぱいへ広げてから padding/background を
+            // 適用する必要がある。
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, Tokens.spacing.xs)
             .padding(.vertical, 2)
             // 選択のハイライトは AppKit のシステム標準色を使う
@@ -450,7 +492,7 @@ private struct FolderTreeRow: View {
             } else if let children {
                 ForEach(children) { child in
                     FolderTreeRow(
-                        node: child, expandedIDs: $expandedIDs, selectedURL: selectedURL,
+                        node: child, expandedIDs: $expandedIDs, visibleIDs: $visibleIDs, selectedURL: selectedURL,
                         rowNavigationRoot: rowNavigationRoot, onSelect: onSelect,
                         onDropFailure: onDropFailure
                     )
@@ -478,6 +520,11 @@ private struct FolderTreeRow: View {
             }
         }
         .disabled(node.isSymlink) // [SL-05]
+        // [ユーザー要望] `List` の行virtualizationを利用して「実際に画面へ
+        // 描画されているか」を追跡する（`revealSelectionIfNeeded` の
+        // 「既に表示範囲内ならスクロールしない」判定に使う）。
+        .onAppear { visibleIDs.insert(node.id) }
+        .onDisappear { visibleIDs.remove(node.id) }
         .onChange(of: isExpanded.wrappedValue, initial: true) { _, expanded in
             guard expanded, children == nil, !accessDenied else { return }
             loadChildren()

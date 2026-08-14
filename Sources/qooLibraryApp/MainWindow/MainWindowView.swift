@@ -89,6 +89,18 @@ struct MainWindowView: View {
         wasLaunchedWithoutExplicitFolder = initialFolder == nil
     }
 
+    /// これから「アプリ起動時に開くフォルダ」の `.task` がタブの `folder`/
+    /// `navigationRoot` を書き換える見込みがあるかどうか。`.task` 内の適用
+    /// ガード（`wasLaunchedWithoutExplicitFolder`/`hasAppliedStartupFolderThisLaunch`/
+    /// `UserDefaults` の設定値）と全く同じ条件を、`.task` が実際に走る前に
+    /// 同期的に判定できるようにしたもの [実機検証で発見したバグの修正、
+    /// `FolderTreePane` の `skipsInitialAutoExpand` 引数のコメント参照]。
+    private var hasPendingStartupFolderOverride: Bool {
+        guard wasLaunchedWithoutExplicitFolder, !Self.hasAppliedStartupFolderThisLaunch else { return false }
+        let kind = UserDefaults.standard.string(forKey: StartupFolderPreference.kindKey)
+        return kind != nil && kind != StartupFolderKind.virtualHome.rawValue
+    }
+
     /// ウインドウタイトル [ユーザー要望]。タブが無い/フォルダが無い場合のみ
     /// アプリ名にフォールバックする。
     private var currentFolderTitle: String {
@@ -117,6 +129,7 @@ struct MainWindowView: View {
                     FolderTreePane(
                         selectedURL: windowState.currentTabIndex.flatMap { windowState.tabs[$0].folder },
                         navigationRoot: windowState.currentTabIndex.map { windowState.tabs[$0].navigationRoot } ?? .volume,
+                        skipsInitialAutoExpand: hasPendingStartupFolderOverride,
                         onSelect: { url, root in windowState.navigateCurrentTab(to: url, root: root) }
                     )
                     PlaceholderPane(
@@ -135,6 +148,10 @@ struct MainWindowView: View {
                             selection: Binding(
                                 get: { windowState.tabs[index].selection },
                                 set: { windowState.tabs[index].selection = $0 }
+                            ),
+                            pendingRevealURL: Binding(
+                                get: { windowState.tabs[index].pendingRevealURL },
+                                set: { windowState.tabs[index].pendingRevealURL = $0 }
                             ),
                             onNavigate: { windowState.navigateCurrentTab(to: $0) },
                             onGoBack: { windowState.goBack() },

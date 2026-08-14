@@ -33,6 +33,17 @@ public struct TabState: Identifiable, Sendable, Equatable {
     /// タブごとに独立させる（タブ切替で他タブの履歴に影響しない）。
     var backHistory: [TabHistoryEntry] = []
     var forwardHistory: [TabHistoryEntry] = []
+    /// 「戻る」「1階層上へ」で親フォルダへ移動したとき、直前までいた
+    /// フォルダまで中央ペインをスクロールさせるための一時的な信号
+    /// [ユーザー要望: 「戻る」「一階層上へ」の操作で1つ上の階層のフォルダに
+    /// 移動した場合、それまでいたフォルダをハイライトし、表示できる位置まで
+    /// あらかじめスクロールしておいてほしい]。ハイライト自体は `selection`
+    /// を直接更新するだけで済むが、スクロールは `FolderContentView` 側の
+    /// `pendingScrollTarget`（「ここに圧縮」で確立済みの、ユーザー自身の
+    /// クリックとプログラム的な選択変更を区別する仕組み）に伝える必要がある
+    /// ため、この専用フィールドで橋渡しする。`FolderContentView` が消費後に
+    /// `nil` へ戻す。
+    public var pendingRevealURL: URL?
 
     public init(id: UUID = UUID(), folder: URL?, title: String) {
         self.id = id
@@ -171,14 +182,23 @@ public final class WindowState {
     }
 
     /// Finder ツールバーの「戻る」相当 [KB-02]。
+    ///
+    /// **移動先が直前までいたフォルダの親であれば、そのフォルダをハイライト
+    /// してスクロールする**［ユーザー要望: 「戻る」「一階層上へ」で1つ上の
+    /// 階層へ移動した場合、それまでいたフォルダを表示できる位置まで
+    /// あらかじめハイライト・スクロールしておいてほしい］。「戻る」は必ずしも
+    /// 親フォルダへ移動するとは限らない（履歴上の任意のフォルダへ戻り得る）
+    /// ため、移動先が実際に親であるときだけ発動する条件付きの挙動にしている。
     public func goBack() {
         guard let index = currentTabIndex, let previous = tabs[index].backHistory.popLast() else { return }
+        let leavingFolder = tabs[index].folder
         if let current = tabs[index].folder {
             tabs[index].forwardHistory.append(TabHistoryEntry(url: current, navigationRoot: tabs[index].navigationRoot))
         }
         tabs[index].folder = previous.url
         tabs[index].navigationRoot = previous.navigationRoot
         tabs[index].title = previous.url.lastPathComponent
+        revealIfParent(of: leavingFolder, newFolder: previous.url, at: index)
     }
 
     /// Finder ツールバーの「進む」相当 [KB-02]。
@@ -207,9 +227,28 @@ public final class WindowState {
     /// 双方に一時的なログを仕込んだ実機検証で確認）。`goBack`/`goForward` は
     /// 元から `WindowState`（`@Observable` の参照型）のメソッドとして実装
     /// されており同種の問題が出ていなかったため、同じ設計に揃えた。
+    ///
+    /// **移動元のフォルダをハイライトしてスクロールする**［ユーザー要望、
+    /// `goBack()` と同じ。こちらは常に親フォルダへの移動のため無条件で
+    /// 発動する］。
     public func goToParent() {
         guard canGoToParent, let folder = currentTab?.folder else { return }
-        navigateCurrentTab(to: folder.deletingLastPathComponent())
+        let parent = folder.deletingLastPathComponent()
+        navigateCurrentTab(to: parent)
+        guard let index = currentTabIndex else { return }
+        tabs[index].selection = [folder]
+        tabs[index].pendingRevealURL = folder
+    }
+
+    /// `leavingFolder` が `newFolder` の直下（親子関係）である場合だけ、
+    /// `leavingFolder` を選択・スクロール対象にする [`goBack()`/`goToParent()`
+    /// 共通のヘルパー]。
+    private func revealIfParent(of leavingFolder: URL?, newFolder: URL, at index: Int) {
+        guard let leavingFolder,
+              leavingFolder.deletingLastPathComponent().standardizedFileURL == newFolder.standardizedFileURL
+        else { return }
+        tabs[index].selection = [leavingFolder]
+        tabs[index].pendingRevealURL = leavingFolder
     }
 
     public func openTab(for folder: URL?) {
