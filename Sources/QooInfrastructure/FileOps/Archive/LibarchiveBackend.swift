@@ -518,9 +518,17 @@ public struct LibarchiveBackend: ArchiveReading {
 
     /// Finder に倣い `name 2.ext` の形式で連番を付与する（`FileOperationService`
     /// と同じ規則、ただし展開処理はステージング配下でしか動かないため独立実装）。
+    /// `FileOperationService.nextAvailableName` と同じ規則 [CF-01]。衝突先の
+    /// 名前に既に連番サフィックス（例: `name 2`）が付いている場合はそれを
+    /// 剥がしてから採番する。剥がさないと `name 2` との衝突のたびに末尾へ
+    /// さらに ` 2` が積み重なり `name 2 2` のようになってしまう
+    /// [フェーズ1完了時の監査で発見: `FileOperationService` 側では既に
+    /// 修正済みだったこの不具合が、同じ規則を持つはずのこちらの実装には
+    /// 反映されていなかった]。
     private static func nextAvailableName(for url: URL) -> URL {
         let ext = url.pathExtension
-        let base = ext.isEmpty ? url.lastPathComponent : String(url.lastPathComponent.dropLast(ext.count + 1))
+        let rawBase = ext.isEmpty ? url.lastPathComponent : String(url.lastPathComponent.dropLast(ext.count + 1))
+        let base = strippingTrailingCopyNumber(from: rawBase)
         let directory = url.deletingLastPathComponent()
         var n = 2
         while true {
@@ -531,5 +539,10 @@ public struct LibarchiveBackend: ArchiveReading {
             }
             n += 1
         }
+    }
+
+    private static func strippingTrailingCopyNumber(from name: String) -> String {
+        guard let range = name.range(of: #" \d+$"#, options: .regularExpression) else { return name }
+        return String(name[..<range.lowerBound])
     }
 }

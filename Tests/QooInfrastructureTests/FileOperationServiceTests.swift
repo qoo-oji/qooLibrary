@@ -149,6 +149,32 @@ import Testing
         #expect(try String(contentsOf: existing, encoding: .utf8) == "new")
     }
 
+    /// [フェーズ1完了時のリソースリーク・ファイル安全性監査で追加、ユーザー
+    /// 指摘: 「壊れたファイルで健康なファイルを書き潰してしまうおそれは
+    /// 本当にないか」] `.replace` は宛先を即座に削除するのではなく退避してから
+    /// 書き込む。書き込みが失敗した場合は退避先から元へ戻し、健康だった
+    /// 既存ファイルを失わないことを確認する。退避用の一時ファイルが後始末
+    /// されずに残らないことも確認する。
+    @Test func conflictReplaceRestoresOriginalDestinationIfWriteFails() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let destDir = root.appendingPathComponent("dest")
+        try FileManager.default.createDirectory(at: destDir, withIntermediateDirectories: true)
+
+        // ソースを実在しない状態にし、`copyItem` が必ず失敗するようにする。
+        let missingSource = root.appendingPathComponent("missing.txt")
+        let existing = destDir.appendingPathComponent("missing.txt")
+        try write("original and healthy", to: existing)
+
+        await #expect(throws: (any Error).self) {
+            try await service.copy([missingSource], to: destDir, options: OpOptions(conflictPolicy: .replace))
+        }
+
+        #expect(try String(contentsOf: existing, encoding: .utf8) == "original and healthy")
+        let leftovers = try FileManager.default.contentsOfDirectory(atPath: destDir.path)
+        #expect(leftovers == ["missing.txt"])
+    }
+
     @Test func conflictKeepBothUsesFinderStyleSuffix() async throws {
         let root = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: root) }

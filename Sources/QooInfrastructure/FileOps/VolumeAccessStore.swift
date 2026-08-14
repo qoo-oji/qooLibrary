@@ -27,7 +27,11 @@ public actor VolumeAccessStore {
     private let storageURL: URL
     private let bookmarks: BookmarkResolving
     private var grants: [GrantedVolumeAccess] = []
-    private var activeAccessURLs: Set<URL> = []
+    /// 解決済み URL ごとの有効なアクセス数。`Set<URL>` だと同じ URL に対する
+    /// 複数の許可を1件として扱ってしまい、片方を取り消すともう片方の
+    /// `startAccessingSecurityScopedResource` が `stop` で対応づけられないまま
+    /// 残ってしまう [フェーズ1完了時のリソースリーク監査で追加]。
+    private var activeAccessCounts: [URL: Int] = [:]
     private var didLoad = false
 
     public init(storageURL: URL? = nil, bookmarks: BookmarkResolving = SecurityScopedBookmarkResolver()) {
@@ -61,10 +65,22 @@ public actor VolumeAccessStore {
     @discardableResult
     public func grantAccess(to url: URL, displayName: String?) throws -> GrantedVolumeAccess {
         ensureLoaded()
-        let resolvedURL = url.resolvingSymlinksInPath()
-        let bookmarkData = try bookmarks.makeBookmark(for: resolvedURL)
+        let requestedURL = url.resolvingSymlinksInPath()
+        // 同じ場所への許可が既にあれば重複して追加しない
+        // [フェーズ1完了時の監査で追加: 同じフォルダを2回許可すると、
+        // 取り消し操作がどちらか一方の `stopAccessingSecurityScopedResource`
+        // としか対応づかず、もう片方の許可を取り消しても実際には解放されない
+        // というリークの温床になっていた]。パス文字列で比較する
+        // （`RegisteredFolderStore.checkNotNested` と同じ理由 — ブックマーク
+        // 解決後の `URL` は末尾スラッシュ等の表現差で素の `==` では一致しない
+        // ことがある）。
+        let requestedPath = requestedURL.standardizedFileURL.path
+        if let existing = grants.first(where: { resolvedURL(for: $0)?.standardizedFileURL.path == requestedPath }) {
+            return existing
+        }
+        let bookmarkData = try bookmarks.makeBookmark(for: requestedURL)
         let grant = GrantedVolumeAccess(
-            displayName: displayName ?? FileManager.default.displayName(atPath: resolvedURL.path),
+            displayName: displayName ?? FileManager.default.displayName(atPath: requestedURL.path),
             bookmarkData: bookmarkData
         )
         grants.append(grant)
@@ -76,9 +92,13 @@ public actor VolumeAccessStore {
     public func revokeAccess(_ id: UUID) throws {
         ensureLoaded()
         guard let grant = grants.first(where: { $0.id == id }) else { return }
-        if let url = resolvedURL(for: grant), activeAccessURLs.contains(url) {
-            url.stopAccessingSecurityScopedResource()
-            activeAccessURLs.remove(url)
+        if let url = resolvedURL(for: grant), let count = activeAccessCounts[url] {
+            if count <= 1 {
+                url.stopAccessingSecurityScopedResource()
+                activeAccessCounts.removeValue(forKey: url)
+            } else {
+                activeAccessCounts[url] = count - 1
+            }
         }
         grants.removeAll { $0.id == id }
         try save()
@@ -96,13 +116,25 @@ public actor VolumeAccessStore {
     private func activateAccessIfPossible(_ grant: GrantedVolumeAccess) {
         guard let url = resolvedURL(for: grant) else { return }
         if url.startAccessingSecurityScopedResource() {
-            activeAccessURLs.insert(url)
+            activeAccessCounts[url, default: 0] += 1
         }
     }
 
     private func load() {
         guard let data = try? Data(contentsOf: storageURL) else { return }
-        grants = (try? JSONDecoder().decode([GrantedVolumeAccess].self, from: data)) ?? []
+        guard let decoded = try? JSONDecoder().decode([GrantedVolumeAccess].self, from: data) else {
+            // デコードに失敗したまま `grants = []` として処理を続けると、次に
+            // 何か1件でも許可・取り消しをした瞬間の `save()` が壊れた内容ごと
+            // 上書きしてしまい、以前の許可がすべて復元不能になる
+            // [フェーズ1完了時の監査で追加]。元ファイルには触れず隣へ退避して
+            // から空の状態で続行することで、少なくとも手動での調査・復旧の
+            // 余地を残す。
+            let corruptBackup = storageURL.deletingLastPathComponent()
+                .appendingPathComponent("\(storageURL.lastPathComponent).corrupt-\(UUID().uuidString)")
+            try? FileManager.default.moveItem(at: storageURL, to: corruptBackup)
+            return
+        }
+        grants = decoded
     }
 
     private func save() throws {

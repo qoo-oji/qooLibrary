@@ -172,7 +172,20 @@ public actor RegisteredFolderStore {
 
     private func load() {
         guard let data = try? Data(contentsOf: storageURL) else { return }
-        folders = (try? JSONDecoder().decode([RegisteredFolder].self, from: data)) ?? []
+        guard let decoded = try? JSONDecoder().decode([RegisteredFolder].self, from: data) else {
+            // デコードに失敗したまま `folders = []` として処理を続けると、次に
+            // 何か1件でも登録・解除・改名をした瞬間の `save()` が壊れた内容
+            // ごと上書きしてしまい、以前登録していたライブラリ／テンポラリ
+            // フォルダがすべて復元不能になる [フェーズ1完了時の監査で追加、
+            // `VolumeAccessStore.load()` と同じ対策]。元ファイルには触れず
+            // 隣へ退避してから空の状態で続行し、手動での調査・復旧の余地を
+            // 残す。
+            let corruptBackup = storageURL.deletingLastPathComponent()
+                .appendingPathComponent("\(storageURL.lastPathComponent).corrupt-\(UUID().uuidString)")
+            try? FileManager.default.moveItem(at: storageURL, to: corruptBackup)
+            return
+        }
+        folders = decoded
     }
 
     private func save() throws {

@@ -108,6 +108,31 @@ import Testing
         #expect(page2 == "second page")
     }
 
+    /// [フェーズ1完了時の監査で発見した回帰] `FileOperationService.nextAvailableName`
+    /// では「衝突先の名前に既に連番サフィックスが付いていれば剥がしてから
+    /// 採番する」という修正が既に適用済みだったが、EX-15（大文字小文字のみ
+    /// 異なるエントリの衝突）で使われるこちらの同名ヘルパーには反映されて
+    /// おらず、`photo 2.txt` の衝突が `photo 2 2.txt` に積み重なってしまう
+    /// 同種のバグが再発していた。
+    @Test func extractRenumbersInsteadOfStackingWhenColliderAlreadyHasACopyNumberSuffix() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let archiveURL = root.appendingPathComponent("collide.zip")
+        try ArchiveFixtureBuilder.makeZip(at: archiveURL, entries: [
+            .file("photo 2.txt", contents: Data("first".utf8)),
+            .file("photo 2.txt", contents: Data("second".utf8)),
+        ])
+
+        let staging = root.appendingPathComponent("staging", isDirectory: true)
+        let options = ExtractOptions(destination: staging)
+        let result = try await LibarchiveBackend.shared.extract(archiveURL, to: staging, options: options)
+
+        #expect(result.extractedCount == 2)
+        #expect(result.renamedForCaseCollision == [ExtractRename(from: "photo 2.txt", to: "photo 3.txt")])
+        #expect(FileManager.default.fileExists(atPath: staging.appendingPathComponent("photo 3.txt").path))
+        #expect(!FileManager.default.fileExists(atPath: staging.appendingPathComponent("photo 2 2.txt").path))
+    }
+
     @Test func extractRejectsPathTraversalEntries() async throws {
         let root = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: root) }

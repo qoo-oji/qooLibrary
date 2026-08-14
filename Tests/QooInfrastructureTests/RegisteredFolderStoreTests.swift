@@ -136,6 +136,27 @@ import Testing
             try await store.register(url: target, kind: .library, displayName: nil)
         }
     }
+
+    /// [フェーズ1完了時のリソースリーク・ファイル安全性監査で追加] JSON の
+    /// デコードに失敗しても、次の `save()` が壊れた元ファイルを黙って
+    /// 上書きしないことを確認する（`VolumeAccessStore` にも同じ対策がある）。
+    /// これが無いと、たまたま1回デコードに失敗しただけで以前登録していた
+    /// ライブラリ／テンポラリフォルダの記録が全て消え去ってしまう。
+    @Test func corruptStorageFileIsPreservedAsABackupInsteadOfBeingOverwritten() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let storageURL = root.appendingPathComponent("state.json")
+        try Data("not valid json".utf8).write(to: storageURL)
+        let store = makeStore(storageURL: storageURL)
+
+        let libraries = await store.folders(kind: .library)
+        #expect(libraries.isEmpty)
+
+        let siblings = try FileManager.default.contentsOfDirectory(atPath: root.path)
+        let backups = siblings.filter { $0.hasPrefix("state.json.corrupt-") }
+        #expect(backups.count == 1)
+        #expect(!FileManager.default.fileExists(atPath: storageURL.path))
+    }
 }
 
 private struct RejectingVolumeChecker: VolumeEligibilityChecking {

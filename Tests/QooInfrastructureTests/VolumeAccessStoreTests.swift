@@ -79,6 +79,43 @@ import Testing
         #expect(list.map(\.displayName) == ["Apple", "Mango", "Zebra"])
     }
 
+    /// [フェーズ1完了時のリソースリーク監査で追加] 同じ場所への許可を重複して
+    /// 追加すると、取り消し時にどちらか一方の `stopAccessingSecurityScopedResource`
+    /// が呼ばれないまま残ってしまうリークの温床になっていたため、重複を防ぐ。
+    @Test func grantAccessToTheSamePathTwiceReturnsTheExistingGrant() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let target = root.appendingPathComponent("Target", isDirectory: true)
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        let store = VolumeAccessStore(storageURL: root.appendingPathComponent("state.json"))
+
+        let first = try await store.grantAccess(to: target, displayName: nil)
+        let second = try await store.grantAccess(to: target, displayName: nil)
+
+        #expect(first.id == second.id)
+        let list = await store.grantedAccess()
+        #expect(list.count == 1)
+    }
+
+    /// [フェーズ1完了時の監査で追加] JSON のデコードに失敗しても、次の
+    /// `save()` が壊れた元ファイルを黙って上書きしないことを確認する
+    /// （`RegisteredFolderStore` にも同じ対策がある）。
+    @Test func corruptStorageFileIsPreservedAsABackupInsteadOfBeingOverwritten() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let storageURL = root.appendingPathComponent("state.json")
+        try Data("not valid json".utf8).write(to: storageURL)
+        let store = VolumeAccessStore(storageURL: storageURL)
+
+        let list = await store.grantedAccess()
+        #expect(list.isEmpty)
+
+        let siblings = try FileManager.default.contentsOfDirectory(atPath: root.path)
+        let backups = siblings.filter { $0.hasPrefix("state.json.corrupt-") }
+        #expect(backups.count == 1)
+        #expect(!FileManager.default.fileExists(atPath: storageURL.path))
+    }
+
     @Test func grantsPersistAcrossStoreInstancesOverTheSameStorage() async throws {
         let root = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: root) }

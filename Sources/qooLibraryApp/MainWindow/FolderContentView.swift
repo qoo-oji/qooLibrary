@@ -420,7 +420,13 @@ struct FolderContentView: View {
             }
         }
         .dropDestination(for: URL.self) { items, _ in // [DD-03] Finder・他アプリからの取り込み
-            guard let folder else { return false }
+            // `folder`（構造体に保持された値）ではなく `currentFolder()` を
+            // 読む必要がある [フェーズ1完了時の監査で発見: 高速なナビゲーション
+            // 直後は SwiftUI がまだ1世代古い `FolderContentView` インスタンスを
+            // 保持していることがあり、`goToParent`/`pasteFromPasteboard` で
+            // 過去に同種のバグが実際に踏まれている。この経路だけ移行漏れが
+            // あった]。
+            guard let folder = currentFolder() else { return false }
             DropHandling.performDrop(items, into: folder, onComplete: { reloadAndBroadcast() }, onFailure: { presentFailureMessage($0) })
             return true
         } isTargeted: { isDropTargeted = $0 }

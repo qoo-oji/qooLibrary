@@ -11,7 +11,7 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
 
 ## 0. 現在の状態
 
-**フェーズ 0（基盤検証）完了。フェーズ 1（ファイルマネージャー）はほぼ完了（1-1〜1-13・1-12b 完了、1-12 は実装可能な範囲を実装済み。残るは 1-14/1-15 のみ）。**
+**フェーズ 0（基盤検証）完了。フェーズ 1（ファイルマネージャー）はほぼ完了（1-1〜1-13・1-12b 完了、1-12 は実装可能な範囲を実装済み。残るは 1-14/1-15・1-16 のみ）。**
 
 ### フェーズ 0（`17_実装ロードマップ.md` §17.2、全項目完了）
 
@@ -22,7 +22,7 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
 - 静的検査 `Scripts/check-fileops-isolation.swift`（B-10）・`check-layer-dependencies.swift`（B-11）・`check-json-completeness.swift`（B-13, 現状はプレースホルダ）と CI（`.github/workflows/ci.yml`）を用意した。
 - **既知の懸念（要フォローアップ）**: libarchive 3.8.9 は特定の壊れた RAR 入力（use-after-free の回帰テストファイル）でクラッシュする（エラーを返さず異常終了）。`SecureExtractor`（09章 §9.3）実装時に対処を検討する必要がある。詳細は `Spikes/README.md` の T-12 節。
 
-### フェーズ 1（`17_実装ロードマップ.md` §17.3、1-1〜1-13・1-12b 完了（1-12 は実装可能な範囲のみ）・1-14/1-15 未着手）
+### フェーズ 1（`17_実装ロードマップ.md` §17.3、1-1〜1-13・1-12b 完了（1-12 は実装可能な範囲のみ）・1-14/1-15/1-16 未着手）
 
 - **1-1 プロジェクト基盤が完了。** `qooLibrary.xcodeproj` は `project.yml` から `xcodegen generate` で生成する（**git-ignore 対象、手で pbxproj を編集しない**。ThirdParty の xcframework と同じ「生成物はコミットしない」方針）。ローカルの SwiftPM パッケージ（`QooKit`/`QooPersistence`/`QooInfrastructure`/`QooApplication`）を local package dependency として参照し、実機で起動確認済み。
 - App Sandbox entitlement（`Sources/qooLibraryApp/qooLibrary.entitlements`）を付与済み。`codesign -d --entitlements :-` で署名済みバイナリに実際に反映されていることを確認済み [SB-01]。
@@ -331,7 +331,7 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
   - **Edit メニュー**: `CommandGroup(replacing: .pasteboard)` で標準のプレースホルダ（Cut/Copy/Paste/Delete/すべて選択。テキスト編集ビューが無いためクリックしても何も起きない非活性項目のまま放置されていた）を丸ごと置き換えた。SwiftUI の `.pasteboard` プレースメントに Cut/Copy/Paste/Delete/Select All が一括りで含まれることは WebSearch で確認済み（`CommandGroup(after: .pasteboard)` で追加のみだと重複した「すべて選択」等が残るリスクがあったため、`replacing` を選んだ）。Undo/Redo は従来通り別グループ（`.undoRedo`）のまま（`CommandStack` が単一シングルトンのため `FocusedValue` を経由する必要が無い）。
   - **Finder との対照表（File メニュー）** — 実装したものは上記参照。以下は追加しなかった項目とその理由（**A = サンドボックス／アーキテクチャ上の理由で現状不可能、B = 技術的には実装できるが未着手**）:
     - 開く／情報を見る／複製／エイリアスを作成／ゴミ箱に入れる／圧縮／すべて選択／カット・コピー・ペースト → **実装済み**（上記参照）。
-    - **「開く」の対象アプリ選択（Open With サブメニュー）**: B。`NSWorkspace`/LaunchServices での対応アプリ列挙自体はサンドボックスの制約を受けず技術的に可能だが、サブメニューの動的構築・既定アプリ変更の UI 実装コストが今回のスコープを超えると判断し見送った。1-12 の「関連付け」タブ（`AppAssociationService`、AS-01〜、今回除外）と機能が重なるため、そちらの実装時にまとめて対応するのが自然。
+    - **「開く」の対象アプリ選択（Open With サブメニュー）**: **[この後 1-12 のタイミングで実装済み]** `OpenWithMenu`（`FolderContentView.swift`）として実装済み、詳細は「アプリ関連付け」節参照。当初はここで B 判定として見送っていたが、`AppAssociationService`（関連付けタブ）の実装時にまとめて対応した。
     - **印刷**: B（技術的な可否は未検証）。汎用ファイル形式（マンガ・アーカイブ主体）を「印刷」する需要がほぼ無く、実装コストに見合わないと判断し優先度を下げているだけで、サンドボックスによる制約は確認していない。
     - **情報を見るを Finder 本体のウインドウで開く**: A（の一種）。1-9 で既に「保留」として記録済み（`com.apple.security.automation.apple-events` entitlement の追加とユーザーの TCC 許可が必要、Finder への Apple Events 送信が必要なため）。qooLibrary は自前の常設インスペクタ（`InspectorPane`）で同等の情報を代替表示しているため優先度は低いまま。
     - **クイックルック（スペースキーでのプレビュー）**: B。サンドボックス起因ではなく、`QLPreviewPanel`/QuickLook Framework 統合そのものが未着手（ロードマップ 1-14「Quick Look 等」として既に切り出し済みの独立タスク）。`ActionID.quickLook`（既定キー: スペース）は 1-8 の時点で登録済みだが呼び出し先の機能が無いため未配線のまま。
@@ -345,6 +345,7 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
     - **ディスクに書き込む（Burn to Disc）**: 該当機能なし。光学ドライブ搭載 Mac が実質的に存在しない現在、価値がほぼ無い機能と判断し対象外にした。サンドボックスとは無関係。
     - **項目を Dock に追加**: B、優先度低。実装コストに対する価値が低いと判断し見送った。
   - **Finder との対照表（Edit メニュー）**: Undo/Redo/カット/コピー/ペースト/すべて選択 → **実装済み**（上記参照）。「クリップボードを表示」「音声入力を開始」「絵文字と記号」は macOS 標準機能（`.pasteboard` を置き換えても影響を受けない別グループ）のため対象外。
+  - **[1-16 のスコープ定義、要件定義書には無い、ユーザー要望]**: 「フェーズ1のアイテムに、Finder が持つ機能で実装を見送ったものを可能な範囲で実装する、を加えておいてください」との指示を受け、上記の File メニュー対照表・下記のコンテキストメニュー対照表で **B 判定**（技術的には実装できるが未着手）とした項目群をロードマップ番号 **1-16** としてまとめて記録する。棚卸し時点での対象候補: 印刷、クイックルック（既に 1-14 として独立タスク化済みのためそちらで対応）、検索（Find、フェーズ2のラベル機能と合わせて検討）、サービス／クイックアクション、イジェクト（サンドボックス下での実際の可否が未検証のため着手前に要検証）、Dock への項目追加、フォルダツリーの通常フォルダ行への右クリックメニュー追加（後述、配線工数のみの問題）。**A 判定**（サンドボックス／アーキテクチャ上不可能）の項目はこの対象に含めない。着手時は、この節と直後のコンテキストメニュー対照表を読んでから、各項目について現時点でも B 判定が妥当か（依存する機能が実装されて A→実装可能や既に別タスクで実装済みになっていないか）を再確認すること。
   - **コンテキストメニューの Finder 対比監査**（`FolderContentView.contextMenuContent(for:)`／`FolderTreePane`）:
     - 上記で新規実装したカット・すべて選択・選択項目で新規フォルダの3つは、コンテキストメニューにも同時に配線済み（前述）。
     - **フォルダツリー（左ペイン）の通常フォルダ行に右クリックメニューが無い**（登録ルート行だけ「表示名を変更」「登録解除」を持つ）。B。Finder のサイドバー相当ではあるが、Finder のサイドバー項目自体のコンテキストメニューも「新規タブで開く」「新規ウインドウで開く」「Finder の情報を見る」程度に限定的で、本アプリの中央ペインの豊富な右クリックメニューほどの価値は無い。`onOpenInNewTab`/`onOpenInNewWindow` コールバックは現状 `FolderTreePane` まで届いておらず（`MainWindowView → FolderContentView` にのみ渡している）、実装するにはプロパティのバケツリレーが必要。優先度が低いと判断し今回は見送ったが、サンドボックスや設計上の制約ではなく単純に配線工数の問題であり、実装可能。
@@ -404,6 +405,25 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
   - **[実機検証で発見・修正したバグ] 環境設定でアクセスを取り消しても（または追加しても）、既に読み込み済みのフォルダツリーの行は再起動するまでキャッシュされたままだった。** `FolderTreeRow` に `SessionState.shared.reloadToken` の変更を監視する `.onChange` を追加し、`children != nil || accessDenied` の行（＝一度でも読み込みを試みた行）だけを `accessDenied` をリセットしてから再読み込みするようにした（他ウインドウ／ペインをまたいだ変更の反映と同じ既存の仕組みを再利用）。`AccessPreferencesTab` の `addAccess()`/`revoke()` の両方から `SessionState.shared.reloadToken += 1` を呼ぶようにし、許可・取り消しのどちらの方向でもツリーが即座に反映されるようにした。`loadChildren()` の失敗時に `children = nil` も追加し（アクセスが後から失われた場合に古い一覧が残り続けないように）。
   - **Macintosh HD 許可 → 外部ボリュームも含めてアクセス可能になることは実機で確認済み。** キャッシュ再読み込みの修正（`reloadToken` 経由）・「追加」ボタンの既定選択（ルート）・`AccessDeniedRow` から環境設定への遷移も含め、**実機検証（ユーザーによる手動確認）で完了。** 「アクセスを許可…」ボタンが期待通り動作し、各ボリュームへアクセスできる状態になったことを確認済み。
   - **フォルダツリーの「アクセスを許可…」ボタンを、その場で `NSOpenPanel` を開く実装から、環境設定「アクセス権」タブへ遷移する実装に置き換えた**（ユーザー要望: 「ボリュームの『アクセスを許可』ボタンをクリックしたら、環境設定のアクセス権タブが開くようにできますか？」。許可 UI が複数箇所に分散するより一箇所に集約する方が分かりやすいという判断）。`PreferencesNavigation`（新規、`@Observable` の `@MainActor` シングルトン、`PreferencesView.swift` に配置）が `pendingCategory: PreferencesCategory?` を保持し、`AccessDeniedRow` は `PreferencesNavigation.shared.pendingCategory = .access` をセットしてから `openWindow(id: "preferences")` を呼ぶだけになった（`NSOpenPanel`/`VolumeAccessStore` 呼び出しは `AccessPreferencesTab` 側だけに一本化、`AccessDeniedRow` から `url`/`onGranted` パラメータを削除）。`PreferencesView` は `.task`（初回表示）と `.onChange(of: PreferencesNavigation.shared.pendingCategory)`（既に開いているウインドウが前面に来ただけのケース、`Window` シーンは同一 id で再度 `openWindow` してもビューを作り直さないため）の両方で `pendingCategory` を監視し、検出したら `selection` に反映してクリアする。`PreferencesCategory` は `AccessDeniedRow`（別ファイル）から参照できるよう `private` を外した。許可されればフォルダツリー側は既存の `SessionState.reloadToken` 監視で自動的に反映される（前項の修正がそのまま効く）ため、`AccessDeniedRow` 側で明示的なコールバックを持つ必要が無くなった。
+- **フェーズ1完了前の先行リソースリーク・ファイル安全性監査を実施した**（§6 に記録した恒常的プロセスの内容に沿って実施したもの。**[訂正] 実施時点でフェーズ1はまだ完了しておらず（1-14/1-15/1-16 が未着手のまま残っていた）、ユーザーからも「フェーズ１は完了していません。この作業を、フェーズ１完了時に実施してほしい、というリクエストでした」と明確な訂正を受けた。** §6 の恒常的プロセス自体（「各フェーズの完了時に必ず実施する」）の理解は正しかったが、実行するタイミングを誤り、フェーズ1が実際に完了する前に前倒しで実施してしまった。見つけて直した不具合自体（下記）は独立して価値のある修正のため取り消してはいないが、**これは正式な「フェーズ1完了時点の監査」の代替にはならない** — 1-14/1-15/1-16 を実装し終えてフェーズ1が実際に完了した時点で、それらを含めて本節の監査を改めて実施すること。元のユーザー指示: 「最後にリファクタリングを実施したいです。特にリソースリークがないか、潜在的にその危険性がないか、予防策がないか。カット＆ペースト等で、ファイル消失を引き起こす危険性は本当にないか、壊れたファイルで健康なファイルを書き潰してしまうおそれはないか。丁寧に、徹底的に、監査にかける時間に上限を設けずに調査する工程を設けてください」）。`code-review` スキルを最高深度（`max`）で `QooInfrastructure/FileOps`・`QooApplication`・D&D／中央ペイン／状態管理／アクセス権関連の `qooLibraryApp` ファイル一式に対して実行し、さらに独立した検証用サブエージェントと、既知の指摘を伏せた「フレッシュな目」での再走査用サブエージェントを並行させて突き合わせた（3系統の指摘が同一の根本原因に複数回独立して収束したものは信頼度が高いと判断）。
+  - **修正した項目（実際にコードを変更したもの）**:
+    1. **[最重要・データ消失] `.replace`（上書き）方針が宛先ファイルを書き込み前に即座に削除していた。** `FileOperationService.resolveDestination`/`transfer` を変更し、宛先ファイルを即座に削除せず同一ディレクトリへ一時退避してから書き込み、失敗時は退避先から元へ戻す（`withReplaceBackupCleanup`）よう修正した。唯一の到達経路は「圧縮…」ダイアログで既存アーカイブに上書き保存する場合（`ArchiveCompressor` 経由、`conflictPolicy: .replace`）で、外部/ネットワークボリュームへの書き込み中に失敗すると旧アーカイブと新アーカイブの両方を失う実害のある経路だった。`rename`/`createAlias`/`copy`/`move`/`promoteFromStaging` すべてに共通で効く。回帰テスト `conflictReplaceRestoresOriginalDestinationIfWriteFails` を追加。
+    2. **[リソースリーク] `ThumbnailService.acquireSlot()`（PF-11 の同時実行数制限）が、キャンセルされたリクエストの継続を観測せず `waiters` に永久に迷子にしていた。** アイコン表示を高速スクロールした際、スロット待ちの間にセルが画面外へ出て `.task(id:)` がキャンセルされても、継続はそのまま残り続けていた。`withTaskCancellationHandler` でキャンセルを検知し、まだ順番待ちであれば即座に解放するよう修正（`resumeWaiterIfStillWaiting`）。スロット取得直後にも `Task.isCancelled` を確認し、キャンセル済みなら重いデコード処理へ進まないようにした。
+    3. **[リソースリーク] `VolumeAccessStore` が同じ場所への重複許可を防いでおらず、`Set<URL>` の集計が2つの `startAccessingSecurityScopedResource` 呼び出しを1件として扱っていた。** 片方を取り消すともう片方の `stop` が対応づかないまま残る構造だった。`grantAccess` に重複防止（パス文字列比較、`RegisteredFolderStore.checkNotNested` と同じ方式）を追加し、内部の集計も `[URL: Int]` による参照カウントに変更した。回帰テスト `grantAccessToTheSamePathTwiceReturnsTheExistingGrant` を追加。
+    4. **[退行バグ] `LibarchiveBackend.nextAvailableName`（EX-15、大文字小文字のみ異なるエントリの衝突時の連番付与）が、`FileOperationService` 側では既に修正済みだった「既存の連番サフィックスを剥がしてから採番する」対策を欠いており、`photo 2.txt` の衝突が `photo 2 2.txt` に積み重なる同種のバグが再発していた。** 同じ対策を移植し、回帰テスト `extractRenumbersInsteadOfStackingWhenColliderAlreadyHasACopyNumberSuffix` を追加。
+    5. **[設定消失リスク] `RegisteredFolderStore`/`VolumeAccessStore` の `load()` が JSON デコード失敗を `try?` で握りつぶし、`folders`/`grants` を空のまま処理を続けていた。** この状態で1件でも登録・許可・取り消し操作をすると、次の `save()` が壊れた元ファイルごと上書きし、以前登録していたライブラリ／テンポラリフォルダやボリュームアクセスの記録が全て復元不能になる経路があった。デコードに失敗した場合は元ファイルを `<元のファイル名>.corrupt-<UUID>` として隣へ退避してから空の状態で続行するよう修正し、少なくとも手動での調査・復旧の余地を残した。両ストアに回帰テスト `corruptStorageFileIsPreservedAsABackupInsteadOfBeingOverwritten` を追加。
+    6. **[低確度だが安全側で修正] `FolderContentView` の空きスペースへの `.dropDestination`（Finder 等からの取り込み、DD-03）が、構造体に保持された `let folder: URL?` を直接読んでいた。** ⌘↑ 実装（1-9）・ペースト実装（1-6 の File/Edit メニュー整備）で過去に踏まれた「高速なナビゲーション直後は SwiftUI がまだ1世代古い `FolderContentView` インスタンスを保持していることがある」という既知の罠と同じパターンで、他の全操作は `currentFolder()` 経由に移行済みだったのにこの1箇所だけ移行が漏れていた。`currentFolder()` を読むよう修正。
+  - **見つかったが、今回は修正せず理由とともに記録するに留めた項目**（いずれも「壊れたファイルで健康なファイルを書き潰す」「ファイルが消える」の水準には該当しないと判断したもの、または UI 層への機能追加を要し監査の場で即座に安全に実装しきれる範囲を超えるもの）:
+    - **`FileOperationService.transfer()`（copy/move/promoteFromStaging の共通実装）が、バッチ処理の途中の項目で例外が発生すると、既に成功していた項目分の `OpReceipt` を丸ごと破棄する。** 結果として、実際にはファイルが移動/コピーされているのに Undo 履歴にも操作履歴にも一切残らない（ファイル自体は消えないが、取り消せない状態になる）。`trash()` も `NSWorkspace.recycle` がドキュメント上許容している「一部成功・一部失敗」の部分結果を、エラーが非 nil なら丸ごと破棄する同種の欠陥を持つ。`CommandResult.partial`/`FailedItem` という型自体は既に用意されているが、`Sources/qooLibraryApp` のどこからも参照されておらず、`CommandStack.undo()`/`redo()` も `.partial`/`.impossible` な結果を `NotificationRouter` へ一切routeしていない（内部の `operationHistory` ログにのみ記録され、閲覧 UI が無い）。**この一連の問題を正しく直すには「部分失敗をどう UI に見せるか」という設計判断を伴う機能追加が必要**であり、監査の場での場当たり的な修正は避けるべきと判断した。フェーズ2で `NotificationHistoryStore`/通知履歴ウインドウ（NW-01〜08）を実装するタイミングで、`CommandResult`/`UndoResult` の可視化とあわせて対応すること。
+    - **`SecureExtractor.extract()`/`ArchiveCompressor.compress()` の `defer` が、ステージングディレクトリを成功・失敗を問わず必ず削除する（EX-24 で意図的に定めた挙動）。** アーカイブの多くの項目のうち一部だけ最終位置への移送（`promoteFromStaging`）に失敗した場合、まだステージングに残っている未移送分がこの `defer` で失われる。ただし、展開元のアーカイブ自体・圧縮対象の元ファイル自体はどちらも一切変更されないため、失敗時に再試行すればやり直せる——「壊れたファイルが健康なファイルを道連れにする」水準の被害ではなく、「失敗した処理は結果を持ち越さない」という EX-24 の元々の設計意図の範囲内と判断し、変更しなかった（`.replace` の安全化［上記1.］により、少なくとも「置き換え対象の既存ファイルを失う」経路は別途塞がれている）。
+    - **`CompositeCommand.execute()` に部分成功の集計が無く、`newFolderWithSelection`（選択項目で新規フォルダ作成）や password-protected アーカイブの展開でユーザーが再試行をキャンセルした場合に、`CreateFolderCommand` だけ成功した空フォルダが Undo にも操作履歴にも載らない孤児として残ることがある。** データは失われないが、Undo で片付けられない残骸が残る。`transfer()` の部分失敗と同根の設計課題のため、まとめてフェーズ2で対応する。
+    - **`RenameCommand`/`CreateAliasCommand` が既定 `OpOptions()`（`.ask`、`conflictResolver` 未設定）のまま使われており、名前衝突時に `FileOperationError.conflictResolutionRequired`（`UserPresentableError` 未準拠）がそのまま `NotificationRouter.presentError` の技術的なフォールバック文言で表示される。** データ損失はないが UX が粗い。低優先度のため今回は見送り。
+    - **`VolumeAccessStore`/`RegisteredFolderStore` の `save()` 失敗（ディスク容量不足等）が `try?` で握りつぶされている呼び出し元がある。** 保存に失敗しても UI 上は成功したように見えるため、次回起動時に変更が消えていることに気づける手段が無い。低確率かつ低優先度と判断し見送った。
+    - **`CommandStack.undo()` が `.partial` を返した Undo でも、そのままアクティブなアプリの `redoStack` に積んでしまう。** 部分的にしか元に戻っていない状態を Redo すると、元の `items` 配列を使って `execute()` を再実行するため「移動元が既に存在しない」といったエラーになり得る。`transfer()` の部分失敗と同根のため、まとめてフェーズ2で対応する。
+    - **登録フォルダ（ライブラリ／テンポラリ）配下のサブフォルダを「新規タブ/ウインドウで開く」と、開いた先の `NavigationRoot` が既定の `.volume` に戻り、「登録フォルダの外へ ⌘↑ で出られない」という意図した境界が新しいタブ/ウインドウでは効かなくなる。** データ損失はなく、1-12 で明示的に設計した境界機能の抜け穴という UX 上の課題。`WindowState.openTab(for:)`/`openWindow(value:)` に `NavigationRoot` を配線する作業が必要なため、低優先度の別タスクとして記録する。
+    - **`FileOperationService.setLocked`（ロック/ロック解除の一括処理）も `transfer()` と同根の「途中の項目で失敗すると、それまでの成功分の `OpReceipt` を丸ごと破棄する」問題を持つ。** ロック状態自体はファイルに実際に適用されているため消えるものではないが、Undo 履歴に載らない。
+  - **検証**: `swift build`/`swift test`（160件、全通過。新規回帰テスト5件を含む）、`Scripts/check-fileops-isolation.swift`/`check-layer-dependencies.swift`（両方 OK）、`xcodegen generate && xcodebuild`（Debug、成功）。
+  - **実機検証（ユーザーによる手動確認）**: 「圧縮…で既存アーカイブを上書き」は `NSSavePanel` 標準の上書き確認ダイアログ（本監査より前から存在、`compressWithDialog` のコメント参照）を経て正常に上書きできることを確認済み——**この確認ダイアログ自体は今回の修正で新たに追加したものではない**（`.replace` の安全化は内部の退避・復元ロジックのみで、書き込みが正常に成功する通常経路の見え方は変わらない）。「アクセス権タブで Macintosh HD を重複登録」は、ダイアログ等の警告は表示されない（これは意図した設計——`grantAccess` は重複を検知すると既存の許可をそのまま返すだけで、エラーや確認は出さない）。**一覧が重複せず1行のままであることをユーザーに確認していただき、重複防止が正しく効いていることを確認済み。**
 
 作業を始める際は、対象領域の仕様書（下記 §2 の一覧）を該当箇所だけ `Read` してから着手する。仕様書は合計 18 ファイルあり、全部を毎回読み込む必要はない。要件定義書本体は `docs/Requirements/qooLibrary_要件定義書_v2.8.md` にある（約 2,900 行）。矛盾したときの優先順位は §1 参照。
 
@@ -572,10 +592,17 @@ Swift 6 言語モード、`StrictConcurrency` 有効。
 | 1-12b | エラー処理と通知の共通基盤（ER-01〜ER-34 の実装可能な範囲） | 完了 |
 | 1-12 | 環境設定（一般・表示・キーボード・キャッシュの実装可能な範囲、関連付け/スキャン/データ/通知/詳細は Phase 2 以降） | 完了（実装可能な範囲） |
 | 1-14/1-15 | Quick Look 等、診断ログ | 未着手 |
+| 1-16 | Finder 対比監査で「B（技術的には実装できるが未着手）」と分類した項目を、可能な範囲で実装する（要件定義書には無い、ユーザー要望） | 未着手 |
 
 - フェーズ 1 の 4 制約（DP-01 Undo 基盤 / DP-05 FileOps 集約 / DP-07 mainContext 構成 / DP-08 通知基盤）は機能追加より先に固める。後付けは大規模改修になる。DP-05（FileOps 集約）は 1-5 で、DP-01（Undo 基盤）は 1-11 でそれぞれ完了済み。DP-07（mainContext 構成）は SwiftData 導入（フェーズ2）まで対象外、DP-08（通知基盤）は 1-12b が対象。
 - フェーズ 2 の最初に `VersionedSchema` を導入する。パーサ（`QooKit`）は永続化と並行実装できるため早期着手を推奨。
 - 各フェーズの DoD（完了条件、17 章に記載）を満たさないまま次フェーズへ進まない。
+- **各フェーズ（1・2・3）の完了時に、リソースリークとファイル安全性に特化した監査を必ず実施する**［ユーザー指示、要件定義書には無い恒常的なプロセス。フェーズ1の完了時点で最初に実施し、フェーズ2・3それぞれの完了時にも同様に実施すること］。観点は具体的に次の3点（ユーザーの言葉をそのまま基準にする）:
+  1. **リソースリークが無いか、潜在的な危険性・予防策が無いか。** Security-Scoped Bookmark の `startAccessingSecurityScopedResource`/`stopAccessingSecurityScopedResource` の対応漏れ、ファイルハンドル・NSFileHandle のクローズ漏れ、`ThumbnailService`（PF-11）や `LockManager` 等の同時実行スロット・排他ロックの解放漏れ（特に例外・キャンセル経路）、Combine/KVO オブザーバの `invalidate()` 漏れ、Task の無限リーク（`Task { }` の結果を誰も待たず取り消しもされないまま残り続けるパターン）等。
+  2. **カット＆ペースト等の操作で、ファイル消失を引き起こす危険性が本当に無いか。** `SessionState.cutURLs` の状態管理、移動・削除・Undo の各コマンドが「元に戻せる」という前提を本当に満たしているか、部分的な失敗（一括操作の一部だけ成功した場合）でファイルが行方不明にならないか。
+  3. **壊れたファイルで健康なファイルを書き潰してしまう恐れが無いか。** `FileOperationService` の衝突処理（`.replace` 等）が、書き込み中の失敗（ディスク容量不足・権限エラー・アプリのクラッシュ等）に対して、コピー元やコピー先の一時ファイルを介さず直接上書きすることで、失敗時に**両方**のファイルを失う経路が無いか。`SecureExtractor`/`ArchiveCompressor` のステージング→昇格（`promoteFromStaging`）の途中で失敗した場合に、宛先の既存ファイルが壊れた状態のまま残らないか。
+  - **監査にかける時間に上限を設けない**［ユーザー指示、明示的に強調された制約］。表面的なパターンマッチではなく、`FileOperationService`/`SecureExtractor`/`ArchiveCompressor`/`CommandStack`/`RegisteredFolderStore`/`VolumeAccessStore`/`AppAssociationStore`/`ThumbnailService`/`DropHandling` など、実際にファイルシステムを変更する・外部リソースを保持するコードパスを実際に読み、必要なら `code-review`（本リポジトリで使える最高深度のレビュー）を活用して徹底的に行う。
+  - 監査で見つかった問題は、修正するか、修正しない場合はその理由（意図的なトレードオフである等）を明記して記録する。監査結果・修正内容は本 CLAUDE.md に記録すること。
 - **不可解な事象（原因不明のクラッシュ・ハング・意図しない挙動）に遭遇したら、`sample`/`git stash` によるバイセクトなど重い実機調査に入る前に、まず `WebSearch`/`WebFetch` で既知の問題でないか調べる**（時間・トークンの節約 [ユーザー指示]）。特に Apple のフレームワーク（Foundation/SwiftUI/AppKit）は、ドキュメントに明記された既知の挙動やコミュニティで既知のバグであることが少なくない。実例: パスバー実装（下記参照）で `URL.deletingLastPathComponent()` がルート `/` に対して `/` 自身ではなく `/..` を返すこと（Apple 公式ドキュメントに明記）を知らずに書いた終了判定が無限ループし、「ウインドウが表示されない」を SwiftUI 側のハングバグと誤って決めつけ、`sample` でのスタック採取や `git stash` によるバイセクトに時間を費やした後になって判明した。検索で手がかりが無かった場合に初めて、実機再現・バイセクト・スタックトレース採取などの重い調査に進む。
 
 ## 7. テスト方針 [16 章]

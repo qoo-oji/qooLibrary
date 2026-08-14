@@ -22,7 +22,7 @@ public actor ThumbnailService {
     // 読み込み・デコード）はアクター分離の外（`Task.detached`）で行うが、
     // 「同時に何本まで」の管理はここに集約する。
     private var activeCount = 0
-    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var waiters: [(id: UUID, continuation: CheckedContinuation<Void, Never>)] = []
 
     public init(
         maxConcurrent: Int = AppLimits.Thumbnail.defaultMaxConcurrent,
@@ -54,6 +54,12 @@ public actor ThumbnailService {
 
         await acquireSlot()
         defer { releaseSlot() }
+        // [フェーズ1完了時のリソースリーク監査で追加] `IconGridView` の
+        // `.task(id:)` はセルが画面外へスクロールされると自動的にキャンセル
+        // される。スロット待ちの間にキャンセルされたリクエストが、順番が
+        // 回ってきた後もそのまま重いデコード処理へ進んでしまわないよう、
+        // スロット取得直後にここで打ち切る。
+        if Task.isCancelled { return nil }
 
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else { return nil }
@@ -92,16 +98,37 @@ public actor ThumbnailService {
             activeCount += 1
             return
         }
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            waiters.append(continuation)
+        // [フェーズ1完了時のリソースリーク監査で追加] 素の `withCheckedContinuation`
+        // はタスクのキャンセルを観測しないため、`waiters` に積まれたまま
+        // どのリクエストからも `releaseSlot()` が呼ばれなければ継続が永久に
+        // 迷子になり得た（実機での再現経路: アイコン表示を高速スクロールし、
+        // 同時実行数の上限を超えて `waiters` に積まれた直後にスクロールし
+        // 続けてそのセルが二度と表示されない場合）。`withTaskCancellationHandler`
+        // でキャンセルを検知し、まだ順番待ちであれば即座に解放する。
+        let id = UUID()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                waiters.append((id, continuation))
+            }
+        } onCancel: {
+            Task { await self.resumeWaiterIfStillWaiting(id) }
         }
         activeCount += 1
+    }
+
+    /// キャンセルされたリクエストの継続が `waiters` に残っていれば取り除いて
+    /// 即座に再開させる。既に順番が回ってきて resume 済みなら何もしない
+    /// （`withTaskCancellationHandler` の `onCancel` と通常の `releaseSlot()`
+    /// が同じ継続を二重に resume してしまわないための安全策）。
+    private func resumeWaiterIfStillWaiting(_ id: UUID) {
+        guard let index = waiters.firstIndex(where: { $0.id == id }) else { return }
+        waiters.remove(at: index).continuation.resume()
     }
 
     private func releaseSlot() {
         activeCount -= 1
         if !waiters.isEmpty {
-            waiters.removeFirst().resume()
+            waiters.removeFirst().continuation.resume()
         }
     }
 

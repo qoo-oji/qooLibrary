@@ -65,12 +65,14 @@ public actor FileOperationService {
     @discardableResult
     public func rename(_ item: URL, to newName: String, options: OpOptions = .init()) async throws -> OpReceipt {
         let target = item.deletingLastPathComponent().appendingPathComponent(newName)
-        guard let finalTarget = try await resolveDestination(item, target, options: options) else {
+        guard let resolved = try await resolveDestination(item, target, options: options) else {
             throw FileOperationError.operationFailed("rename of \(item.path) skipped by conflict policy")
         }
         let before = try? identity(of: item)
-        try FileManager.default.moveItem(at: item, to: finalTarget) // [FM-05]
-        return OpReceipt(before: before, after: try? identity(of: finalTarget), fromURL: item, toURL: finalTarget, kind: .rename)
+        try withReplaceBackupCleanup(resolved) {
+            try FileManager.default.moveItem(at: item, to: resolved.target) // [FM-05]
+        }
+        return OpReceipt(before: before, after: try? identity(of: resolved.target), fromURL: item, toURL: resolved.target, kind: .rename)
     }
 
     public func trash(_ items: [URL], options: OpOptions = .init()) async throws -> [TrashReceipt] {
@@ -111,12 +113,14 @@ public actor FileOperationService {
     public func createAlias(for source: URL, in destinationFolder: URL, options: OpOptions = .init()) async throws -> OpReceipt {
         let aliasName = "\(source.lastPathComponent) のエイリアス"
         let target = destinationFolder.appendingPathComponent(aliasName)
-        guard let finalTarget = try await resolveDestination(source, target, options: options) else {
+        guard let resolved = try await resolveDestination(source, target, options: options) else {
             throw FileOperationError.operationFailed("alias creation for \(source.path) skipped by conflict policy")
         }
         let bookmarkData = try source.bookmarkData(options: [.suitableForBookmarkFile])
-        try URL.writeBookmarkData(bookmarkData, to: finalTarget)
-        return OpReceipt(before: nil, after: try? identity(of: finalTarget), fromURL: source, toURL: finalTarget, kind: .createAlias)
+        try withReplaceBackupCleanup(resolved) {
+            try URL.writeBookmarkData(bookmarkData, to: resolved.target)
+        }
+        return OpReceipt(before: nil, after: try? identity(of: resolved.target), fromURL: source, toURL: resolved.target, kind: .createAlias)
     }
 
     /// Finder の「ロック」/「ロック解除」相当。
@@ -157,19 +161,30 @@ public actor FileOperationService {
         var receipts: [OpReceipt] = []
         for item in items {
             let target = destination.appendingPathComponent(item.lastPathComponent)
-            guard let finalTarget = try await resolveDestination(item, target, options: options) else {
+            guard let resolved = try await resolveDestination(item, target, options: options) else {
                 continue // [ConflictPolicy.skip]
             }
             let before = try? identity(of: item)
-            try perform(item, finalTarget)
-            receipts.append(OpReceipt(before: before, after: try? identity(of: finalTarget), fromURL: item, toURL: finalTarget, kind: kind))
+            try withReplaceBackupCleanup(resolved) {
+                try perform(item, resolved.target)
+            }
+            receipts.append(OpReceipt(before: before, after: try? identity(of: resolved.target), fromURL: item, toURL: resolved.target, kind: kind))
         }
         return receipts
     }
 
+    /// `resolveDestination` の戻り値。`.replace` の場合、書き込みが失敗したときに
+    /// 元へ戻せるよう退避先も一緒に返す。
+    private struct ResolvedDestination {
+        let target: URL
+        let backupOfReplaced: URL?
+    }
+
     /// 衝突判定と解決 [7.1 節]。戻り値が `nil` の場合はその項目をスキップする。
-    private func resolveDestination(_ source: URL, _ destination: URL, options: OpOptions) async throws -> URL? {
-        guard FileManager.default.fileExists(atPath: destination.path) else { return destination }
+    private func resolveDestination(_ source: URL, _ destination: URL, options: OpOptions) async throws -> ResolvedDestination? {
+        guard FileManager.default.fileExists(atPath: destination.path) else {
+            return ResolvedDestination(target: destination, backupOfReplaced: nil)
+        }
 
         var policy = options.conflictPolicy
         if policy == .ask {
@@ -186,12 +201,48 @@ public actor FileOperationService {
         case .ask:
             throw FileOperationError.conflictResolutionRequired(source: source, destination: destination)
         case .replace:
-            try FileManager.default.removeItem(at: destination) // [FM-13]
-            return destination
+            // [フェーズ1完了時のリソースリーク・ファイル安全性監査で追加、
+            // ユーザー指摘: 「壊れたファイルで健康なファイルを書き潰してしまう
+            // おそれはないか」] 既存の宛先ファイルを即座に削除せず、同じ
+            // ディレクトリへ一時退避してから `perform` を呼ぶ。退避は同一
+            // ディレクトリ内の `moveItem`（同一ボリュームなら実質 rename(2) で
+            // 高速・原子的）で行う。`perform` が失敗した場合は
+            // `withReplaceBackupCleanup` が退避先から元の場所へ戻すため、
+            // 書き込み失敗時に新旧どちらのファイルも失われる事態を避けられる。
+            // 退避ファイルは成功・失敗いずれの場合も後始末されるため通常は
+            // 痕跡を残さないが、退避直後にアプリがクラッシュする等の極めて
+            // まれなタイミングでは `.qoo-replace-backup-*` が残る可能性がある
+            // （§3.12 の例外扱い、`SecureExtractor` の残存ステージングと同種の
+            // リスクとして許容する — 中身は元ファイルそのものなので、万一残っても
+            // 手動で拡張子を戻せば復元できる）。
+            let backup = destination.deletingLastPathComponent()
+                .appendingPathComponent(".qoo-replace-backup-\(UUID().uuidString)")
+            try FileManager.default.moveItem(at: destination, to: backup) // [FM-13]
+            return ResolvedDestination(target: destination, backupOfReplaced: backup)
         case .keepBoth:
-            return nextAvailableName(for: destination) // [CF-01]
+            return ResolvedDestination(target: nextAvailableName(for: destination), backupOfReplaced: nil) // [CF-01]
         case .skip:
             return nil
+        }
+    }
+
+    /// `.replace` で退避したバックアップの後始末を一箇所に集約する。`operation` が
+    /// 成功すればバックアップを削除し、失敗すればバックアップを元の場所へ書き戻して
+    /// からエラーを再送出する（`.replace` 以外では `backupOfReplaced` が `nil` の
+    /// ため何もしない）。
+    private func withReplaceBackupCleanup<T>(_ resolved: ResolvedDestination, _ operation: () throws -> T) throws -> T {
+        do {
+            let result = try operation()
+            if let backup = resolved.backupOfReplaced {
+                try? FileManager.default.removeItem(at: backup)
+            }
+            return result
+        } catch {
+            if let backup = resolved.backupOfReplaced {
+                try? FileManager.default.removeItem(at: resolved.target) // 中途半端な書き込み結果があれば破棄
+                try? FileManager.default.moveItem(at: backup, to: resolved.target)
+            }
+            throw error
         }
     }
 
