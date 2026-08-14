@@ -122,6 +122,16 @@ import Testing
     /// 動画形式（`public.movie` 準拠）の場合は `VideoThumbnailLoading` 経由に
     /// なることを、画像デコード経路では失敗するはずのファイル（中身が画像
     /// ではない）で検証する。
+    ///
+    /// **拡張子は必ず `mp4`（macOS 標準搭載、`public.movie` 準拠が OS 自体に
+    /// 組み込まれている）を使うこと。`mkv` は使わない。** [CI で発見した回帰:
+    /// `mkv`（`org.matroska.mkv`）が `public.movie` に準拠するかどうかは、
+    /// mkv 対応の QuickLook 拡張／メディアアプリ（Infuse・IINA・QLMedia 等）
+    /// がシステムに登録されているかに依存する（動画サムネイル対応の節参照）。
+    /// この開発機には調査の過程でそれらが複数インストール済みのためローカル
+    /// では気づかず通過していたが、何もインストールされていない CI ランナー
+    /// では `isVideoFilename("clip.mkv")` が `false` になり、動画分岐へ
+    /// ルーティングされずテストが失敗した。
     @Test func resolvesThumbnailForAVideoFileViaVideoThumbnailLoader() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("qoo-thumbnail-test-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
@@ -132,7 +142,7 @@ import Testing
             videoThumbnailLoader: FakeVideoThumbnailLoader(result: expected)
         )
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        let videoURL = root.appendingPathComponent("clip.mkv")
+        let videoURL = root.appendingPathComponent("clip.mp4")
         try Data("not real video bytes".utf8).write(to: videoURL)
 
         let thumbnail = await service.thumbnail(for: videoURL, maxPixelSize: 50)
