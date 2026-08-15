@@ -141,6 +141,40 @@ public actor ThumbnailService {
         return generated
     }
 
+    /// フォルダ直下のファイルのサムネイルを、自然順で最大 `limit` 枚
+    /// ［ユーザー要望: アイコン表示でフォルダの中身を複数枚見せたい］。
+    /// 対象の選び方は `CoverImageSourceResolver.coverSourceChildren` 参照。
+    ///
+    /// **自前でスロットを取らない。** 1 枚ずつ ``thumbnail(for:maxPixelSize:)``
+    /// に委ね、スロット管理はそちらに任せる——ここで先に確保してしまうと、
+    /// スロットを持ったまま `thumbnail` がスロットを待つ自己デッドロックになる。
+    ///
+    /// **逐次で回す**（`withTaskGroup` で並行にしない）[設計判断]。並行にすると
+    /// 1 フォルダで `limit` 個のスロットを一度に占め、可視セルが数十ある画面で
+    /// キューが偏る。逐次なら「見えているフォルダから順に埋まっていく」挙動に
+    /// なり、スクロールで画面外へ出れば `Task.isCancelled` 経由で即座に降りる。
+    ///
+    /// 生成できなかった子は黙って飛ばす（呼び出し側は返ってきた枚数だけ描く）。
+    /// 1 枚も取れなければ空配列——呼び出し側は既定のフォルダアイコンへ
+    /// フォールバックする [IM-04]。
+    public func folderCoverThumbnails(
+        for folder: URL,
+        maxPixelSize: Int,
+        limit: Int = AppLimits.Thumbnail.defaultFolderCoverCount
+    ) async -> [CGImage] {
+        // [DS-05] 非表示中はディレクトリの列挙すら行わない。
+        if await isGloballyHidden() { return [] }
+        let children = CoverImageSourceResolver.coverSourceChildren(for: folder, limit: limit)
+        var images: [CGImage] = []
+        for child in children {
+            if Task.isCancelled { break }
+            if let image = await thumbnail(for: child, maxPixelSize: maxPixelSize) {
+                images.append(image)
+            }
+        }
+        return images
+    }
+
     /// 手動コマンド「サムネイルを再生成」用 [MX 一覧]。指定したファイルの
     /// キャッシュを消すだけで、実際の再生成は次回の `thumbnail(for:)` 呼び出し
     /// 時に自然に行われる。

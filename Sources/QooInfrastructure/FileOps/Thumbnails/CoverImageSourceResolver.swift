@@ -51,6 +51,52 @@ public enum CoverImageSourceResolver {
         }
     }
 
+    /// フォルダ**直下**の、それ自体がサムネイルを持てるファイルを自然順で
+    /// 最大 `limit` 件返す［ユーザー要望: アイコン表示でフォルダの中身を
+    /// 複数枚見せたい］。
+    ///
+    /// ここが返すのは **URL だけ**で、画像の取り出しは行わない。各 URL の
+    /// サムネイル化は `ThumbnailService.thumbnail(for:)` にそのまま任せる
+    /// ——そうすると `.cbz` は中の先頭画像、`.pdf` は 1 ページ目、動画は
+    /// `QLThumbnailGenerator`、と**既存の経路がそのまま再利用でき**、しかも
+    /// 生成結果はその子自身の `FileIdentity` でキャッシュされるので、
+    /// **同じファイルを単体で表示したときのセルとキャッシュを共有できる**。
+    ///
+    /// **サブフォルダは含めない**［ユーザー指定: 「直下に」］。含めると
+    /// 再帰的な走査になり、階層の深いライブラリでコストが読めなくなる。
+    ///
+    /// 動画も対象に含めている［設計判断］。ユーザーの列挙（zip/cbz/rar/cbr/
+    /// 7z/cb7/pdf/epub/画像）には無いが、動画は既に単体ではサムネイルが出る
+    /// ため、除くと「フォルダを開くと絵が出るのに、フォルダ自体は素のアイコン」
+    /// という説明のつかない差になる。外したい場合はこの `case .video` を
+    /// 落とすだけでよい。
+    public static func coverSourceChildren(
+        for folder: URL,
+        limit: Int = AppLimits.Thumbnail.defaultFolderCoverCount
+    ) -> [URL] {
+        guard limit > 0 else { return [] }
+        guard let children = try? FileManager.default.contentsOfDirectory(
+            at: folder, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]
+        ) else { return [] }
+
+        let candidates = children.filter { child in
+            // ディレクトリ判定は列挙時に取得済みの値を使い、`PreviewableFileKind.of(_:)`
+            // が行う 1 件ごとの `fileExists` を避ける（1 フォルダに数千件ある
+            // ライブラリで効く）。取得できなければ安全側に倒して除外する。
+            guard let isDirectory = try? child.resourceValues(forKeys: [.isDirectoryKey]).isDirectory,
+                  !isDirectory
+            else { return false }
+            switch PreviewableFileKind.of(filename: child.lastPathComponent, isDirectory: false) {
+            case .image, .pdf, .epub, .archive, .video: return true
+            case .folder, .other: return false
+            }
+        }
+        let sorted = candidates.sorted {
+            $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending
+        }
+        return Array(sorted.prefix(limit))
+    }
+
     private static func firstImageDataInFolder(_ folder: URL) -> Data? {
         guard let children = try? FileManager.default.contentsOfDirectory(
             at: folder, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]

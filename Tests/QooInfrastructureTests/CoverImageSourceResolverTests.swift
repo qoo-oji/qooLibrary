@@ -12,6 +12,54 @@ import Testing
 /// が、実ファイルとしての書き出しは `QuickLookCoverStoreTests` が見ているため、
 /// ここでは「どのバイト列を返すか／返さないか」だけに絞る。
 @Suite struct CoverImageSourceResolverTests {
+    // MARK: - フォルダのカバー元（複数）[ユーザー要望]
+
+    @Test func coverSourceChildrenTakesPreviewableFilesInNaturalOrder() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qoo-coversources-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+
+        // 対象になるもの（画像・アーカイブ・PDF・EPUB）と、ならないもの。
+        for name in ["book10.cbz", "book2.cbz", "cover.png", "notes.txt", "doc.pdf", "e.epub"] {
+            try Data("x".utf8).write(to: root.appendingPathComponent(name))
+        }
+        // サブフォルダは対象外（ユーザー指定: 「直下に」）。
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent("subfolder", isDirectory: true), withIntermediateDirectories: true
+        )
+
+        let picked = CoverImageSourceResolver.coverSourceChildren(for: root, limit: 10)
+            .map(\.lastPathComponent)
+
+        // 自然順: book2 が book10 より前。txt とサブフォルダは含まれない。
+        #expect(picked == ["book2.cbz", "book10.cbz", "cover.png", "doc.pdf", "e.epub"])
+    }
+
+    @Test func coverSourceChildrenRespectsTheLimit() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qoo-coversources-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        for index in 1...6 {
+            try Data("x".utf8).write(to: root.appendingPathComponent("p\(index).png"))
+        }
+
+        #expect(CoverImageSourceResolver.coverSourceChildren(for: root, limit: 3).count == 3)
+        #expect(CoverImageSourceResolver.coverSourceChildren(for: root, limit: 0).isEmpty)
+    }
+
+    @Test func coverSourceChildrenIsEmptyForAFolderOfOnlySubfolders() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qoo-coversources-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent("child", isDirectory: true), withIntermediateDirectories: true
+        )
+
+        #expect(CoverImageSourceResolver.coverSourceChildren(for: root).isEmpty)
+    }
+
     private func makeRoot() throws -> URL {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("qoo-cover-source-test-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

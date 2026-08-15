@@ -41,6 +41,13 @@ public enum AppLimits {
         /// ファイルサイズが数GBでもこの範囲で十分足りる想定。見つからなければ
         /// 諦めて正方形のリクエストにフォールバックする。
         public static let defaultMatroskaHeaderScanBytes: Int = 8 * 1_000 * 1_000
+        /// アイコン表示でフォルダのカバーとして重ねる、直下ファイルの最大枚数
+        /// （既定 3）[ユーザー要望、要件定義書には無い]。
+        ///
+        /// **1 フォルダあたりの生成・読み込み件数がそのままこの倍率になる**
+        /// ため、増やすときは可視セル数 × この値が `defaultMaxConcurrent` の
+        /// キューにどれだけ積まれるかを意識すること。
+        public static let defaultFolderCoverCount: Int = 3
     }
 
     /// Quick Look [9.7 節、QL-01〜QL-10]。
