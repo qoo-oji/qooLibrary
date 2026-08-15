@@ -28,7 +28,7 @@ enum FolderTreeGroup: Sendable, Equatable {
 /// `FolderTreeGroup`（メニューの出し分け）と `NavigationRoot`（タブの入口）の
 /// 両方を導出できる。以前は `rowNavigationRoot` と `FolderTreeNode.kind` の
 /// 2 つに情報が分かれていたが、判断基準を 1 つに集約して取り違えを防ぐ。
-enum FolderTreeBranch: Sendable, Equatable {
+enum FolderTreeBranch: Sendable, Hashable {
     case volume
     case temporary(id: UUID, rootURL: URL)
     case library(id: UUID, rootURL: URL)

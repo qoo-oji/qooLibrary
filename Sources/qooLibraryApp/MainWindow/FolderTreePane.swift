@@ -66,6 +66,17 @@ struct FolderTreePane: View {
     /// [`revealSelectionIfNeeded` が「既に表示範囲内なら再スクロールしない」
     /// 判定に使う、ユーザー要望]。
     @State private var visibleNodeIDs: Set<String> = []
+    /// `List` 自身に持たせる選択 [ユーザー要望: ツリーをキーボードで辿りたい]。
+    ///
+    /// **上下移動も ← → の開閉も `List`／`DisclosureGroup` が既に持っている。**
+    /// 自分でキーを捌こうとすると届かない（`NSOutlineView` が先に食べる）が、
+    /// 選択を束ねてやれば AppKit の実装がそのまま働く。こちらは「選択が
+    /// 変わったら、そこへ移動する」だけを担う。
+    ///
+    /// 選択の値に URL と枝の両方を持たせているので、変化を受け取った時点で
+    /// 行を引き当て直す必要が無い（どの枝から来たかは `NavigationRoot` に
+    /// 要る [`FolderTreeBranch` 参照]）。
+    @State private var listSelection: FolderTreeSelection?
     @State private var volumes: [FolderTreeNode] = []
     /// 外付けディスク・ディスクイメージ・ネットワークボリュームのマウント
     /// ポイントが並ぶ場所。起動ボリューム（`/`）はここには現れないが、
@@ -87,7 +98,7 @@ struct FolderTreePane: View {
 
     var body: some View {
         ScrollViewReader { scrollProxy in
-            List {
+            List(selection: $listSelection) {
                 Section {
                     if volumesExpanded {
                         ForEach(volumes) { node in
@@ -122,6 +133,18 @@ struct FolderTreePane: View {
                         presentRegistrationPanel(kind: .library)
                     }
                 }
+            }
+            // 選択が動いたら（クリックでも ↑ ↓ でも）そこへ移動する。
+            .onChange(of: listSelection) { _, newValue in
+                guard let newValue,
+                      newValue.url.standardizedFileURL != selectedURL?.standardizedFileURL
+                else { return }
+                onSelect(newValue.url, newValue.branch.navigationRoot)
+            }
+            // 中央ペインなど外からフォルダが変わったときは選択も合わせておく。
+            // そうしないと、次に ↑ ↓ を押したとき前にいた場所から動き出す。
+            .onChange(of: selectedURL, initial: true) { _, newValue in
+                syncListSelection(to: newValue)
             }
             .listStyle(.sidebar)
             .environment(\.defaultMinListRowHeight, 20) // 行間を少し詰める。可変にするのは 1-12（環境設定）で。
@@ -178,6 +201,30 @@ struct FolderTreePane: View {
                 Task { await reloadRegisteredFolders() }
             }
         }
+    }
+
+    /// 外からフォルダが変わったときに `List` の選択を合わせる。
+    ///
+    /// 枝は現在の `navigationRoot` から復元する。登録フォルダ経由の場合、
+    /// `NavigationRoot` は種別（テンポラリ／ライブラリ）を持たないので、
+    /// 登録一覧から引き当てる。
+    private func syncListSelection(to url: URL?) {
+        guard let url else {
+            listSelection = nil
+            return
+        }
+        let branch: FolderTreeBranch
+        switch navigationRoot {
+        case .volume:
+            branch = .volume
+        case .registeredFolder(let id, let rootURL):
+            if temporaryEntries.contains(where: { $0.folder.id == id }) {
+                branch = .temporary(id: id, rootURL: rootURL)
+            } else {
+                branch = .library(id: id, rootURL: rootURL)
+            }
+        }
+        listSelection = FolderTreeSelection(url: url, branch: branch)
     }
 
     /// [ユーザー要望] `selectedURL` の祖先をすべて展開し、その行までスクロール
@@ -525,6 +572,14 @@ private enum FolderTreePrompt {
 
 /// 登録済みフォルダ 1 件（表示名・Security-Scoped Bookmark）と、解決済みの
 /// `FolderTreeNode`（オフラインなら `nil` [SB-05]）のペア。
+/// `List` の選択が指すもの。**URL と枝の両方**を持つ — 枝が無いと、
+/// 同じ実フォルダでもボリューム経由かライブラリ経由かを区別できず、
+/// `NavigationRoot` を正しく決められない [`FolderTreeBranch` 参照]。
+struct FolderTreeSelection: Hashable {
+    let url: URL
+    let branch: FolderTreeBranch
+}
+
 private struct RegisteredFolderEntry: Identifiable {
     let folder: RegisteredFolder
     let node: FolderTreeNode?
@@ -768,7 +823,12 @@ private struct FolderTreeRow: View {
             .background(isDropTargeted ? Tokens.Colors.accent.opacity(0.35) : (isSelected ? Color(nsColor: .selectedContentBackgroundColor) : Color.clear))
             .clipShape(RoundedRectangle(cornerRadius: Tokens.radius.s))
             .contentShape(Rectangle())
-            .onTapGesture { onSelect(node.url, branch.navigationRoot) } // [LP-06]
+            // **クリックの処理を `List` に任せる** [LP-06]。以前はここで
+            // `.onTapGesture` を直接受けていたが、それだと `List` が「今どの行に
+            // いるか」を知らないままになり、キーボードの ↑ ↓ が動かなかった
+            // （フォーカスは確かにツリーにあるのに動かない、という形で現れた）。
+            // 選択は `.tag` を通じて `listSelection` に入り、ペイン側の
+            // `.onChange` が実際の移動を行う。
             .dropDestination(for: URL.self) { items, _ in // [DD-05] ツリーへドロップで移動
                 DropHandling.performDrop(
                     items, into: node.url, operations: operations,
@@ -812,6 +872,12 @@ private struct FolderTreeRow: View {
                 FolderTreeContextMenu(context: menuContext, operations: operations, actions: menuActions)
             }
         }
+        // **`.tag` は `DisclosureGroup` 自身に付ける（label ではない）。**
+        // 公式の作法どおり [nilcoalescing.com の解説]。label 側へ付けると
+        // 選択と行の対応が壊れ、最初の ↓ で先頭行へ飛んだきり動かなくなる
+        // （実機で踏んだ。**最初にこれを調べずに実機で 3 通り試して溶かした**
+        // ——CLAUDE.md 冒頭「不可解な事象はまず WebSearch で調べる」）。
+        .tag(FolderTreeSelection(url: node.url, branch: branch))
         .disabled(node.isSymlink) // [SL-05]
         // [ユーザー要望] `List` の行virtualizationを利用して「実際に画面へ
         // 描画されているか」を追跡する（`revealSelectionIfNeeded` の

@@ -387,6 +387,7 @@ struct MainWindowView: View {
                             currentFolder: { windowState.folder },
                             selection: $windowState.selection,
                             pendingRevealURL: $windowState.pendingRevealURL,
+                            navigationCameFromTree: windowState.navigationCameFromTree,
                             onNavigate: { windowState.navigate(to: $0) },
                             onGoBack: { windowState.goBack() },
                             onGoForward: { windowState.goForward() },
@@ -472,7 +473,7 @@ struct MainWindowView: View {
                         selectedURL: windowState.folder,
                         navigationRoot: windowState.navigationRoot,
                         skipsInitialAutoExpand: hasPendingStartupFolderOverride,
-                        onSelect: { url, root in windowState.navigate(to: url, root: root) },
+                        onSelect: { url, root in windowState.navigate(to: url, root: root, fromTree: true) },
                         // ツリーのコンテキストメニュー「新規タブ／ウインドウで
                         // 開く」[ユーザー要望]。**タブ・ウインドウのどちらも
                         // `NavigationRoot` を引き継ぐ** — `WindowGroup` の値型を

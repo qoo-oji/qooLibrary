@@ -39,6 +39,9 @@ struct FolderContentView: View {
     /// `pendingScrollTarget`（「ここに圧縮」で確立済みの、ユーザー自身の
     /// クリックとプログラム的な選択変更を区別する仕組み）へ橋渡しする。
     @Binding var pendingRevealURL: URL?
+    /// 直前の移動がフォルダツリー由来か [`WindowState.navigationCameFromTree`
+    /// 参照]。真ならキーボードフォーカスを中央ペインへ移さない。
+    var navigationCameFromTree: Bool = false
     let onNavigate: (URL) -> Void
     /// Finder ツールバーの矢印ボタンと同等の戻る/進む [KB-02]。履歴自体は
     /// `WindowState`（タブごと）が保持し、このビューは通知を受けて呼ぶだけ。
@@ -562,7 +565,13 @@ struct FolderContentView: View {
             // 変わったとき（＝実際のナビゲーション時）だけフォーカスを戻す
             // （`reloadToken` 経由の再読み込みではフォーカスを奪わないよう、
             // ここではなく `reload()` 呼び出し側で行う）。
-            isListFocused = true
+            //
+            // **ただしフォルダツリーから移動したときは奪わない**
+            // [`WindowState.navigationCameFromTree` 参照]。奪うと、ツリーで
+            // 矢印キーを 1 回押した時点でフォーカスが中央ペインへ移り、
+            // 2 回目以降が効かなくなる。Finder もサイドバーをクリックした
+            // だけではフォーカスを移さない。
+            if !navigationCameFromTree { isListFocused = true }
         }
         // 表示中のフォルダの変更に追随する [10章 §10.0]。Finder・他アプリ・
         // 他ウインドウ・自分自身のどの操作でも、この 1 本の経路で届く。

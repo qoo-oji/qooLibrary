@@ -109,6 +109,15 @@ public final class WindowState {
     /// 選択変更を区別する仕組み）に伝える必要があるため、この専用フィールドで
     /// 橋渡しする。`FolderContentView` が消費後に `nil` へ戻す。
     public var pendingRevealURL: URL?
+    /// 直前の移動が**フォルダツリー由来**か [ユーザー要望: ツリーを矢印で
+    /// 辿りたい]。
+    ///
+    /// 中央ペインは移動のたびにキーボードフォーカスを取り戻す（⌘↑ や戻る／
+    /// 進むの直後に矢印キーが効かなくなる不具合への対処）。だがツリーから
+    /// 移動したときにそれをやると、**1 回動いた時点でフォーカスがツリーから
+    /// 奪われ、2 回目の矢印が効かない**。ツリー由来の移動ではフォーカスを
+    /// そのままにする。
+    public var navigationCameFromTree = false
     public var displayMode: DisplayMode = .folder // [ST-22]
     // 既定は `.list`。1-12 で、この既定値自体を環境設定「表示」タブから変更
     // できるようにした（`DisplayPreferencesTab.swift` 参照）。ウインドウ固有
@@ -152,7 +161,10 @@ public final class WindowState {
     /// （既定）は「現在の文脈を引き継ぐ」ことを意味し、中央ペインでの
     /// ダブルクリック・Enter・「1階層上へ」など、ツリーを経由しないナビゲー
     /// ションではこちらを使う。
-    public func navigate(to url: URL, root: NavigationRoot? = nil) {
+    /// - Parameter fromTree: フォルダツリーの選択に由来する移動か
+    ///   [`navigationCameFromTree` 参照]。
+    public func navigate(to url: URL, root: NavigationRoot? = nil, fromTree: Bool = false) {
+        navigationCameFromTree = fromTree
         let resolvedRoot = root ?? navigationRoot
         if let current = folder, current != url {
             backHistory.append(TabHistoryEntry(url: current, navigationRoot: navigationRoot))
