@@ -284,6 +284,56 @@ final class FolderOperations {
         NSWorkspace.shared.activateFileViewerSelecting(urls)
     }
 
+    /// 「ターミナルで開く」[ユーザー要望]。フォルダはそれ自身、ファイルは
+    /// その親フォルダを開く（Finder の「フォルダに新規ターミナル」と同じ考え方）。
+    ///
+    /// **Apple Events は使わない** [実測で判明、CLAUDE.md の A 判定を訂正]。
+    /// 以前は「Terminal へ `do script` を送るには
+    /// `com.apple.security.automation.apple-events` entitlement とユーザーの
+    /// TCC 許可が要る」として実装不能に分類していたが、それは Apple Events
+    /// 経由を前提にした話だった。**フォルダを Terminal.app に「書類として
+    /// 開かせる」だけなら LaunchServices の経路で足り、追加の entitlement は
+    /// 要らない**（`open -a Terminal <dir>` と同じ）。サンドボックス下の
+    /// probe で実際に成功することを確認済み。
+    ///
+    /// ただし**渡すフォルダへのアクセス権は必要**——権限の無い場所を渡すと
+    /// `permErr`(-54) で失敗する（probe で `/private/tmp` を渡して確認）。
+    /// これは本アプリが表示できているフォルダなら満たされている。
+    func openInTerminal(_ urls: [URL]) {
+        guard let terminal = NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.terminalBundleID) else {
+            let message = String(localized: "folder.openInTerminalFailed", locale: locale)
+            Task {
+                await NotificationRouter.shared.present(NotificationItem(
+                    category: .error, severity: .sheet, title: message, body: ""
+                ))
+            }
+            return
+        }
+        // 同じフォルダを複数回開かない（ファイルを複数選ぶと親が重複するため）。
+        var seen: Set<String> = []
+        let folders = urls.compactMap { url -> URL? in
+            let target = url.hasDirectoryPath ? url : url.deletingLastPathComponent()
+            let path = target.standardizedFileURL.path
+            guard seen.insert(path).inserted else { return nil }
+            return target
+        }
+        guard !folders.isEmpty else { return }
+
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        NSWorkspace.shared.open(folders, withApplicationAt: terminal, configuration: configuration) { _, error in
+            guard let error else { return }
+            Task { @MainActor in
+                await NotificationRouter.shared.presentError(
+                    error,
+                    whatHappened: String(localized: "folder.openInTerminalFailed", locale: AppLanguage.effectiveLocale)
+                )
+            }
+        }
+    }
+
+    private static let terminalBundleID = "com.apple.Terminal"
+
     /// `⌘C`/コンテキストメニュー「コピー」。標準の `NSPasteboard` にファイル URL
     /// として書き込むため、Finder との相互運用（Finder へ貼り付け／Finder で
     /// コピーしたものをここへ貼り付け）が両方とも成立する。

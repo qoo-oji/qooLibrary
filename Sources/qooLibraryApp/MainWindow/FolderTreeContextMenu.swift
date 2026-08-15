@@ -299,6 +299,7 @@ struct FolderTreeContextMenu: View {
     private var utilitySection: some View {
         Divider()
         Button("folder.revealInFinder") { operations.revealInFinder([context.url]) } // [FM-09]
+        Button("folder.openInTerminal") { operations.openInTerminal([context.url]) } // [ユーザー要望]
         if context.allowsItemOperations {
             ShareLink("folder.shareEllipsis", items: [context.url])
         }

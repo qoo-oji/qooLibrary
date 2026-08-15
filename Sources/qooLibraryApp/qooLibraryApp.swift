@@ -281,6 +281,9 @@ private struct FileMenuCommands: View {
         Divider()
         Button("folder.revealInFinder") { actions?.revealInFinder() }
             .disabled(actions?.canRevealInFinder != true)
+        // ターミナルで開く [ユーザー要望]。選択が無ければ現在のフォルダが対象。
+        Button("folder.openInTerminal") { actions?.openInTerminal() }
+            .disabled(actions?.canOpenInTerminal != true)
         // 取り出す [1-16]。Finder と同じく ⌥ で「すべてを取り出す」に
         // 入れ替わる。既定キー ⌘E も Finder 標準（`ejectAll` 側は Finder 自身も
         // キーを割り当てていないため無し）。

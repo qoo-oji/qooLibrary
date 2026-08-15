@@ -43,6 +43,9 @@ struct FolderMenuActions {
     /// Finder の「すべてを選択解除」（「すべてを選択」の ⌥ 代替）[Finder 対比監査]。
     var canDeselectAll = false
     var canRevealInFinder = false
+    /// ターミナルで開く [ユーザー要望]。選択が無ければ現在のフォルダが対象に
+    /// なるため、フォルダを表示している限り常に有効。
+    var canOpenInTerminal = false
 
     var open: () -> Void = {}
     var quickLook: () -> Void = {}
@@ -63,6 +66,7 @@ struct FolderMenuActions {
     var selectAll: () -> Void = {}
     var deselectAll: () -> Void = {}
     var revealInFinder: () -> Void = {}
+    var openInTerminal: () -> Void = {}
 
     // MARK: - 表示メニュー [1-16]
 

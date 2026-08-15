@@ -744,6 +744,7 @@ struct FolderContentView: View {
         actions.canSelectAll = !entries.isEmpty
         actions.canDeselectAll = !selection.isEmpty
         actions.canRevealInFinder = !selection.isEmpty
+        actions.canOpenInTerminal = folder != nil // 選択が無ければ現在のフォルダが対象
 
         actions.open = { openSelection() }
         actions.quickLook = { quickLook.toggle() }
@@ -767,6 +768,11 @@ struct FolderContentView: View {
         actions.selectAll = { selectAllInCurrentFolder() }
         actions.deselectAll = { selection.removeAll() }
         actions.revealInFinder = { NSWorkspace.shared.activateFileViewerSelecting(selected) }
+        // 選択があればそれ（ファイルなら親）、無ければ現在のフォルダ [ユーザー要望]。
+        actions.openInTerminal = {
+            let targets = selected.isEmpty ? [currentFolder()].compactMap { $0 } : selected
+            operations.openInTerminal(targets)
+        }
 
         // 表示メニュー [1-16]。並び替え・カラムの状態はこのビューが持つため、
         // ここから公開する（ペイン・バーの表示状態のようなウインドウ全体の
@@ -1270,6 +1276,11 @@ struct FolderContentView: View {
                 }
             // Finder は空きスペースの右クリックにも「すべて選択」を出す
             // [Finder/Edit メニュー整備の一環で追加]。
+            // 現在いるフォルダをターミナルで開く [ユーザー要望]。
+            if let folder = currentFolder() {
+                Divider()
+                Button("folder.openInTerminal") { operations.openInTerminal([folder]) }
+            }
             Button("action.selectAll") { selectAllInCurrentFolder() }
                 .disabled(entries.isEmpty)
                 // Finder と同じく ⌥ で「すべてを選択解除」に入れ替わる
@@ -1362,6 +1373,9 @@ struct FolderContentView: View {
             }
             Divider()
             Button("folder.revealInFinder") { NSWorkspace.shared.activateFileViewerSelecting(targets) } // [FM-09]
+            // ターミナルで開く [ユーザー要望]。ファイルを選んでいる場合は
+            // その親フォルダを開く（`FolderOperations.openInTerminal` 参照）。
+            Button("folder.openInTerminal") { operations.openInTerminal(targets) }
             ShareLink("folder.shareEllipsis", items: targets) // [共有、既定ラベルが英語 "Share..." になるため明示的に指定]
             Button("folder.createAlias") { createAliases(for: targets) }
             Divider()

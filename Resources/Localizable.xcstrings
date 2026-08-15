@@ -1969,6 +1969,38 @@
         }
       }
     },
+    "folder.openInTerminal": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open in Terminal"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ターミナルで開く"
+          }
+        }
+      }
+    },
+    "folder.openInTerminalFailed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The folder couldn’t be opened in Terminal"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ターミナルで開けませんでした"
+          }
+        }
+      }
+    },
     "folder.openWithChoosePrompt": {
       "localizations": {
         "en": {
