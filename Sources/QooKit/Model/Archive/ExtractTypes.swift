@@ -72,19 +72,28 @@ public struct ExtractOptions: Sendable {
     /// エントリ一覧（ファイル名）は暗号化しないため、`listEntries` は
     /// パスフレーズ無しでも成功する。
     public var passphrase: String?
+    /// 進み具合の報告先 [UI-09][A-04]。バックエンドは「何件目・何バイト目か」
+    /// だけを報告し、総数は `SecureExtractor` が `ProgressThrottle` で足す。
+    public var progress: ProgressReporter?
+    /// 一時停止／再開 [ユーザー要望]。エントリの境界と書き出しの合間で待つ。
+    public var pauseToken: PauseToken?
 
     public init(
         destination: URL,
         encoding: String.Encoding? = nil,
         followSymlinks: Bool = false,
         limits: ExtractLimits = .default,
-        passphrase: String? = nil
+        passphrase: String? = nil,
+        progress: ProgressReporter? = nil,
+        pauseToken: PauseToken? = nil
     ) {
         self.destination = destination
         self.encoding = encoding
         self.followSymlinks = followSymlinks
         self.limits = limits
         self.passphrase = passphrase
+        self.progress = progress
+        self.pauseToken = pauseToken
     }
 }
 

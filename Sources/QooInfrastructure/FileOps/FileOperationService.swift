@@ -64,13 +64,17 @@ public actor FileOperationService {
 
     public func copy(_ items: [URL], to destination: URL, options: OpOptions = .init()) async throws -> [OpReceipt] {
         try await transfer(items, to: destination, options: options, kind: .copy) { source, target, onBytes in
-            try FileCopyEngine.copy(from: source, to: target, onBytesCopied: onBytes)
+            try FileCopyEngine.copy(
+                from: source, to: target, pauseToken: options.pauseToken, onBytesCopied: onBytes
+            )
         }
     }
 
     public func move(_ items: [URL], to destination: URL, options: OpOptions = .init()) async throws -> [OpReceipt] {
         try await transfer(items, to: destination, options: options, kind: .move) { source, target, onBytes in
-            try Self.moveItem(from: source, to: target, onBytesCopied: onBytes)
+            try Self.moveItem(
+                from: source, to: target, pauseToken: options.pauseToken, onBytesCopied: onBytes
+            )
         }
     }
 
@@ -83,7 +87,8 @@ public actor FileOperationService {
     /// 中断された場合は**元を消さない** — 運びきれていないのに消したら
     /// データを失う。
     private static func moveItem(
-        from source: URL, to target: URL, onBytesCopied: @escaping (Int64) -> Void
+        from source: URL, to target: URL, pauseToken: PauseToken? = nil,
+        onBytesCopied: @escaping (Int64) -> Void
     ) throws -> FileCopyEngine.Outcome {
         // **`renamex_np` + `RENAME_EXCL` を使う** [レビューで発見]。素の
         // `rename(2)` は宛先を**黙って上書きする**ため、`FileManager.moveItem`
@@ -101,7 +106,9 @@ public actor FileOperationService {
                 "移動に失敗しました（\(String(cString: strerror(errno)))）: \(source.lastPathComponent)"
             )
         }
-        let outcome = try FileCopyEngine.copy(from: source, to: target, onBytesCopied: onBytesCopied)
+        let outcome = try FileCopyEngine.copy(
+            from: source, to: target, pauseToken: pauseToken, onBytesCopied: onBytesCopied
+        )
         guard case .completed = outcome else { return outcome }
         try FileManager.default.removeItem(at: source)
         return outcome
@@ -118,7 +125,9 @@ public actor FileOperationService {
             at: staging, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
         )
         return try await transfer(items, to: destination, options: options, kind: .promoteFromStaging) { source, target, onBytes in
-            try Self.moveItem(from: source, to: target, onBytesCopied: onBytes)
+            try Self.moveItem(
+                from: source, to: target, pauseToken: options.pauseToken, onBytesCopied: onBytes
+            )
         }
     }
 
@@ -382,11 +391,31 @@ public actor FileOperationService {
             items: items,
             destination: destination
         )
+        // **足りないと分かっているなら、1 バイトも書かずに断る** [ER-03]。
+        // 以前はそのまま書き始め、途中で `ENOSPC` になって「エラー2」とだけ
+        // 表示していた（実機で 4GB を空き 2.8GB のボリュームへコピーして発覚。
+        // 2.91GB まで書いてから失敗し、しかも理由が伝わらなかった）。Finder も
+        // 開始前に確かめて断る。`SecureExtractor` の [EX-23] と同じ考え方。
+        if let required = tracker.requiredBytes,
+           let available = VolumeCapacity.available(at: destination) {
+            if available < required + AppLimits.FileOperations.freeSpaceMargin {
+                Log.fileOps.error(
+                    "\(kind.logLabel) を開始前に中止: 空き容量不足（必要 \(required) / 空き \(available)）→ \(Log.path(destination))"
+                )
+                throw FileOperationError.insufficientFreeSpace(
+                    required: required, available: available, destination: destination
+                )
+            }
+        }
         tracker.begin()
         var receipts: [OpReceipt] = []
         for item in items {
             // ユーザーが中断したら、そこまでに運び終えた分だけを返す
             // （運び終えた項目は Undo できる状態で残る）[ER-16 の精神]。
+            if Task.isCancelled { break }
+            // 一時停止は項目の境界でも受ける（クローンのようにコールバックが
+            // 一度も来ない経路でも効くようにするため）。
+            options.pauseToken?.waitWhilePaused()
             if Task.isCancelled { break }
             tracker.startItem(item)
             let target = destination.appendingPathComponent(item.lastPathComponent)

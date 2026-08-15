@@ -1,3 +1,4 @@
+import QooInfrastructure
 import QooKit
 import SwiftUI
 
@@ -146,15 +147,13 @@ struct StatusBarView<Trailing: View>: View {
         let refreshToken: Int
     }
 
-    /// **`volumeAvailableCapacityForImportantUsageKey` を使う** [設計判断]。
-    /// 素の `volumeAvailableCapacityKey` は purgeable（削除可能なキャッシュ等）を
-    /// 差し引いた保守的な値で、Finder が表示する「空き」より小さく出るため、
-    /// Finder に並べて使うアプリとして数字が食い違って見える。
+    /// 空き容量の求め方は `VolumeCapacity` に一本化してある。ここで独自に
+    /// 資源キーを読んでいた頃は、**小さなボリュームで「0 バイト空き」と
+    /// 表示していた** — `…ForImportantUsage` が小容量のボリュームで 0 を
+    /// 返すため（実測は `VolumeCapacity` の表）。コピー前の空き容量検査と
+    /// 同じ値を見せることで、「表示上は足りるのに断られた」も防げる。
     private static func availableCapacity(of folder: URL?) async -> Int64? {
         guard let folder else { return nil }
-        return await Task.detached {
-            let values = try? folder.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
-            return values?.volumeAvailableCapacityForImportantUsage
-        }.value
+        return await Task.detached { VolumeCapacity.available(at: folder) }.value
     }
 }

@@ -62,8 +62,11 @@ public actor SecureExtractor {
             throw ExtractError.tooManyEntries(limit: options.limits.maxEntries)
         }
         let declaredTotal = listing.entries.reduce(Int64(0)) { $0 + $1.uncompressedSize }
-        let available = Self.availableCapacity(at: options.destination)
-        if available < declaredTotal + options.limits.freeSpaceMargin {
+        // 空き容量が分からないボリュームでは検査を飛ばす（`VolumeCapacity`
+        // 参照 — 断る側に倒すと、空のディスクイメージのように
+        // `…ForImportantUsage` が 0 を返す先へ展開できなくなる）。
+        if let available = Self.availableCapacity(at: options.destination),
+           available < declaredTotal + options.limits.freeSpaceMargin {
             throw ExtractError.insufficientFreeSpace(required: declaredTotal, available: available)
         }
 
@@ -73,6 +76,15 @@ public actor SecureExtractor {
         var extractOptions = options
         if extractOptions.encoding == nil {
             extractOptions.encoding = listing.detectedEncoding
+        }
+        // バックエンドは総数を知らない（知るには一覧を読み直すことになる）。
+        // ここは既に `listEntries` を済ませているので、その値を足して渡す。
+        if let reporter = options.progress {
+            extractOptions.progress = ProgressThrottle.wrap(
+                reporter,
+                totalItems: listing.entries.filter { !$0.isDirectory }.count,
+                totalBytes: declaredTotal
+            )
         }
 
         // 注釈はパスの**前**に置く（パスの直後に文字を続けない）。
@@ -104,8 +116,16 @@ public actor SecureExtractor {
             )
         }
 
+        // 移送にも進捗を流す [UI-09]。ステージングは常にアプリコンテナ配下
+        // （＝起動ボリューム）なので、展開先が外部ボリュームなら**ここは実
+        // コピーになり数秒かかる**。流さないと、エントリを出し終えた 100% の
+        // ままバーが止まって見える（実機で確認）。件数・バイト数は移送側の
+        // 総量で数え直される（展開とは別の段階なので、それが素直）。
         let receipts = try await fileOps.promoteFromStaging(
-            staging, to: options.destination, options: OpOptions(conflictPolicy: .keepBoth)
+            staging, to: options.destination,
+            options: OpOptions(
+                conflictPolicy: .keepBoth, progress: options.progress, pauseToken: options.pauseToken
+            )
         )
 
         Log.archive.info(
@@ -150,14 +170,7 @@ public actor SecureExtractor {
         }
     }
 
-    private static func availableCapacity(at url: URL) -> Int64 {
-        // 展開先がまだ存在しない場合は、存在する祖先ディレクトリまで遡る。
-        var target = url
-        let fm = FileManager.default
-        while !fm.fileExists(atPath: target.path), target.pathComponents.count > 1 {
-            target = target.deletingLastPathComponent()
-        }
-        let values = try? target.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
-        return values?.volumeAvailableCapacityForImportantUsage ?? 0
+    private static func availableCapacity(at url: URL) -> Int64? {
+        VolumeCapacity.available(at: url)
     }
 }

@@ -52,9 +52,10 @@ enum FileCopyEngine {
         from source: URL,
         to destination: URL,
         allowsCloning: Bool = true,
+        pauseToken: PauseToken? = nil,
         onBytesCopied: @escaping (Int64) -> Void
     ) throws -> Outcome {
-        let context = CallbackContext(onBytesCopied: onBytesCopied)
+        let context = CallbackContext(onBytesCopied: onBytesCopied, pauseToken: pauseToken)
         let state = copyfile_state_alloc()
         defer { copyfile_state_free(state) }
         copyfile_state_set(state, UInt32(COPYFILE_STATE_STATUS_CB), unsafeBitCast(statusCallback, to: UnsafeRawPointer.self))
@@ -75,12 +76,13 @@ enum FileCopyEngine {
         let base = COPYFILE_ALL | COPYFILE_EXCL | COPYFILE_NOFOLLOW | COPYFILE_RECURSIVE
         let flags = copyfile_flags_t(allowsCloning ? base | COPYFILE_CLONE : base)
         let result = copyfile(source.path, destination.path, state, flags)
+        let failure = errno // `copyfile` の直後に読む（以降の呼び出しで壊れる）
 
         if result == 0 { return .completed(bytes: context.totalCopied) }
         if context.didCancel { return .cancelled }
-        throw FileOperationError.operationFailed(
-            "コピーに失敗しました（\(String(cString: strerror(errno)))）: \(source.lastPathComponent)"
-        )
+        // **errno を文字列へ畳まずに渡す** [ER-03]。呼び出し側が「容量不足
+        // なのか権限なのか」を区別して、次に何ができるかを言えるようにする。
+        throw FileOperationError.copyFailed(source: source, destination: destination, errnoCode: failure)
     }
 
     /// `copyfile` の status コールバックが読み書きする箱。
@@ -89,6 +91,7 @@ enum FileCopyEngine {
     /// 並行アクセスは無い（複数スレッドから同時に使われることは無い）。
     private final class CallbackContext {
         let onBytesCopied: (Int64) -> Void
+        let pauseToken: PauseToken?
         var totalCopied: Int64 = 0
         var didCancel = false
         /// ディレクトリを再帰コピーしているとき、`COPYFILE_STATE_COPIED` は
@@ -97,7 +100,10 @@ enum FileCopyEngine {
         var currentFilePath: String?
         var currentFileCopied: Int64 = 0
 
-        init(onBytesCopied: @escaping (Int64) -> Void) { self.onBytesCopied = onBytesCopied }
+        init(onBytesCopied: @escaping (Int64) -> Void, pauseToken: PauseToken?) {
+            self.onBytesCopied = onBytesCopied
+            self.pauseToken = pauseToken
+        }
 
         func note(path: String, copiedSoFar: Int64) {
             if path != currentFilePath {
@@ -124,6 +130,18 @@ enum FileCopyEngine {
         if Task.isCancelled {
             context.didCancel = true
             return COPYFILE_QUIT
+        }
+
+        // 一時停止はここで待つ [ユーザー要望]。`copyfile` は呼び出し元の
+        // スレッドで同期的に走るので、待てばそのままコピーが止まる。
+        // 待っている間もキャンセルは効く（`PauseToken` 参照）ので、
+        // 抜けた直後に取り消しをもう一度見る。
+        if let token = context.pauseToken, token.isPaused {
+            token.waitWhilePaused()
+            if Task.isCancelled {
+                context.didCancel = true
+                return COPYFILE_QUIT
+            }
         }
 
         // **エラー段階で `COPYFILE_CONTINUE` を返してはいけない。**

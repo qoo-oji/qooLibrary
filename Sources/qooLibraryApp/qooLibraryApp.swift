@@ -105,6 +105,9 @@ struct QooLibraryApp: App {
         // [ER-01] エラー・通知の提示はこのコントローラ1箇所からのみ行う
         // （`NotificationRouterPresenterController` のコメント参照）。
         NotificationRouterPresenterController.shared.start()
+        // 長時間処理の進捗は**別の小さなウインドウ**に出す［ユーザー要望］。
+        // このコントローラがアプリ全体で 1 つの窓を出し入れする。
+        OperationProgressWindowController.shared.start()
     }
 
     var body: some Scene {

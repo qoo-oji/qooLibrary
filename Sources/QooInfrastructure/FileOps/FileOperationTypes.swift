@@ -47,15 +47,19 @@ public struct OpOptions: Sendable {
     /// 進み具合の報告先 [8章 §8.1、UI-09][A-04]。`nil` なら進捗を数える処理
     /// 自体を行わない（合計サイズの走査を省く。`ProgressTracker` 参照）。
     public var progress: ProgressReporter?
+    /// 一時停止／再開 [ユーザー要望]。`nil` なら一時停止できない。
+    public var pauseToken: PauseToken?
 
     public init(
         conflictPolicy: ConflictPolicy = .ask,
         conflictResolver: (@Sendable (_ source: URL, _ destination: URL) async -> ConflictPolicy)? = nil,
-        progress: ProgressReporter? = nil
+        progress: ProgressReporter? = nil,
+        pauseToken: PauseToken? = nil
     ) {
         self.conflictPolicy = conflictPolicy
         self.conflictResolver = conflictResolver
         self.progress = progress
+        self.pauseToken = pauseToken
     }
 }
 
@@ -144,4 +148,64 @@ public enum FileOperationError: Error, Sendable, Equatable {
     /// 再度 `.ask` を返した（無限ループ防止のため 1 回のみ許容する）。
     case conflictResolutionRequired(source: URL, destination: URL)
     case operationFailed(String)
+    /// コピー・移動が POSIX の失敗で止まった。**errno をそのまま保つ**
+    /// [ER-03]。文字列に畳んでしまうと「容量不足なのか権限なのか」を
+    /// 呼び出し側が区別できなくなる。
+    case copyFailed(source: URL, destination: URL, errnoCode: Int32)
+    /// 運ぶ前に空きが足りないと分かった [ER-03]。**書き始める前に**投げる。
+    case insufficientFreeSpace(required: Int64, available: Int64, destination: URL)
+}
+
+/// **`LocalizedError` に準拠させる理由** [ER-03、実機検証で発見]。
+/// 準拠していないと `localizedDescription` が
+/// 「操作を完了できませんでした。（QooInfrastructure.FileOperationError エラー2）」
+/// という、原因が一切分からない既定文言になる。実際に、書き込み先の
+/// 空き容量が足りずにコピーが失敗した場面で、ユーザーにもログにも
+/// この文言しか出ず**容量不足だと分からなかった**。`NotificationRouter`
+/// も診断ログもこの値を読むので、ここを直せば両方に効く。
+///
+/// なお文言は日本語のリテラル。この層は文字列カタログ
+/// （`Resources/Localizable.xcstrings`、アプリターゲットのリソース）を
+/// 参照できず、既存の `operationFailed` の実引数も同じく日本語リテラル
+/// なので、それに揃えている［既知の限界。ここの英語化は、エラー文言を
+/// アプリ層へ持ち上げる別作業として扱う］。
+extension FileOperationError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case let .sourceNotFound(url):
+            return "「\(url.lastPathComponent)」が見つかりません。"
+        case let .conflictResolutionRequired(_, destination):
+            return "「\(destination.lastPathComponent)」がすでに存在するため、処理を続けられませんでした。"
+        case let .operationFailed(message):
+            return message
+        case let .copyFailed(source, destination, code):
+            return Self.copyFailureMessage(source: source, destination: destination, errnoCode: code)
+        case let .insufficientFreeSpace(required, available, destination):
+            let formatter = ByteCountFormatter()
+            return "「\(destination.lastPathComponent)」の空き容量が足りません。"
+                + "\(formatter.string(fromByteCount: required)) が必要ですが、"
+                + "空きは \(formatter.string(fromByteCount: available)) しかありません。"
+                + "不要な項目を削除してから、もう一度お試しください。"
+        }
+    }
+
+    private static func copyFailureMessage(source: URL, destination: URL, errnoCode: Int32) -> String {
+        let name = source.lastPathComponent
+        let system = String(cString: strerror(errnoCode))
+        switch errnoCode {
+        case ENOSPC:
+            let folder = destination.deletingLastPathComponent().lastPathComponent
+            return "「\(name)」をコピーできませんでした。"
+                + "コピー先「\(folder)」の空き容量が足りません。"
+                + "不要な項目を削除してから、もう一度お試しください。"
+        case EACCES, EPERM:
+            return "「\(name)」をコピーできませんでした。コピー先に書き込む権限がありません。（\(system)）"
+        case EDQUOT:
+            return "「\(name)」をコピーできませんでした。ディスク使用量の割り当てを超えています。（\(system)）"
+        case EEXIST:
+            return "「\(name)」をコピーできませんでした。同じ名前の項目がすでに存在します。"
+        default:
+            return "「\(name)」をコピーできませんでした。（\(system)）"
+        }
+    }
 }

@@ -33,8 +33,17 @@ enum DiagnosticExportAction {
 
         let anonymize = UserDefaults.standard.bool(forKey: DiagnosticLogPreferences.anonymizePathsKey)
         state?.isExporting = true
+        // 進捗は他の長時間処理と同じ窓に出す［ユーザー要望: 進捗表示は
+        // すべてウインドウへ］。中断手段は持たない（書き出しは短く、
+        // 途中で止めても半端な zip が残るだけで得が無い）。
+        let handle = OperationProgressCenter.shared.begin(
+            title: String(localized: "diagnostics.exporting", locale: locale)
+        )
         Task {
-            defer { state?.isExporting = false }
+            defer {
+                state?.isExporting = false
+                OperationProgressCenter.shared.finish(handle)
+            }
             do {
                 let bundle = try await DiagnosticLog.shared.exportBundle(
                     anonymizePaths: anonymize, to: destination, report: nil

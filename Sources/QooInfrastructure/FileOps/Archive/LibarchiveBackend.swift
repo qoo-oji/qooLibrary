@@ -91,6 +91,8 @@ public struct LibarchiveBackend: ArchiveReading {
 
         while true {
             if Task.isCancelled { throw ExtractError.cancelled }
+            options.pauseToken?.waitWhilePaused()
+            if Task.isCancelled { throw ExtractError.cancelled }
 
             var entryPtr: OpaquePointer?
             let rc = archive_read_next_header(reader, &entryPtr)
@@ -180,14 +182,34 @@ public struct LibarchiveBackend: ArchiveReading {
                 }
 
                 handle.write(Data(bytes: buffer, count: bytesRead))
+                // 巨大な 1 エントリでもバーが動くよう、バイト単位でも報告する
+                // （間引きは `ProgressThrottle` が行う）。
+                options.progress?.report(OperationProgress(
+                    completedBytes: totalWritten,
+                    completedItems: extractedCount,
+                    currentItemName: validated.targetURL.lastPathComponent
+                ))
 
                 if Task.isCancelled {
                     try? handle.close()
                     throw ExtractError.cancelled
                 }
+                // 巨大な 1 エントリの途中でも止まれるようにする。
+                if let token = options.pauseToken, token.isPaused {
+                    token.waitWhilePaused()
+                    if Task.isCancelled {
+                        try? handle.close()
+                        throw ExtractError.cancelled
+                    }
+                }
             }
             try handle.close()
             extractedCount += 1
+            options.progress?.report(OperationProgress(
+                completedBytes: totalWritten,
+                completedItems: extractedCount,
+                currentItemName: validated.targetURL.lastPathComponent
+            ))
         }
 
         return ExtractResult(
@@ -253,7 +275,11 @@ public struct LibarchiveBackend: ArchiveReading {
     /// `compression-level`/`threads` のみ）。そのため `options.format == .sevenZip`
     /// のときは `options.encryption`/`passphrase` を無視する
     /// （UI 側もこの組み合わせを選ばせない設計だが、防御的にここでも徹底する）。
-    public func compress(_ items: [URL], to destination: URL, options: CompressionOptions, passphrase: String? = nil) async throws {
+    public func compress(
+        _ items: [URL], to destination: URL, options: CompressionOptions,
+        passphrase: String? = nil, progress: ProgressReporter? = nil,
+        pauseToken: PauseToken? = nil
+    ) async throws {
         guard let writer = archive_write_new() else {
             throw ExtractError.backendFailure("archive_write_new returned NULL")
         }
@@ -287,8 +313,12 @@ public struct LibarchiveBackend: ArchiveReading {
             throw ExtractError.backendFailure(Self.errorMessage(writer))
         }
 
+        var counter = CompressionCounter()
         for item in items {
-            try Self.addRecursively(item, pathname: item.lastPathComponent, to: writer)
+            try Self.addRecursively(
+                item, pathname: item.lastPathComponent, to: writer,
+                progress: progress, pauseToken: pauseToken, counter: &counter
+            )
         }
 
         guard archive_write_close(writer) == ARCHIVE_OK else {
@@ -296,7 +326,24 @@ public struct LibarchiveBackend: ArchiveReading {
         }
     }
 
-    private static func addRecursively(_ url: URL, pathname: String, to writer: OpaquePointer) throws {
+    /// 圧縮の進み具合。ディレクトリを再帰する間、何件・何バイト詰め終えたかを
+    /// 持ち回るだけの入れ物（総数は `ArchiveCompressor` が足す）。
+    private struct CompressionCounter {
+        var files = 0
+        var bytes: Int64 = 0
+    }
+
+    private static func addRecursively(
+        _ url: URL, pathname: String, to writer: OpaquePointer,
+        progress: ProgressReporter?, pauseToken: PauseToken?, counter: inout CompressionCounter
+    ) throws {
+        // 中断・一時停止は項目の境界で受ける [EX-24 と同じ方針]。作りかけの
+        // アーカイブはステージングにしか無く、`ArchiveCompressor` の `defer` が
+        // 丸ごと捨てるので、途中で止めても半端な成果物は最終位置に残らない。
+        if Task.isCancelled { throw ExtractError.cancelled }
+        pauseToken?.waitWhilePaused()
+        if Task.isCancelled { throw ExtractError.cancelled }
+
         let fm = FileManager.default
         var isDirectory: ObjCBool = false
         guard fm.fileExists(atPath: url.path, isDirectory: &isDirectory) else { return }
@@ -307,10 +354,20 @@ public struct LibarchiveBackend: ArchiveReading {
                 at: url, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
             )
             for child in children.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
-                try addRecursively(child, pathname: pathname + "/" + child.lastPathComponent, to: writer)
+                try addRecursively(
+                    child, pathname: pathname + "/" + child.lastPathComponent, to: writer,
+                    progress: progress, pauseToken: pauseToken, counter: &counter
+                )
             }
         } else {
             try Self.addFileEntry(url, pathname: pathname, to: writer)
+            counter.files += 1
+            counter.bytes += Int64((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
+            progress?.report(OperationProgress(
+                completedBytes: counter.bytes,
+                completedItems: counter.files,
+                currentItemName: url.lastPathComponent
+            ))
         }
     }
 

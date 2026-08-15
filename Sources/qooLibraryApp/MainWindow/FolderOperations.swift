@@ -34,9 +34,15 @@ import SwiftUI
 @MainActor
 @Observable
 final class FolderOperations {
-    /// 圧縮・展開など数秒かかることがある処理の実行中表示 [UI-09]。
-    /// 実際の描画は `.folderOperationsHost(_:)` が行う。
+    /// 実行中の処理の見出し [UI-09]。**描画は
+    /// `OperationProgressCenter` 経由で別ウインドウが行う**［ユーザー要望］。
+    /// ここが `nil` でないことは「この操作レイヤが何か走らせている」ことを
+    /// 表すだけで、画面上のどこにも直接は出ない。
     var busyMessage: String?
+    /// `OperationProgressCenter` に登録した処理の控え。
+    private var progressHandle: OperationProgressCenter.Handle?
+    /// `currentPauseToken` の実体。`endProgress()` で捨てる。
+    private var pauseTokenForCurrentOperation: PauseToken?
     /// 暗号化が有効なときに圧縮前のパスワード設定シートを出すための保留状態。
     var pendingCompression: PendingCompression?
     /// 単一アーカイブ展開でパスワードが必要だった場合の再試行状態。
@@ -88,19 +94,22 @@ final class FolderOperations {
         onSuccess: @escaping @MainActor () -> Void
     ) {
         guard let command else { return }
-        if let busyMessageKey { busyMessage = String(localized: busyMessageKey, locale: locale) }
         let showsProgress = busyMessageKey != nil
+        // 一時停止は「バイトを運ぶ処理」にだけ意味がある。`transferOptions()`
+        // が同じトークンを `OpOptions` へ渡しているので、ここで作った 1 個が
+        // 窓のボタンと実際の処理の両方に届く。
+        let pauseToken = showsProgress ? currentPauseToken : nil
         let task = Task {
             defer {
+                // 通常はこの下で明示的に片付け済み。ここは取りこぼしへの
+                // 保険（`endProgress` は 2 回呼んでも無害）。
+                //
                 // **自分が出した表示だけを片付ける** [レビューで発見]。
                 // 無条件に消すと、進捗を出さない操作（複製など）が終わった
                 // ときに、並行して走っている転送の進捗まで消えてしまう。
-                if showsProgress {
-                    busyMessage = nil
-                    progress = nil
-                    cancellableTask = nil
-                }
+                if showsProgress { endProgress() }
             }
+            var failed: (any Error)?
             do {
                 _ = try await CommandStack.shared.run(command)
                 onSuccess()
@@ -109,13 +118,30 @@ final class FolderOperations {
             } catch {
                 // 取り消し直後は下位から任意のエラーが返り得る（中断した処理の
                 // 後片付けが失敗した等）。それも提示しない。
-                guard !Task.isCancelled else { return }
+                if !Task.isCancelled { failed = error }
+            }
+            // **エラーを見せる前に進捗表示を片付ける** [実機検証で発見]。
+            // `presentError` はユーザーがダイアログを閉じるまで完了しない
+            // （`NotificationRouter.presentModally` が `withCheckedContinuation`
+            // で待つ）。`defer` に任せていたため、失敗したコピーの進捗ウインドウが
+            // 「2.91 GB / 4.29 GB」で止まったまま、エラーダイアログの後ろに
+            // residual として残り続けていた。
+            if showsProgress { endProgress() }
+            if let failed {
                 await NotificationRouter.shared.presentError(
-                    error, whatHappened: String(localized: failure, locale: locale)
+                    failed, whatHappened: String(localized: failure, locale: locale)
                 )
             }
         }
-        if busyMessageKey != nil { cancellableTask = task }
+        if let busyMessageKey {
+            cancellableTask = task
+            // 中断手段は**この時点で**渡す。あとから差し込む形にすると、
+            // 窓が出た最初の描画でボタンが出ない。
+            beginProgress(
+                String(localized: busyMessageKey, locale: locale),
+                cancel: { task.cancel() }, pauseToken: pauseToken
+            )
+        }
     }
 
     /// コピー・移動に渡す共通の `OpOptions` [FM-11][FM-12][UI-09]。
@@ -135,10 +161,26 @@ final class FolderOperations {
             conflictResolver: { [weak self] source, destination in
                 await self?.askConflictDecision(source: source, destination: destination) ?? .skip
             },
-            progress: ProgressReporter { [weak self] value in
-                Task { @MainActor in self?.progress = value }
-            }
+            progress: progressReporter,
+            pauseToken: currentPauseToken
         )
+    }
+
+    /// いま実行中（またはこれから始める）1 回の操作で共有する一時停止トークン。
+    /// **操作ごとに作り直す** — 前の操作で一時停止したまま終わった状態が
+    /// 次の操作へ持ち越されると、始めた途端に止まっているように見える。
+    private var currentPauseToken: PauseToken {
+        if let pauseTokenForCurrentOperation { return pauseTokenForCurrentOperation }
+        let token = PauseToken()
+        pauseTokenForCurrentOperation = token
+        return token
+    }
+
+    /// 進捗の報告先。転送・圧縮・展開のすべてが同じ窓へ流れるよう共有する。
+    private var progressReporter: ProgressReporter {
+        ProgressReporter { [weak self] value in
+            Task { @MainActor in self?.publish(value) }
+        }
     }
 
     /// [FM-11][FM-12] 衝突 1 件ごとの判断。「以降すべてに適用」が選ばれて
@@ -164,23 +206,70 @@ final class FolderOperations {
         }
     }
 
-    /// 進捗シートの副題。「3/12 件 — 1.2 GB / 8.4 GB」のように、件数と
+    /// 進捗表示を出す**唯一の入口**。`busyMessage` を直に書かないこと —
+    /// 書くと別ウインドウに現れない［ユーザー要望: 進捗はすべてウインドウへ］。
+    ///
+    /// - Parameter cancel: 中断手段。無い処理では `nil`（ボタンを出さない）。
+    private func beginProgress(
+        _ title: String, cancel: (@MainActor () -> Void)? = nil, pauseToken: PauseToken? = nil
+    ) {
+        busyMessage = title
+        progressHandle = OperationProgressCenter.shared.begin(
+            title: title, cancel: cancel, pauseToken: pauseToken
+        )
+    }
+
+    /// `beginProgress` と対で必ず呼ぶ（`defer` で呼ぶのが安全）。
+    private func endProgress() {
+        busyMessage = nil
+        progress = nil
+        cancellableTask = nil
+        pauseTokenForCurrentOperation = nil
+        if let handle = progressHandle {
+            OperationProgressCenter.shared.finish(handle)
+            progressHandle = nil
+        }
+    }
+
+    /// 進捗を別ウインドウへ流す。
+    private func publish(_ value: OperationProgress) {
+        progress = value
+        guard let progressHandle else { return }
+        OperationProgressCenter.shared.update(progressHandle, progress: value, detail: progressDetail)
+    }
+
+    /// 進捗の副題。「3/12 件 — 1.2 GB / 8.4 GB」のように、件数と
     /// バイト数の両方を出す（どちらか片方では「あと何個か」「あとどれくらいか」
     /// のどちらかが分からない）。
     var progressDetail: String? {
         guard let progress else { return nil }
         var parts: [String] = []
         if progress.totalItems > 1 {
+            // 「今 N 件目を処理中」。**総数を超えないよう頭打ちにする** —
+            // 最後の 1 件を終えた直後は `completedItems == totalItems` になり、
+            // 素朴に +1 すると「150 件中 151 件目」と出る（実機で確認）。
+            let current = min(progress.completedItems + 1, progress.totalItems)
             parts.append(String(
                 format: String(localized: "progress.itemCount", locale: locale),
-                progress.completedItems + 1, progress.totalItems
+                current, progress.totalItems
             ))
+            // **残り件数も明示する**［ユーザー要望: 総数と残り数が知りたい］。
+            // 「12 件中 3 件目」からも引き算すれば分かるが、待っている側に
+            // 暗算を強いる表示にしない。
+            let remaining = max(0, progress.totalItems - progress.completedItems)
+            if remaining > 0 {
+                parts.append(String(
+                    format: String(localized: "progress.remainingItems", locale: locale), remaining
+                ))
+            }
         }
         if progress.totalBytes > 0 {
             let formatter = ByteCountFormatter()
             parts.append("\(formatter.string(fromByteCount: progress.completedBytes)) / \(formatter.string(fromByteCount: progress.totalBytes))")
         }
-        if let name = progress.currentItemName, parts.isEmpty { parts.append(name) }
+        // 処理中のファイル名はここには入れない — 窓が独立した行として
+        // 出すため（`OperationProgressWindowContent`）。件数・バイト数と
+        // 同じ行に混ぜると、名前が長いときに数字が押し出されて読めなくなる。
         return parts.isEmpty ? nil : parts.joined(separator: " — ")
     }
 
@@ -236,7 +325,7 @@ final class FolderOperations {
     func runBulkRename(_ request: PendingBulkRename, changes: [BulkRename.Change]) {
         run(
             BulkRenameCommand(folder: request.folder, changes: changes),
-            failure: "error.bulkRenameFailed"
+            failure: "error.bulkRenameFailed", busyMessageKey: "folder.renaming"
         ) {}
     }
 
@@ -293,7 +382,8 @@ final class FolderOperations {
     func runPermanentDeletion(_ request: PendingPermanentDeletion) {
         // 「以降すべてに適用」は 1 回の削除操作ごとにリセットする [ER-11]。
         lockedItemBlanketDecision = nil
-        busyMessage = String(localized: "permanentDelete.deleting", locale: locale)
+        // 完全削除は中断できない [PD-05] ので、キャンセル手段は渡さない。
+        beginProgress(String(localized: "permanentDelete.deleting", locale: locale))
         let command = DeletePermanentlyCommand(
             items: request.urls,
             options: DeletePermanentlyOptions(lockedItemResolver: { [self] url in
@@ -301,7 +391,7 @@ final class FolderOperations {
             })
         )
         Task {
-            defer { busyMessage = nil }
+            defer { endProgress() }
             do {
                 _ = try await CommandStack.shared.run(command)
                 request.onSuccess()
@@ -732,9 +822,9 @@ final class FolderOperations {
     /// パスワードシートの確定後もここへ戻ってくる（`.folderOperationsHost(_:)`
     /// 参照）。
     func runCompression(_ request: PendingCompression, passphrase: String?) {
-        busyMessage = String(localized: "folder.compressing", locale: locale)
-        Task {
-            defer { busyMessage = nil }
+        let pauseToken = currentPauseToken
+        let task = Task {
+            defer { endProgress() }
             do {
                 // 完了後に作成したアーカイブを選択状態にするため、`CommandStack`
                 // に渡す前に具体的な型のまま変数へ保持しておく（`CompressCommand`
@@ -743,18 +833,35 @@ final class FolderOperations {
                 let command = CompressCommand(
                     items: request.items, destinationName: request.destinationName,
                     destinationFolder: request.destinationFolder,
-                    options: request.options, passphrase: passphrase, conflictPolicy: request.conflictPolicy
+                    options: request.options, passphrase: passphrase,
+                    conflictPolicy: request.conflictPolicy, progress: progressReporter,
+                    pauseToken: pauseToken
                 )
                 _ = try await CommandStack.shared.run(command)
                 if let resultURL = command.resultURL {
                     request.onCompleted(resultURL)
                 }
+            } catch is CancellationError {
+                // ユーザー自身が止めたので、失敗として提示しない。
+            } catch ExtractError.cancelled {
+                // 同上（バックエンドは `Task.isCancelled` を見て専用の
+                // エラーを投げるため、両方を受ける）。
             } catch {
+                guard !Task.isCancelled else { return }
+                // エラーを見せる**前に**進捗表示を片付ける（`run()` と同じ
+                // 理由 — `presentError` はダイアログが閉じられるまで返らない）。
+                endProgress()
                 await NotificationRouter.shared.presentError(
                     error, whatHappened: String(localized: "error.compressFailed", locale: locale)
                 )
             }
         }
+        cancellableTask = task
+        // 中断手段は**この時点で**渡す（`run()` と同じ理由）。
+        beginProgress(
+            String(localized: "folder.compressing", locale: locale),
+            cancel: { task.cancel() }, pauseToken: pauseToken
+        )
     }
 
     /// 展開先フォルダを新規作成する場合は `CreateFolderCommand` + `ExtractCommand`
@@ -773,10 +880,11 @@ final class FolderOperations {
         onSuccess: @escaping @MainActor () -> Void = {}
     ) {
         guard !urls.isEmpty else { return }
-        busyMessage = urls.count == 1
+        let busyTitle = urls.count == 1
             ? String(localized: "folder.extractingOne", locale: locale)
             : String(format: String(localized: "folder.extractingCount", locale: locale), urls.count)
         let limits = extractLimits
+        let pauseToken = currentPauseToken
         var children: [any Command] = []
         for url in urls {
             let target = destination(url)
@@ -784,20 +892,25 @@ final class FolderOperations {
                 children.append(CreateFolderCommand(url: target))
             }
             let entryPassphrase = urls.count == 1 ? passphrase : nil
-            children.append(ExtractCommand(archiveURL: url, destination: target, limits: limits, passphrase: entryPassphrase))
+            children.append(ExtractCommand(
+                archiveURL: url, destination: target, limits: limits,
+                passphrase: entryPassphrase, progress: progressReporter, pauseToken: pauseToken
+            ))
         }
         let name = urls.count == 1
             ? String(format: String(localized: "folder.extractCommandName", locale: locale), urls[0].lastPathComponent)
             : String(format: String(localized: "folder.extractCommandNameCount", locale: locale), urls.count)
-        guard let command = Self.singleOrComposite(children, displayName: name) else {
-            busyMessage = nil
-            return
-        }
-        Task {
-            defer { busyMessage = nil }
+        guard let command = Self.singleOrComposite(children, displayName: name) else { return }
+        let task = Task {
+            defer { endProgress() }
             do {
                 _ = try await CommandStack.shared.run(command)
                 onSuccess()
+            } catch is CancellationError {
+                // ユーザー自身が止めたので、失敗として提示しない。
+            } catch ExtractError.cancelled {
+                // 同上（バックエンドは `Task.isCancelled` を見て [EX-24] の
+                // 専用エラーを投げるため、両方を受ける）。
             } catch let error as ExtractError where urls.count == 1 && (error == .passwordProtected || error == .incorrectPassphrase) {
                 let retryMessage = error == .incorrectPassphrase ? String(localized: "error.incorrectPassphrase", locale: locale) : nil
                 pendingExtractionPassword = PendingExtractionPassword(
@@ -805,12 +918,17 @@ final class FolderOperations {
                     retryErrorMessage: retryMessage, onSuccess: onSuccess
                 )
             } catch {
+                guard !Task.isCancelled else { return }
+                // エラーを見せる**前に**進捗表示を片付ける（`run()` と同じ理由）。
+                endProgress()
                 await NotificationRouter.shared.presentError(
                     error, whatHappened: String(localized: "error.extractFailed", locale: locale)
                 )
                 onSuccess()
             }
         }
+        cancellableTask = task
+        beginProgress(busyTitle, cancel: { task.cancel() }, pauseToken: pauseToken)
     }
 
     /// [AR-22] 展開先をユーザーに選ばせる。
@@ -927,27 +1045,9 @@ private struct FolderOperationsHostModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .overlay {
-                // 長時間処理の進捗とキャンセル [UI-09][A-04]。総量が分かって
-                // いれば確定進捗、分からなければ（クローンで一瞬に終わる場合
-                // など）不定進捗になる。
-                if let busyMessage = operations.busyMessage {
-                    ZStack {
-                        Color.black.opacity(0.15)
-                        QooProgressPresenter(
-                            title: busyMessage,
-                            progress: operations.progress?.fraction,
-                            detail: operations.progressDetail,
-                            onCancel: operations.cancellableTask.map { task in
-                                { task.cancel() }
-                            }
-                        )
-                        .background(.regularMaterial)
-                        .clipShape(RoundedRectangle(cornerRadius: Tokens.radius.m))
-                    }
-                    .ignoresSafeArea()
-                }
-            }
+            // 進捗は**別の小さなウインドウ**に出す［ユーザー要望］。
+            // 実体は `OperationProgressWindowController`（アプリ全体で 1 つ）。
+            // 以前はここでウインドウ全体を薄暗くするオーバーレイを描いていた。
             // [FM-11][FM-12] 同名の項目があったときの判断。
             .sheet(item: $operations.pendingConflict) { pending in
                 ConflictResolutionSheet(pending: pending) {

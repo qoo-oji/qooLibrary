@@ -25,15 +25,26 @@ struct ProgressTracker {
     private var progress: OperationProgress
     private var lastReportedAt: ContinuousClock.Instant?
 
+    /// 実際に書き込まれるバイト数の見積もり。**空き容量の事前検査はこれを使う**
+    /// [ER-03]。クローンで済む場合と、数えている途中で中断された場合は `nil`
+    /// （＝検査しない。前者は 1 バイトも書かないので検査に意味が無く、後者は
+    /// 過少な見積もりで誤って断らないため）。
+    let requiredBytes: Int64?
+
     init(reporter: ProgressReporter?, items: [URL], destination: URL) {
         self.reporter = reporter
-        let totalBytes: Int64
-        if reporter == nil || Self.willBeInstant(items: items, destination: destination) {
-            // 数えても意味が無い（報告先が無い／一瞬で終わる）。
-            totalBytes = 0
+        if Self.willBeInstant(items: items, destination: destination) {
+            requiredBytes = nil
         } else {
-            totalBytes = Self.totalSize(of: items)
+            // **報告先の有無に関わらず数える。** 以前は進捗表示が要らない
+            // 呼び出しでは数えていなかったが、空き容量の事前検査もこの値を
+            // 使うようになったため、進捗の都合で検査が抜けてはならない。
+            // 走査するのはクローンできない経路だけで、その経路は元々
+            // 実コピーの時間が支配的なので、走査の上乗せは相対的に小さい。
+            let measured = Self.totalSize(of: items)
+            requiredBytes = measured > 0 ? measured : nil
         }
+        let totalBytes = reporter == nil ? 0 : (requiredBytes ?? 0)
         self.progress = OperationProgress(totalBytes: totalBytes, totalItems: items.count)
     }
 

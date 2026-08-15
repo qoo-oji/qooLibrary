@@ -11,6 +11,8 @@ public final class CompressCommand: Command {
     private let options: CompressionOptions
     private let passphrase: String?
     private let conflictPolicy: ConflictPolicy
+    private let progress: ProgressReporter?
+    private let pauseToken: PauseToken?
     private let compressor: ArchiveCompressor
     private let fileOps: FileOperationService
     /// 実行後に作成されたアーカイブの URL。呼び出し側が実行直後に選択状態を
@@ -21,7 +23,8 @@ public final class CompressCommand: Command {
     public init(
         items: [URL], destinationName: String, destinationFolder: URL,
         options: CompressionOptions = .default, passphrase: String? = nil,
-        conflictPolicy: ConflictPolicy = .keepBoth,
+        conflictPolicy: ConflictPolicy = .keepBoth, progress: ProgressReporter? = nil,
+        pauseToken: PauseToken? = nil,
         compressor: ArchiveCompressor = .shared, fileOps: FileOperationService = .shared
     ) {
         self.items = items
@@ -30,6 +33,8 @@ public final class CompressCommand: Command {
         self.options = options
         self.passphrase = passphrase
         self.conflictPolicy = conflictPolicy
+        self.progress = progress
+        self.pauseToken = pauseToken
         self.compressor = compressor
         self.fileOps = fileOps
     }
@@ -54,7 +59,8 @@ public final class CompressCommand: Command {
     public func execute() async throws -> CommandResult {
         resultURL = try await compressor.compress(
             items, destinationName: destinationName, in: destinationFolder,
-            options: options, passphrase: passphrase, conflictPolicy: conflictPolicy
+            options: options, passphrase: passphrase, conflictPolicy: conflictPolicy,
+            progress: progress, pauseToken: pauseToken
         )
         return .success
     }
@@ -80,18 +86,23 @@ public final class ExtractCommand: Command {
     private let destination: URL
     private let limits: ExtractLimits
     private let passphrase: String?
+    private let progress: ProgressReporter?
+    private let pauseToken: PauseToken?
     private let extractor: SecureExtractor
     private let fileOps: FileOperationService
     private var createdURLs: [URL] = []
 
     public init(
         archiveURL: URL, destination: URL, limits: ExtractLimits = .default, passphrase: String? = nil,
+        progress: ProgressReporter? = nil, pauseToken: PauseToken? = nil,
         extractor: SecureExtractor = .shared, fileOps: FileOperationService = .shared
     ) {
         self.archiveURL = archiveURL
         self.destination = destination
         self.limits = limits
         self.passphrase = passphrase
+        self.progress = progress
+        self.pauseToken = pauseToken
         self.extractor = extractor
         self.fileOps = fileOps
     }
@@ -106,7 +117,10 @@ public final class ExtractCommand: Command {
     public let completionSound: SystemSoundEffect? = .operationComplete
 
     public func execute() async throws -> CommandResult {
-        let options = ExtractOptions(destination: destination, limits: limits, passphrase: passphrase)
+        let options = ExtractOptions(
+            destination: destination, limits: limits, passphrase: passphrase,
+            progress: progress, pauseToken: pauseToken
+        )
         let result = try await extractor.extract(archiveURL, options: options)
         createdURLs = result.createdURLs
         return .success

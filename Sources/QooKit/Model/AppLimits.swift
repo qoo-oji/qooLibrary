@@ -19,6 +19,17 @@ public enum AppLimits {
     }
 
     /// サムネイル生成の安全上限・既定値 [9.5〜9.6 節]。
+    public enum FileOperations {
+        /// コピー・クロスボリューム移動を始める前に、この分だけ余分に
+        /// 空きを要求する [ER-03、`SecureExtractor` の [EX-23] と同じ考え方]。
+        ///
+        /// 運ぶバイト数は実測なので、展開時（宣言値が嘘をつき得るので 1GB）
+        /// ほど厚い余裕は要らない。ディレクトリツリーの inode やメタデータが
+        /// 消費する分を吸収できればよいので小さくしてある — 大きくすると
+        /// 「空き 2.5GB へ 2GB のコピー」のような正当な操作まで断ってしまう。
+        public static let freeSpaceMargin: Int64 = 64 * 1_000 * 1_000
+    }
+
     public enum Thumbnail {
         /// 画像1枚あたりのピクセル数上限（既定 1 億）[IM-01]。
         public static let defaultMaxPixelCount: Int = 100_000_000

@@ -32,7 +32,9 @@ public actor ArchiveCompressor {
         in destinationFolder: URL,
         options: CompressionOptions = .default,
         passphrase: String? = nil,
-        conflictPolicy: ConflictPolicy = .keepBoth
+        conflictPolicy: ConflictPolicy = .keepBoth,
+        progress: ProgressReporter? = nil,
+        pauseToken: PauseToken? = nil
     ) async throws -> URL {
         guard !items.isEmpty else {
             throw ExtractError.backendFailure("no items to compress")
@@ -53,8 +55,19 @@ public actor ArchiveCompressor {
         Log.archive.info(
             "圧縮開始（\(options.format) / 暗号化 \(options.encryption)）: \(items.count) 件 → \(Log.path(destinationFolder.appendingPathComponent("\(destinationName).\(ext)")))"
         )
+        // 総数はここで数える [ユーザー要望: 総ファイル数と残り件数を出したい]。
+        // バックエンドは詰めながら数えるので総数を先には知れない。走査の
+        // 上乗せは、実際に圧縮する時間に比べれば無視できる。
+        var reporter: ProgressReporter?
+        if let progress {
+            let totals = Self.totals(of: items)
+            reporter = ProgressThrottle.wrap(progress, totalItems: totals.files, totalBytes: totals.bytes)
+        }
         do {
-            try await LibarchiveBackend.shared.compress(items, to: stagingArchive, options: options, passphrase: passphrase)
+            try await LibarchiveBackend.shared.compress(
+                items, to: stagingArchive, options: options, passphrase: passphrase,
+                progress: reporter, pauseToken: pauseToken
+            )
         } catch {
             // 素のファイル名ではなく最終位置の絶対パスで書く（匿名化の対象に
             // なるのは絶対パスだけのため [LG2-06]）。
@@ -65,7 +78,8 @@ public actor ArchiveCompressor {
         }
 
         let receipts = try await fileOps.move(
-            [stagingArchive], to: destinationFolder, options: OpOptions(conflictPolicy: conflictPolicy)
+            [stagingArchive], to: destinationFolder,
+            options: OpOptions(conflictPolicy: conflictPolicy, pauseToken: pauseToken)
         )
         guard let finalURL = receipts.first?.toURL else {
             Log.archive.error("圧縮結果を最終位置へ移せませんでした: \(Log.path(destinationFolder))")
@@ -73,5 +87,32 @@ public actor ArchiveCompressor {
         }
         Log.archive.info("圧縮完了: \(Log.path(finalURL))")
         return finalURL
+    }
+
+    /// 圧縮対象の総ファイル数・総バイト数（シンボリックリンクは辿らない）。
+    private static func totals(of items: [URL]) -> (files: Int, bytes: Int64) {
+        var files = 0
+        var bytes: Int64 = 0
+        let fm = FileManager.default
+        for item in items {
+            let values = try? item.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey, .isSymbolicLinkKey])
+            if values?.isSymbolicLink == true { continue }
+            if values?.isDirectory == true {
+                guard let enumerator = fm.enumerator(
+                    at: item, includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey],
+                    options: [.skipsHiddenFiles]
+                ) else { continue }
+                while let child = enumerator.nextObject() as? URL {
+                    let childValues = try? child.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
+                    guard childValues?.isRegularFile == true else { continue }
+                    files += 1
+                    bytes += Int64(childValues?.fileSize ?? 0)
+                }
+            } else {
+                files += 1
+                bytes += Int64(values?.fileSize ?? 0)
+            }
+        }
+        return (files, bytes)
     }
 }
