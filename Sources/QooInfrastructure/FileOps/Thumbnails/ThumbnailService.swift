@@ -95,8 +95,13 @@ public actor ThumbnailService {
         // フォールバックするのが非表示時の正しい表示 [DS-01] だからで、
         // キャッシュ済みかどうかで見た目が変わってはならない。
         if await isGloballyHidden() { return nil }
-        guard let identity = try? Self.identity(of: url) else { return nil }
-        if let cached = cache.loadCachedImage(for: identity) {
+        // **キャッシュの鍵は `FileIdentity` ではなく `FileContentStamp`**
+        // （更新日時とサイズを含む）。識別子だけで引くと、外部で差し替えた
+        // ファイルに古いサムネイルが出続け、削除→新規作成で inode が
+        // 再利用された場合には無関係なファイルのサムネイルが出る
+        // [`FileContentStamp` のコメント参照]。
+        guard let stamp = try? FileMetadata.stamp(of: url) else { return nil }
+        if let cached = cache.loadCachedImage(for: stamp) {
             return cached
         }
 
@@ -134,7 +139,7 @@ public actor ThumbnailService {
             return nil
         }
         do {
-            _ = try cache.store(generated, for: identity)
+            _ = try cache.store(generated, for: stamp)
         } catch {
             Log.image.warning("サムネイルのキャッシュ保存に失敗: \(Log.path(url)) — \(error.localizedDescription)")
         }
@@ -178,10 +183,14 @@ public actor ThumbnailService {
     /// 手動コマンド「サムネイルを再生成」用 [MX 一覧]。指定したファイルの
     /// キャッシュを消すだけで、実際の再生成は次回の `thumbnail(for:)` 呼び出し
     /// 時に自然に行われる。
+    /// **内容の版によらず、そのファイルのキャッシュをすべて捨てる**
+    /// [レビューで指摘]。鍵に更新日時とサイズが入ったため、今の版の鍵だけを
+    /// 消すと「一番新しい 1 件だけ消して、古い版は残す」という逆の動きに
+    /// なってしまう（この関数の呼び出し元はまだ無いが、意味として誤っている）。
     public func invalidate(_ urls: [URL]) async {
         for url in urls {
-            guard let identity = try? Self.identity(of: url) else { continue }
-            try? FileManager.default.removeItem(at: cache.url(for: identity))
+            guard let identity = try? FileMetadata.identity(of: url) else { continue }
+            await cache.removeEntries(for: identity)
         }
     }
 
@@ -228,16 +237,4 @@ public actor ThumbnailService {
 
     // MARK: - 内部
 
-    /// `FileOperationService.identity(of:)` と同じ計算 [ID-01]。専用の共有
-    /// ヘルパーに切り出すほどの規模ではないため、意図的にここでも同じ数行を
-    /// 持つ（`FileIdentity` 自体は `QooKit` の値型で、計算方法だけがこの2箇所
-    /// にある）。
-    private static func identity(of url: URL) throws -> FileIdentity {
-        let volumeUUID = try url.resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString ?? ""
-        var statInfo = stat()
-        guard stat(url.path, &statInfo) == 0 else {
-            throw CocoaError(.fileReadUnknown)
-        }
-        return FileIdentity(volumeUUID: volumeUUID, inode: UInt64(statInfo.st_ino))
-    }
 }

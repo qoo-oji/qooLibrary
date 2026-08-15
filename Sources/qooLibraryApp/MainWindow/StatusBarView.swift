@@ -18,9 +18,10 @@ struct StatusBarView<Trailing: View>: View {
     let folder: URL?
     let itemCount: Int
     let selectedCount: Int
-    /// `SessionState.reloadToken`。ファイル操作のたびに空き容量を取り直すための
-    /// トリガ（値自体は使わない）。
-    let reloadToken: Int
+    /// 表示中のフォルダに変更があった回数
+    /// [`DirectoryObservation.generation`]。空き容量を取り直すためのトリガで、
+    /// 値自体は使わない。
+    let refreshToken: Int
     /// 再帰検索の状態 [ユーザー要望]。走査中であること・上限で打ち切ったことを
     /// 件数の隣に添える（一覧が「全部」ではないと分かるようにするため）。
     var isSearching = false
@@ -69,7 +70,7 @@ struct StatusBarView<Trailing: View>: View {
         .padding(.horizontal, Tokens.spacing.m)
         .padding(.vertical, Tokens.spacing.xs)
         .background(.thinMaterial)
-        .task(id: TaskKey(folder: folder, reloadToken: reloadToken)) {
+        .task(id: TaskKey(folder: folder, refreshToken: refreshToken)) {
             availableCapacity = await Self.availableCapacity(of: folder)
         }
     }
@@ -142,7 +143,7 @@ struct StatusBarView<Trailing: View>: View {
     /// `.task(id:)` は 1 つの値しか取れないため、フォルダと再読み込み信号を束ねる。
     private struct TaskKey: Equatable {
         let folder: URL?
-        let reloadToken: Int
+        let refreshToken: Int
     }
 
     /// **`volumeAvailableCapacityForImportantUsageKey` を使う** [設計判断]。

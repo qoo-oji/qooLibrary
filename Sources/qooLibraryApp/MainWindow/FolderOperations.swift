@@ -20,12 +20,11 @@ import SwiftUI
 ///   ファイルシステムの変更自体は各 `Command` が `FileOperationService` に
 ///   委譲する [FO-01][FO-02]。
 /// - エラー提示は必ず `NotificationRouter` 経由 [ER-01]。
-/// - 成功したら `SessionState.reloadToken` を必ず増分し、他ウインドウ／
-///   ペインにも変更を伝える [1-6 実機検証で発見したクロスウインドウの表示
-///   不整合対策、`SessionState.reloadToken` 参照]。呼び出し側が自分自身の
-///   一覧を即座に更新したい場合は `onSuccess` を渡す（`reloadToken` 経由の
-///   反映は次の Observation サイクルになるため、直後に選択・スクロールを
-///   操作する経路ではタイミングが問題になり得る）。
+/// - **一覧の更新はここでは行わない** [10章 §10.0]。ファイルが実際に動けば
+///   `FileOperationService` が `DirectoryChangeHub` へ伝え、影響を受ける
+///   フォルダを表示しているウインドウ・ペインだけが読み直す。`onSuccess` は
+///   「作ったファイルを選択してスクロールする」など、**その呼び出し元だけが
+///   やりたいこと**のために残してある。
 ///
 /// この型は View ではないため `@Environment(\.locale)`/`@AppStorage` を
 /// 使えない。表示言語は `AppLanguage.effectiveLocale`、環境設定は
@@ -60,10 +59,15 @@ final class FolderOperations {
 
     // MARK: - コマンド実行の共通経路
 
-    /// `CommandStack` でコマンドを実行し、成功時に `onSuccess` →
-    /// `SessionState.reloadToken` 増分、失敗時に `NotificationRouter` への
-    /// エラー提示までを行う唯一の経路。`command` が `nil`（対象が空で
-    /// 実行するものが無い）なら何もしない。
+    /// `CommandStack` でコマンドを実行し、成功時に `onSuccess`、失敗時に
+    /// `NotificationRouter` へのエラー提示までを行う唯一の経路。`command` が
+    /// `nil`（対象が空で実行するものが無い）なら何もしない。
+    ///
+    /// **一覧の更新はここでは行わない** [10章 §10.0]。コマンドが実際に
+    /// ファイルを動かせば `FileOperationService` が `DirectoryChangeHub` へ
+    /// 伝え、影響を受けるフォルダを表示しているすべてのウインドウ・ペインが
+    /// 読み直す。`onSuccess` は「作ったファイルを選択する」など、**この
+    /// 呼び出し元だけがやりたいこと**のために残してある。
     private func run(
         _ command: (any Command)?,
         failure: String.LocalizationValue,
@@ -74,7 +78,6 @@ final class FolderOperations {
             do {
                 _ = try await CommandStack.shared.run(command)
                 onSuccess()
-                SessionState.shared.reloadToken += 1
             } catch {
                 await NotificationRouter.shared.presentError(
                     error, whatHappened: String(localized: failure, locale: locale)
@@ -136,6 +139,12 @@ final class FolderOperations {
             do {
                 _ = try await CommandStack.shared.run(command)
                 request.onSuccess()
+                // **完全削除だけは別途知らせる** [10章 §10.0 の例外]。
+                // 消えた項目が登録フォルダ（ライブラリ／テンポラリ）だった
+                // 場合、`DeletePermanentlyCommand` がその登録も強制解除する
+                // [FM-14]。それは「ファイルの中身」ではなく左ペインが持つ
+                // 一覧の変化なので、`DirectoryChangeHub` ではなくこちらの
+                // 信号で伝える。
                 SessionState.shared.reloadToken += 1
                 await presentDeletionSummaryIfNeeded(command)
             } catch {
@@ -566,7 +575,6 @@ final class FolderOperations {
                     options: request.options, passphrase: passphrase, conflictPolicy: request.conflictPolicy
                 )
                 _ = try await CommandStack.shared.run(command)
-                SessionState.shared.reloadToken += 1
                 if let resultURL = command.resultURL {
                     request.onCompleted(resultURL)
                 }
@@ -619,7 +627,6 @@ final class FolderOperations {
             do {
                 _ = try await CommandStack.shared.run(command)
                 onSuccess()
-                SessionState.shared.reloadToken += 1
             } catch let error as ExtractError where urls.count == 1 && (error == .passwordProtected || error == .incorrectPassphrase) {
                 let retryMessage = error == .incorrectPassphrase ? String(localized: "error.incorrectPassphrase", locale: locale) : nil
                 pendingExtractionPassword = PendingExtractionPassword(
@@ -631,7 +638,6 @@ final class FolderOperations {
                     error, whatHappened: String(localized: "error.extractFailed", locale: locale)
                 )
                 onSuccess()
-                SessionState.shared.reloadToken += 1
             }
         }
     }

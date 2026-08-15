@@ -15,14 +15,18 @@ import UniformTypeIdentifiers
 /// 「自動生成したサムネイルを PNG で保存するだけ」に単純化している
 /// （元画像の形式を問わず、生成物を一貫した形式で保存すればよいため）。
 public protocol CoverImageCache: Sendable {
-    /// `identity` に対応するキャッシュファイルの URL。実際に存在するかは
+    /// `stamp` に対応するキャッシュファイルの URL。実際に存在するかは
     /// 呼び出し側が判定する。
-    func url(for identity: FileIdentity) -> URL
+    func url(for stamp: FileContentStamp) -> URL
     /// 既にキャッシュされていれば読み込んで返す。
-    func loadCachedImage(for identity: FileIdentity) -> CGImage?
+    func loadCachedImage(for stamp: FileContentStamp) -> CGImage?
     /// サムネイルを保存する。
     @discardableResult
-    func store(_ image: CGImage, for identity: FileIdentity) throws -> URL
+    func store(_ image: CGImage, for stamp: FileContentStamp) throws -> URL
+    /// そのファイルのキャッシュを、**内容の版によらずすべて**捨てる。
+    /// 「サムネイルを再生成」のように、対象を URL でしか特定できない
+    /// 呼び出し元のためのもの。
+    func removeEntries(for identity: FileIdentity) async
     func totalSize() async -> Int64
     /// 合計サイズが `maxSize` 以下になるまで、古いものから削除する [IV-09]。
     func prune(toMaxSize: Int64) async
@@ -37,7 +41,20 @@ public protocol CoverImageCache: Sendable {
 public struct DefaultCoverImageCache: CoverImageCache {
     public static let shared = DefaultCoverImageCache()
 
+    /// 鍵の形式が変わったときのための版。**形式を変えたらここを上げること** —
+    /// 古い形式で作ったファイルは新しい鍵では二度と引かれず、上限
+    /// [IV-09] に達するまで場所を占め続けるため、版ごとにディレクトリを
+    /// 分けて丸ごと捨てられるようにしてある。
+    ///
+    /// - v1 … `<volumeUUID>-<inode>` （`FileIdentity` のみ）
+    /// - v2 … `FileContentStamp.cacheKey`（更新日時・サイズを含む）
+    private static let versionDirectoryName = "v2"
+
     private let baseDirectory: URL
+    /// 版ディレクトリの親。既定の場所を使うときだけ値が入る
+    /// （``purgeOutdatedVersions()`` が消してよい範囲を、注入された
+    /// ディレクトリへ広げないため）。
+    private let versionedRoot: URL?
 
     /// テストでは独立した一時ディレクトリを渡せる（`SecureExtractor`/
     /// `ArchiveCompressor` の `stagingRoot` 注入と同じ設計判断。CI での
@@ -45,19 +62,37 @@ public struct DefaultCoverImageCache: CoverImageCache {
     public init(baseDirectory: URL? = nil) {
         if let baseDirectory {
             self.baseDirectory = baseDirectory
+            self.versionedRoot = nil
         } else {
             let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
                 ?? FileManager.default.temporaryDirectory
-            self.baseDirectory = appSupport.appendingPathComponent("qooLibrary/covers", isDirectory: true)
+            let root = appSupport.appendingPathComponent("qooLibrary/covers", isDirectory: true)
+            self.versionedRoot = root
+            self.baseDirectory = root.appendingPathComponent(Self.versionDirectoryName, isDirectory: true)
         }
     }
 
-    public func url(for identity: FileIdentity) -> URL {
-        baseDirectory.appendingPathComponent("\(Self.filename(for: identity)).png")
+    /// 古い鍵の形式で作られたキャッシュを捨てる。アプリ起動時に一度呼ぶ
+    /// （`SecureExtractor.cleanupResidualStaging()` と同じ位置づけ）。
+    ///
+    /// テスト等でディレクトリを注入した場合は何もしない — 消してよい範囲が
+    /// 分からないため。
+    public func purgeOutdatedVersions() async {
+        guard let versionedRoot else { return }
+        let entries = (try? FileManager.default.contentsOfDirectory(
+            at: versionedRoot, includingPropertiesForKeys: nil
+        )) ?? []
+        for entry in entries where entry.lastPathComponent != Self.versionDirectoryName {
+            try? FileManager.default.removeItem(at: entry)
+        }
     }
 
-    public func loadCachedImage(for identity: FileIdentity) -> CGImage? {
-        let fileURL = url(for: identity)
+    public func url(for stamp: FileContentStamp) -> URL {
+        baseDirectory.appendingPathComponent("\(stamp.cacheKey).png")
+    }
+
+    public func loadCachedImage(for stamp: FileContentStamp) -> CGImage? {
+        let fileURL = url(for: stamp)
         guard FileManager.default.fileExists(atPath: fileURL.path),
               let source = CGImageSourceCreateWithURL(fileURL as CFURL, nil)
         else { return nil }
@@ -65,9 +100,9 @@ public struct DefaultCoverImageCache: CoverImageCache {
     }
 
     @discardableResult
-    public func store(_ image: CGImage, for identity: FileIdentity) throws -> URL {
+    public func store(_ image: CGImage, for stamp: FileContentStamp) throws -> URL {
         try FileManager.default.createDirectory(at: baseDirectory, withIntermediateDirectories: true)
-        let fileURL = url(for: identity)
+        let fileURL = url(for: stamp)
         guard let destination = CGImageDestinationCreateWithURL(fileURL as CFURL, UTType.png.identifier as CFString, 1, nil) else {
             throw CoverImageCacheError.encodingFailed
         }
@@ -76,6 +111,13 @@ public struct DefaultCoverImageCache: CoverImageCache {
             throw CoverImageCacheError.encodingFailed
         }
         return fileURL
+    }
+
+    public func removeEntries(for identity: FileIdentity) async {
+        let prefix = FileContentStamp.cacheKeyPrefix(for: identity)
+        for file in cachedFiles() where file.lastPathComponent.hasPrefix(prefix) {
+            try? FileManager.default.removeItem(at: file)
+        }
     }
 
     public func totalSize() async -> Int64 {
@@ -100,10 +142,6 @@ public struct DefaultCoverImageCache: CoverImageCache {
     }
 
     // MARK: - 内部
-
-    private static func filename(for identity: FileIdentity) -> String {
-        "\(identity.volumeUUID)-\(identity.inode)"
-    }
 
     private func cachedFiles() -> [URL] {
         (try? FileManager.default.contentsOfDirectory(at: baseDirectory, includingPropertiesForKeys: nil)) ?? []

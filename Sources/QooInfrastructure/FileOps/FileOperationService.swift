@@ -19,10 +19,36 @@ public actor FileOperationService {
 
     public init() {}
 
+    // MARK: - 表示への反映 [10章 §10.0]
+
+    /// この操作で見た目が変わり得る場所を `DirectoryChangeHub` に伝え、
+    /// 表示中のフォルダを読み直させる。
+    ///
+    /// **呼ぶのはこのファイルの中だけ、かつ各操作から必ず 1 回**。
+    /// ファイルシステムを変更する経路はすべてこのサービスを通ることが静的検査
+    /// [FO-01][FO-02][B-10] で強制されているので、ここに置けば「新しい操作を
+    /// 足したのに画面が更新されない」が構造的に起こらない
+    /// （`CommandStack.record()` が実行・取り消し・やり直しのログを 1 箇所に
+    /// 集めているのと同じ考え方）。**FSEvents は `IgnoreSelf` で自プロセスの
+    /// 変更を落とすため、この通知が無いと自分の操作だけ反映されない。**
+    ///
+    /// 各操作では `defer` で呼ぶ — 一括処理が途中で失敗しても、そこまでに
+    /// 実際に動いたファイルは画面へ反映しなければならないため。多めに伝えても
+    /// 読み直しは冪等なので害が無い。
+    ///
+    /// 渡すのは「変更された項目そのもの」でよい。フォルダの一覧が変わった
+    /// ことは受け手が親をたどって判断する（`DirectoryChangeHub.apply` 参照）。
+    /// 書き込み先フォルダのように、項目ではなく**そのフォルダの中身**が
+    /// 変わった場合はそのフォルダ自身を渡す。
+    private nonisolated func announce(_ urls: [URL]) {
+        DirectoryChangeHub.noteLocalChanges(at: urls)
+    }
+
     // MARK: - 基本操作 [7.1 節]
 
     @discardableResult
     public func createDirectory(at url: URL, options: OpOptions = .init()) async throws -> OpReceipt {
+        defer { announce([url]) }
         // `withIntermediateDirectories: true` は対象がすでに存在していても
         // エラーを投げない（Foundation の標準動作）。「新規フォルダ」は
         // Finder と同じく既存の同名項目との衝突をエラーとして扱うべきのため、
@@ -66,6 +92,7 @@ public actor FileOperationService {
     @discardableResult
     public func rename(_ item: URL, to newName: String, options: OpOptions = .init()) async throws -> OpReceipt {
         let target = item.deletingLastPathComponent().appendingPathComponent(newName)
+        defer { announce([item, target]) }
         guard let resolved = try await resolveDestination(item, target, options: options) else {
             throw FileOperationError.operationFailed("rename of \(item.path) skipped by conflict policy")
         }
@@ -78,6 +105,9 @@ public actor FileOperationService {
     }
 
     public func trash(_ items: [URL], options: OpOptions = .init()) async throws -> [TrashReceipt] {
+        // ゴミ箱側の行き先も伝える（ゴミ箱を開いているウインドウにも反映される）。
+        var trashedURLs: [URL] = []
+        defer { announce(items + trashedURLs) }
         var identities: [URL: FileIdentity] = [:]
         for item in items {
             identities[item] = try? identity(of: item)
@@ -99,6 +129,7 @@ public actor FileOperationService {
             Log.fileOps.error("trash に失敗: \(items.map(\.path).joined(separator: ", ")) — \(error.localizedDescription)")
             throw error
         }
+        trashedURLs = Array(mapping.values)
         Log.fileOps.info("trash 完了: \(mapping.count)/\(items.count) 件")
         for (original, trashed) in mapping {
             Log.fileOps.debug("trash: \(Log.path(original)) → \(Log.path(trashed))")
@@ -126,6 +157,7 @@ public actor FileOperationService {
     public func deletePermanently(
         _ items: [URL], options: DeletePermanentlyOptions = .init()
     ) async throws -> DeletionOutcome {
+        defer { announce(items) }
         var receipts: [OpReceipt] = []
         var failures: [DeletionFailure] = []
         var skipped: [URL] = []
@@ -244,6 +276,7 @@ public actor FileOperationService {
     public func createAlias(for source: URL, in destinationFolder: URL, options: OpOptions = .init()) async throws -> OpReceipt {
         let aliasName = "\(source.lastPathComponent) のエイリアス"
         let target = destinationFolder.appendingPathComponent(aliasName)
+        defer { announce([target]) }
         guard let resolved = try await resolveDestination(source, target, options: options) else {
             throw FileOperationError.operationFailed("alias creation for \(source.path) skipped by conflict policy")
         }
@@ -257,6 +290,7 @@ public actor FileOperationService {
 
     /// Finder の「ロック」/「ロック解除」相当。
     public func setLocked(_ items: [URL], locked: Bool) async throws -> [OpReceipt] {
+        defer { announce(items) }
         var receipts: [OpReceipt] = []
         for item in items {
             var mutableItem = item
@@ -277,6 +311,7 @@ public actor FileOperationService {
     }
 
     public func restoreFromTrash(_ receipts: [TrashReceipt]) async throws -> [OpReceipt] {
+        defer { announce(receipts.map(\.originalURL) + receipts.compactMap(\.trashURL)) }
         var results: [OpReceipt] = []
         for receipt in receipts {
             guard let trashURL = receipt.trashURL else { continue }
@@ -306,6 +341,9 @@ public actor FileOperationService {
         kind: OperationKind,
         perform: (URL, URL) throws -> Void
     ) async throws -> [OpReceipt] {
+        // 移動元の各項目（親フォルダの一覧が変わる）と、書き込み先フォルダ
+        // （そのフォルダの一覧が変わる）の両方を伝える。
+        defer { announce(items + [destination]) }
         var receipts: [OpReceipt] = []
         for item in items {
             let target = destination.appendingPathComponent(item.lastPathComponent)
@@ -435,11 +473,6 @@ public actor FileOperationService {
     }
 
     private func identity(of url: URL) throws -> FileIdentity {
-        let volumeUUID = try url.resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString ?? ""
-        var statInfo = stat()
-        guard stat(url.path, &statInfo) == 0 else {
-            throw FileOperationError.operationFailed("stat failed for \(url.path)")
-        }
-        return FileIdentity(volumeUUID: volumeUUID, inode: UInt64(statInfo.st_ino))
+        try FileMetadata.identity(of: url)
     }
 }

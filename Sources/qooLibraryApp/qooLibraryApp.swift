@@ -96,6 +96,12 @@ struct QooLibraryApp: App {
         Task {
             await QuickLookCoverStore.shared.purgeAll()
         }
+        // サムネイルキャッシュの鍵の形式が変わったときに残る、古い形式の
+        // ファイルを捨てる [`DefaultCoverImageCache.purgeOutdatedVersions()`
+        // 参照]。二度と引かれないものが上限 [IV-09] を圧迫し続けるのを防ぐ。
+        Task {
+            await DefaultCoverImageCache.shared.purgeOutdatedVersions()
+        }
         // [ER-01] エラー・通知の提示はこのコントローラ1箇所からのみ行う
         // （`NotificationRouterPresenterController` のコメント参照）。
         NotificationRouterPresenterController.shared.start()
@@ -700,19 +706,17 @@ private struct UndoRedoMenuCommands: View {
     var body: some View {
         let stack = CommandStack.shared
         Button(undoTitle(stack.undoTitle), systemImage: "arrow.uturn.backward") {
-            Task {
-                await CommandStack.shared.undo()
-                SessionState.shared.reloadToken += 1 // [実機検証で発見: 一覧再読み込みの伝達漏れ]
-            }
+            // 一覧への反映は `FileOperationService` が
+            // `DirectoryChangeHub` へ伝える [10章 §10.0]。取り消しも
+            // 結局そのサービスを通ってファイルを動かすため、ここで
+            // 別途知らせる必要は無い。
+            Task { await CommandStack.shared.undo() }
         }
         .fixedKeyboardShortcut(.undo)
         .disabled(!stack.canUndo)
 
         Button(redoTitle(stack.redoTitle), systemImage: "arrow.uturn.forward") {
-            Task {
-                await CommandStack.shared.redo()
-                SessionState.shared.reloadToken += 1
-            }
+            Task { await CommandStack.shared.redo() }
         }
         .fixedKeyboardShortcut(.redo)
         .disabled(!stack.canRedo)

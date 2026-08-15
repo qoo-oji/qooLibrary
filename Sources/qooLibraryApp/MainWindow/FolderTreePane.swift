@@ -67,6 +67,11 @@ struct FolderTreePane: View {
     /// 判定に使う、ユーザー要望]。
     @State private var visibleNodeIDs: Set<String> = []
     @State private var volumes: [FolderTreeNode] = []
+    /// 外付けディスク・ディスクイメージ・ネットワークボリュームのマウント
+    /// ポイントが並ぶ場所。起動ボリューム（`/`）はここには現れないが、
+    /// 取り外されることも無いので見張る必要が無い。
+    private static let volumesDirectory = URL(fileURLWithPath: "/Volumes", isDirectory: true)
+    @State private var volumesWatch = DirectoryObservation()
     @State private var libraryEntries: [RegisteredFolderEntry] = []
     @State private var temporaryEntries: [RegisteredFolderEntry] = []
     /// 表示中の入力ダイアログ [`FolderTreePrompt` 参照]。
@@ -120,7 +125,17 @@ struct FolderTreePane: View {
             }
             .listStyle(.sidebar)
             .environment(\.defaultMinListRowHeight, 20) // 行間を少し詰める。可変にするのは 1-12（環境設定）で。
+            // ボリュームの着脱に追随する [WA-07][VD-07]。`/Volumes` を見張ると
+            // FSEvents が `Mount`/`Unmount` を届けてくれることを実測で確認して
+            // いる。**仕様 10.2 節の `VolumeMonitor`（VD-01〜06 の状態遷移）とは
+            // 別物**で、ここでやるのは「ツリーのボリューム一覧を実体に合わせる」
+            // だけ。2-2 で `VolumeMonitor` が入っても、こちらは表示の追随として
+            // そのまま残せる。
+            .onChange(of: volumesWatch.generation) {
+                volumes = FolderTreeNode.mountedVolumes()
+            }
             .task {
+                volumesWatch.watch(Self.volumesDirectory, scope: .shallow)
                 volumes = FolderTreeNode.mountedVolumes()
                 await reloadRegisteredFolders()
                 guard !skipsInitialAutoExpand else { return }
@@ -635,6 +650,8 @@ private struct FolderTreeRow: View {
 
     @State private var children: [FolderTreeNode]?
     @State private var accessDenied = false
+    /// 展開している間、このフォルダの直下を見張る [10章 §10.0]。
+    @State private var watch = DirectoryObservation()
     @State private var isDropTargeted = false
 
     private var isSelected: Bool {
@@ -756,9 +773,10 @@ private struct FolderTreeRow: View {
                 DropHandling.performDrop(
                     items, into: node.url,
                     onComplete: {
+                        // 他のウインドウ・ペインへの反映は
+                        // `FileOperationService` → `DirectoryChangeHub` が担う
+                        // [10章 §10.0]。ここでは自分の行だけを即座に更新する。
                         if children != nil { loadChildren() }
-                        // ウインドウ／ペインをまたいだ変更を拾う暫定策 [1-6 実機検証で発見]。
-                        SessionState.shared.reloadToken += 1
                     },
                     onFailure: onDropFailure
                 )
@@ -801,7 +819,30 @@ private struct FolderTreeRow: View {
         .onAppear { visibleIDs.insert(node.id) }
         .onDisappear { visibleIDs.remove(node.id) }
         .onChange(of: isExpanded.wrappedValue, initial: true) { _, expanded in
-            guard expanded, children == nil, !accessDenied else { return }
+            guard expanded else {
+                // **たたんだら忘れる** [レビューで発見]。以前は `children` を
+                // 抱えたままだったため、①たたんだ行が監視され続けて変更の
+                // たびに読み直され、②開き直しても `children != nil` を理由に
+                // 読み直しが飛ばされて、たたんでいる間の変更が反映されない、
+                // という 2 つの問題があった。捨てておけば、開いたときに必ず
+                // 実体を読み直す。
+                children = nil
+                accessDenied = false
+                return
+            }
+            guard children == nil, !accessDenied else { return }
+            loadChildren()
+        }
+        // 子を読み込んでいる間だけ、このフォルダの直下を見張る [10章 §10.0]。
+        // Finder で項目を足した・消した・改名した場合にもツリーが追随する。
+        // 折りたたんでいる行は見張らない（表示していないものを読み直しても
+        // 意味が無いうえ、監視ルートを無駄に増やさないため）。閉じている間の
+        // 変更は、開いたときの `loadChildren()` がそのまま拾う。
+        .onChange(of: WatchKey(url: node.url, isLoaded: children != nil), initial: true) { _, key in
+            watch.watch(key.isLoaded ? key.url : nil, scope: .shallow)
+        }
+        .onChange(of: watch.generation) {
+            guard children != nil else { return }
             loadChildren()
         }
         // [実機検証で発見・修正したバグ] 環境設定「アクセス権」タブでアクセスを
@@ -816,6 +857,13 @@ private struct FolderTreeRow: View {
             accessDenied = false
             loadChildren()
         }
+    }
+
+    /// `watch` の登録内容を決める識別子。`.onChange` に渡すため
+    /// `Equatable` な値にまとめる。
+    private struct WatchKey: Equatable {
+        let url: URL
+        let isLoaded: Bool
     }
 
     private func loadChildren() {

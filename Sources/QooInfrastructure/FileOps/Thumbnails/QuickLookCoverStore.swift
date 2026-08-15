@@ -119,10 +119,7 @@ public actor QuickLookCoverStore: QuickLookCoverProviding {
     /// までフォルダを走査しないと正確な判定ができず、キャッシュの目的
     /// （走査を省く）と矛盾するため、この限界は受け入れる [設計判断]。
     private static func cacheKey(for url: URL) -> String? {
-        var statInfo = stat()
-        guard stat(url.path, &statInfo) == 0 else { return nil }
-        let volumeUUID = (try? url.resourceValues(forKeys: [.volumeUUIDStringKey]))?.volumeUUIDString ?? ""
-        return "\(volumeUUID)-\(statInfo.st_ino)-\(statInfo.st_mtimespec.tv_sec)"
+        try? FileMetadata.stamp(of: url).cacheKey
     }
 
     private static func filenameExtension(of data: Data) -> String? {

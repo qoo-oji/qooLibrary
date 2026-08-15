@@ -83,6 +83,30 @@ public enum AppLimits {
         public static let anonymizationTokenLength: Int = 8
     }
 
+    /// 表示中のフォルダの変更検知 [10章 §10.0]。
+    ///
+    /// 仕様の `fsEventsLatency`（1.0 秒 [SY-07]）はライブラリのスキャン向けの
+    /// 値で、UI の追随には別の物差しが要るため分けている。
+    public enum Watch {
+        /// FSEvents が変更をまとめて配送するまでの待ち時間（秒）。
+        ///
+        /// 短すぎると、Finder の 1 回の改名が生む 2 件のイベント（旧名の消失・
+        /// 新名の出現）を別々に受け取って一覧が二度描き変わる。0.25 秒は
+        /// 体感で即座であり、かつ 1 操作を 1 バッチにまとめられる値として選んだ。
+        public static let coalescingLatency: Double = 0.25
+        /// 監視ルート集合を組み直すまでの遅延（秒）。フォルダツリーを一気に
+        /// 展開すると関心が数十件まとめて増えるため、その都度ストリームを
+        /// 作り直さないよう短く待ち合わせる。
+        public static let rootRebuildDebounce: Double = 0.1
+        /// ネットワークボリューム上のフォルダを見張る間隔（秒）。
+        ///
+        /// FSEvents は**他のマシンが加えた変更を報告しない**（ローカルの
+        /// カーネルを通った変更だけを見ている）ため、リモートボリューム上の
+        /// フォルダを表示している間だけ、ディレクトリの更新日時を軽く
+        /// 突き合わせる経路を併用する。アプリが前面にあるときだけ動く。
+        public static let remotePollInterval: Double = 2.0
+    }
+
     /// 中央ペインの検索 [1-16]。
     public enum Search {
         /// 再帰検索で保持する結果の上限。

@@ -139,6 +139,25 @@ struct FolderContentView: View {
     /// （`FolderTreePane`）とまったく同じ実装を共有し、実行中表示・パスワード
     /// シートの状態もこのオブジェクトが持つ（描画は `.folderOperationsHost(_:)`）。
     @State private var operations = FolderOperations()
+    /// 表示中のフォルダの直下を見張る [10章 §10.0]。Finder や他アプリが
+    /// 項目を追加・削除・改名しても、こちらの一覧が古いまま取り残されない
+    /// ようにする。アプリ自身の操作も同じ経路で届く
+    /// （`FileOperationService` が通知する）。
+    @State private var folderWatch = DirectoryObservation()
+    /// 再帰検索の結果を見張る。検索中だけ**配下すべて**を対象にする
+    /// （検索していないときは見張らない — 深い階層の変更で無駄に走査を
+    /// やり直さないため）。
+    @State private var searchWatch = DirectoryObservation()
+    /// 走査をやり直すと決めた時点の `searchWatch.generation`
+    /// [レビューで指摘された「やり直しの嵐」への対処]。
+    ///
+    /// `searchWatch.generation` をそのまま `.task(id:)` の一部にすると、
+    /// 走査中に変更が届くたびに打ち切って最初からやり直すことになる。変更が
+    /// 続いている間はいつまでも結果が出ず、一覧が空になっては埋まり直す。
+    /// **走っている間は溜めておき、終わってから 1 回だけ反映する。**
+    @State private var appliedSearchGeneration = 0
+    /// 走査中に変更が届いたか（終わったら 1 回だけやり直す）。
+    @State private var searchRerunPending = false
     /// リスト表示の現在のソート順 [LV-01]。タブ切替をまたいで保持されて構わない
     /// 軽微な状態のため `WindowState`/`TabState` へは持ち上げず、他の一時的な
     /// `@State`（`selectionAnchor` 等）と同じくこのビュー内で完結させる。
@@ -232,7 +251,7 @@ struct FolderContentView: View {
                     dragNamespace: dragNamespace,
                     onOpenEntry: { openEntries([$0]) },
                     onSingleClick: { handleSingleClick($0) },
-                    onReload: { reloadAndBroadcast() },
+                    onReload: { reload() },
                     onDropFailure: { presentFailureMessage($0) },
                     contextMenuContent: { urls in contextMenuContent(for: urls) },
                     renamingURL: renamingEntry?.url,
@@ -559,13 +578,27 @@ struct FolderContentView: View {
             // 過去に同種のバグが実際に踏まれている。この経路だけ移行漏れが
             // あった]。
             guard let folder = currentFolder() else { return false }
-            DropHandling.performDrop(items, into: folder, onComplete: { reloadAndBroadcast() }, onFailure: { presentFailureMessage($0) })
+            DropHandling.performDrop(items, into: folder, onComplete: { reload() }, onFailure: { presentFailureMessage($0) })
             return true
         } isTargeted: { isDropTargeted = $0 }
         // File/Edit メニューバーへの橋渡し [`FolderMenuActions` 参照]。
         // 再帰検索 [ユーザー要望]。`.task(id:)` はキーが変わると前のタスクを
         // 自動でキャンセルしてから始めるので、打鍵のたびに走査が積み上がらない。
         .task(id: searchKey) { await runSearch() }
+        // 検索中だけ配下すべてを見張る [10章 §10.0]。検索していないときは
+        // 対象を `nil` にして登録を解く。
+        .onChange(of: SearchWatchKey(folder: folder, isSearching: hasActiveSearch), initial: true) { _, key in
+            searchWatch.watch(key.isSearching ? key.folder : nil, scope: .deep)
+        }
+        .onChange(of: searchWatch.generation) { _, newValue in
+            // 走っている間は溜める（`appliedSearchGeneration` のコメント参照）。
+            if isSearching { searchRerunPending = true } else { appliedSearchGeneration = newValue }
+        }
+        .onChange(of: isSearching) { _, running in
+            guard !running, searchRerunPending else { return }
+            searchRerunPending = false
+            appliedSearchGeneration = searchWatch.generation
+        }
         .focusedSceneValue(\.folderMenuActions, currentFolderMenuActions)
         .task(id: folder) {
             reload()
@@ -578,8 +611,16 @@ struct FolderContentView: View {
             // ここではなく `reload()` 呼び出し側で行う）。
             isListFocused = true
         }
-        // ウインドウ／ペインをまたいだ変更を拾う暫定策 [1-6 実機検証で発見した
-        // クロスウインドウの表示不整合対策、`SessionState.reloadToken` 参照]。
+        // 表示中のフォルダの変更に追随する [10章 §10.0]。Finder・他アプリ・
+        // 他ウインドウ・自分自身のどの操作でも、この 1 本の経路で届く。
+        .onChange(of: folder, initial: true) { _, newValue in
+            folderWatch.watch(newValue, scope: .shallow)
+        }
+        .onChange(of: folderWatch.generation) {
+            reload()
+        }
+        // アクセス権の付与・取り消しなど、**ファイルの中身ではなく見え方の
+        // 前提**が変わったときの再読み込み [`SessionState.reloadToken` 参照]。
         .onChange(of: SessionState.shared.reloadToken) {
             reload()
         }
@@ -661,7 +702,7 @@ struct FolderContentView: View {
                 // 絞り込み中は一致件数を出す（Finder の検索結果表示と同じ）。
                 itemCount: displayedEntries.count,
                 selectedCount: selection.count,
-                reloadToken: SessionState.shared.reloadToken,
+                refreshToken: folderWatch.generation,
                 isSearching: isSearching,
                 searchTruncated: searchTruncated,
                 showHiddenFiles: $showHiddenFiles,
@@ -943,14 +984,28 @@ struct FolderContentView: View {
     private struct SearchKey: Equatable {
         let folder: URL?
         let query: String
+        /// 検索範囲（フォルダ配下すべて）に変更があった回数
+        /// [`appliedSearchGeneration` 参照]。外部で項目が増減しても結果が
+        /// 古いまま取り残されないようにする。
+        let changeGeneration: Int
+        /// アクセス権の付与・取り消しなど、ファイルの中身以外の理由で
+        /// 走査結果が変わり得る事象 [`SessionState.reloadToken` 参照]。
         let reloadToken: Int
         let showHiddenFiles: Bool
+    }
+
+    /// `searchWatch` の登録内容を決める識別子。`.onChange` に渡すため
+    /// `Equatable` な値にまとめる。
+    private struct SearchWatchKey: Equatable {
+        let folder: URL?
+        let isSearching: Bool
     }
 
     private var searchKey: SearchKey {
         SearchKey(
             folder: folder,
             query: searchText.trimmingCharacters(in: .whitespaces),
+            changeGeneration: appliedSearchGeneration,
             reloadToken: SessionState.shared.reloadToken,
             showHiddenFiles: showHiddenFiles
         )
@@ -990,9 +1045,12 @@ struct FolderContentView: View {
             // ため、最初のひと固まりだけで幅が決まってしまわないように）。
             recomputeAutoFitColumnWidths()
         }
+        // 打ち切られた（フォルダや検索語が変わった）場合、この走査は自分の
+        // 結果を捨てるが、**`isSearching` は必ず下ろす** — 上げっぱなしだと、
+        // 溜めておいた再実行 [`searchRerunPending`] が永久に保留になる。
+        isSearching = false
         guard generation == searchGeneration else { return }
         searchTruncated = truncated
-        isSearching = false
     }
 
     /// 実際の走査。**メインアクタ外で動く** `nonisolated` な async 関数。
@@ -1152,7 +1210,7 @@ struct FolderContentView: View {
                 .draggable(containerItemID: entry.url, containerNamespace: dragNamespace)
                 .modifier(DropIntoFolderModifier(
                     entry: entry,
-                    reload: { reloadAndBroadcast() },
+                    reload: { reload() },
                     onFailure: { presentFailureMessage($0) },
                     targetedURL: $dropTargetedFolderURL,
                     paintsBackgroundHighlight: false
@@ -1463,13 +1521,6 @@ struct FolderContentView: View {
     /// 計算し直すのではなく、順序が実際に変わる 3 箇所からだけ押し込む。
     private func publishQuickLookOrder() {
         quickLook.orderedURLs = displayedEntries.map(\.url)
-    }
-
-    /// 自分自身の再読み込みに加えて、他のウインドウ／ペインにも変更を知らせる
-    /// [1-6 実機検証で発見: これが無いとウインドウをまたいだ D&D 等で表示が古いまま残る]。
-    private func reloadAndBroadcast() {
-        reload()
-        SessionState.shared.reloadToken += 1
     }
 
     /// [ER-01] エラー提示は必ず `NotificationRouter` 経由にする。以前は

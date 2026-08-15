@@ -49,6 +49,23 @@ private struct SingleItemInspector: View {
 
     @State private var info: FileDetailInfo?
     @State private var containedCounts: ContainedCounts?
+    /// この項目を含むフォルダを見張る [10章 §10.0]。項目が外部で消された・
+    /// 改名された・書き換えられたときに、詳細が古いまま残らないようにする。
+    @State private var parentWatch = DirectoryObservation()
+    /// 対象がフォルダのときだけ、その**直下**も見張る。含まれるファイル数・
+    /// 合計サイズ [DT-05][DT-06] が変わる主な原因は直下の項目の増減だから。
+    ///
+    /// **配下すべて（`.deep`）にはしない** [レビューで指摘、設計判断]。
+    /// この集計は毎回フォルダ全体を数え直す（Phase 2 で DB にキャッシュする
+    /// までの暫定）。孫以下の変更でも数え直す作りにすると、活発に書き換わって
+    /// いるフォルダを選んでいる間、走査が完了する前に打ち切られては始まり直す
+    /// ことを繰り返し、数字がいつまでも出ないまま CPU を焼き続ける。
+    /// 深い階層の変更は、選び直したときとアプリが前面に戻ったときに反映される。
+    @State private var subtreeWatch = DirectoryObservation()
+    /// 直近で読み込んだ対象。**同じ対象の読み直しでは表示を消さない**ため
+    /// に持つ — 外部の変更で読み直すたびにスピナーへ戻ると、変化のたびに
+    /// 内容が消えてちらつく。対象そのものが変わったときだけ白紙に戻す。
+    @State private var loadedURL: URL?
 
     var body: some View {
         ScrollView {
@@ -102,13 +119,40 @@ private struct SingleItemInspector: View {
         // `.task(id: url)` は選択が変わるたびに前のタスクを自動キャンセルする
         // ため、大きなフォルダを選んだ直後に別の項目へ切り替えても古い集計が
         // 表示され続けることはない。
-        .task(id: url) {
-            info = nil
-            containedCounts = nil
+        .task(id: ReloadKey(url: url, generation: parentWatch.generation &+ subtreeWatch.generation)) {
+            if loadedURL != url {
+                info = nil
+                containedCounts = nil
+                loadedURL = url
+            }
             info = Self.loadInfo(for: url)
             guard let info, info.isDirectory || info.isArchive else { return }
-            containedCounts = await Self.computeContainedCounts(for: url, isArchive: info.isArchive)
+            // 打ち切られた場合は `nil` が返る。**途中まで数えた値を表示しない**
+            // [レビューで発見]。`Task.detached` をやめてキャンセルが実際に
+            // 伝わるようになったことで、それまで起こり得なかったこの経路が
+            // 生きるようになった。
+            guard let counts = await Self.computeContainedCounts(for: url, isArchive: info.isArchive) else { return }
+            containedCounts = counts
         }
+        .onChange(of: url, initial: true) { _, newValue in
+            parentWatch.watch(newValue.deletingLastPathComponent(), scope: .shallow)
+        }
+        .onChange(of: SubtreeWatchKey(url: url, isDirectory: info?.isDirectory == true), initial: true) { _, key in
+            subtreeWatch.watch(key.isDirectory ? key.url : nil, scope: .shallow)
+        }
+    }
+
+    /// `.task(id:)` は 1 つの値しか取れないため、対象と「変更があった回数」を
+    /// 束ねる。2 つの世代番号を足しているのは、どちらが増えても値が変わり
+    /// さえすればよいため（差分の内訳は使わない）。
+    private struct ReloadKey: Equatable {
+        let url: URL
+        let generation: Int
+    }
+
+    private struct SubtreeWatchKey: Equatable {
+        let url: URL
+        let isDirectory: Bool
     }
 
     private static func loadInfo(for url: URL) -> FileDetailInfo? {
@@ -144,18 +188,25 @@ private struct SingleItemInspector: View {
     /// [DT-05][DT-06] 遅延読み込み。仕様書は DB キャッシュを前提とするが、
     /// フェーズ1にはまだ DB が無いため、選択のたびに再計算する（キャッシュは
     /// フェーズ2で追加）。フォルダは実サイズも大きくなり得る（C-07: 1 ライブラリ
-    /// 1万〜5万ファイル）ため `Task.detached` で actor 分離の外へ逃がし、
-    /// 列挙ループ内で定期的にキャンセルを確認する。
-    private static func computeContainedCounts(for url: URL, isArchive: Bool) async -> ContainedCounts? {
+    /// 1万〜5万ファイル）ため、メインアクタを外れたところで列挙し、ループ内で
+    /// 定期的にキャンセルを確認する。
+    ///
+    /// **`Task.detached` は使わない** [1-14 のレビューで記録した既知の課題を
+    /// ここで解消した]。あれは呼び出し元のキャンセルを引き継がないため、
+    /// 選択を切り替えても、あるいは監視が変更を知らせて計算をやり直させても、
+    /// 古い走査が 5 万件を最後まで数え続けていた。`nonisolated` な async 関数を
+    /// 直接 `await` すれば、メインアクタを外れつつキャンセルも伝わる
+    /// （`FolderContentView.runSearch` と同じ形）。
+    nonisolated private static func computeContainedCounts(for url: URL, isArchive: Bool) async -> ContainedCounts? {
         if isArchive {
             return await computeArchiveCounts(url)
         }
-        return await Task.detached(priority: .utility) {
-            computeFolderCounts(url)
-        }.value
+        return computeFolderCounts(url)
     }
 
-    nonisolated private static func computeFolderCounts(_ url: URL) -> ContainedCounts {
+    /// 打ち切られたら `nil`。**途中まで数えた値を返さない** — 呼び出し側が
+    /// それを確定値として表示してしまうため [レビューで発見]。
+    nonisolated private static func computeFolderCounts(_ url: URL) -> ContainedCounts? {
         var fileCount = 0
         var folderCount = 0
         var totalSize: Int64 = 0
@@ -166,7 +217,7 @@ private struct SingleItemInspector: View {
             return ContainedCounts(fileCount: 0, folderCount: 0, totalSize: 0)
         }
         for case let itemURL as URL in enumerator {
-            if Task.isCancelled { break }
+            if Task.isCancelled { return nil }
             guard let values = try? itemURL.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey]) else { continue }
             if values.isDirectory == true {
                 folderCount += 1
