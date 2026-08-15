@@ -79,6 +79,10 @@ struct MainWindowView: View {
     /// 旧 `ThreePaneWindow` 時代と同じものを使い、既存の保存値を引き継ぐ。
     @AppStorage("qoo.threePane.main.leftWidth") private var leftWidth: Double = 220
     @AppStorage("qoo.threePane.main.rightWidth") private var rightWidth: Double = 280
+    /// 左サイドバーの中の上下分割（フォルダツリー／ラベルフィルタ）の位置
+    /// ［ユーザー要望: ドラッグで変えても再起動すると忘れてしまう］。
+    /// 覚えるのは**上側（フォルダツリー）の高さ**。
+    @AppStorage("qoo.mainWindow.folderTreeHeight") private var folderTreeHeight: Double = 420
     /// 2本指の横スワイプを戻る/進むとして使うか、通常の横スクロールとして
     /// 使うか [ユーザー要望: どちらか一方しか選べないトレードオフを、ユーザー
     /// 自身に選ばせる]。環境設定「一般」タブ（`GeneralPreferencesTab.swift`）
@@ -469,6 +473,13 @@ struct MainWindowView: View {
         Group {
             NavigationSplitView(columnVisibility: $sidebarVisibility) {
                 VSplitView {
+                    // 分割位置の記憶 [UI-02、ユーザー要望]。`VSplitView` には
+                    // `ideal` に相当する指定が無く、SwiftUI 側から初期位置を
+                    // 渡す手段が無いため、`HSplitView` のときと同じく
+                    // `NSSplitView.setPosition` を直接呼ぶ。**観測も同じ
+                    // AppKit 側で行う** — SwiftUI の `GeometryReader` で測ると
+                    // 単位が食い違い、起動のたびに縮んでいく（`SplitPositionApplier`
+                    // の `onDividerMoved` のコメント参照）。
                     FolderTreePane(
                         selectedURL: windowState.folder,
                         navigationRoot: windowState.navigationRoot,
@@ -483,10 +494,16 @@ struct MainWindowView: View {
                         onOpenInNewTab: { url, root in openAsTab(TabTarget(url: url, navigationRoot: root)) },
                         onOpenInNewWindow: { openAsWindow(windowState.target(for: $0)) }
                     )
+                    .frame(minHeight: 120)
+                    .background(SplitPositionApplier(
+                        dividerIndex: 0, targetSize: folderTreeHeight, axis: .vertical,
+                        onDividerMoved: { folderTreeHeight = $0 }
+                    ))
                     PlaceholderPane(
                         title: String(localized: "mainWindow.labelFilter", locale: locale),
                         subtitle: String(localized: "mainWindow.implementedIn28", locale: locale)
                     )
+                    .frame(minHeight: 80)
                 }
                 .navigationSplitViewColumnWidth(min: 180, ideal: leftWidth, max: 400)
                 .modifier(PaneWidthPersisting(storedWidth: $leftWidth))
