@@ -4945,6 +4945,22 @@
         }
       }
     },
+    "statusBar.hideHiddenFiles": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide Hidden Files"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "隠しファイルを隠す"
+          }
+        }
+      }
+    },
     "statusBar.itemCount": {
       "localizations": {
         "en": {
@@ -5021,6 +5037,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "、"
+          }
+        }
+      }
+    },
+    "statusBar.showHiddenFiles": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show Hidden Files"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "隠しファイルを表示"
           }
         }
       }

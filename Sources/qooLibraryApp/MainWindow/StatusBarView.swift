@@ -13,7 +13,7 @@ import SwiftUI
 /// 空き容量だけは問い合わせが要るが、`URLResourceValues` の 1 回の取得で済む。
 /// 頻繁に変わる値ではないので、フォルダが変わったときと一覧が再読み込みされた
 /// ときにだけ取り直す。
-struct StatusBarView: View {
+struct StatusBarView<Trailing: View>: View {
     @Environment(\.locale) private var locale
     let folder: URL?
     let itemCount: Int
@@ -25,16 +25,39 @@ struct StatusBarView: View {
     /// 件数の隣に添える（一覧が「全部」ではないと分かるようにするため）。
     var isSearching = false
     var searchTruncated = false
+    /// 隠しファイルを表示するか [ユーザー要望、Finder の ⇧⌘. 相当]。
+    /// **左端**のボタンで切り替える。
+    @Binding var showHiddenFiles: Bool
+    /// **右端**に置く表示オプション（リスト表示なら表示カラムのメニュー、
+    /// アイコン表示ならサイズのスライダー）[ユーザー要望でパスバーから移動]。
+    /// 実体は `FolderContentView` 側にある（設定値をそこが持っているため）
+    /// ので、組み立て済みのビューを受け取るだけにしている。
+    @ViewBuilder let trailing: () -> Trailing
 
     @State private var availableCapacity: Int64?
 
     var body: some View {
-        HStack(spacing: Tokens.spacing.s) {
-            Spacer()
+        // **件数はバーの中央に固定する**（Finder と同じ）。左右のコントロールと
+        // 同じ `HStack` に並べると、コントロールの幅で中央がずれてしまうため、
+        // 中央のテキストと左右のコントロールを `ZStack` で重ねる。
+        ZStack {
             Text(summary)
                 .font(.system(size: Tokens.fontSize.caption))
                 .foregroundStyle(.secondary)
-            Spacer()
+
+            HStack(spacing: Tokens.spacing.s) {
+                Toggle(isOn: $showHiddenFiles) {
+                    Image(systemName: showHiddenFiles ? "eye" : "eye.slash")
+                }
+                .toggleStyle(.button)
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .help(showHiddenFiles ? "statusBar.hideHiddenFiles" : "statusBar.showHiddenFiles")
+
+                Spacer()
+
+                trailing()
+            }
         }
         .padding(.horizontal, Tokens.spacing.m)
         .padding(.vertical, Tokens.spacing.xs)

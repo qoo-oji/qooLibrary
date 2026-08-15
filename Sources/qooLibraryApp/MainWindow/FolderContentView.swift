@@ -151,6 +151,10 @@ struct FolderContentView: View {
     @AppStorage("qoo.folderList.showCreationDateColumn") private var showCreationDateColumn = false
     @AppStorage("qoo.folderList.showAddedDateColumn") private var showAddedDateColumn = false
     @AppStorage("qoo.folderList.groupFoldersAtTop") private var groupFoldersAtTop = true
+    /// 隠しファイルを表示するか [ユーザー要望、Finder の ⇧⌘. 相当]。
+    /// ステータスバー左端のボタンで切り替える。一覧の読み込み（`reload()`）と
+    /// 再帰検索の両方が参照する。
+    @AppStorage("qoo.folderList.showHiddenFiles") private var showHiddenFiles = false
     /// 名前列が長すぎるときの省略位置 [ユーザー要望、環境設定「表示」タブ
     /// `NameTruncationMode` と同じキーを共有する]。
     @AppStorage("qoo.folderList.nameTruncationMode") private var nameTruncationMode: NameTruncationMode = .tail
@@ -417,6 +421,7 @@ struct FolderContentView: View {
                 // フォルダ再読み込み時は `reload()` 自身が呼ぶ（上記参照）。
                 // ここではカラム表示切替（`entries` 自体は変わらない）のときの
                 // 再計測だけを担う。
+                .onChange(of: showHiddenFiles) { _, _ in reload() } // [ユーザー要望]
                 .onChange(of: showModificationDateColumn) { _, _ in recomputeAutoFitColumnWidths() }
                 .onChange(of: showSizeColumn) { _, _ in recomputeAutoFitColumnWidths() }
                 .onChange(of: showKindColumn) { _, _ in recomputeAutoFitColumnWidths() }
@@ -662,41 +667,8 @@ struct FolderContentView: View {
     /// 区画を計算プロパティへ切り出すこと。
     @ViewBuilder
     private var bottomBars: some View {
-        if let folder, isPathBarVisible {
-            Divider()
-            HStack(spacing: Tokens.spacing.s) {
-                PathBarView(folder: folder, onNavigate: onNavigate) // [ユーザー要望: Finder 流のパスバー]
-                // リスト/アイコン表示モード依存のコントロールをパスバーの右端に統一
-                // [ユーザー要望: 上段の行をリスト/アイコンどちらでも同じ配置にしたい
-                // ため、以前は上段に置いていたこの2つをここへ移動]。
-                if listStyle == .icon { // [IV-04]
-                    Slider(value: $iconSize, in: Tokens.iconSize.min...Tokens.iconSize.max, step: Tokens.iconSize.step)
-                        .frame(width: 100)
-                        .help("folder.iconSize")
-                } else {
-                    Menu {
-                        Toggle("column.modificationDate", isOn: $showModificationDateColumn)
-                        Toggle("column.size", isOn: $showSizeColumn)
-                        Toggle("column.kind", isOn: $showKindColumn)
-                        Toggle("column.creationDate", isOn: $showCreationDateColumn)
-                        Toggle("column.addedDate", isOn: $showAddedDateColumn)
-                        Divider()
-                        Toggle("preferences.general.groupFoldersAtTop", isOn: $groupFoldersAtTop) // [LV-03]
-                    } label: {
-                        Image(systemName: "line.3.horizontal.decrease.circle")
-                    }
-                    .menuStyle(.borderlessButton)
-                    .fixedSize()
-                    .help("folder.visibleColumns") // [LV-02]
-                }
-            }
-            .padding(.horizontal, Tokens.spacing.m)
-            .padding(.vertical, Tokens.spacing.xs)
-            .background(.thinMaterial)
-        }
-
-        // ステータスバー [1-16 表示メニュー、Finder の ⌘/ 相当]。パスバーと
-        // 同じく、表示するフォルダがあるときだけ描く。
+        // **ステータスバーがパスバーより上**［ユーザー要望で入れ替えた。以前は
+        // パスバーが上だった］。パスバーが一番下＝ウインドウの最下端に来る。
         if folder != nil, isStatusBarVisible {
             Divider()
             StatusBarView(
@@ -706,8 +678,45 @@ struct FolderContentView: View {
                 selectedCount: selection.count,
                 reloadToken: SessionState.shared.reloadToken,
                 isSearching: isSearching,
-                searchTruncated: searchTruncated
+                searchTruncated: searchTruncated,
+                showHiddenFiles: $showHiddenFiles,
+                trailing: { displayOptionControls }
             )
+        }
+
+        if let folder, isPathBarVisible {
+            Divider()
+            PathBarView(folder: folder, onNavigate: onNavigate) // [ユーザー要望: Finder 流のパスバー]
+                .padding(.horizontal, Tokens.spacing.m)
+                .padding(.vertical, Tokens.spacing.xs)
+                .background(.thinMaterial)
+        }
+    }
+
+    /// リスト/アイコン表示モードに応じた表示オプション。**ステータスバーの
+    /// 右端**に置く［ユーザー要望で移動した。以前はパスバーの右端だった］。
+    @ViewBuilder
+    private var displayOptionControls: some View {
+        if listStyle == .icon { // [IV-04]
+            Slider(value: $iconSize, in: Tokens.iconSize.min...Tokens.iconSize.max, step: Tokens.iconSize.step)
+                .frame(width: 100)
+                .controlSize(.small)
+                .help("folder.iconSize")
+        } else {
+            Menu {
+                Toggle("column.modificationDate", isOn: $showModificationDateColumn)
+                Toggle("column.size", isOn: $showSizeColumn)
+                Toggle("column.kind", isOn: $showKindColumn)
+                Toggle("column.creationDate", isOn: $showCreationDateColumn)
+                Toggle("column.addedDate", isOn: $showAddedDateColumn)
+                Divider()
+                Toggle("preferences.general.groupFoldersAtTop", isOn: $groupFoldersAtTop) // [LV-03]
+            } label: {
+                Image(systemName: "line.3.horizontal.decrease.circle")
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help("folder.visibleColumns") // [LV-02]
         }
     }
 
@@ -925,10 +934,16 @@ struct FolderContentView: View {
         let folder: URL?
         let query: String
         let reloadToken: Int
+        let showHiddenFiles: Bool
     }
 
     private var searchKey: SearchKey {
-        SearchKey(folder: folder, query: searchText.trimmingCharacters(in: .whitespaces), reloadToken: SessionState.shared.reloadToken)
+        SearchKey(
+            folder: folder,
+            query: searchText.trimmingCharacters(in: .whitespaces),
+            reloadToken: SessionState.shared.reloadToken,
+            showHiddenFiles: showHiddenFiles
+        )
     }
 
     /// 現在のフォルダ以下を再帰的に走査して、名前が一致する項目を集める。
@@ -953,7 +968,11 @@ struct FolderContentView: View {
         isSearching = true
         searchResults = []
         searchTruncated = false
-        let truncated = await Self.enumerateMatches(in: folder, query: searchText) { batch in
+        let truncated = await Self.enumerateMatches(
+            in: folder,
+            query: searchText,
+            includingHiddenFiles: showHiddenFiles
+        ) { batch in
             // 古い走査からの取りこぼしは捨てる（この関数のコメント参照）。
             guard generation == searchGeneration else { return }
             searchResults.append(contentsOf: batch)
@@ -971,6 +990,7 @@ struct FolderContentView: View {
     private nonisolated static func enumerateMatches(
         in folder: URL,
         query: String,
+        includingHiddenFiles: Bool,
         onBatch: @escaping @MainActor ([FolderEntry]) -> Void
     ) async -> Bool {
         let keys: Set<URLResourceKey> = [
@@ -981,7 +1001,7 @@ struct FolderContentView: View {
             at: folder,
             includingPropertiesForKeys: Array(keys),
             // 読めない場所（権限が無いサブフォルダ等）で止まらず先へ進む。
-            options: [.skipsHiddenFiles],
+            options: includingHiddenFiles ? [] : [.skipsHiddenFiles],
             errorHandler: { _, _ in true }
         ) else { return false }
 
@@ -1369,7 +1389,7 @@ struct FolderContentView: View {
             let urls = try FileManager.default.contentsOfDirectory(
                 at: folder,
                 includingPropertiesForKeys: Array(keys),
-                options: [.skipsHiddenFiles]
+                options: showHiddenFiles ? [] : [.skipsHiddenFiles]
             )
             entries = urls.map { url in
                 let values = try? url.resourceValues(forKeys: keys)
