@@ -184,7 +184,21 @@ struct FolderTreePane: View {
         switch navigationRoot {
         case .volume:
             volumesExpanded = true
-            expandedNodeIDs.formUnion(Self.ancestorPaths(of: selectedURL, downTo: nil))
+            // **そのボリュームのマウントポイントで打ち切る** [実機検証で発見・
+            // 修正したバグ、ユーザー報告: 「外部ボリュームを選択すると、なぜか
+            // Macintosh HD のツリーが展開する」]。ツリーはボリュームごとに
+            // 独立した最上位の行を持つが、**パスの上では外部ボリュームも
+            // `/Volumes/…` ＝起動ボリュームの配下**にある。祖先をルートまで
+            // 遡ると `/Volumes` と `/` が展開対象に入り、`/` は Macintosh HD の
+            // 行 ID そのものなので、選んでもいない Macintosh HD が開いていた。
+            // マウントポイントより上は「別の行」なので遡ってはいけない。
+            //
+            // 起動ボリューム自身（マウントポイントが `/`）を選んだ場合は
+            // `floor == "/"` となり、ループの終了条件と一致するため従来どおり
+            // 動く（仮想ホームのように `/` 配下の深い場所も正しく展開される）。
+            expandedNodeIDs.formUnion(
+                Self.ancestorPaths(of: selectedURL, downTo: volumeRoot(containing: selectedURL))
+            )
         case .registeredFolder(let id, let rootURL):
             if temporaryEntries.contains(where: { $0.folder.id == id }) {
                 temporaryExpanded = true
@@ -238,6 +252,23 @@ struct FolderTreePane: View {
     /// ツリーまで反応する不具合として発覚）。**ループの先頭で「`current` が
     /// 既に `floor` そのもの」かを確認し、その時点で `parent` を計算せずに
     /// 抜ける**よう修正した。
+    /// `url` を含むボリュームのマウントポイント（このツリーが最上位の行として
+    /// 表示しているもの）。
+    ///
+    /// **`.volumeURLKey` は使わない** — サンドボックス配下の経路で解決に失敗する
+    /// ことがある（1-6 の D&D で実際に踏み、`.volumeUUIDStringKey` へ切り替えた
+    /// のと同じ罠）。ここでは既に手元にある `volumes`（＝ツリーが実際に表示して
+    /// いる行）から最長一致で引き当てるので、「ツリーの行として存在するもの」と
+    /// 必ず一致するという利点もある。
+    private func volumeRoot(containing url: URL) -> URL? {
+        let path = url.standardizedFileURL.path
+        return volumes
+            .map(\.url)
+            .filter { path == $0.standardizedFileURL.path || path.hasPrefix($0.standardizedFileURL.path + "/") }
+            // `/` と `/Volumes/X` は両方とも前方一致するので、より深い方を選ぶ。
+            .max { $0.standardizedFileURL.path.count < $1.standardizedFileURL.path.count }
+    }
+
     private static func ancestorPaths(of url: URL, downTo floor: URL?) -> Set<String> {
         var paths: Set<String> = []
         let floorPath = floor?.standardizedFileURL.path
@@ -498,6 +529,19 @@ private struct GroupHeader: View {
                     .help(String(format: String(localized: "folderTree.groupSettings", locale: locale), title))
             }
         }
+        // ＋/歯車をボリューム行の取り出しボタンと同じ大きさに揃える
+        // [ユーザー要望]。サイズ未指定だと既定で描かれ、実測でグリフが
+        // 12pt ＝ 取り出しボタン（10pt）より一回り大きかった。見出しの
+        // タイトルは自前で `.font` を指定しているので影響を受けない。
+        .font(.system(size: Tokens.fontSize.caption))
+        // 見出しの ＋/歯車を、ボリューム行の取り出しボタンと同じ右端に揃える
+        // [ユーザー要望]。**`List` はセクション見出しと（`DisclosureGroup` を
+        // 挟む）通常行とで異なるトレーリングインセットを与える**ため、素のままだと
+        // 見出し側だけが右へはみ出す。差分は AppKit 側の実装依存で計算では
+        // 求まらないので、実際に描画された画面のピクセルを測って決めた
+        // （取り出しボタンの右端 253pt に対し歯車は 268pt ＝ 15pt 外側）。
+        // 最も近いトークン値を使う（1pt の差は表示上わからない）。
+        .padding(.trailing, Tokens.spacing.l)
     }
 }
 
@@ -588,8 +632,43 @@ private struct FolderTreeRow: View {
         FolderTreeRowContext(node: node, branch: branch, role: role, registeredFolder: registeredFolder)
     }
 
+    /// ボリューム行の右端に出す取り出しボタン [ユーザー要望、Finder の
+    /// サイドバーと同じ]。取り出せるボリュームのときだけ出す（判定は
+    /// `VolumeEjector.isEjectable`、`FolderTreeNode.mountedVolumes()` が
+    /// 一覧を作るときにまとめて読んでいる）。
+    ///
+    /// **行全体のタップ（＝そのフォルダへ移動）と競合させない**ため、
+    /// `Button` は行の `.onTapGesture` より手前でヒットテストされる必要がある。
+    /// SwiftUI では後から重ねた `Button` がタップを消費するのでこの並びで
+    /// 成立するが、取り出したボリュームへ移動してしまうと実害がある（消えた
+    /// 場所を開こうとする）ので、実機で「ボタンを押しても行が選択されない」
+    /// ことを確認してある。
+    @ViewBuilder
+    private var ejectButton: some View {
+        if node.isEjectableVolume {
+            Button {
+                Task { await VolumeEjectAction.eject(node.url) }
+            } label: {
+                Image(systemName: "eject.fill")
+                    // 見出しの ＋/歯車と実際の描画サイズを揃える [ユーザー要望]。
+                    // **指定サイズではなく実測したインクの大きさで合わせている** —
+                    // SF Symbols はシンボルごとに固有の縦横比・光学サイズを持ち、
+                    // 同じ指定サイズでも描かれる大きさが違う（`caption`(11pt) 指定だと
+                    // `eject.fill` は 10.0pt、`gearshape` は 11.5pt になる）。
+                    // `body`(13pt) 指定でこのシンボルのインクが 11.5pt になり、
+                    // 歯車と高さがちょうど一致する（実測値）。
+                    .font(.system(size: Tokens.fontSize.body))
+                    // 選択中は濃い青の背景になるため、ラベルと同じく白にする。
+                    .foregroundStyle(isSelected ? Color(nsColor: .alternateSelectedControlTextColor) : Color.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("action.eject")
+        }
+    }
+
     @ViewBuilder
     private var rowLabel: some View {
+        HStack(spacing: Tokens.spacing.xs) {
         Label {
             Text(node.displayName)
         } icon: {
@@ -622,7 +701,18 @@ private struct FolderTreeRow: View {
             // ため、先に横幅いっぱいへ広げてから padding/background を
             // 適用する必要がある。
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, Tokens.spacing.xs)
+
+            // 取り出しボタンは行の右端に置く [ユーザー要望]。上の `Label` が
+            // `maxWidth: .infinity` で残り幅を占めるので、自然に右詰めになる。
+            ejectButton
+        }
+            .padding(.leading, Tokens.spacing.xs)
+            // 右端は詰める [ユーザー要望: 取り出しボタンの右にボタン1つ分の
+            // 余白が空いていた]。**負の値にしてはいけない** — 下の
+            // `.clipShape` は padding 適用後の矩形で切り抜くため、はみ出した
+            // ぶんはそのまま欠ける（実際に `-8` にしたところ ⏏ が右半分だけ
+            // 切れた）。0 にして行の内側ぎりぎりまで寄せるのが上限。
+            .padding(.trailing, 0)
             .padding(.vertical, 2)
             // 選択のハイライトは AppKit のシステム標準色を使う
             // [実機検証時のユーザー指摘: 独自の半透明アクセントカラーだと
