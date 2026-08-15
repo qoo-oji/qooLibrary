@@ -976,7 +976,18 @@ Finder に合わせるための調査と、**効果音の実装**（メニュー
 - **「新規タブで開く」は Finder のファイルメニューに存在しない**（コンテキストメニューのみ）ため、qooLibrary も追加しなかった［ユーザー判断: 原則 Finder に揃える］。
 - `ShareLink` はクロージャではなく**実際の項目**を要求するため、`FolderMenuActions.shareItems: [URL]` として値そのものを渡す（他のアクションはクロージャ）。項目が空だと機能しないので、その場合は無効化したボタンへ差し替える。
 - **`newTab`/`focusSearch` は `ActionID` に登録され `KeyBindingButtons` で配線済みだったのに、メニューバーからは一切辿れなかった。** `KeyBindingButtons` に配線しただけでは「キーを知っている人にしか存在が分からない」状態になる。**今後 `ActionID` を追加・配線したら、メニューバーにも項目が要るかを必ず確認すること。**
-- **メニュー項目に `.keyboardShortcut` を付けない方針（1-8 以来）の帰結として、追加した項目にもキー表示は出ない。** SwiftUI 標準項目（新規ウインドウ ⌘N・閉じる ⌘W）だけがキーを表示するため、メニューを見てもショートカットを覚えられない。既知のトレードオフ。
+#### メニューへのショートカット表示（1-8 以来の方針を変更）
+
+**「メニュー項目に `.keyboardShortcut` を付けず `KeyBindingButtons` をアプリ唯一の配線経路にする」という 1-8 以来の方針を、Finder と同じキーに揃えてある操作についてだけ撤回した**［ユーザー判断: 「Finder と揃えてある操作についてはキーボードショートカットを表示してください。これらについては、キーバインドの対象外にして構いません」］。不可視ボタン経由ではメニューにキーが出ず、**キーを知っている人にしか機能の存在が分からない**状態だったため。
+
+- `KeyBinding.isCustomizable`（既定 `true`）を追加。**`false` ＝ Finder と同じキーに揃えてある操作**で、27 件ある。
+- 固定の操作はメニュー項目が `.fixedKeyboardShortcut(_:)`（`KeyComboConversion.swift`）でショートカットを持ち、**`KeyBindingButtons` からは外してある**（二重登録を避けるため）。キーの定義は `DefaultKeyBindings` に一本化したままで、ハードコードはしない。
+- **`goBack`/`goForward` だけは両方使う** — メニュー項目が持てる `.keyboardShortcut` は 1 つだけなので、Finder 標準の ⌘[/⌘] をメニューが表示し、2 つ目の ⌘←/⌘→ は `KeyBindingButtons(skipsPrimaryCombo: true)` が配線する。
+- 環境設定「キーボード」タブは**変更できるもの／標準のもの（読み取り専用）**の 2 セクションに分けた。固定側も一覧に残すのは、メニューを開かずにキーを確認でき、割り当て時に何と衝突するか分かるため（衝突検出は両方が対象）。
+- **固定キーとの衝突は「それでも割り当てる」を出さない。** 出すと、ストア上は相手のキーを消せてもメニューは `DefaultKeyBindings` から直接読むため表示が変わらず、同じキーが 2 つ生き残る。`UserDefaultsKeyBindingStore.setBinding` も固定の操作への上書きを黙って無視する（衝突解決のような間接経路で壊れないようにする防御）。
+- **実測で確認したこと**: ⌥ 代替の項目（`modifierKeyAlternate`）も `Picker` の中の項目も `.keyboardShortcut` を持てる。⌘⌫ や ⌘↑ は AX の `AXMenuItemCmdChar` では空に見えるが、実際のメニューには正しく表示される（**AX ダンプだけで「付いていない」と判断しないこと**）。
+- 固定にしなかったもの（＝変更可能なまま、メニューにキーは出ない）: `open`（Return。Finder は ⌘O で、Finder の Return はリネーム）・`quickLook`（Space。Finder のメニューは ⌘Y）・`rename`（⌘R は独自。Finder の「名前を変更」にキーは無く、⌘R は「オリジナルを表示」）・`makeAlias`（下記）・`toggleThumbnails`・`compress`・`deletePermanently`・`ejectAll`・未実装の 2 件。
+- **[訂正] 「Finder の『エイリアスを作成』は ⌘L」という CLAUDE.md の従来の記述は誤り。** macOS 26 の `MenuBar.nib` を実際に読むと **⌃⌘A**（⌘L は古い macOS の Finder）。ただし ⌃⌘A は未実装の `moveToVault` が使っているため、今回は ⌘L のまま変更可能にして据え置いた。`moveToVault` を実装するタイミングで併せて判断すること。
 - **実機での確認方法**: `System Events` でメニューバー項目を名前で開いてスクリーンショット。⌥ 代替が効いているかは、⌥ を押した状態で開いたときに主項目が代替へ**入れ替わる**（並んで増えるのではない）ことで確認する。
 
 #### 効果音（実装済み）

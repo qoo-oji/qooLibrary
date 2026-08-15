@@ -244,6 +244,7 @@ private struct FileMenuCommands: View {
     var body: some View {
         Button("action.newFolder", systemImage: "folder.badge.plus") { actions?.newFolder() }
             .disabled(actions?.canNewFolder != true)
+            .fixedKeyboardShortcut(.newFolder)
         Button("action.newFolderWithSelection") { actions?.newFolderWithSelection() }
             .disabled(actions?.canNewFolderWithSelection != true)
         // 新規タブ [1-16 メニュー抜け監査]。⌘T として配線済みだったのにメニュー
@@ -251,6 +252,7 @@ private struct FileMenuCommands: View {
         // 位置は Finder と同じ（新規フォルダ系の直後、「開く」の手前）。
         Button("action.newTab", systemImage: "plus.square.on.square") { window?.newTab() }
             .disabled(window == nil)
+            .fixedKeyboardShortcut(.newTab)
         Divider()
         Button("action.open", systemImage: "arrow.up.forward.app") { actions?.open() }
             .disabled(actions?.canOpen != true)
@@ -272,6 +274,7 @@ private struct FileMenuCommands: View {
             .disabled(actions?.canRename != true)
         Button("folder.duplicate", systemImage: "plus.square.on.square") { actions?.duplicate() }
             .disabled(actions?.canDuplicate != true)
+            .fixedKeyboardShortcut(.duplicate)
         Button("folder.createAlias", systemImage: "square.on.square.dashed") { actions?.makeAlias() }
             .disabled(actions?.canMakeAlias != true)
         // 圧縮／展開 [1-16 メニュー抜け監査]。**展開はコンテキストメニューに
@@ -334,6 +337,7 @@ private struct FileMenuCommands: View {
         // キーを割り当てていないため無し）。
         Button("action.eject", systemImage: "eject") { window?.eject() }
             .disabled(window?.canEject != true)
+            .fixedKeyboardShortcut(.eject)
             .modifierKeyAlternate(.option) {
                 Button("action.ejectAll", systemImage: "eject") { window?.ejectAll() }
                     .disabled(window?.canEjectAll != true)
@@ -341,6 +345,7 @@ private struct FileMenuCommands: View {
         Divider()
         Button("folder.moveToTrash", systemImage: "trash", role: .destructive) { actions?.moveToTrash() }
             .disabled(actions?.canMoveToTrash != true)
+            .fixedKeyboardShortcut(.moveToTrash)
             // Finder と同じく ⌥ で「すぐに削除…」に入れ替わる [FM-14]
             // [Finder 対比監査]。**ここでは `.keyboardShortcut` を付けない**
             // （このファイル冒頭の方針どおり）ため、⌥⌘⌫ のような既定の
@@ -359,6 +364,7 @@ private struct FileMenuCommands: View {
         // 辿れなかった [ユーザー指摘]。Finder もファイルメニューの末尾に置いている。
         Button("action.focusSearch", systemImage: "magnifyingglass") { window?.focusSearch() }
             .disabled(window == nil)
+            .fixedKeyboardShortcut(.focusSearch)
     }
 
     /// 単一選択なら「（名前）に展開」[AR-21]、そうでなければ
@@ -417,7 +423,9 @@ private struct ViewMenuCommands: View {
         // チェックマークが付くよう `Picker` + `.pickerStyle(.inline)` にする。
         Picker("common.view", selection: listStyleBinding) {
             Label("common.icon", systemImage: "square.grid.2x2").tag(ListStyle.icon)
+                .fixedKeyboardShortcut(.displayAsIcons)
             Label("common.list", systemImage: "list.bullet").tag(ListStyle.list)
+                .fixedKeyboardShortcut(.displayAsList)
         }
         .pickerStyle(.inline)
         .labelsHidden()
@@ -477,24 +485,30 @@ private struct ViewMenuCommands: View {
         Divider()
         Button("action.increaseIconSize", systemImage: "plus.magnifyingglass") { window?.increaseIconSize() } // [IV-04]
             .disabled(window?.canIncreaseIconSize != true)
+            .fixedKeyboardShortcut(.increaseIconSize)
         Button("action.decreaseIconSize", systemImage: "minus.magnifyingglass") { window?.decreaseIconSize() }
             .disabled(window?.canDecreaseIconSize != true)
+            .fixedKeyboardShortcut(.decreaseIconSize)
         Divider()
         Button(window?.isSidebarVisible == false ? "view.showSidebar" : "view.hideSidebar", systemImage: "sidebar.leading") {
             window?.toggleSidebar()
         }
+        .fixedKeyboardShortcut(.toggleSidebar)
         .disabled(window == nil)
         Button(window?.isInspectorVisible == false ? "view.showInspector" : "view.hideInspector", systemImage: "sidebar.trailing") {
             window?.toggleInspector()
         }
+        .fixedKeyboardShortcut(.toggleInspector)
         .disabled(window == nil)
         Button(window?.isPathBarVisible == false ? "view.showPathBar" : "view.hidePathBar") {
             window?.togglePathBar()
         }
+        .fixedKeyboardShortcut(.togglePathBar)
         .disabled(window == nil)
         Button(window?.isStatusBarVisible == false ? "view.showStatusBar" : "view.hideStatusBar") {
             window?.toggleStatusBar()
         }
+        .fixedKeyboardShortcut(.toggleStatusBar)
         .disabled(window == nil)
     }
 
@@ -566,9 +580,12 @@ private struct GoMenuCommands: View {
     var body: some View {
         Button("action.goBack", systemImage: "chevron.backward") { actions?.goBack() }
             .disabled(actions?.canGoBack != true)
+            .fixedKeyboardShortcut(.goBack)
         Button("action.goForward", systemImage: "chevron.forward") { actions?.goForward() }
             .disabled(actions?.canGoForward != true)
+            .fixedKeyboardShortcut(.goForward)
         Button("action.goToParent", systemImage: "arrow.up.folder") { actions?.goToParent() }
+            .fixedKeyboardShortcut(.goToParent)
             .disabled(actions?.canGoToParent != true)
         Divider()
         // Finder の「ホーム」相当。実体はサンドボックスの仮想ホームだが、
@@ -610,6 +627,7 @@ private struct GoMenuCommands: View {
         }
         Divider()
         Button("goToFolder.menuItem", systemImage: "arrow.forward.folder") { actions?.beginGoToFolder() }
+            .fixedKeyboardShortcut(.goToFolder)
             .disabled(actions == nil)
     }
 
@@ -635,26 +653,33 @@ private struct EditMenuCommands: View {
     var body: some View {
         Button("action.cut", systemImage: "scissors") { actions?.cut() }
             .disabled(actions?.canCut != true)
+            .fixedKeyboardShortcut(.cut)
         Button("action.copy", systemImage: "document.on.document") { actions?.copy() }
             .disabled(actions?.canCopy != true)
+            .fixedKeyboardShortcut(.copy)
             // 以下 3 つはいずれも Finder と同じ ⌥ 代替 [Finder 対比監査。
             // ⌥ 代替の一覧と、対応しなかった項目の理由は CLAUDE.md
             // 「Finder の ⌥ 代替項目」節を参照]。
             .modifierKeyAlternate(.option) {
                 Button("folder.copyPath", systemImage: "document.on.document") { actions?.copyPath() } // [FM-10]
+                    .fixedKeyboardShortcut(.copyPath)
                     .disabled(actions?.canCopyPath != true)
             }
         Button("action.paste", systemImage: "document.on.clipboard") { actions?.paste() }
             .disabled(actions?.canPaste != true)
+            .fixedKeyboardShortcut(.paste)
             .modifierKeyAlternate(.option) {
                 Button("folder.moveItemsHere", systemImage: "folder") { actions?.moveItemsHere() }
+                    .fixedKeyboardShortcut(.moveItemsHere)
                     .disabled(actions?.canPaste != true)
             }
         Divider()
         Button("action.selectAll", systemImage: "character.textbox") { actions?.selectAll() }
             .disabled(actions?.canSelectAll != true)
+            .fixedKeyboardShortcut(.selectAll)
             .modifierKeyAlternate(.option) {
                 Button("action.deselectAll", systemImage: "character.textbox") { actions?.deselectAll() }
+                    .fixedKeyboardShortcut(.deselectAll)
                     .disabled(actions?.canDeselectAll != true)
             }
     }
@@ -680,6 +705,7 @@ private struct UndoRedoMenuCommands: View {
                 SessionState.shared.reloadToken += 1 // [実機検証で発見: 一覧再読み込みの伝達漏れ]
             }
         }
+        .fixedKeyboardShortcut(.undo)
         .disabled(!stack.canUndo)
 
         Button(redoTitle(stack.redoTitle), systemImage: "arrow.uturn.forward") {
@@ -688,6 +714,7 @@ private struct UndoRedoMenuCommands: View {
                 SessionState.shared.reloadToken += 1
             }
         }
+        .fixedKeyboardShortcut(.redo)
         .disabled(!stack.canRedo)
     }
 

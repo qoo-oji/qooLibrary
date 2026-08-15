@@ -430,60 +430,17 @@ struct MainWindowView: View {
 
     /// キーボードショートカットの配線（可視要素を持たない不可視ボタン群）。
     /// `mainToolbar`/`detailPane` と同じ理由で `body` から切り出している。
+    ///
+    /// **Finder と同じキーに揃えてある操作はここに無い** [ユーザー要望]。
+    /// それらはメニュー項目自身が `.fixedKeyboardShortcut(_:)` でショートカットを
+    /// 持ち、**メニューにキーが表示される**（不可視ボタン経由では表示されず、
+    /// キーを知っている人にしか機能の存在が分からなかった）。同じキーの二重
+    /// 登録を避けるため、ここからは外してある — 新規タブ・フォルダへ移動・
+    /// 検索・表示モード・アイコンサイズ・各ペイン/バーの表示切替・取り出す・
+    /// Undo/Redo がそれに当たる。残っているのは**変更可能な操作**だけ。
     @ViewBuilder
     private var keyBindingButtons: some View {
             Group {
-                KeyBindingButtons(action: .newTab, store: keyBindingStore) {
-                    openAsTab(.home)
-                }
-                // 「フォルダへ移動…」（既定 ⇧⌘G）[1-16 移動メニュー]。
-                // ⌘T と同じく特定のタブ・選択に依存しないため、ウインドウ直下に
-                // 配線する。
-                KeyBindingButtons(action: .goToFolder, store: keyBindingStore) {
-                    showingGoToFolderSheet = true
-                }
-                // 検索フィールドへフォーカス（既定 ⌘F）[1-16]。閉じていれば
-                // まず開く。1-8 で `ActionID.focusSearch` として登録だけして
-                // あったものを、1-16 で初めて実際に配線した。
-                KeyBindingButtons(action: .focusSearch, store: keyBindingStore) {
-                    expandSearchField()
-                }
-                // 表示メニュー [1-16]。いずれもタブ・選択に依存しない
-                // ウインドウ全体の操作なので、⌘T と同じくここに配線する。
-                KeyBindingButtons(action: .displayAsIcons, store: keyBindingStore) {
-                    windowState.listStyle = .icon
-                }
-                KeyBindingButtons(action: .displayAsList, store: keyBindingStore) {
-                    windowState.listStyle = .list
-                }
-                KeyBindingButtons(
-                    action: .increaseIconSize,
-                    store: keyBindingStore,
-                    isDisabled: !currentWindowMenuActions.canIncreaseIconSize
-                ) {
-                    adjustIconSize(by: Tokens.iconSize.step)
-                }
-                KeyBindingButtons(
-                    action: .decreaseIconSize,
-                    store: keyBindingStore,
-                    isDisabled: !currentWindowMenuActions.canDecreaseIconSize
-                ) {
-                    adjustIconSize(by: -Tokens.iconSize.step)
-                }
-                KeyBindingButtons(action: .toggleSidebar, store: keyBindingStore) {
-                    sidebarVisibility = sidebarVisibility == .detailOnly ? .all : .detailOnly
-                }
-                KeyBindingButtons(action: .toggleInspector, store: keyBindingStore) {
-                    setRightPaneCollapsed(!isRightPaneCollapsed)
-                }
-                KeyBindingButtons(action: .togglePathBar, store: keyBindingStore) {
-                    isPathBarVisible.toggle()
-                    UserDefaults.standard.set(isPathBarVisible, forKey: Self.isPathBarVisibleKey)
-                }
-                KeyBindingButtons(action: .toggleStatusBar, store: keyBindingStore) {
-                    isStatusBarVisible.toggle()
-                    UserDefaults.standard.set(isStatusBarVisible, forKey: Self.isStatusBarVisibleKey)
-                }
                 // サムネイル表示の一括切替（既定 ⌃⌘I）[DS-01][DS-02]。
                 // 1-8 で `ActionID.toggleThumbnails` として登録だけしてあった
                 // ものを、ここで初めて実際に配線した。**アプリ全体の状態**を
@@ -496,33 +453,11 @@ struct MainWindowView: View {
                 KeyBindingButtons(action: .toggleThumbnails, store: keyBindingStore) {
                     ThumbnailVisibility.shared.toggleGlobal()
                 }
-                // 取り出す（既定 ⌘E）[1-16]。`ejectAll` は Finder 同様に既定キーを
-                // 持たないため、`KeyBindingButtons` はボタンを 1 つも生成しない
-                // （環境設定で割り当てたときだけ効く）。
-                KeyBindingButtons(action: .eject, store: keyBindingStore, isDisabled: ejectTargetVolume == nil) {
-                    guard let volume = ejectTargetVolume else { return }
-                    Task { await VolumeEjectAction.eject(volume) }
-                }
+                // 「すべてを取り出す」は Finder 同様に既定キーを持たないため、
+                // `KeyBindingButtons` はボタンを 1 つも生成しない（環境設定で
+                // 割り当てたときだけ効く）。「取り出す」（⌘E）はファイルメニュー側。
                 KeyBindingButtons(action: .ejectAll, store: keyBindingStore) {
                     Task { await VolumeEjectAction.ejectAll() }
-                }
-                // [UD-02] Undo/Redo はウインドウ単位ではなくアプリ全体で単一の
-                // `CommandStack.shared` を操作するため、特定のタブ/フォルダに
-                // 依存せずここ（ウインドウ直下）に配線する。
-                KeyBindingButtons(action: .undo, store: keyBindingStore, isDisabled: !CommandStack.shared.canUndo) {
-                    Task {
-                        await CommandStack.shared.undo()
-                        // ファイル操作系の他の経路と同じく、Undo 後も一覧の再読み込みを
-                        // 明示的に伝える必要がある [実機検証で発見: 忘れていたため
-                        // Undo 自体は成功していても画面が古いままだった]。
-                        SessionState.shared.reloadToken += 1
-                    }
-                }
-                KeyBindingButtons(action: .redo, store: keyBindingStore, isDisabled: !CommandStack.shared.canRedo) {
-                    Task {
-                        await CommandStack.shared.redo()
-                        SessionState.shared.reloadToken += 1
-                    }
                 }
             }
             .frame(width: 0, height: 0)

@@ -497,15 +497,16 @@ struct FolderContentView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background {
-            // リネーム・ゴミ箱・新規フォルダのキーボードショートカット
-            // [KB-03][UI-09 相当]。可視要素を持たないボタンとして配線する
-            // 標準的な SwiftUI のパターン。
+            // 可視要素を持たないボタンとして配線する標準的な SwiftUI のパターン。
+            //
+            // **ここにあるのは「変更可能な」操作だけ** [ユーザー要望]。Finder と
+            // 同じキーに揃えてある操作（ゴミ箱・新規フォルダ・コピー／カット／
+            // ペースト・すべてを選択・複製・上の階層へ 等）は、メニュー項目自身が
+            // `.fixedKeyboardShortcut(_:)` を持ちメニューにキーが表示されるので、
+            // 二重登録を避けるためここからは外してある。
             Group {
                 KeyBindingButtons(action: .rename, store: keyBindingStore, isDisabled: selection.count != 1) {
                     beginRenameFromShortcut()
-                }
-                KeyBindingButtons(action: .moveToTrash, store: keyBindingStore, isDisabled: selection.isEmpty, role: .destructive) {
-                    moveToTrash(Array(selection))
                 }
                 // [FM-16] 既定では未割り当て。環境設定「キーボード」タブで
                 // ユーザーが自分で割り当てた場合にだけ実際に効く
@@ -514,45 +515,20 @@ struct FolderContentView: View {
                 KeyBindingButtons(action: .deletePermanently, store: keyBindingStore, isDisabled: selection.isEmpty, role: .destructive) {
                     deletePermanently(Array(selection))
                 }
-                KeyBindingButtons(action: .newFolder, store: keyBindingStore, isDisabled: folder == nil) {
-                    newFolderName = String(localized: "action.newFolder", locale: locale)
-                    showingNewFolderPrompt = true
-                }
-                KeyBindingButtons(action: .goToParent, store: keyBindingStore, isDisabled: !canGoToParent) {
-                    onGoToParent()
-                }
-                KeyBindingButtons(action: .goBack, store: keyBindingStore, isDisabled: !canGoBack) {
+                // 戻る／進むだけは 2 つ目の ⌘←／⌘→ をここで配線する
+                // （メニュー項目が持てるショートカットは 1 つだけで、そちらは
+                // Finder 標準の ⌘[／⌘] を表示する）。
+                KeyBindingButtons(
+                    action: .goBack, store: keyBindingStore,
+                    isDisabled: !canGoBack, skipsPrimaryCombo: true
+                ) {
                     onGoBack()
                 }
-                KeyBindingButtons(action: .goForward, store: keyBindingStore, isDisabled: !canGoForward) {
+                KeyBindingButtons(
+                    action: .goForward, store: keyBindingStore,
+                    isDisabled: !canGoForward, skipsPrimaryCombo: true
+                ) {
                     onGoForward()
-                }
-                KeyBindingButtons(action: .copy, store: keyBindingStore, isDisabled: selection.isEmpty) {
-                    copySelectionToPasteboard(Array(selection))
-                }
-                // ⌥ 代替の 3 件（既定は Finder 標準の ⌥⌘C / ⌥⌘V / ⌥⌘A）
-                // [Finder 対比監査]。メニュー側は `modifierKeyAlternate` で
-                // 表示を入れ替えるだけで、キーの配線はここが唯一の経路。
-                KeyBindingButtons(action: .copyPath, store: keyBindingStore, isDisabled: selection.isEmpty) {
-                    copyPaths(Array(selection))
-                }
-                KeyBindingButtons(action: .cut, store: keyBindingStore, isDisabled: selection.isEmpty) {
-                    cutSelectionToPasteboard(Array(selection))
-                }
-                KeyBindingButtons(action: .paste, store: keyBindingStore, isDisabled: !canPaste || folder == nil) {
-                    pasteFromPasteboard()
-                }
-                KeyBindingButtons(action: .moveItemsHere, store: keyBindingStore, isDisabled: !canPaste || folder == nil) {
-                    moveItemsHere()
-                }
-                KeyBindingButtons(action: .selectAll, store: keyBindingStore, isDisabled: entries.isEmpty) {
-                    selectAllInCurrentFolder()
-                }
-                KeyBindingButtons(action: .deselectAll, store: keyBindingStore, isDisabled: selection.isEmpty) {
-                    selection.removeAll()
-                }
-                KeyBindingButtons(action: .duplicate, store: keyBindingStore, isDisabled: selection.isEmpty) {
-                    duplicate(Array(selection))
                 }
                 KeyBindingButtons(action: .makeAlias, store: keyBindingStore, isDisabled: selection.isEmpty) {
                     createAliases(for: Array(selection))

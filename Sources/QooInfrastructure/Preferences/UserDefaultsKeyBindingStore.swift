@@ -31,6 +31,13 @@ public final class UserDefaultsKeyBindingStore: KeyBindingStore, @unchecked Send
     }
 
     public func setBinding(_ combos: [KeyCombo], for action: ActionID) throws {
+        // Finder と同じキーに揃えてある操作は変更できない [ユーザー判断]。
+        // **黙って無視する**（エラーにしない）—— UI 側は既にこれらを編集
+        // 対象から外しており、ここへ来るのは衝突解決のような間接的な経路
+        // だけ。そこで例外を投げると、無関係な操作の割り当てまで巻き添えで
+        // 失敗する。キーはメニュー項目が `DefaultKeyBindings` から直接読む
+        // ので、上書きを保存しないこと自体が正しい振る舞いになる。
+        guard DefaultKeyBindings.binding(for: action).isCustomizable else { return }
         lock.lock()
         defer { lock.unlock() }
         var overrides = loadOverridesUnlocked()

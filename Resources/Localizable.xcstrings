@@ -4721,6 +4721,57 @@
         }
       }
     },
+    "preferences.keyboard.conflictWithFixedMessage": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This shortcut is already used by %1$@, a standard shortcut that cannot be changed. Choose a different key for %2$@."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このショートカットは、変更できない標準のショートカット「%1$@」が使用しています。「%2$@」には別のキーを割り当ててください。"
+          }
+        }
+      }
+    },
+    "preferences.keyboard.customizableSection": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Customisable"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "変更できるショートカット"
+          }
+        }
+      }
+    },
+    "preferences.keyboard.fixedSection": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Standard Shortcuts (shown in menus)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "標準のショートカット（メニューに表示）"
+          }
+        }
+      }
+    },
     "preferences.keyboard.pressAKey": {
       "localizations": {
         "en": {

@@ -104,11 +104,28 @@ public struct KeyBinding: Sendable, Codable, Identifiable, Equatable {
     /// 空配列は「未割り当て」。
     public var combos: [KeyCombo]
     public let isDestructive: Bool
+    /// ユーザーが環境設定「キーボード」タブで変更できるか [ユーザー判断]。
+    ///
+    /// `false` は **Finder と同じキーに揃えてある操作**。これらは対応する
+    /// メニュー項目自身が `.keyboardShortcut` を持ち、**メニューにキーが
+    /// 表示される**（`KeyBindingButtons` の不可視ボタン経由では表示されない）。
+    /// 同じキーを二重に登録しないため、変更可能なものと違って
+    /// `KeyBindingButtons` は使わない（複数キーを持つ `goBack`/`goForward` の
+    /// 2 つ目以降だけは例外、`KeyBindingButtons.skipsPrimaryCombo` 参照）。
+    ///
+    /// 変更できなくても `DefaultKeyBindings.all` には載せたままにする —
+    /// キーの定義を 1 箇所に保ち、変更可能な操作との衝突検出
+    /// （`KeyBindingStore.conflicts(of:)`）も効かせるため。
+    public let isCustomizable: Bool
 
-    public init(id: ActionID, combos: [KeyCombo], isDestructive: Bool = false) {
+    public init(
+        id: ActionID, combos: [KeyCombo],
+        isDestructive: Bool = false, isCustomizable: Bool = true
+    ) {
         self.id = id
         self.combos = combos
         self.isDestructive = isDestructive
+        self.isCustomizable = isCustomizable
     }
 }
 
@@ -144,56 +161,72 @@ public enum DefaultKeyBindings {
         // 併用したいという実運用上の要望により両方を既定にした
         // [実機検証: ⌘] が他アプリのショートカットと競合する環境があったため、
         // 同じ操作に複数のキーを割り当てられる余地が必要だと判明]。
+        // **2 つ目の ⌘←/⌘→ だけは `KeyBindingButtons` が配線する**
+        // （メニュー項目が持てる `.keyboardShortcut` は 1 つだけのため、
+        // メニューには 1 つ目の ⌘[/⌘] が表示される）。
         KeyBinding(id: .goBack, combos: [
             KeyCombo(key: "[", modifiers: .command),
             KeyCombo(key: "left", modifiers: .command),
-        ]),
+        ], isCustomizable: false),
         KeyBinding(id: .goForward, combos: [
             KeyCombo(key: "]", modifiers: .command),
             KeyCombo(key: "right", modifiers: .command),
-        ]),
-        KeyBinding(id: .goToFolder, combos: [KeyCombo(key: "g", modifiers: [.command, .shift])]), // Finder 標準
+        ], isCustomizable: false),
+        KeyBinding(id: .goToFolder, combos: [KeyCombo(key: "g", modifiers: [.command, .shift])], isCustomizable: false),
+        // **Finder の「名前を変更」にキーは無い**（⌘R は「オリジナルを表示」）。
+        // ⌘R は本アプリ独自の割り当てなので変更可能なまま残す。
         KeyBinding(id: .rename, combos: [KeyCombo(key: "r", modifiers: .command)]), // [KB-03]
-        KeyBinding(id: .moveToTrash, combos: [KeyCombo(key: "delete", modifiers: .command)]),
+        KeyBinding(id: .moveToTrash, combos: [KeyCombo(key: "delete", modifiers: .command)], isCustomizable: false),
         KeyBinding(id: .deletePermanently, combos: [], isDestructive: true), // [FM-16]
+        // Finder のメニューは ⌘Y だが、本アプリは Space（Finder の実挙動と同じ）
+        // を既定にしている。メニュー表示できる形ではないため変更可能なまま。
         KeyBinding(id: .quickLook, combos: [KeyCombo(key: "space")]), // [QL-01]
         KeyBinding(id: .toggleThumbnails, combos: [KeyCombo(key: "i", modifiers: [.command, .control])]), // [DS-02]
-        KeyBinding(id: .newFolder, combos: [KeyCombo(key: "n", modifiers: [.command, .shift])]),
-        KeyBinding(id: .copy, combos: [KeyCombo(key: "c", modifiers: .command)]),
-        // ⌥ 代替 3 件はいずれも Finder 標準のキー [Finder 対比監査]。
-        // メニュー項目側に `.keyboardShortcut` は付けない（`KeyBindingButtons`
-        // をアプリ唯一の配線経路にする 1-8 以来の方針）。
-        KeyBinding(id: .copyPath, combos: [KeyCombo(key: "c", modifiers: [.command, .option])]),
-        KeyBinding(id: .paste, combos: [KeyCombo(key: "v", modifiers: .command)]),
-        KeyBinding(id: .moveItemsHere, combos: [KeyCombo(key: "v", modifiers: [.command, .option])]),
-        KeyBinding(id: .cut, combos: [KeyCombo(key: "x", modifiers: .command)]),
-        KeyBinding(id: .focusSearch, combos: [KeyCombo(key: "f", modifiers: .command)]),
+        KeyBinding(id: .newFolder, combos: [KeyCombo(key: "n", modifiers: [.command, .shift])], isCustomizable: false),
+        KeyBinding(id: .copy, combos: [KeyCombo(key: "c", modifiers: .command)], isCustomizable: false),
+        // ⌥ 代替 3 件はいずれも Finder 標準のキー [Finder 対比監査]。⌥ 代替の
+        // メニュー項目でも `.keyboardShortcut` は機能する（実測で確認済み）。
+        KeyBinding(id: .copyPath, combos: [KeyCombo(key: "c", modifiers: [.command, .option])], isCustomizable: false),
+        KeyBinding(id: .paste, combos: [KeyCombo(key: "v", modifiers: .command)], isCustomizable: false),
+        KeyBinding(id: .moveItemsHere, combos: [KeyCombo(key: "v", modifiers: [.command, .option])], isCustomizable: false),
+        KeyBinding(id: .cut, combos: [KeyCombo(key: "x", modifiers: .command)], isCustomizable: false),
+        KeyBinding(id: .focusSearch, combos: [KeyCombo(key: "f", modifiers: .command)], isCustomizable: false),
         // 表示メニュー [1-16]。いずれも Finder 標準のキーに合わせている
         // （⌘1/⌘2 は Finder のアイコン表示/リスト表示、本アプリはこの 2 種類
         // のみのため ⌘3/⌘4 に当たるものは無い）。
-        KeyBinding(id: .displayAsIcons, combos: [KeyCombo(key: "1", modifiers: .command)]),
-        KeyBinding(id: .displayAsList, combos: [KeyCombo(key: "2", modifiers: .command)]),
-        KeyBinding(id: .increaseIconSize, combos: [KeyCombo(key: "+", modifiers: .command)]),
-        KeyBinding(id: .decreaseIconSize, combos: [KeyCombo(key: "-", modifiers: .command)]),
-        KeyBinding(id: .toggleSidebar, combos: [KeyCombo(key: "s", modifiers: [.command, .control])]),
+        KeyBinding(id: .displayAsIcons, combos: [KeyCombo(key: "1", modifiers: .command)], isCustomizable: false),
+        KeyBinding(id: .displayAsList, combos: [KeyCombo(key: "2", modifiers: .command)], isCustomizable: false),
+        KeyBinding(id: .increaseIconSize, combos: [KeyCombo(key: "+", modifiers: .command)], isCustomizable: false),
+        KeyBinding(id: .decreaseIconSize, combos: [KeyCombo(key: "-", modifiers: .command)], isCustomizable: false),
+        KeyBinding(id: .toggleSidebar, combos: [KeyCombo(key: "s", modifiers: [.command, .control])], isCustomizable: false),
         // Finder の「プレビューを隠す」（⇧⌘P）に相当。本アプリでは常設の
         // インスペクタ（右ペイン、1-10）がその役割。
-        KeyBinding(id: .toggleInspector, combos: [KeyCombo(key: "p", modifiers: [.command, .shift])]),
-        KeyBinding(id: .togglePathBar, combos: [KeyCombo(key: "p", modifiers: [.command, .option])]),
-        KeyBinding(id: .toggleStatusBar, combos: [KeyCombo(key: "/", modifiers: .command)]),
-        KeyBinding(id: .eject, combos: [KeyCombo(key: "e", modifiers: .command)]), // Finder 標準
+        KeyBinding(id: .toggleInspector, combos: [KeyCombo(key: "p", modifiers: [.command, .shift])], isCustomizable: false),
+        KeyBinding(id: .togglePathBar, combos: [KeyCombo(key: "p", modifiers: [.command, .option])], isCustomizable: false),
+        KeyBinding(id: .toggleStatusBar, combos: [KeyCombo(key: "/", modifiers: .command)], isCustomizable: false),
+        KeyBinding(id: .eject, combos: [KeyCombo(key: "e", modifiers: .command)], isCustomizable: false),
         KeyBinding(id: .ejectAll, combos: []), // Finder も ⌥ 代替のみでキーは持たない
         KeyBinding(id: .clearLabelFilter, combos: [KeyCombo(key: "k", modifiers: [.command, .shift])]), // [LF-07]
         KeyBinding(id: .moveToVault, combos: [KeyCombo(key: "a", modifiers: [.command, .control])]),
-        KeyBinding(id: .undo, combos: [KeyCombo(key: "z", modifiers: .command)]),
-        KeyBinding(id: .redo, combos: [KeyCombo(key: "z", modifiers: [.command, .shift])]),
-        KeyBinding(id: .selectAll, combos: [KeyCombo(key: "a", modifiers: .command)]), // Finder 標準
-        KeyBinding(id: .deselectAll, combos: [KeyCombo(key: "a", modifiers: [.command, .option])]), // Finder 標準
-        KeyBinding(id: .duplicate, combos: [KeyCombo(key: "d", modifiers: .command)]), // Finder 標準
-        KeyBinding(id: .makeAlias, combos: [KeyCombo(key: "l", modifiers: .command)]), // Finder 標準
+        KeyBinding(id: .undo, combos: [KeyCombo(key: "z", modifiers: .command)], isCustomizable: false),
+        KeyBinding(id: .redo, combos: [KeyCombo(key: "z", modifiers: [.command, .shift])], isCustomizable: false),
+        KeyBinding(id: .selectAll, combos: [KeyCombo(key: "a", modifiers: .command)], isCustomizable: false),
+        KeyBinding(id: .deselectAll, combos: [KeyCombo(key: "a", modifiers: [.command, .option])], isCustomizable: false),
+        KeyBinding(id: .duplicate, combos: [KeyCombo(key: "d", modifiers: .command)], isCustomizable: false),
+        // **[訂正] Finder の「エイリアスを作成」は ⌃⌘A であって ⌘L ではない**
+        // （⌘L は古い macOS の Finder。macOS 26 の `MenuBar.nib` を実際に読んで
+        // 確認した）。⌘L は本アプリ独自の割り当てとして残し、変更可能にしておく
+        // —— Finder に合わせて ⌃⌘A へ変えると未実装の `moveToVault`（⌃⌘A）と
+        // 衝突するため、機能追加のタイミングで併せて判断する。
+        KeyBinding(id: .makeAlias, combos: [KeyCombo(key: "l", modifiers: .command)]),
         KeyBinding(id: .compress, combos: []), // Finder 自身も既定キーを割り当てていない
         KeyBinding(id: .newFolderWithSelection, combos: []), // File メニューからのみ呼べれば十分
     ]
+
+    /// メニュー項目に `.keyboardShortcut` を付ける対象（＝変更不可のもの）。
+    public static func isFixed(_ action: ActionID) -> Bool {
+        !binding(for: action).isCustomizable
+    }
 
     public static func binding(for action: ActionID) -> KeyBinding {
         all.first { $0.id == action } ?? KeyBinding(id: action, combos: [])

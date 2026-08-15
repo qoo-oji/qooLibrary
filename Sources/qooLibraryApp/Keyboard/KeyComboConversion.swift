@@ -118,15 +118,43 @@ struct KeyBindingButtons: View {
     let store: KeyBindingStore
     var isDisabled = false
     var role: ButtonRole?
+    /// 1 つ目のキーをメニュー項目側の `.keyboardShortcut` が登録している場合に
+    /// `true` にする。同じキーを二重登録しないため、ここでは 2 つ目以降だけを
+    /// 配線する（`goBack` = ⌘[ と ⌘← のように複数キーを持つ操作向け）。
+    var skipsPrimaryCombo = false
     let perform: () -> Void
 
     var body: some View {
-        ForEach(Array(store.binding(for: action).combos.enumerated()), id: \.offset) { _, combo in
+        let combos = store.binding(for: action).combos
+        let wired = skipsPrimaryCombo ? Array(combos.dropFirst()) : combos
+        ForEach(Array(wired.enumerated()), id: \.offset) { _, combo in
             if let shortcut = combo.swiftUIShortcut {
                 Button("", role: role, action: perform)
                     .keyboardShortcut(shortcut)
             }
         }
         .disabled(isDisabled)
+    }
+}
+
+extension View {
+    /// **Finder と同じキーに揃えてある操作**のメニュー項目にショートカットを
+    /// 付ける [ユーザー要望: メニューにキーを表示したい]。
+    ///
+    /// `KeyBindingButtons`（不可視ボタン）経由ではメニューにキーが表示されず、
+    /// 「キーを知っている人にしか分からない」状態になってしまうため、これらは
+    /// メニュー項目自身にショートカットを持たせる。同じキーが二重に登録される
+    /// のを防ぐため、**対象の操作は `isCustomizable == false` にして
+    /// `KeyBindingButtons` から外してある**。
+    ///
+    /// キーの定義は `DefaultKeyBindings` に一本化したままなので、ここで
+    /// ハードコードすることはない。複数キーを持つ操作は 1 つ目を表示する。
+    @ViewBuilder
+    func fixedKeyboardShortcut(_ action: ActionID) -> some View {
+        if let shortcut = DefaultKeyBindings.binding(for: action).combos.first?.swiftUIShortcut {
+            keyboardShortcut(shortcut)
+        } else {
+            self
+        }
     }
 }

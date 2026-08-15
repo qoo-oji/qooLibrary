@@ -25,28 +25,52 @@ struct KeyboardPreferencesTab: View {
         let combo: KeyCombo
         let action: ActionID
         let conflictingActions: [ActionID]
+        /// 相手が変更可能な操作だけなら「それでも割り当てる」を出せる。
+        /// 変更不可（Finder 標準）が混ざっていたら知らせるだけにする。
+        let canReassign: Bool
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.s) {
-            List(bindings) { binding in
-                HStack(alignment: .top, spacing: Tokens.spacing.m) {
-                    Text(displayName(for: binding.id))
-                        .frame(width: 140, alignment: .leading)
-                    WrappingComboChips(
-                        combos: binding.combos,
-                        onRemove: { combo in remove(combo, from: binding.id) }
-                    )
-                    Spacer()
-                    KeyComboRecorder(
-                        isRecording: Binding(
-                            get: { recordingAction == binding.id },
-                            set: { recordingAction = $0 ? binding.id : nil }
-                        ),
-                        onCapture: { combo in add(combo, to: binding.id) }
-                    )
+            List {
+                Section("preferences.keyboard.customizableSection") {
+                    ForEach(bindings.filter(\.isCustomizable)) { binding in
+                        HStack(alignment: .top, spacing: Tokens.spacing.m) {
+                            Text(displayName(for: binding.id))
+                                .frame(width: 140, alignment: .leading)
+                            WrappingComboChips(
+                                combos: binding.combos,
+                                onRemove: { combo in remove(combo, from: binding.id) }
+                            )
+                            Spacer()
+                            KeyComboRecorder(
+                                isRecording: Binding(
+                                    get: { recordingAction == binding.id },
+                                    set: { recordingAction = $0 ? binding.id : nil }
+                                ),
+                                onCapture: { combo in add(combo, to: binding.id) }
+                            )
+                        }
+                        .padding(.vertical, Tokens.spacing.xs)
+                    }
                 }
-                .padding(.vertical, Tokens.spacing.xs)
+                // Finder と同じキーに揃えてある操作 [ユーザー判断: これらは
+                // キーバインドの対象外にしてよい]。**一覧からは消さず読み取り
+                // 専用で見せる** — メニューを開かなくてもキーを一覧で確認でき、
+                // 上のセクションで割り当てるときに何と衝突するかも分かるため
+                // （衝突検出自体はこちらも対象、`KeyBinding.isCustomizable` 参照）。
+                Section("preferences.keyboard.fixedSection") {
+                    ForEach(bindings.filter { !$0.isCustomizable }) { binding in
+                        HStack(alignment: .top, spacing: Tokens.spacing.m) {
+                            Text(displayName(for: binding.id))
+                                .frame(width: 140, alignment: .leading)
+                            WrappingComboChips(combos: binding.combos, onRemove: nil)
+                            Spacer()
+                        }
+                        .padding(.vertical, Tokens.spacing.xs)
+                        .foregroundStyle(.secondary)
+                    }
+                }
             }
             .listStyle(.inset)
 
@@ -65,10 +89,14 @@ struct KeyboardPreferencesTab: View {
             isPresented: Binding(get: { conflictAlert != nil }, set: { if !$0 { conflictAlert = nil } }),
             presenting: conflictAlert
         ) { alert in
-            Button("preferences.keyboard.conflictAssign") {
-                reassign(alert.combo, to: alert.action, removingFrom: alert.conflictingActions)
+            if alert.canReassign {
+                Button("preferences.keyboard.conflictAssign") {
+                    reassign(alert.combo, to: alert.action, removingFrom: alert.conflictingActions)
+                }
+                Button("common.cancel", role: .cancel) {}
+            } else {
+                Button("common.ok", role: .cancel) {}
             }
-            Button("common.cancel", role: .cancel) {}
         } message: { alert in
             let conflictNames = alert.conflictingActions.map { displayName(for: $0) }
                 .formatted(.list(type: .and).locale(locale))
@@ -78,7 +106,10 @@ struct KeyboardPreferencesTab: View {
             // 自動抽出が実際に生成する `%1$@`/`%2$@` 形式のプレースホルダ表記を
             // 手書きで正確に再現する必要があり事故りやすいため。`%@` テンプレート
             // + `String(format:)` の方が明確で安全 [1-12 ローカライズ方針]。
-            let template = String(localized: "preferences.keyboard.conflictMessage", locale: locale)
+            let key: String.LocalizationValue = alert.canReassign
+                ? "preferences.keyboard.conflictMessage"
+                : "preferences.keyboard.conflictWithFixedMessage"
+            let template = String(localized: key, locale: locale)
             Text(String(format: template, conflictNames, actionName))
         }
     }
@@ -90,7 +121,17 @@ struct KeyboardPreferencesTab: View {
     private func add(_ combo: KeyCombo, to action: ActionID) {
         let conflicting = store.conflicts(of: combo).filter { $0 != action } // [KB-04]
         if !conflicting.isEmpty {
-            conflictAlert = ConflictAlert(combo: combo, action: action, conflictingActions: conflicting)
+            // Finder と同じキーに揃えてある操作が相手なら、譲らせることは
+            // できない [ユーザー判断: これらは変更対象外]。「それでも割り当てる」
+            // を出さず、理由だけ伝えて中断する —— 出してしまうと、ストア上は
+            // 相手のキーを消せてもメニュー項目は `DefaultKeyBindings` から
+            // 直接読むため表示は変わらず、同じキーが 2 つ生き残る。
+            let fixed = conflicting.filter { !store.binding(for: $0).isCustomizable }
+            conflictAlert = ConflictAlert(
+                combo: combo, action: action,
+                conflictingActions: conflicting,
+                canReassign: fixed.isEmpty
+            )
             return
         }
         var combos = store.binding(for: action).combos
@@ -172,7 +213,9 @@ struct KeyboardPreferencesTab: View {
 /// `KeyCombo` を折り返し表示するチップ群 [KB2-01: 割り当て済みキーの一覧表示]。
 private struct WrappingComboChips: View {
     let combos: [KeyCombo]
-    let onRemove: (KeyCombo) -> Void
+    /// `nil` なら読み取り専用（削除ボタンを出さない）。Finder と同じキーに
+    /// 揃えてある変更不可の操作を一覧で見せるために使う。
+    let onRemove: ((KeyCombo) -> Void)?
 
     var body: some View {
         HStack(spacing: Tokens.spacing.xs) {
@@ -185,14 +228,16 @@ private struct WrappingComboChips: View {
                 HStack(spacing: Tokens.spacing.xs) {
                     Text(combo.displayString)
                         .font(.system(size: Tokens.fontSize.caption, design: .monospaced))
-                    Button {
-                        onRemove(combo)
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: Tokens.fontSize.caption))
+                    if let onRemove {
+                        Button {
+                            onRemove(combo)
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: Tokens.fontSize.caption))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, Tokens.spacing.xs)
                 .padding(.vertical, 2)

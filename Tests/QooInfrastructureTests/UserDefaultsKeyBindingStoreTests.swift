@@ -33,10 +33,12 @@ import Testing
         #expect(store.binding(for: .rename).combos == [KeyCombo(key: "e", modifiers: .command)])
     }
 
+    /// 対象は**変更可能な**操作にする（`.newFolder` 等の Finder 標準は
+    /// 上書きを受け付けないため、ストアの汎用挙動の検証には使えない）。
     @Test func setBindingToEmptyUnassignsAction() throws {
         let store = makeStore()
-        try store.setBinding([], for: .newFolder)
-        #expect(store.binding(for: .newFolder).combos.isEmpty)
+        try store.setBinding([], for: .toggleThumbnails)
+        #expect(store.binding(for: .toggleThumbnails).combos.isEmpty)
     }
 
     @Test func settingBackToDefaultClearsOverride() throws {
@@ -119,9 +121,38 @@ import Testing
         #expect(store.binding(for: .rename).combos == [KeyCombo(key: "e", modifiers: .command)])
 
         // 次の保存で新形式に置き換わり、以後も読めること。
-        try store.setBinding([KeyCombo(key: "y", modifiers: .command)], for: .duplicate)
+        try store.setBinding([KeyCombo(key: "y", modifiers: .command)], for: .toggleThumbnails)
         let reopened = UserDefaultsKeyBindingStore(defaults: defaults, storageKey: "overrides")
         #expect(reopened.binding(for: .rename).combos == [KeyCombo(key: "e", modifiers: .command)])
-        #expect(reopened.binding(for: .duplicate).combos == [KeyCombo(key: "y", modifiers: .command)])
+        #expect(reopened.binding(for: .toggleThumbnails).combos == [KeyCombo(key: "y", modifiers: .command)])
+    }
+}
+
+/// 変更不可（Finder 標準）の操作は上書きを受け付けない [ユーザー判断]。
+/// 受け付けてしまうと、メニュー項目が `DefaultKeyBindings` から読む表示と
+/// ストアの中身が食い違う。
+@Suite struct FixedKeyBindingStoreTests {
+    private func makeStore() -> (UserDefaultsKeyBindingStore, UserDefaults) {
+        let suite = "qoo-fixed-binding-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        return (UserDefaultsKeyBindingStore(defaults: defaults), defaults)
+    }
+
+    @Test func setBindingIsIgnoredForFixedActions() throws {
+        let (store, _) = makeStore()
+        let original = store.binding(for: .copy).combos
+
+        try store.setBinding([KeyCombo(key: "q", modifiers: .command)], for: .copy)
+
+        #expect(store.binding(for: .copy).combos == original)
+    }
+
+    @Test func setBindingStillWorksForCustomizableActions() throws {
+        let (store, _) = makeStore()
+        let combo = KeyCombo(key: "q", modifiers: .command)
+
+        try store.setBinding([combo], for: .rename)
+
+        #expect(store.binding(for: .rename).combos == [combo])
     }
 }

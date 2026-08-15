@@ -68,3 +68,35 @@ import Testing
         #expect(a == b)
     }
 }
+
+/// Finder と同じキーに揃えてある操作（`isCustomizable == false`）についての
+/// 不変条件 [ユーザー要望: これらはメニューにキーを表示し、変更対象外にする]。
+@Suite struct FixedKeyBindingTests {
+    /// 変更不可にした操作は**必ずキーを持つ** — メニュー項目が
+    /// `.fixedKeyboardShortcut(_:)` で表示するのが存在意義なので、空だと
+    /// 「変更もできないしキーも無い」という無意味な状態になる。
+    @Test func everyFixedBindingHasAtLeastOneCombo() {
+        for binding in DefaultKeyBindings.all where !binding.isCustomizable {
+            #expect(!binding.combos.isEmpty, "\(binding.id) は変更不可なのにキーが空")
+        }
+    }
+
+    /// 逆に、キーを持たない操作を変更不可にしていないこと。
+    @Test func bindingsWithoutCombosStayCustomizable() {
+        for binding in DefaultKeyBindings.all where binding.combos.isEmpty {
+            #expect(binding.isCustomizable, "\(binding.id) はキーが空なので変更可能であるべき")
+        }
+    }
+
+    /// 既定値のままなら、変更不可のもの同士でキーが衝突しない
+    /// （衝突しているとメニューのどちらか一方が効かなくなる）。
+    @Test func fixedBindingsDoNotCollideWithEachOther() {
+        var seen: [KeyCombo: ActionID] = [:]
+        for binding in DefaultKeyBindings.all where !binding.isCustomizable {
+            for combo in binding.combos {
+                #expect(seen[combo] == nil, "\(combo) が \(binding.id) と \(seen[combo]!) で重複")
+                seen[combo] = binding.id
+            }
+        }
+    }
+}
