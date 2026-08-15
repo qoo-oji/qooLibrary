@@ -199,7 +199,7 @@ private struct PreferencesMenuButton: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        Button("preferences.windowTitle") {
+        Button("preferences.windowTitle", systemImage: "gear") {
             openWindow(id: "preferences")
         }
         .keyboardShortcut(",", modifiers: .command)
@@ -222,7 +222,7 @@ private struct DiagnosticExportMenuButton: View {
     @Environment(\.locale) private var locale
 
     var body: some View {
-        Button("diagnostics.exportMenuItem") {
+        Button("diagnostics.exportMenuItem", systemImage: "stethoscope") {
             DiagnosticExportAction.run(locale: locale)
         }
     }
@@ -242,59 +242,104 @@ private struct FileMenuCommands: View {
     @FocusedValue(\.windowMenuActions) private var window
 
     var body: some View {
-        Button("action.newFolder") { actions?.newFolder() }
+        Button("action.newFolder", systemImage: "folder.badge.plus") { actions?.newFolder() }
             .disabled(actions?.canNewFolder != true)
         Button("action.newFolderWithSelection") { actions?.newFolderWithSelection() }
             .disabled(actions?.canNewFolderWithSelection != true)
+        // 新規タブ [1-16 メニュー抜け監査]。⌘T として配線済みだったのにメニュー
+        // バーに項目が無く、キーを知らないと辿り着けなかった [ユーザー指摘]。
+        // 位置は Finder と同じ（新規フォルダ系の直後、「開く」の手前）。
+        Button("action.newTab", systemImage: "plus.square.on.square") { window?.newTab() }
+            .disabled(window == nil)
         Divider()
-        Button("action.open") { actions?.open() }
+        Button("action.open", systemImage: "arrow.up.forward.app") { actions?.open() }
             .disabled(actions?.canOpen != true)
-        Button("action.quickLook") { actions?.quickLook() } // [QL-01]
+            // Finder と同じく ⌥ で「新規ウインドウで開く」に入れ替わる
+            // [1-16 メニュー抜け監査]。**「新規タブで開く」は Finder のファイル
+            // メニューに存在しないためここには置かない**［ユーザー判断: 原則
+            // Finder に揃える］。コンテキストメニューには従来どおりある。
+            .modifierKeyAlternate(.option) {
+                Button("folder.openInNewWindow", systemImage: "plus.rectangle") { actions?.openInNewWindow() }
+                    .disabled(actions?.canOpenInNewWindow != true)
+            }
+        // このアプリケーションで開く [12章 §12.9]。Finder と同じく「開く」の
+        // 直後。単一選択のときだけ対象が定まるため、それ以外は無効化する。
+        OpenWithFileMenuItem(target: actions?.openWithTarget)
+        Button("action.quickLook", systemImage: "eye") { actions?.quickLook() } // [QL-01]
             .disabled(actions?.canQuickLook != true)
         Divider()
-        Button("action.rename") { actions?.rename() }
+        Button("action.rename", systemImage: "pencil") { actions?.rename() }
             .disabled(actions?.canRename != true)
-        Button("folder.duplicate") { actions?.duplicate() }
+        Button("folder.duplicate", systemImage: "plus.square.on.square") { actions?.duplicate() }
             .disabled(actions?.canDuplicate != true)
-        Button("folder.createAlias") { actions?.makeAlias() }
+        Button("folder.createAlias", systemImage: "square.on.square.dashed") { actions?.makeAlias() }
             .disabled(actions?.canMakeAlias != true)
-        Button("action.compress") { actions?.compress() }
-            .disabled(actions?.canCompress != true)
-            // Finder と同じく ⌥ で「パスワード付きで圧縮」に入れ替わる
-            // [Finder 対比監査]。
-            //
-            // **メニューバーでは「隠す」ではなく「無効にする」**。コンテキスト
-            // メニュー側（`FolderContentView`／`FolderTreeContextMenu`）は
-            // 項目自体を出さないが、ここで同じことをすると 2 つ問題がある:
-            // ① 項目の有無を `@FocusedValue` に依存させると、フォーカス中の
-            //    ウインドウがまだ値を公開していない起動直後などに項目が消える
-            //    （実測: 起動直後のダンプで代替項目が生成されなかった）。
-            // ② 代わりに `@AppStorage` を `if` 条件で読むのは、SwiftUI の
-            //    Observation が無限に再評価してハングする既知の不具合を踏む
-            //    パターンそのもの（CLAUDE.md「タブバー表示トグル」参照）。
-            // メニューバーは項目が固定で有効/無効だけが変わるのが macOS の
-            // 作法でもあるため、他の項目と同じ `.disabled` に揃える。
-            .modifierKeyAlternate(.option) {
-                Button("folder.compressHereWithPassword") { actions?.compressWithPassword() }
-                    .disabled(actions?.canCompressWithPassword != true)
-            }
+        // 圧縮／展開 [1-16 メニュー抜け監査]。**展開はコンテキストメニューに
+        // しか無く、メニューバーには圧縮だけがある非対称な状態だった**
+        // [ユーザー指摘]。コンテキストメニューと同じサブメニュー構成にまとめる
+        // ［ユーザー判断: 展開は圧縮／展開のサブメニューで圧縮とまとめる］。
+        //
+        // **メニューバーでは「隠す」ではなく「無効にする」**。コンテキスト
+        // メニュー側（`FolderContentView`／`FolderTreeContextMenu`）は
+        // 項目自体を出さないが、ここで同じことをすると 2 つ問題がある:
+        // ① 項目の有無を `@FocusedValue` に依存させると、フォーカス中の
+        //    ウインドウがまだ値を公開していない起動直後などに項目が消える
+        //    （実測: 起動直後のダンプで代替項目が生成されなかった）。
+        // ② 代わりに `@AppStorage` を `if` 条件で読むのは、SwiftUI の
+        //    Observation が無限に再評価してハングする既知の不具合を踏む
+        //    パターンそのもの（CLAUDE.md「タブバー表示トグル」参照）。
+        // メニューバーは項目が固定で有効/無効だけが変わるのが macOS の
+        // 作法でもあるため、他の項目と同じ `.disabled` に揃える。
+        Menu("folder.compressExtractSubmenu", systemImage: "zipper.page") {
+            Button("folder.compressHere", systemImage: "zipper.page") { actions?.compress() } // [AR-10]
+                .disabled(actions?.canCompress != true)
+                // Finder と同じく ⌥ で「パスワード付きで圧縮」に入れ替わる
+                // [Finder 対比監査]。
+                .modifierKeyAlternate(.option) {
+                    Button("folder.compressHereWithPassword", systemImage: "zipper.page") { actions?.compressWithPassword() }
+                        .disabled(actions?.canCompressWithPassword != true)
+                }
+            Button("folder.compressEllipsis", systemImage: "zipper.page") { actions?.compressWithDialog() } // [AR-11]
+                .disabled(actions?.canCompress != true)
+            Divider()
+            Button("folder.extractInPlace", systemImage: "shippingbox.and.arrow.backward") { actions?.extractInPlace() } // [AR-20]
+                .disabled(actions?.canExtract != true)
+            // 単一選択なら「（名前）に展開」[AR-21]、複数選択なら
+            // 「それぞれのフォルダに展開」[AR-23]。コンテキストメニューと同じ。
+            Button(extractToNamedTitle, systemImage: "shippingbox.and.arrow.backward") { actions?.extractToNamedFolders() }
+                .disabled(actions?.canExtract != true)
+            Button("folder.extractEllipsis", systemImage: "shippingbox.and.arrow.backward") { actions?.extractToChosenDestination() } // [AR-22]
+                .disabled(actions?.canExtract != true)
+        }
+        .disabled(actions == nil)
         Divider()
-        Button("folder.revealInFinder") { actions?.revealInFinder() }
+        // 共有 [1-16 メニュー抜け監査]。コンテキストメニューにしか無かった。
+        // Finder もファイルメニューに持っている。`ShareLink` はクロージャでは
+        // なく実際の項目を要求するため、`FolderMenuActions.shareItems` から
+        // 値そのものを受け取る。項目が空だと `ShareLink` 自体が機能しないので
+        // その場合は無効化した見た目だけのボタンに差し替える。
+        if let items = actions?.shareItems, !items.isEmpty {
+            ShareLink(items: items) { Label("folder.shareEllipsis", systemImage: "square.and.arrow.up") }
+        } else {
+            Button("folder.shareEllipsis", systemImage: "square.and.arrow.up") {}
+                .disabled(true)
+        }
+        Button("folder.revealInFinder", systemImage: "macwindow") { actions?.revealInFinder() }
             .disabled(actions?.canRevealInFinder != true)
         // ターミナルで開く [ユーザー要望]。選択が無ければ現在のフォルダが対象。
-        Button("folder.openInTerminal") { actions?.openInTerminal() }
+        Button("folder.openInTerminal", systemImage: "terminal") { actions?.openInTerminal() }
             .disabled(actions?.canOpenInTerminal != true)
         // 取り出す [1-16]。Finder と同じく ⌥ で「すべてを取り出す」に
         // 入れ替わる。既定キー ⌘E も Finder 標準（`ejectAll` 側は Finder 自身も
         // キーを割り当てていないため無し）。
-        Button("action.eject") { window?.eject() }
+        Button("action.eject", systemImage: "eject") { window?.eject() }
             .disabled(window?.canEject != true)
             .modifierKeyAlternate(.option) {
-                Button("action.ejectAll") { window?.ejectAll() }
+                Button("action.ejectAll", systemImage: "eject") { window?.ejectAll() }
                     .disabled(window?.canEjectAll != true)
             }
         Divider()
-        Button("folder.moveToTrash", role: .destructive) { actions?.moveToTrash() }
+        Button("folder.moveToTrash", systemImage: "trash", role: .destructive) { actions?.moveToTrash() }
             .disabled(actions?.canMoveToTrash != true)
             // Finder と同じく ⌥ で「すぐに削除…」に入れ替わる [FM-14]
             // [Finder 対比監査]。**ここでは `.keyboardShortcut` を付けない**
@@ -303,12 +348,47 @@ private struct FileMenuCommands: View {
             // 割り当てない」と矛盾しないことを実測でも確認済み（代替項目の
             // キー等価は入力不能な U+0000 になる）。
             .modifierKeyAlternate(.option) {
-                Button("folder.deletePermanentlyEllipsis", role: .destructive) { actions?.deletePermanently() }
+                Button("folder.deletePermanentlyEllipsis", systemImage: "trash", role: .destructive) { actions?.deletePermanently() }
                     .disabled(actions?.canDeletePermanently != true)
             }
         // 「パス名をコピー」はここに退避していた「その他」サブメニューではなく、
         // Finder と同じく Edit メニューの「コピー」の ⌥ 代替になった
         // （`EditMenuCommands` 参照）。
+        Divider()
+        // 検索 [1-16 メニュー抜け監査]。⌘F とツールバーの虫めがねからしか
+        // 辿れなかった [ユーザー指摘]。Finder もファイルメニューの末尾に置いている。
+        Button("action.focusSearch", systemImage: "magnifyingglass") { window?.focusSearch() }
+            .disabled(window == nil)
+    }
+
+    /// 単一選択なら「（名前）に展開」[AR-21]、そうでなければ
+    /// 「それぞれのフォルダに展開」[AR-23]。
+    private var extractToNamedTitle: LocalizedStringKey {
+        guard let name = actions?.extractNamedTitle else { return "folder.extractEachToOwnFolder" }
+        // `String(localized:)` は `@Environment(\.locale)` を見ないうえ、
+        // メニューバーの `.commands` はシーンルートの `.appLanguageOverride()` の
+        // 外側にあるため、`AppLanguage.effectiveLocale` を明示的に渡す
+        // [CLAUDE.md「表示言語」節の方針]。
+        let format = String(localized: "folder.extractToNamed", locale: AppLanguage.effectiveLocale)
+        return LocalizedStringKey(String(format: format, name))
+    }
+}
+
+/// ファイルメニューの「このアプリケーションで開く」[12章 §12.9]。
+///
+/// コンテキストメニューの `OpenWithMenu` は対象が確定しているときだけ描画される
+/// が、**メニューバーでは項目を消さず無効化する**（`FileMenuCommands` の
+/// コメント参照）。そのため対象が無い場合は空の無効なサブメニューを出す。
+private struct OpenWithFileMenuItem: View {
+    let target: (url: URL, isDirectory: Bool)?
+
+    var body: some View {
+        if let target {
+            OpenWithMenu(url: target.url, isDirectory: target.isDirectory)
+        } else {
+            Menu("folder.openWithSubmenu") { EmptyView() }
+                .disabled(true)
+        }
     }
 }
 
@@ -359,11 +439,11 @@ private struct ViewMenuCommands: View {
         // 強制非表示 [DS-04] は全体設定を変えないため、実効値で出すと
         // 「表示」を選んでも何も起きないように見えてしまう。その場で何が
         // 起きているかはステータスバー側が理由付きで示す [DS-07]。
-        Button(thumbnailsGloballyHidden ? "view.showThumbnails" : "view.hideThumbnails") {
+        Button(thumbnailsGloballyHidden ? "view.showThumbnails" : "view.hideThumbnails", systemImage: "photo") {
             ThumbnailVisibility.shared.toggleGlobal()
         }
         Divider()
-        Menu("common.sortBy") { // [LV-01]
+        Menu("common.sortBy", systemImage: "arrow.up.arrow.down") { // [LV-01]
             Picker("common.sortBy", selection: sortKeyBinding) {
                 Text("column.name").tag(FolderSortComparator.Key.name)
                 Text("column.modificationDate").tag(FolderSortComparator.Key.modificationDate)
@@ -384,7 +464,7 @@ private struct ViewMenuCommands: View {
             .labelsHidden()
         }
         .disabled(folder == nil)
-        Menu("folder.visibleColumns") { // [LV-02]
+        Menu("folder.visibleColumns", systemImage: "tablecells") { // [LV-02]
             ForEach(FolderColumn.allCases) { column in
                 Toggle(column.localizationKey, isOn: columnBinding(column))
             }
@@ -395,16 +475,16 @@ private struct ViewMenuCommands: View {
         // 「表示オプション」の中身が変わる）。
         .disabled(folder?.isListStyleActive != true)
         Divider()
-        Button("action.increaseIconSize") { window?.increaseIconSize() } // [IV-04]
+        Button("action.increaseIconSize", systemImage: "plus.magnifyingglass") { window?.increaseIconSize() } // [IV-04]
             .disabled(window?.canIncreaseIconSize != true)
-        Button("action.decreaseIconSize") { window?.decreaseIconSize() }
+        Button("action.decreaseIconSize", systemImage: "minus.magnifyingglass") { window?.decreaseIconSize() }
             .disabled(window?.canDecreaseIconSize != true)
         Divider()
-        Button(window?.isSidebarVisible == false ? "view.showSidebar" : "view.hideSidebar") {
+        Button(window?.isSidebarVisible == false ? "view.showSidebar" : "view.hideSidebar", systemImage: "sidebar.leading") {
             window?.toggleSidebar()
         }
         .disabled(window == nil)
-        Button(window?.isInspectorVisible == false ? "view.showInspector" : "view.hideInspector") {
+        Button(window?.isInspectorVisible == false ? "view.showInspector" : "view.hideInspector", systemImage: "sidebar.trailing") {
             window?.toggleInspector()
         }
         .disabled(window == nil)
@@ -484,17 +564,17 @@ private struct GoMenuCommands: View {
     private var recentFolders: RecentFoldersStore { .shared }
 
     var body: some View {
-        Button("action.goBack") { actions?.goBack() }
+        Button("action.goBack", systemImage: "chevron.backward") { actions?.goBack() }
             .disabled(actions?.canGoBack != true)
-        Button("action.goForward") { actions?.goForward() }
+        Button("action.goForward", systemImage: "chevron.forward") { actions?.goForward() }
             .disabled(actions?.canGoForward != true)
-        Button("action.goToParent") { actions?.goToParent() }
+        Button("action.goToParent", systemImage: "arrow.up.folder") { actions?.goToParent() }
             .disabled(actions?.canGoToParent != true)
         Divider()
         // Finder の「ホーム」相当。実体はサンドボックスの仮想ホームだが、
         // 表記に実装詳細を出さない [ユーザー指摘、環境設定の「起動時に開く
         // フォルダ」と同じ方針]。
-        Button("menu.go.home") { actions?.goHome() }
+        Button("menu.go.home", systemImage: "house") { actions?.goHome() }
             .disabled(actions == nil)
         // Finder は書類・デスクトップ等の標準の場所を並べるが、本アプリで
         // それに当たるのは登録済みのライブラリ／テンポラリフォルダ
@@ -502,17 +582,17 @@ private struct GoMenuCommands: View {
         // アクセス許可が無ければ開けず意味を成さない]。1 件も登録が無い
         // グループはサブメニュー自体を出さない。
         if !registeredFolders.library.isEmpty {
-            Menu("folderTree.libraryFolders") {
+            Menu("folderTree.libraryFolders", systemImage: "books.vertical") {
                 registeredFolderButtons(registeredFolders.library)
             }
         }
         if !registeredFolders.temporary.isEmpty {
-            Menu("folderTree.temporaryFolders") {
+            Menu("folderTree.temporaryFolders", systemImage: "tray") {
                 registeredFolderButtons(registeredFolders.temporary)
             }
         }
         Divider()
-        Menu("menu.go.recentFolders") {
+        Menu("menu.go.recentFolders", systemImage: "clock") {
             let recents = recentFolders.existingFolders
             if recents.isEmpty {
                 Button("menu.go.noRecentFolders") {}
@@ -529,7 +609,7 @@ private struct GoMenuCommands: View {
             }
         }
         Divider()
-        Button("goToFolder.menuItem") { actions?.beginGoToFolder() }
+        Button("goToFolder.menuItem", systemImage: "arrow.forward.folder") { actions?.beginGoToFolder() }
             .disabled(actions == nil)
     }
 
@@ -553,28 +633,28 @@ private struct EditMenuCommands: View {
     @FocusedValue(\.folderMenuActions) private var actions
 
     var body: some View {
-        Button("action.cut") { actions?.cut() }
+        Button("action.cut", systemImage: "scissors") { actions?.cut() }
             .disabled(actions?.canCut != true)
-        Button("action.copy") { actions?.copy() }
+        Button("action.copy", systemImage: "document.on.document") { actions?.copy() }
             .disabled(actions?.canCopy != true)
             // 以下 3 つはいずれも Finder と同じ ⌥ 代替 [Finder 対比監査。
             // ⌥ 代替の一覧と、対応しなかった項目の理由は CLAUDE.md
             // 「Finder の ⌥ 代替項目」節を参照]。
             .modifierKeyAlternate(.option) {
-                Button("folder.copyPath") { actions?.copyPath() } // [FM-10]
+                Button("folder.copyPath", systemImage: "document.on.document") { actions?.copyPath() } // [FM-10]
                     .disabled(actions?.canCopyPath != true)
             }
-        Button("action.paste") { actions?.paste() }
+        Button("action.paste", systemImage: "document.on.clipboard") { actions?.paste() }
             .disabled(actions?.canPaste != true)
             .modifierKeyAlternate(.option) {
-                Button("folder.moveItemsHere") { actions?.moveItemsHere() }
+                Button("folder.moveItemsHere", systemImage: "folder") { actions?.moveItemsHere() }
                     .disabled(actions?.canPaste != true)
             }
         Divider()
-        Button("action.selectAll") { actions?.selectAll() }
+        Button("action.selectAll", systemImage: "character.textbox") { actions?.selectAll() }
             .disabled(actions?.canSelectAll != true)
             .modifierKeyAlternate(.option) {
-                Button("action.deselectAll") { actions?.deselectAll() }
+                Button("action.deselectAll", systemImage: "character.textbox") { actions?.deselectAll() }
                     .disabled(actions?.canDeselectAll != true)
             }
     }
@@ -594,7 +674,7 @@ private struct UndoRedoMenuCommands: View {
 
     var body: some View {
         let stack = CommandStack.shared
-        Button(undoTitle(stack.undoTitle)) {
+        Button(undoTitle(stack.undoTitle), systemImage: "arrow.uturn.backward") {
             Task {
                 await CommandStack.shared.undo()
                 SessionState.shared.reloadToken += 1 // [実機検証で発見: 一覧再読み込みの伝達漏れ]
@@ -602,7 +682,7 @@ private struct UndoRedoMenuCommands: View {
         }
         .disabled(!stack.canUndo)
 
-        Button(redoTitle(stack.redoTitle)) {
+        Button(redoTitle(stack.redoTitle), systemImage: "arrow.uturn.forward") {
             Task {
                 await CommandStack.shared.redo()
                 SessionState.shared.reloadToken += 1

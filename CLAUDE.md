@@ -947,12 +947,37 @@ Finder に合わせるための調査と、**効果音の実装**（メニュー
 | dyld 共有キャッシュ内のフレームワーク | **`dyld_info` はキャッシュ内の dylib をパス指定で扱える**（`-imports`/`-exports`/`-disassemble`/`-objc`）。抽出ツールは不要 |
 | 実行時のデータ構造（switch のジャンプテーブル等） | エクスポート記号の unslid アドレスと実行時アドレスの差から slide を求め、**自プロセスのメモリを直接読む**。逆アセンブルだけでは追えない対応表を確定できる |
 
-#### メニューアイコン（未実装、着手時はこの節を正とする）
+#### メニューアイコン（実装済み）
 
 - **Finder はメニューバーとコンテキストメニューで同じ SF Symbol を使う**（コマンド 1 つにつき 1 シンボル）。⌥ 代替項目は主項目と**同じ**アイコン。
 - **アイコンを付けない項目**: 中身が動的なコンテナ submenu（Open With / Quick Actions / View / Clean Up By）、表示切替の一部（タブバー・ツールバー・パスバー・ステータスバー・フルスクリーン）、サードパーティのサービス項目。**submenu だから無し、ではない**（並び替え・グループを使用・圧縮 は submenu でもアイコンあり）。
 - **SwiftUI の `Label(_, systemImage:)` で実装できる**ことを実測確認済み（メニューバー・`.contextMenu`・`Menu` のラベルすべてで描画された）。AppKit の回避策は不要。
 - 主要な対応（Finder 実測値）: 開く `arrow.up.forward.app` / ゴミ箱・完全削除 `trash` / 情報 `info.circle` / 名前を変更 `pencil` / 圧縮 `zipper.page` / 複製・新規タブ `plus.square.on.square` / エイリアス `square.dashed.and.alias` / クイックルック `eye` / コピー `document.on.document` / ペースト `document.on.clipboard` / ここに項目を移動 `folder` / カット `scissors` / 選択・選択解除 `character.textbox` / Undo・Redo `arrow.uturn.backward`・`arrow.uturn.forward` / 新規フォルダ `folder.badge.plus` / 新規ウインドウ `plus.rectangle` / 共有 `square.and.arrow.up` / 取り出す `eject` / 検索 `magnifyingglass` / アイコン・リスト `square.grid.2x2`・`list.bullet` / 並び替え `arrow.up.arrow.down` / 表示オプション `gearshape` / 設定 `gear` / サイドバー・インスペクタ `sidebar.leading`・`sidebar.trailing` / 戻る・進む `chevron.backward`・`chevron.forward` / 上の階層へ `arrow.up.folder` / フォルダへ移動 `arrow.forward.folder` / 最近使った項目 `clock` / ホーム `house`
+- **`square.dashed.and.alias`（Finder のエイリアス用）は非公開で、`NSImage(systemSymbolName:)` が `nil` を返す。** サードパーティからは使えないため `square.on.square.dashed` で代替した。**Finder の nib から読んだシンボル名をそのまま使う前に、必ず `NSImage(systemSymbolName:)` で実在を確認すること**（存在しないと例外も警告も出ず、ただ何も描かれない）。
+- **実装は `Button(_:systemImage:action:)` / `Menu(_:systemImage:content:)` / `Toggle(_:systemImage:isOn:)`**（いずれも標準 API）。`Button(_:systemImage:role:action:)` と実行時 `String` のオーバーロードもある。既存の `Button("key") { }` に `systemImage:` を足すだけで済むので、キー → シンボルの対応表を作って機械的に置換した。
+- **アイコンを付ける／付けないの一覧は `qooLibraryApp.swift` / `FolderContentView.swift` / `FolderTreeContextMenu.swift` の実コードが正**。qooLibrary 独自（Finder に対応コマンドが無い）の選定: 展開 `shippingbox.and.arrow.backward` / 圧縮・展開サブメニュー `zipper.page` / ターミナルで開く `terminal` / Finder で表示 `macwindow` / 表示するカラム `tablecells` / サムネイル表示 `photo` / ライブラリフォルダ `books.vertical` / テンポラリフォルダ `tray` / 表示名を変更 `text.cursor` / 登録解除 `minus.circle` / 診断ログを書き出す `stethoscope` / アイコンを大きく・小さく `plus.magnifyingglass`・`minus.magnifyingglass` / ロック・ロック解除 `lock`・`lock.open`。
+- **`ShareLink` はラベルを取る形（`ShareLink(items:) { Label(...) }`）にしないとアイコンが付かない。**
+- **「新規ウインドウ」は SwiftUI 標準の `.newItem` 項目のためアイコンが付いていない**（Finder は `plus.rectangle` を付けている）。付けるには `CommandGroup(replacing: .newItem)` で自前の項目に置き換える必要がある — 未対応［ユーザー判断: そこまでする必要は無い］。
+
+#### メニュー抜け監査（アイコン実装の直後、ユーザー指摘で実施）
+
+**「ファイルメニューに新規タブが無い」というユーザー指摘**をきっかけに、Finder のメニュー実体（nib）と qooLibrary のメニュー実体（実行中アプリから AX でダンプ）を突き合わせ、さらに `ActionID` 全 38 件・`FolderMenuActions`／`WindowMenuActions` の公開メンバ・コンテキストメニュー項目を照合した。**実装済みなのにメニューバーから辿れない機能が 7 件**見つかり、うち 6 件を追加した。
+
+| 機能 | 発覚前の到達手段 | 対応 |
+|---|---|---|
+| 新規タブ | ⌘T のみ | ファイルメニューへ追加（Finder と同じ位置）|
+| 検索 | ⌘F・ツールバーの虫めがねのみ | ファイルメニュー末尾へ追加（Finder と同じ）|
+| このアプリケーションで開く | コンテキストメニューのみ | 「開く」の直後へ追加（Finder と同じ）|
+| 新規ウインドウで開く | コンテキストメニューのみ | 「開く」の ⌥ 代替（Finder と同じ）|
+| 共有… | コンテキストメニューのみ | ファイルメニューへ追加（Finder と同じ）|
+| 展開（4 項目）| コンテキストメニューのみ | 「圧縮／展開」サブメニューに圧縮とまとめた［ユーザー判断］|
+| 隠しファイルの表示切替 | ステータスバーのボタンのみ | **追加しない** — Finder もメニューに持たない［原則 Finder に揃える］|
+
+- **「新規タブで開く」は Finder のファイルメニューに存在しない**（コンテキストメニューのみ）ため、qooLibrary も追加しなかった［ユーザー判断: 原則 Finder に揃える］。
+- `ShareLink` はクロージャではなく**実際の項目**を要求するため、`FolderMenuActions.shareItems: [URL]` として値そのものを渡す（他のアクションはクロージャ）。項目が空だと機能しないので、その場合は無効化したボタンへ差し替える。
+- **`newTab`/`focusSearch` は `ActionID` に登録され `KeyBindingButtons` で配線済みだったのに、メニューバーからは一切辿れなかった。** `KeyBindingButtons` に配線しただけでは「キーを知っている人にしか存在が分からない」状態になる。**今後 `ActionID` を追加・配線したら、メニューバーにも項目が要るかを必ず確認すること。**
+- **メニュー項目に `.keyboardShortcut` を付けない方針（1-8 以来）の帰結として、追加した項目にもキー表示は出ない。** SwiftUI 標準項目（新規ウインドウ ⌘N・閉じる ⌘W）だけがキーを表示するため、メニューを見てもショートカットを覚えられない。既知のトレードオフ。
+- **実機での確認方法**: `System Events` でメニューバー項目を名前で開いてスクリーンショット。⌥ 代替が効いているかは、⌥ を押した状態で開いたときに主項目が代替へ**入れ替わる**（並んで増えるのではない）ことで確認する。
 
 #### 効果音（実装済み）
 

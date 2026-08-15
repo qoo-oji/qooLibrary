@@ -46,6 +46,23 @@ struct FolderMenuActions {
     /// ターミナルで開く [ユーザー要望]。選択が無ければ現在のフォルダが対象に
     /// なるため、フォルダを表示している限り常に有効。
     var canOpenInTerminal = false
+    /// 「新規ウインドウで開く」（Finder と同じく「開く」の ⌥ 代替）。
+    /// フォルダのみ意味を持つ [1-16 メニュー抜け監査]。
+    var canOpenInNewWindow = false
+    /// 展開 [AR-20〜23]。Finder には対応するメニュー項目が無いが、qooLibrary の
+    /// 中核機能なのでコンテキストメニューだけでなくファイルメニューからも辿れる
+    /// ようにする [ユーザー判断: 圧縮／展開のサブメニューで圧縮とまとめる]。
+    var canExtract = false
+
+    /// 単一のアーカイブを選んでいるときの「（名前）に展開」用の表示名 [AR-21]。
+    /// 複数選択時は `nil`（呼び出し側は「それぞれのフォルダに展開」[AR-23] を出す）。
+    var extractNamedTitle: String?
+    /// 「このアプリケーションで開く」[12章 §12.9]。単一選択のときだけ値が入る。
+    /// `OpenWithMenu` が候補の列挙にフォルダかどうかを必要とするため対で持つ。
+    var openWithTarget: (url: URL, isDirectory: Bool)?
+    /// 共有 [ShareLink はクロージャではなく実際の項目を要求するため、
+    /// 他のアクションと違い値そのものを渡す]。
+    var shareItems: [URL] = []
 
     var open: () -> Void = {}
     var quickLook: () -> Void = {}
@@ -67,6 +84,13 @@ struct FolderMenuActions {
     var deselectAll: () -> Void = {}
     var revealInFinder: () -> Void = {}
     var openInTerminal: () -> Void = {}
+    var openInNewWindow: () -> Void = {}
+    /// 「圧縮…」[AR-11]。保存先を選ぶダイアログを出す（「ここに圧縮」[AR-10] は
+    /// `compress`）。
+    var compressWithDialog: () -> Void = {}
+    var extractInPlace: () -> Void = {}          // [AR-20]
+    var extractToNamedFolders: () -> Void = {}   // [AR-21][AR-23]
+    var extractToChosenDestination: () -> Void = {} // [AR-22]
 
     // MARK: - 表示メニュー [1-16]
 

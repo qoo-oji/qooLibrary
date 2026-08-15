@@ -154,6 +154,11 @@ struct MainWindowView: View {
             goHome: { windowState.goHome() },
             beginGoToFolder: { showingGoToFolderSheet = true },
             navigate: { url, root in windowState.navigate(to: url, root: root) },
+            // ファイルメニュー [1-16 メニュー抜け監査]。どちらも ⌘T/⌘F として
+            // 配線済みだったがメニューバーからは辿れなかった。実体は下の
+            // `keyBindingButtons` と同じものを呼ぶ。
+            newTab: { openAsTab(.home) },
+            focusSearch: { expandSearchField() },
             // 表示メニュー [1-16]。
             listStyle: windowState.listStyle,
             setListStyle: { windowState.listStyle = $0 },

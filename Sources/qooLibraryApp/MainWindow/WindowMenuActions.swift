@@ -29,6 +29,17 @@ struct WindowMenuActions {
     /// [`NavigationRoot` 参照]。
     var navigate: (URL, NavigationRoot) -> Void = { _, _ in }
 
+    // MARK: - ファイルメニュー [1-16 メニュー抜け監査]
+
+    /// 新規タブ（⌘T）。1-8 で `ActionID.newTab` として登録し
+    /// `KeyBindingButtons` で配線していたが、**メニューバーには項目が無く
+    /// キーを知らないと辿り着けなかった** [ユーザー指摘]。Finder もファイル
+    /// メニューに持っているため追加した。
+    var newTab: () -> Void = {}
+    /// 検索フィールドへフォーカス（⌘F）。`newTab` と同じ理由で追加
+    /// [ユーザー指摘]。Finder のファイルメニュー「検索」に相当する。
+    var focusSearch: () -> Void = {}
+
     // MARK: - 表示メニュー [1-16]
 
     /// 表示モードの直接指定 [LV-04]。Finder の ⌘1/⌘2 に合わせ、トグルでは

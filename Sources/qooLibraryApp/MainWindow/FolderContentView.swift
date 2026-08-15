@@ -756,6 +756,18 @@ struct FolderContentView: View {
         actions.canDeselectAll = !selection.isEmpty
         actions.canRevealInFinder = !selection.isEmpty
         actions.canOpenInTerminal = folder != nil // 選択が無ければ現在のフォルダが対象
+        // [1-16 メニュー抜け監査] 以下 4 つはコンテキストメニューにしか無く、
+        // メニューバーからは辿れなかったもの。判定条件はコンテキストメニュー側と
+        // 同じにする（新規ウインドウで開く＝フォルダのみ、展開＝アーカイブのみ、
+        // このアプリケーションで開く＝単一選択のみ）。
+        let selectedEntries = entries.filter { selection.contains($0.url) }
+        actions.canOpenInNewWindow = !selection.isEmpty && selectedEntries.allSatisfy(\.isDirectory)
+        actions.canExtract = !selection.isEmpty && isExtractable(selected)
+        if selection.count == 1, let only = selectedEntries.first {
+            actions.openWithTarget = (url: only.url, isDirectory: only.isDirectory)
+            actions.extractNamedTitle = actions.canExtract ? archiveBaseName(only.url) : nil
+        }
+        actions.shareItems = selected
 
         actions.open = { openSelection() }
         actions.quickLook = { quickLook.toggle() }
@@ -784,6 +796,11 @@ struct FolderContentView: View {
             let targets = selected.isEmpty ? [currentFolder()].compactMap { $0 } : selected
             operations.openInTerminal(targets)
         }
+        actions.openInNewWindow = { selected.forEach(onOpenInNewWindow) }
+        actions.compressWithDialog = { compressWithDialog(selected) }
+        actions.extractInPlace = { extractInPlace(selected) }
+        actions.extractToNamedFolders = { extractToNamedFolders(selected) }
+        actions.extractToChosenDestination = { extractToChosenDestination(selected) }
 
         // 表示メニュー [1-16]。並び替え・カラムの状態はこのビューが持つため、
         // ここから公開する（ペイン・バーの表示状態のようなウインドウ全体の
@@ -1260,7 +1277,7 @@ struct FolderContentView: View {
                 .pickerStyle(.inline)
                 .labelsHidden()
             }
-            Menu("common.sortBy") { // [LV-01]
+            Menu("common.sortBy", systemImage: "arrow.up.arrow.down") { // [LV-01]
                 Picker("common.sortBy", selection: sortKeyBinding) {
                     Text("column.name").tag(FolderSortComparator.Key.name)
                     Text("column.modificationDate").tag(FolderSortComparator.Key.modificationDate)
@@ -1273,16 +1290,16 @@ struct FolderContentView: View {
                 .labelsHidden()
             }
             Divider()
-            Button("action.newFolder") {
+            Button("action.newFolder", systemImage: "folder.badge.plus") {
                 newFolderName = String(localized: "action.newFolder", locale: locale)
                 showingNewFolderPrompt = true
             }
-            Button("action.paste") { pasteFromPasteboard() }
+            Button("action.paste", systemImage: "document.on.clipboard") { pasteFromPasteboard() }
                 .disabled(!canPaste)
                 // Finder と同じく ⌥ で「ここに項目を移動」に入れ替わる
                 // [Finder 対比監査]。
                 .modifierKeyAlternate(.option) {
-                    Button("folder.moveItemsHere") { moveItemsHere() }
+                    Button("folder.moveItemsHere", systemImage: "folder") { moveItemsHere() }
                         .disabled(!canPaste)
                 }
             // Finder は空きスペースの右クリックにも「すべて選択」を出す
@@ -1290,25 +1307,25 @@ struct FolderContentView: View {
             // 現在いるフォルダをターミナルで開く [ユーザー要望]。
             if let folder = currentFolder() {
                 Divider()
-                Button("folder.openInTerminal") { operations.openInTerminal([folder]) }
+                Button("folder.openInTerminal", systemImage: "terminal") { operations.openInTerminal([folder]) }
             }
-            Button("action.selectAll") { selectAllInCurrentFolder() }
+            Button("action.selectAll", systemImage: "character.textbox") { selectAllInCurrentFolder() }
                 .disabled(entries.isEmpty)
                 // Finder と同じく ⌥ で「すべてを選択解除」に入れ替わる
                 // [Finder 対比監査]。
                 .modifierKeyAlternate(.option) {
-                    Button("action.deselectAll") { selection.removeAll() }
+                    Button("action.deselectAll", systemImage: "character.textbox") { selection.removeAll() }
                         .disabled(selection.isEmpty)
                 }
         } else {
             let targets = Array(urls)
             let targetEntries = entries.filter { urls.contains($0.url) }
-            Button("action.open") { openEntries(targetEntries) } // [KB-02 相当]
+            Button("action.open", systemImage: "arrow.up.forward.app") { openEntries(targetEntries) } // [KB-02 相当]
             // [QL-01] 右クリックした対象が現在の選択と違う場合は、まず選択を
             // 合わせてから開く——Quick Look の対象は「現在の選択」であり
             // （`QuickLookController` 参照）、`.contextMenu(forSelectionType:)`
             // が渡してくる対象と食い違ったままでは別のファイルが出てしまう。
-            Button("action.quickLook") {
+            Button("action.quickLook", systemImage: "eye") {
                 selection = urls
                 quickLook.show()
             }
@@ -1323,74 +1340,75 @@ struct FolderContentView: View {
             if targetEntries.allSatisfy(\.isDirectory) {
                 // 新規タブ/ウインドウで開くはフォルダのみ意味を持つ。Finder は
                 // 複数選択なら選択したフォルダの数だけタブ/ウインドウを開く。
-                Button(targets.count == 1 ? "folder.openInNewTab" : "folder.openEachInNewTab") {
+                Button(targets.count == 1 ? "folder.openInNewTab" : "folder.openEachInNewTab", systemImage: "plus.square.on.square") {
                     targets.forEach(onOpenInNewTab)
                 }
-                Button(targets.count == 1 ? "folder.openInNewWindow" : "folder.openEachInNewWindow") {
+                Button(targets.count == 1 ? "folder.openInNewWindow" : "folder.openEachInNewWindow", systemImage: "plus.rectangle") {
                     targets.forEach(onOpenInNewWindow)
                 }
             }
             Divider()
             // 名前を変更はバッチ名変更 UI が無いため単一対象時のみ。
             if targets.count == 1, let only = targetEntries.first {
-                Button("folder.renameEllipsis") { beginRename(only) } // [FM-05]
+                Button("folder.renameEllipsis", systemImage: "pencil") { beginRename(only) } // [FM-05]
             }
-            Button("folder.duplicate") { duplicate(targets) } // [FM-02]
-            Button("action.copy") { copySelectionToPasteboard(targets) } // [KB-02 相当、⌘C]
+            Button("folder.duplicate", systemImage: "plus.square.on.square") { duplicate(targets) } // [FM-02]
+            Button("action.copy", systemImage: "document.on.document") { copySelectionToPasteboard(targets) } // [KB-02 相当、⌘C]
                 // Finder と同じく ⌥ で「パス名をコピー」に入れ替わる [FM-10]
                 // [Finder 対比監査。⌥ 代替の一覧と、対応しなかった項目の理由は
                 // CLAUDE.md「Finder の ⌥ 代替項目」節を参照]。
                 .modifierKeyAlternate(.option) {
-                    Button("folder.copyPath") { copyPaths(targets) }
+                    Button("folder.copyPath", systemImage: "document.on.document") { copyPaths(targets) }
                 }
-            Button("action.cut") { cutSelectionToPasteboard(targets) } // [Finder/Edit メニュー整備、⌘X]
+            Button("action.cut", systemImage: "scissors") { cutSelectionToPasteboard(targets) } // [Finder/Edit メニュー整備、⌘X]
             // Finder の「選択項目で新規フォルダを作成」[Finder/Edit メニュー整備]。
             // 移動先を作る操作のため、フォルダ自身が対象に混ざっていても
             // Finder と同じく無条件に出す。
             Button("action.newFolderWithSelection") { newFolderWithSelection(targets) }
             Divider()
-            Button("folder.moveToTrash", role: .destructive) { moveToTrash(targets) } // [FM-04]
+            Button("folder.moveToTrash", systemImage: "trash", role: .destructive) { moveToTrash(targets) } // [FM-04]
                 // Finder と同じく ⌥ で「すぐに削除…」に入れ替わる [FM-14]
                 // [Finder 対比監査]。対にすることで、ゴミ箱が出せない場面で
                 // 完全削除だけが現れる経路を構造的に無くしている。
                 .modifierKeyAlternate(.option) {
-                    Button("folder.deletePermanentlyEllipsis", role: .destructive) {
+                    Button("folder.deletePermanentlyEllipsis", systemImage: "trash", role: .destructive) {
                         deletePermanently(targets)
                     }
                 }
             Divider()
             // 圧縮・展開関連をサブメニューにまとめる [ユーザー要望]。
-            Menu("folder.compressExtractSubmenu") {
-                Button("folder.compressHere") { compressHere(targets) } // [AR-10]
+            Menu("folder.compressExtractSubmenu", systemImage: "zipper.page") {
+                Button("folder.compressHere", systemImage: "zipper.page") { compressHere(targets) } // [AR-10]
                     // Finder と同じく ⌥ で「パスワード付きで圧縮」に入れ替わる
                     // [Finder 対比監査]。既定の圧縮形式が暗号化に対応している
                     // ときだけ差し替える（`canCompressWithPassword` 参照）。
                     .modifierKeyAlternate(.option) {
                         if operations.canCompressWithPassword {
-                            Button("folder.compressHereWithPassword") { compressHereWithPassword(targets) }
+                            Button("folder.compressHereWithPassword", systemImage: "zipper.page") { compressHereWithPassword(targets) }
                         }
                     }
-                Button("folder.compressEllipsis") { compressWithDialog(targets) } // [AR-11]
+                Button("folder.compressEllipsis", systemImage: "zipper.page") { compressWithDialog(targets) } // [AR-11]
                 if isExtractable(targets) {
                     Divider()
-                    Button("folder.extractInPlace") { extractInPlace(targets) } // [AR-20]
+                    Button("folder.extractInPlace", systemImage: "shippingbox.and.arrow.backward") { extractInPlace(targets) } // [AR-20]
                     if targets.count == 1, let single = targets.first {
-                        Button(String(format: String(localized: "folder.extractToNamed", locale: locale), archiveBaseName(single))) { extractToNamedFolders(targets) } // [AR-21]
+                        Button(String(format: String(localized: "folder.extractToNamed", locale: locale), archiveBaseName(single)), systemImage: "shippingbox.and.arrow.backward") { extractToNamedFolders(targets) } // [AR-21]
                     } else {
-                        Button("folder.extractEachToOwnFolder") { extractToNamedFolders(targets) } // [AR-23]
+                        Button("folder.extractEachToOwnFolder", systemImage: "shippingbox.and.arrow.backward") { extractToNamedFolders(targets) } // [AR-23]
                     }
-                    Button("folder.extractEllipsis") { extractToChosenDestination(targets) } // [AR-22]
+                    Button("folder.extractEllipsis", systemImage: "shippingbox.and.arrow.backward") { extractToChosenDestination(targets) } // [AR-22]
                 }
             }
             Divider()
-            Button("folder.revealInFinder") { NSWorkspace.shared.activateFileViewerSelecting(targets) } // [FM-09]
+            Button("folder.revealInFinder", systemImage: "macwindow") { NSWorkspace.shared.activateFileViewerSelecting(targets) } // [FM-09]
             // ターミナルで開く [ユーザー要望]。ファイルを選んでいる場合は
             // その親フォルダを開く（`FolderOperations.openInTerminal` 参照）。
-            Button("folder.openInTerminal") { operations.openInTerminal(targets) }
-            ShareLink("folder.shareEllipsis", items: targets) // [共有、既定ラベルが英語 "Share..." になるため明示的に指定]
-            Button("folder.createAlias") { createAliases(for: targets) }
+            Button("folder.openInTerminal", systemImage: "terminal") { operations.openInTerminal(targets) }
+            ShareLink(items: targets) { Label("folder.shareEllipsis", systemImage: "square.and.arrow.up") } // [共有、既定ラベルが英語 "Share..." になるため明示的に指定]
+            Button("folder.createAlias", systemImage: "square.on.square.dashed") { createAliases(for: targets) }
             Divider()
-            Button(targetEntries.allSatisfy(\.isLocked) ? "folder.unlock" : "folder.lock") {
+            Button(targetEntries.allSatisfy(\.isLocked) ? "folder.unlock" : "folder.lock",
+                   systemImage: targetEntries.allSatisfy(\.isLocked) ? "lock.open" : "lock") {
                 toggleLock(targetEntries)
             }
             // 「情報を見る」の簡易シートは 1-10 で常設の右ペイン

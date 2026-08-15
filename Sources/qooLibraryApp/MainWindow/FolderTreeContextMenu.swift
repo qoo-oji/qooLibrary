@@ -159,14 +159,14 @@ struct FolderTreeContextMenu: View {
 
     @ViewBuilder
     private var navigationSection: some View {
-        Button("action.open") { actions.open(context) }
+        Button("action.open", systemImage: "arrow.up.forward.app") { actions.open(context) }
         if context.allowsItemOperations {
             // フォルダは拡張子を持たないため `candidatesForFolders()` 側を使う
             // （`OpenWithMenu` が `isDirectory` で切り替える）。
             OpenWithMenu(url: context.url, isDirectory: true)
         }
-        Button("folder.openInNewTab") { actions.openInNewTab(context) }
-        Button("folder.openInNewWindow") { actions.openInNewWindow(context) }
+        Button("folder.openInNewTab", systemImage: "plus.square.on.square") { actions.openInNewTab(context) }
+        Button("folder.openInNewWindow", systemImage: "plus.rectangle") { actions.openInNewWindow(context) }
     }
 
     // MARK: グループ固有の拡張スロット
@@ -194,7 +194,7 @@ struct FolderTreeContextMenu: View {
             // という既存の使い分けに従う（`FileMenuCommands` 冒頭のコメント参照）。
             if context.role == .volumeRoot, context.node.isEjectableVolume {
                 Divider()
-                Button("action.eject") {
+                Button("action.eject", systemImage: "eject") {
                     Task { await VolumeEjectAction.eject(context.url) }
                 }
             }
@@ -226,14 +226,14 @@ struct FolderTreeContextMenu: View {
     @ViewBuilder
     private var creationSection: some View {
         Divider()
-        Button("action.newFolder") { actions.beginNewFolder(context) } // [FM-01]
-        Button("action.paste") { operations.paste(into: context.url) }
+        Button("action.newFolder", systemImage: "folder.badge.plus") { actions.beginNewFolder(context) } // [FM-01]
+        Button("action.paste", systemImage: "document.on.clipboard") { operations.paste(into: context.url) }
             .disabled(!operations.canPaste)
             // Finder と同じく ⌥ で「ここに項目を移動」に入れ替わる
             // [Finder 対比監査。⌥ 代替の一覧と、対応しなかった項目の理由は
             // CLAUDE.md「Finder の ⌥ 代替項目」節を参照]。
             .modifierKeyAlternate(.option) {
-                Button("folder.moveItemsHere") { operations.moveItemsHere(into: context.url) }
+                Button("folder.moveItemsHere", systemImage: "folder") { operations.moveItemsHere(into: context.url) }
                     .disabled(!operations.canPaste)
             }
     }
@@ -246,22 +246,22 @@ struct FolderTreeContextMenu: View {
             Divider()
         }
         if context.allowsStructuralOperations {
-            Button("folder.renameEllipsis") { actions.beginRenameFolder(context) } // [FM-05]
-            Button("folder.duplicate") { operations.duplicate([context.url], into: context.parentURL) } // [FM-02]
+            Button("folder.renameEllipsis", systemImage: "pencil") { actions.beginRenameFolder(context) } // [FM-05]
+            Button("folder.duplicate", systemImage: "plus.square.on.square") { operations.duplicate([context.url], into: context.parentURL) } // [FM-02]
         }
         if context.allowsItemOperations {
-            Button("action.copy") { operations.copyToPasteboard([context.url]) }
+            Button("action.copy", systemImage: "document.on.document") { operations.copyToPasteboard([context.url]) }
                 // Finder と同じく ⌥ で「パス名をコピー」に入れ替わる [FM-10]。
                 // 対にした結果、以前は無条件に出していた「パス名をコピー」も
                 // 「コピー」と同じ条件（ボリュームのルート行では出さない）に
                 // 従う——Finder のサイドバーもボリュームにはコピー系を出さない
                 // ため、こちらの方が一貫する。
                 .modifierKeyAlternate(.option) {
-                    Button("folder.copyPath") { operations.copyPaths([context.url]) }
+                    Button("folder.copyPath", systemImage: "document.on.document") { operations.copyPaths([context.url]) }
                 }
         }
         if context.allowsStructuralOperations {
-            Button("action.cut") { operations.cutToPasteboard([context.url]) }
+            Button("action.cut", systemImage: "scissors") { operations.cutToPasteboard([context.url]) }
         }
     }
 
@@ -269,7 +269,7 @@ struct FolderTreeContextMenu: View {
     private var trashSection: some View {
         if context.allowsStructuralOperations {
             Divider()
-            Button("folder.moveToTrash", role: .destructive) { operations.moveToTrash([context.url]) } // [FM-04]
+            Button("folder.moveToTrash", systemImage: "trash", role: .destructive) { operations.moveToTrash([context.url]) } // [FM-04]
                 // Finder と同じく ⌥ で「すぐに削除…」に入れ替わる [FM-14]。
                 // 対にしたことで「完全削除はゴミ箱と同じ条件でしか出さない」
                 // （ボリュームのマウントポイントと登録ルートには出さない）が
@@ -277,7 +277,7 @@ struct FolderTreeContextMenu: View {
                 // 無く、`OfflineRegisteredFolderRow` へのフォールバック [SB-05]
                 // すら意味を成さなくなる。
                 .modifierKeyAlternate(.option) {
-                    Button("folder.deletePermanentlyEllipsis", role: .destructive) {
+                    Button("folder.deletePermanentlyEllipsis", systemImage: "trash", role: .destructive) {
                         operations.deletePermanently([context.url])
                     }
                 }
@@ -292,19 +292,19 @@ struct FolderTreeContextMenu: View {
     private var compressionSection: some View {
         if context.allowsStructuralOperations {
             Divider()
-            Menu("folder.compressSubmenu") {
-                Button("folder.compressHere") { operations.compressHere([context.url], into: context.parentURL) } // [AR-10]
+            Menu("folder.compressSubmenu", systemImage: "zipper.page") {
+                Button("folder.compressHere", systemImage: "zipper.page") { operations.compressHere([context.url], into: context.parentURL) } // [AR-10]
                     // Finder と同じく ⌥ で「パスワード付きで圧縮」に入れ替わる。
                     // 既定の圧縮形式が暗号化に対応しているときだけ差し替える
                     // （`FolderOperations.canCompressWithPassword` 参照）。
                     .modifierKeyAlternate(.option) {
                         if operations.canCompressWithPassword {
-                            Button("folder.compressHereWithPassword") {
+                            Button("folder.compressHereWithPassword", systemImage: "zipper.page") {
                                 operations.compressHereWithPassword([context.url], into: context.parentURL)
                             }
                         }
                     }
-                Button("folder.compressEllipsis") { operations.compressWithDialog([context.url], startingIn: context.parentURL) } // [AR-11]
+                Button("folder.compressEllipsis", systemImage: "zipper.page") { operations.compressWithDialog([context.url], startingIn: context.parentURL) } // [AR-11]
             }
         }
     }
@@ -314,13 +314,13 @@ struct FolderTreeContextMenu: View {
     @ViewBuilder
     private var utilitySection: some View {
         Divider()
-        Button("folder.revealInFinder") { operations.revealInFinder([context.url]) } // [FM-09]
-        Button("folder.openInTerminal") { operations.openInTerminal([context.url]) } // [ユーザー要望]
+        Button("folder.revealInFinder", systemImage: "macwindow") { operations.revealInFinder([context.url]) } // [FM-09]
+        Button("folder.openInTerminal", systemImage: "terminal") { operations.openInTerminal([context.url]) } // [ユーザー要望]
         if context.allowsItemOperations {
-            ShareLink("folder.shareEllipsis", items: [context.url])
+            ShareLink(items: [context.url]) { Label("folder.shareEllipsis", systemImage: "square.and.arrow.up") }
         }
         if context.allowsStructuralOperations {
-            Button("folder.createAlias") { operations.createAliases(for: [context.url], in: context.parentURL) }
+            Button("folder.createAlias", systemImage: "square.on.square.dashed") { operations.createAliases(for: [context.url], in: context.parentURL) }
         }
         // 「パス名をコピー」「すぐに削除…」はここに退避していた「その他」
         // サブメニューではなく、Finder と同じくそれぞれ「コピー」「ゴミ箱に
@@ -333,7 +333,8 @@ struct FolderTreeContextMenu: View {
     private var lockSection: some View {
         if context.allowsStructuralOperations {
             Divider()
-            Button(context.node.isLocked ? "folder.unlock" : "folder.lock") {
+            Button(context.node.isLocked ? "folder.unlock" : "folder.lock",
+                   systemImage: context.node.isLocked ? "lock.open" : "lock") {
                 operations.setLocked([context.url], locked: !context.node.isLocked)
             }
         }
@@ -345,8 +346,8 @@ struct FolderTreeContextMenu: View {
     private var registrationSection: some View {
         if let registeredFolder = context.registeredFolder {
             Divider()
-            Button("folderTree.renameDisplayNameEllipsis") { actions.beginRenameDisplayName(registeredFolder) } // [RG-05]
-            Button("folderTree.unregister") { actions.unregister(registeredFolder) } // [RG-06 の簡易版]
+            Button("folderTree.renameDisplayNameEllipsis", systemImage: "text.cursor") { actions.beginRenameDisplayName(registeredFolder) } // [RG-05]
+            Button("folderTree.unregister", systemImage: "minus.circle") { actions.unregister(registeredFolder) } // [RG-06 の簡易版]
         }
     }
 }
