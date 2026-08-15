@@ -1,12 +1,16 @@
 import Foundation
-import QooKit
 
 /// 一覧のキーボード操作のうち、**表示モードに依らない部分**をまとめる。
+///
+/// **`QooKit` に置いている**（UI からは呼ぶだけ）。アプリ層にはテスト
+/// ターゲットが無く、置いたままでは端の扱いのような細かい規則を固定できない
+/// ため、純粋な計算だけをここへ出している [A-01 に反しない — Foundation の
+/// みに依存する]。
 ///
 /// リスト表示（`Table`）は矢印キーでの選択移動を AppKit から無償で受け取るが、
 /// アイコン表示（`LazyVGrid`）には何も無い。同じ計算を 2 か所に書くと片方だけ
 /// 直されて挙動がずれるため、純粋な関数としてここへ出す（テストもしやすい）。
-enum ListKeyboardNavigation {
+public enum ListKeyboardNavigation {
     // MARK: - type-select（先頭文字で項目へ飛ぶ）
 
     /// 打鍵をためておく箱。
@@ -15,16 +19,18 @@ enum ListKeyboardNavigation {
     /// リセットされる**（"re" と打てば `readme` へ飛び、間を置いて "s" と
     /// 打てば `sample` へ飛ぶ）。1 文字ずつ独立に扱うと、名前の頭文字が
     /// 同じファイルが並ぶフォルダでまったく使い物にならない。
-    struct TypeSelectBuffer {
+    public struct TypeSelectBuffer {
         /// 打鍵が途切れたとみなすまでの時間。macOS の既定の type-select と
         /// 同じ感覚になるよう 1 秒にしている。
-        static let resetInterval: Duration = .seconds(1)
+        public static let resetInterval: Duration = .seconds(1)
 
         private var text = ""
         private var lastKeystrokeAt: ContinuousClock.Instant?
 
         /// 1 文字受け取り、いま検索すべき文字列を返す。
-        mutating func append(_ character: Character) -> String {
+        public init() {}
+
+        public mutating func append(_ character: Character) -> String {
             let now = ContinuousClock.now
             if let last = lastKeystrokeAt, now - last > Self.resetInterval { text = "" }
             lastKeystrokeAt = now
@@ -32,7 +38,7 @@ enum ListKeyboardNavigation {
             return text
         }
 
-        mutating func reset() {
+        public mutating func reset() {
             text = ""
             lastKeystrokeAt = nil
         }
@@ -45,7 +51,7 @@ enum ListKeyboardNavigation {
     /// （Finder と同じ）。ただし打鍵が積み上がっている間（`prefix` が 2 文字
     /// 以上）は先頭から探す — "sa" と打った時点で `sample` に居るのに
     /// `sample2` へ飛んでしまうと、絞り込んでいるつもりの操作と食い違う。
-    static func typeSelectTarget<Item>(
+    public static func typeSelectTarget<Item>(
         in items: [Item],
         prefix: String,
         currentIndex: Int?,
@@ -63,7 +69,7 @@ enum ListKeyboardNavigation {
 
     // MARK: - 格子上の移動（アイコン表示）
 
-    enum Direction {
+    public enum Direction {
         case up, down, left, right
     }
 
@@ -73,7 +79,7 @@ enum ListKeyboardNavigation {
     /// 同じで、← を押し続けても勝手に前の行の末尾へ回り込まない。ただし
     /// ↓ で最終行に降りるとき、その列に項目が無ければ**最後の項目**へ寄せる
     /// （Finder も同じ。降りられないと最下段の右側に届かなくなる）。
-    static func gridTarget(from index: Int, direction: Direction, count: Int, columns: Int) -> Int? {
+    public static func gridTarget(from index: Int, direction: Direction, count: Int, columns: Int) -> Int? {
         guard count > 0, columns > 0, index >= 0, index < count else { return nil }
         switch direction {
         case .left:
