@@ -31,18 +31,41 @@ struct ProgressTracker {
     /// 過少な見積もりで誤って断らないため）。
     let requiredBytes: Int64?
 
+    /// 走査中に見つけた、いちばん深い項目の相対パス。**パス長の事前検査
+    /// [`FileOperationError.pathTooLong`] がこれを使う**。
+    ///
+    /// 専用の走査は増やさない — サイズを数えるためにどのみち全体を歩くので、
+    /// そのついでに拾う。クローンで済む経路（走査しない）では `nil`。
+    let deepestRelativePath: (path: String, item: URL)?
+
+    /// 走査中に見つけた、いちばん大きいファイル。**ファイルサイズ上限の
+    /// 事前検査 [`FileOperationError.fileTooLargeForDestination`] がこれを使う**。
+    /// 深さと同じく、サイズを数えるついでに拾うので追加の走査は要らない。
+    let largestFile: (size: Int64, item: URL)?
+
+    /// 走査中に見つけた、いちばん長い**名前**（パスではなく 1 成分）。
+    /// **名前の長さの事前検査 [`NameLengthLimit`] がこれを使う**。
+    /// 深さ・大きさと同じく、走査のついでに拾う。
+    let longestName: (name: String, item: URL)?
+
     init(reporter: ProgressReporter?, items: [URL], destination: URL) {
         self.reporter = reporter
         if Self.willBeInstant(items: items, destination: destination) {
             requiredBytes = nil
+            deepestRelativePath = nil
+            largestFile = nil
+            longestName = nil
         } else {
             // **報告先の有無に関わらず数える。** 以前は進捗表示が要らない
             // 呼び出しでは数えていなかったが、空き容量の事前検査もこの値を
             // 使うようになったため、進捗の都合で検査が抜けてはならない。
             // 走査するのはクローンできない経路だけで、その経路は元々
             // 実コピーの時間が支配的なので、走査の上乗せは相対的に小さい。
-            let measured = Self.totalSize(of: items)
-            requiredBytes = measured > 0 ? measured : nil
+            let measured = Self.walk(items)
+            requiredBytes = measured.bytes > 0 ? measured.bytes : nil
+            deepestRelativePath = measured.deepest
+            largestFile = measured.largest
+            longestName = measured.longestName
         }
         let totalBytes = reporter == nil ? 0 : (requiredBytes ?? 0)
         self.progress = OperationProgress(totalBytes: totalBytes, totalItems: items.count)
@@ -91,30 +114,75 @@ struct ProgressTracker {
         }
     }
 
-    /// 対象の合計バイト数。フォルダは再帰的に数える。
+    /// 対象を 1 度だけ歩いて、合計バイト数と「いちばん深い相対パス」の
+    /// 両方を拾う。**同じ木を 2 度歩かないため 1 つにまとめてある**
+    /// （5 万件のライブラリでは走査自体が無視できない）。
     ///
     /// 中断されたら数えるのをやめて 0 を返す（＝不定進捗になる）。数えている
     /// 最中にキャンセルされた場合、そこで待たせ続ける方が害が大きい。
-    private static func totalSize(of items: [URL]) -> Int64 {
+    private static func walk(
+        _ items: [URL]
+    ) -> (
+        bytes: Int64,
+        deepest: (path: String, item: URL)?,
+        largest: (size: Int64, item: URL)?,
+        longestName: (name: String, item: URL)?
+    ) {
         var total: Int64 = 0
+        var deepest: (path: String, item: URL)?
+        var largest: (size: Int64, item: URL)?
+        var longestName: (name: String, item: URL)?
+        func noteName(_ item: URL) {
+            let name = item.lastPathComponent
+            // どの単位で数えるかは書き込み先次第なので、ここでは素の
+            // バイト数がいちばん大きいものを候補にしておく（バイト単位の
+            // 形式でこそ問題になるため）。
+            if name.utf8.count > (longestName?.name.utf8.count ?? -1) {
+                longestName = (name, item)
+            }
+        }
+        func noteSize(_ size: Int64, _ item: URL) {
+            if size > (largest?.size ?? -1) { largest = (size, item) }
+        }
+        func note(_ relativePath: String, _ item: URL) {
+            if relativePath.utf8.count > (deepest?.path.utf8.count ?? -1) {
+                deepest = (relativePath, item)
+            }
+        }
         for item in items {
-            if Task.isCancelled { return 0 }
+            if Task.isCancelled { return (0, nil, nil, nil) }
+            let name = item.lastPathComponent
+            note(name, item)
+            noteName(item)
             let values = try? item.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey, .isSymbolicLinkKey])
             if values?.isSymbolicLink == true { continue } // リンク自体は運ぶだけ [SL-01]
             if values?.isDirectory == true {
                 guard let enumerator = FileManager.default.enumerator(
                     at: item, includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey], options: []
                 ) else { continue }
+                let rootPath = item.standardizedFileURL.path
                 while let child = enumerator.nextObject() as? URL {
-                    if Task.isCancelled { return 0 }
+                    if Task.isCancelled { return (0, nil, nil, nil) }
+                    noteName(child)
+                    // 運んだあとの相対パスは「項目名 + 起点からの相対パス」。
+                    // `NSDirectoryEnumerator` は相対パスを公開していないので
+                    // 起点のパスを前から削って求める。
+                    let childPath = child.standardizedFileURL.path
+                    if childPath.hasPrefix(rootPath + "/") {
+                        note(name + "/" + String(childPath.dropFirst(rootPath.count + 1)), child)
+                    }
                     let childValues = try? child.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
                     guard childValues?.isRegularFile == true else { continue }
-                    total += Int64(childValues?.fileSize ?? 0)
+                    let size = Int64(childValues?.fileSize ?? 0)
+                    total += size
+                    noteSize(size, child)
                 }
             } else {
-                total += Int64(values?.fileSize ?? 0)
+                let size = Int64(values?.fileSize ?? 0)
+                total += size
+                noteSize(size, item)
             }
         }
-        return total
+        return (total, deepest, largest, longestName)
     }
 }

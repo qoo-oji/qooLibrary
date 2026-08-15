@@ -30,6 +30,14 @@ public struct VolumeEligibilityChecker: VolumeEligibilityChecking {
 
     public func evaluate(_ url: URL) async throws -> VolumeEligibility {
         let cap = try capability(of: url)
+        // **読み取り専用は先に断る**［監査で発見］。`isReadOnly` は以前から
+        // 計算されていたのに誰も読んでおらず、読み取り専用ボリュームを登録
+        // しようとすると下の実測用ファイルの作成が失敗して
+        // `probeSetupFailed`（当時は文言も無し）になっていた。原因が
+        // 「読み取り専用だから」だと分かる形で、先に止める。
+        guard !cap.isReadOnly else {
+            throw VolumeEligibilityError.readOnlyVolume(fileSystem: cap.fileSystemName)
+        }
         guard cap.supportsPersistentIDs else {
             return .rejected(reason: .noPersistentFileID(fileSystem: cap.fileSystemName))
         }
@@ -46,7 +54,9 @@ public struct VolumeEligibilityChecker: VolumeEligibilityChecking {
         }
 
         guard fm.createFile(atPath: tmpA.path, contents: nil) else {
-            throw VolumeEligibilityError.probeSetupFailed
+            // `createFile` は失敗を Bool でしか返さないため、直後の `errno` を
+            // 読んで理由（権限・容量・読み取り専用など）を残す [ER-03]。
+            throw VolumeEligibilityError.probeSetupFailed(errnoCode: errno)
         }
         let idA = probeIdentity(of: tmpA)
         try fm.moveItem(at: tmpA, to: tmpB)

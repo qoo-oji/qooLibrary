@@ -110,8 +110,16 @@ final class FolderOperations {
                 if showsProgress { endProgress() }
             }
             var failed: (any Error)?
+            var partial: CommandResult?
             do {
-                _ = try await CommandStack.shared.run(command)
+                let result = try await CommandStack.shared.run(command)
+                // **一部だけ終わった場合も必ず知らせる** [ER-12][ER-14]。
+                // 例外は投げられないので、ここで拾わないと「エラーも出ずに
+                // 一部のファイルだけが動いた」状態になる。提示は進捗表示を
+                // 片付けたあとで行う（下記）。
+                if case .partial(_, let failures) = result, !failures.isEmpty {
+                    partial = result
+                }
                 onSuccess()
             } catch is CancellationError {
                 // ユーザー自身が止めたので、失敗として提示しない。
@@ -131,6 +139,12 @@ final class FolderOperations {
                 await NotificationRouter.shared.presentError(
                     failed, whatHappened: String(localized: failure, locale: locale)
                 )
+            } else if case let .partial(succeeded, failures)? = partial {
+                await NotificationRouter.shared.present(NotificationItem(
+                    category: .warning, severity: .sheet,
+                    title: String(localized: "error.partiallyCompleted", locale: locale),
+                    body: Self.partialSummary(command: command, succeeded: succeeded, failed: failures)
+                ))
             }
         }
         if let busyMessageKey {
@@ -142,6 +156,28 @@ final class FolderOperations {
                 cancel: { task.cancel() }, pauseToken: pauseToken
             )
         }
+    }
+
+    /// 部分的にしか終わらなかったときの本文 [ER-14]。何件が済み、何が残り、
+    /// なぜ止まったのかを並べる。件数が多いときは先頭数件に絞る
+    /// （全部並べるとダイアログが画面外まで伸びる）。
+    private static func partialSummary(
+        command: any Command, succeeded: Int, failed: [FailedItem]
+    ) -> String {
+        let locale = AppLanguage.effectiveLocale
+        var lines = [command.displayName, ""]
+        lines.append(String(
+            format: String(localized: "error.partialCounts", locale: locale), succeeded, failed.count
+        ))
+        for item in failed.prefix(5) {
+            lines.append("• \(item.item): \(item.reason)")
+        }
+        if failed.count > 5 {
+            lines.append(String(
+                format: String(localized: "error.partialMore", locale: locale), failed.count - 5
+            ))
+        }
+        return lines.joined(separator: "\n")
     }
 
     /// コピー・移動に渡す共通の `OpOptions` [FM-11][FM-12][UI-09]。
@@ -481,17 +517,46 @@ final class FolderOperations {
         ))
     }
 
-    /// [FM-05] 名前を変更。名前が空、または変わっていなければ何もしない
+    /// [FM-05] 名前を変更。名前が変わっていなければ何もしない
     /// （Undo スタックへの無意味な積み増しを避ける）。
+    ///
+    /// 使えない名前（`/` を含む等）は**実行せず理由を伝える**［監査で発見。
+    /// 以前はそのまま実行し、`/` がパス区切りとして解釈されて別フォルダへの
+    /// 移動になっていた＝ユーザーから見ればファイルが消えた］。
     func rename(_ url: URL, to newName: String, onSuccess: @escaping @MainActor () -> Void = {}) {
-        guard !newName.isEmpty, newName != url.lastPathComponent else { return }
-        run(RenameCommand(item: url, newName: newName), failure: "error.renameFailed", onSuccess: onSuccess)
+        guard !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard let validName = validatedName(newName, whatHappened: "error.renameFailed") else { return }
+        guard validName != url.lastPathComponent else { return }
+        run(RenameCommand(item: url, newName: validName), failure: "error.renameFailed", onSuccess: onSuccess)
     }
 
     /// [FM-01] `parent` の中に新規フォルダを作る。
+    ///
+    /// **URL を組み立てる前に名前を検証する**［監査で発見］。`/` を含む名前を
+    /// そのまま `appendingPathComponent` に渡すとパス区切りとして解釈され、
+    /// 「1 つのフォルダ」のつもりが入れ子のフォルダ 2 つになる（実測で再現）。
+    /// 組み立てたあとでは元の入力が分からず、正確な理由を伝えられない。
     func createFolder(named name: String, in parent: URL, onSuccess: @escaping @MainActor () -> Void = {}) {
-        guard !name.isEmpty else { return }
-        run(CreateFolderCommand(url: parent.appendingPathComponent(name)), failure: "error.createFolderFailed", onSuccess: onSuccess)
+        guard let validName = validatedName(name, whatHappened: "error.createFolderFailed") else { return }
+        run(CreateFolderCommand(url: parent.appendingPathComponent(validName)), failure: "error.createFolderFailed", onSuccess: onSuccess)
+    }
+
+    /// 名前を検証し、使えなければ理由を提示して `nil` を返す。
+    ///
+    /// `FileOperationService` 側でも同じ検証をしているが、あちらは URL を
+    /// 受け取る段階なので「ユーザーが何と入力したか」を復元できない。
+    /// 正確な文言を出すために入口でも見る（二重だが、片方だけでは足りない）。
+    private func validatedName(_ raw: String, whatHappened: String.LocalizationValue) -> String? {
+        do {
+            return try FileNameValidation.sanitized(raw)
+        } catch {
+            Task {
+                await NotificationRouter.shared.presentError(
+                    error, whatHappened: String(localized: whatHappened, locale: locale)
+                )
+            }
+            return nil
+        }
     }
 
     /// Finder の「エイリアスを作成」。書き込み先は呼び出し側が決める。

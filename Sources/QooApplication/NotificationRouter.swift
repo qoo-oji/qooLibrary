@@ -86,8 +86,31 @@ public final class NotificationRouter {
             category: category,
             severity: severity,
             title: whatHappened,
-            body: error.localizedDescription
+            body: Self.body(for: error)
         ))
+    }
+
+    /// 素の `Error` から「なぜ起きたか」「次に何ができるか」を組み立てる [ER-03]。
+    ///
+    /// **`localizedDescription` だけを見ていた**［監査で発見］。Foundation の
+    /// ファイル系エラーは `localizedRecoverySuggestion` に対処法を持っている
+    /// ことがあり（実測: 読み取り専用ボリュームへの書き込みで
+    /// 「Try saving the file to another volume.」）、それを毎回捨てていた。
+    /// ER-03 の三要素のうち三つ目が、手元にあるのに表示されていなかったことになる。
+    ///
+    /// `localizedFailureReason` は `localizedDescription` に含まれていることが
+    /// 多いので、重複しないときだけ足す。
+    private static func body(for error: Error) -> String {
+        let nsError = error as NSError
+        var parts = [error.localizedDescription]
+        if let reason = nsError.localizedFailureReason,
+           !error.localizedDescription.contains(reason) {
+            parts.append(reason)
+        }
+        if let suggestion = nsError.localizedRecoverySuggestion {
+            parts.append(suggestion)
+        }
+        return parts.joined(separator: "\n")
     }
 
     private func presentModally(_ item: NotificationItem) async -> RecoveryAction? {

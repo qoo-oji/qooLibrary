@@ -54,6 +54,18 @@ public actor FileOperationService {
         // Finder と同じく既存の同名項目との衝突をエラーとして扱うべきのため、
         // 事前に明示チェックする [実機検証で発見: 同名フォルダを重複作成しても
         // 何も起きなかった]。
+        // 名前の妥当性は URL を組み立てる前に呼び出し側でも見ているが、
+        // ここでも徹底する（`FileOperationService` を直に使う経路が増えても
+        // 「`/` を含む名前で入れ子のフォルダが 2 つできる」事故が起きないよう
+        // にするため。実測で再現済み）。
+        _ = try Self.validated(url.lastPathComponent)
+        let parent = url.deletingLastPathComponent()
+        guard FileManager.default.fileExists(atPath: parent.path) else {
+            throw FileOperationError.operationFailed(
+                "「\(parent.lastPathComponent)」が見つからないため、この中にフォルダを作成できません。"
+            )
+        }
+        try Self.checkDestinationIsWritable(parent)
         guard !FileManager.default.fileExists(atPath: url.path) else {
             throw FileOperationError.operationFailed("「\(url.lastPathComponent)」という名前の項目はすでに存在します。")
         }
@@ -86,7 +98,13 @@ public actor FileOperationService {
     ///
     /// 中断された場合は**元を消さない** — 運びきれていないのに消したら
     /// データを失う。
-    private static func moveItem(
+    /// - Note: `internal`（`private` ではない）にしてあるのは、**処理中に元が
+    ///   書き換えられた場合に元を消さない**ことをテストから確かめるため。
+    ///   `onBytesCopied` はコピー中に間引きなしで呼ばれる唯一の掛かりで、
+    ///   ここから元を書き換えれば「処理中の書き換え」を決定的に再現できる
+    ///   （進捗の報告は 100ms 間引きのため、速いコピーでは完了後にしか出ず
+    ///   再現に使えないことを実測で確認した）。
+    static func moveItem(
         from source: URL, to target: URL, pauseToken: PauseToken? = nil,
         onBytesCopied: @escaping (Int64) -> Void
     ) throws -> FileCopyEngine.Outcome {
@@ -101,15 +119,37 @@ public actor FileOperationService {
         if Darwin.renamex_np(source.path, target.path, UInt32(RENAME_EXCL)) == 0 {
             return .completed(bytes: 0)
         }
-        guard errno == EXDEV else {
-            throw FileOperationError.operationFailed(
-                "移動に失敗しました（\(String(cString: strerror(errno)))）: \(source.lastPathComponent)"
+        let renameErrno = errno
+        guard renameErrno == EXDEV else {
+            // **`copyFailed` に寄せる** [ER-03]。以前はここだけ `strerror` の
+            // 英語（「Read-only file system」等）を素で埋め込んでおり、
+            // コピーなら出るはずの「空き容量が足りません」「書き込む権限が
+            // ありません」といった説明も対処法も出なかった。同じ errno なら
+            // 同じ説明になるよう、翻訳は `PosixFailure` に一本化してある。
+            throw FileOperationError.copyFailed(
+                source: source, destination: target, errnoCode: renameErrno
             )
         }
+        // **運ぶ前後で元ファイルが変わっていないことを確かめてから消す**
+        //［監査で発見、実測で再現］。
+        //
+        // 他のアプリが書き込み中のファイル（ダウンロード中、書き出し中の動画
+        // など）をコピーすると、`copyfile` は**その時点の姿を写して成功を
+        // 返す**。実測では 72.3MB を写したあと元は 84.9MB まで伸びた。
+        // 移動はこのあと元を消すので、**書き足された 12.6MB は永久に失われる**。
+        // `flock` は掛かっていないことも実測済みで、排他では検出できない。
+        //
+        // 変わっていたら**元を消さない**。写した内容は最新ではないので、
+        // 中途半端なコピーの方を片付けて失敗として返す。
+        let before = try? FileMetadata.stamp(of: source)
         let outcome = try FileCopyEngine.copy(
             from: source, to: target, pauseToken: pauseToken, onBytesCopied: onBytesCopied
         )
         guard case .completed = outcome else { return outcome }
+        if let before, let after = try? FileMetadata.stamp(of: source), before != after {
+            try? FileManager.default.removeItem(at: target)
+            throw FileOperationError.sourceChangedDuringOperation(source)
+        }
         try FileManager.default.removeItem(at: source)
         return outcome
     }
@@ -131,13 +171,37 @@ public actor FileOperationService {
         }
     }
 
+    /// - Parameter newName: **`appendingPathComponent` に渡す前に検証する。**
+    ///   `/` を含んだままだとパス区切りとして解釈され、リネームのつもりが
+    ///   **別フォルダへの移動**になる（実測で再現。ユーザーから見ると
+    ///   「名前を変えたはずのファイルが一覧から消える」）。
     @discardableResult
     public func rename(_ item: URL, to newName: String, options: OpOptions = .init()) async throws -> OpReceipt {
-        let target = item.deletingLastPathComponent().appendingPathComponent(newName)
+        let validName = try Self.validated(newName)
+        let target = item.deletingLastPathComponent().appendingPathComponent(validName)
         defer { announce([item, target]) }
-        guard let resolved = try await resolveDestination(item, target, options: options) else {
+
+        // **書き換え先が「その項目自身」なら衝突ではない**［監査で発見］。
+        //
+        // 大文字小文字を区別しないボリューム（APFS/HFS+/exFAT/FAT の既定）では
+        // `comic.cbz` → `Comic.cbz` の改名で `fileExists(Comic.cbz)` が **true**
+        // になる。相手は自分自身なのに衝突と判定され、
+        // 「『Comic.cbz』がすでに存在するため、処理を続けられませんでした」という
+        // ユーザーには意味の分からない文言で弾かれていた。Finder では普通にできる
+        // 操作で、`FileManager.moveItem` 自体も通す（実測で確認）。
+        // 正規化だけを変える改名（NFD → NFC）も全形式で同じ事情になる。
+        //
+        // 同一実体かどうかは inode（`FileIdentity`）で判定する。実測では
+        // 同一実体どうしは一致し、別実体とは一致しないことを確認済み。
+        let resolved: ResolvedDestination
+        if Self.refersToSameEntry(item, target) {
+            resolved = ResolvedDestination(target: target, backupOfReplaced: nil)
+        } else if let decided = try await resolveDestination(item, target, options: options) {
+            resolved = decided
+        } else {
             throw FileOperationError.operationFailed("rename of \(item.path) skipped by conflict policy")
         }
+        try Self.checkDestinationIsWritable(target.deletingLastPathComponent())
         let before = try? identity(of: item)
         try withReplaceBackupCleanup(resolved) {
             try FileManager.default.moveItem(at: item, to: resolved.target) // [FM-05]
@@ -374,6 +438,138 @@ public actor FileOperationService {
         return results
     }
 
+    // MARK: - 事前検査 [ER-03]
+    //
+    // **「やってみて失敗する」より「始める前に断る」**。ここに集めた検査は
+    // すべて、実行しなくても結果が分かるもの。1 バイトも書かずに済むうえ、
+    // 失敗の理由も正確に言える（実行してから返る `errno` は、原因が
+    // 複数考えられる場面では曖昧になる）。
+
+    /// ユーザーが入力した名前を検証する。使えなければ理由付きで投げる。
+    private static func validated(_ name: String) throws -> String {
+        do {
+            return try FileNameValidation.sanitized(name)
+        } catch let failure as FileNameValidation.Failure {
+            throw FileOperationError.invalidName(name, reason: failure)
+        }
+    }
+
+    /// 2 つのパスが**同じ実体**を指しているか。
+    ///
+    /// 「名前は違って見えるのに同じファイル」は、大文字小文字を区別しない
+    /// ボリューム（`comic.cbz` と `Comic.cbz`）と、Unicode 正規化の違い
+    /// （NFC の `が` と NFD の `が`）で起きる。**後者は大文字小文字を区別する
+    /// ボリュームでも起きる**（実測で APFS 大文字小文字区別版・UDF でも同一視
+    /// されることを確認）。
+    ///
+    /// 名前の文字列比較では判定できない（どの規則で同一視されるかは
+    /// ボリューム次第）ので、`FileIdentity`（volumeUUID + inode）で見る。
+    /// どちらかが存在しなければ当然「別」。
+    private static func refersToSameEntry(_ a: URL, _ b: URL) -> Bool {
+        guard let idA = try? FileMetadata.identity(of: a),
+              let idB = try? FileMetadata.identity(of: b)
+        else { return false }
+        return idA == idB
+    }
+
+    /// 1 ファイルが書き込み先のファイルシステムの上限に収まること。
+    ///
+    /// **FAT32 の上限は 4GB 弱**（実測: `volumeMaximumFileSize` が
+    /// 4.29 GB を返し、それを超える大きさへ伸ばそうとすると `EFBIG` で
+    /// 拒否される）。動画ファイルでは普通に超えるため、USB メモリへ運ぼうと
+    /// して 4GB 書いたところで失敗する、という無駄が現実に起こる。
+    ///
+    /// 上限は OS が答えるので推測は要らない。答えない形式では検査を飛ばす
+    /// （`VolumeCapacity` と同じ判断 — 分からないときに断ると、正当な操作が
+    /// できなくなる）。
+    ///
+    /// 同一ボリューム内の移動・クローンではそもそも呼ばれない
+    /// （`ProgressTracker` が走査しないため）。同じボリュームに既に在る
+    /// ファイルは、定義上その上限に収まっている。
+    private static func checkFileSizeFits(_ size: Int64, item: URL, destination: URL) throws {
+        guard let limit = (try? destination.resourceValues(forKeys: [.volumeMaximumFileSizeKey]))?
+            .volumeMaximumFileSize, limit > 0
+        else { return }
+        guard size > Int64(limit) else { return }
+        throw FileOperationError.fileTooLargeForDestination(
+            item: item, size: size, limit: Int64(limit), destination: destination
+        )
+    }
+
+    /// 名前が書き込み先の上限に収まること。
+    ///
+    /// **入口の検査（`FileNameValidation`）だけでは足りない。** あちらは
+    /// いちばん緩い規則（NFD 後 255 単位＝APFS/HFS+）を使っており、それより
+    /// 短い上限を持つ書き込み先を知らない。実測では **SMB は UTF-8 で
+    /// 255 バイト**なので、日本語 86 文字以上の名前は「Mac 内では作れるのに
+    /// 書き込み先では作れない」。同人誌・コミックのファイル名では十分あり得る
+    /// 長さで、一括コピーの途中で止まる原因になる。
+    ///
+    /// 規則を持たない形式では何もしない（`NameLengthLimit` の判断）。
+    private static func checkNameFits(_ name: String, item: URL, destination: URL) throws {
+        guard let rule = NameLengthLimit.rule(forVolumeAt: destination) else { return }
+        guard !rule.accepts(name) else { return }
+        throw FileOperationError.nameTooLongForDestination(
+            name: name, item: item,
+            length: rule.length(of: name), limit: rule.maximum,
+            unitIsBytes: rule.unit == .bytes
+        )
+    }
+
+    /// 書き込み先が読み取り専用ボリューム上でないこと。
+    ///
+    /// 実測では、読み取り専用ボリュームへの書き込みは `EROFS` になり、
+    /// Foundation 経由なら「ボリュームは読み取り専用です」と説明も付く。
+    /// それでも**先に断る**のは、一括処理で 100 件目まで進んでから同じ
+    /// エラーを返すのではなく、1 件目に触る前に止めたいため。
+    private static func checkDestinationIsWritable(_ destination: URL) throws {
+        let values = try? destination.resourceValues(forKeys: [.volumeIsReadOnlyKey])
+        if values?.volumeIsReadOnly == true {
+            throw FileOperationError.destinationIsReadOnly(destination)
+        }
+    }
+
+    /// 書き込み先が、運ぼうとしている項目自身またはその配下でないこと。
+    ///
+    /// **実測**: 同一ボリュームの移動は `rename(2)` が `EINVAL` で止めてくれるが、
+    /// **コピーは止まらない** — `copyfile(3)` が 332 階層まで自己増殖し、
+    /// ユーザーのフォルダの中にゴミの木を作ってから `ENAMETOOLONG` で
+    /// 失敗した。Finder もこの操作は実行前に断る。
+    private static func checkDestinationIsNotInsideSource(_ item: URL, _ destination: URL) throws {
+        let source = item.standardizedFileURL.resolvingSymlinksInPath()
+        let target = destination.standardizedFileURL.resolvingSymlinksInPath()
+        guard (try? source.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true else { return }
+        let sourcePath = source.path
+        let targetPath = target.path
+        if targetPath == sourcePath || targetPath.hasPrefix(sourcePath + "/") {
+            throw FileOperationError.destinationInsideSource(source: item, destination: destination)
+        }
+    }
+
+    /// 出来上がるパスが、そのボリュームで許される長さに収まること。
+    ///
+    /// **実測**: macOS がマウントし得る形式すべて（APFS / HFS+ / exFAT /
+    /// FAT12・16・32 / UDF / SMB）で、いずれも 1019〜1023 バイトで
+    /// `ENAMETOOLONG` になった。ファイルシステム固有ではなく OS の
+    /// `PATH_MAX`（1024）が効いている。
+    ///
+    /// - Parameter limit: **呼び出し側が 1 回だけ求めて渡す**［ユーザーの
+    ///   「SMB は常時接続できるわけではない」という指摘を受けて修正］。
+    ///   上限の取得は `pathconf`＝書き込み先への問い合わせで、ネットワーク
+    ///   ボリュームでは 1 回ごとに往復が発生し得る。項目ごとに呼ぶと
+    ///   1,000 件の一括処理で 1,000 回問い合わせることになり、接続が
+    ///   不安定なときに待ち時間を桁違いに増やす。上限はボリュームの性質で
+    ///   項目には依らないので、1 回で足りる。
+    private static func checkResultingPathFits(
+        destination: URL, relativePath: String, item: URL, limit: Int
+    ) throws {
+        let resulting = PathLimits.resultingPathBytes(destination: destination, relativePath: relativePath)
+        guard resulting > limit else { return }
+        throw FileOperationError.pathTooLong(
+            item: item, destination: destination, resultingBytes: resulting, limitBytes: limit
+        )
+    }
+
     // MARK: - 内部処理
 
     private func transfer(
@@ -386,11 +582,44 @@ public actor FileOperationService {
         // 移動元の各項目（親フォルダの一覧が変わる）と、書き込み先フォルダ
         // （そのフォルダの一覧が変わる）の両方を伝える。
         defer { announce(items + [destination]) }
+
+        // **1 バイトも書く前に、分かる失敗はすべてここで断る** [ER-03]。
+        // 一括処理の途中で失敗すると、成功した分の `OpReceipt` が破棄されて
+        // Undo にも履歴にも残らない（既知の課題）ため、そもそも始めないのが
+        // いちばん安全。
+        try Self.checkDestinationIsWritable(destination)
+        // 書き込み先への問い合わせは**ここで 1 回だけ**。ネットワーク
+        // ボリュームでは 1 回ごとに往復が発生し得るため、項目ごとに尋ねない
+        // ［ユーザー指摘: SMB は常時接続できるわけではない］。
+        let pathLimit = PathLimits.maxPathBytes(at: destination)
+        for item in items {
+            try Self.checkDestinationIsNotInsideSource(item, destination)
+            try Self.checkResultingPathFits(
+                destination: destination, relativePath: item.lastPathComponent,
+                item: item, limit: pathLimit
+            )
+        }
+
         var tracker = ProgressTracker(
             reporter: options.progress,
             items: items,
             destination: destination
         )
+        // 走査済みなら、いちばん深い項目まで含めて収まるか確かめる。
+        // 走査していない場合（クローンで済む経路）は追加の走査をしてまでは
+        // 見ない — その経路は同一ボリューム内で階層の深さが変わらないため。
+        if let deepest = tracker.deepestRelativePath {
+            try Self.checkResultingPathFits(
+                destination: destination, relativePath: deepest.path,
+                item: deepest.item, limit: pathLimit
+            )
+        }
+        if let largest = tracker.largestFile {
+            try Self.checkFileSizeFits(largest.size, item: largest.item, destination: destination)
+        }
+        if let longest = tracker.longestName {
+            try Self.checkNameFits(longest.name, item: longest.item, destination: destination)
+        }
         // **足りないと分かっているなら、1 バイトも書かずに断る** [ER-03]。
         // 以前はそのまま書き始め、途中で `ENOSPC` になって「エラー2」とだけ
         // 表示していた（実機で 4GB を空き 2.8GB のボリュームへコピーして発覚。
@@ -398,7 +627,13 @@ public actor FileOperationService {
         // 開始前に確かめて断る。`SecureExtractor` の [EX-23] と同じ考え方。
         if let required = tracker.requiredBytes,
            let available = VolumeCapacity.available(at: destination) {
-            if available < required + AppLimits.FileOperations.freeSpaceMargin {
+            // 余裕分はボリュームの大きさに応じて縮める（`VolumeCapacity.margin`）。
+            // 固定 64MB のままだと、空きが 64MB を下回るボリュームで
+            // どんな小さなコピーも拒否してしまう。
+            let margin = VolumeCapacity.margin(
+                requested: AppLimits.FileOperations.freeSpaceMargin, at: destination
+            )
+            if available < required + margin {
                 Log.fileOps.error(
                     "\(kind.logLabel) を開始前に中止: 空き容量不足（必要 \(required) / 空き \(available)）→ \(Log.path(destination))"
                 )
@@ -425,6 +660,11 @@ public actor FileOperationService {
                 continue // [ConflictPolicy.skip]
             }
             let before = try? identity(of: item)
+            // 運ぶ前の姿を控える。運び終えたあとに元が変わっていたら、
+            // 写した内容は最新ではない（`moveItem` のコメント参照）。
+            // 移動は `moveItem` の中で同じことを確かめてから元を消すので、
+            // ここで効くのは主にコピー。
+            let stampBefore = try? FileMetadata.stamp(of: item)
             var cancelled = false
             do {
                 // 中断は「成功しなかった」として扱う — `.replace` の退避を
@@ -434,6 +674,19 @@ public actor FileOperationService {
                     return false
                 }) {
                     try perform(item, resolved.target) { bytes in tracker.addBytes(bytes) }
+                }
+                // **書き込み中のファイルを写していないか確かめる**［実測で確認］。
+                // 他アプリが書き足している最中のファイルをコピーすると、
+                // `copyfile` はその時点の姿を写して**成功を返す**。黙って
+                // 中途半端なコピーを残すと、ユーザーは完全な控えを取ったと
+                // 思い込む（そのあと元を消せばデータを失う）。
+                // 元が残っている場合だけ比べる（移動では既に消えている）。
+                if case .completed = outcome,
+                   let stampBefore,
+                   let stampAfter = try? FileMetadata.stamp(of: item),
+                   stampBefore != stampAfter {
+                    try? FileManager.default.removeItem(at: resolved.target)
+                    throw FileOperationError.sourceChangedDuringOperation(item)
                 }
                 if case .cancelled = outcome {
                     cancelled = true
@@ -449,19 +702,21 @@ public actor FileOperationService {
                     // `.replace` で既存を退避している場合は
                     // `restoreReplacedItem` が消して元へ戻すので触らない。
                     if resolved.backupOfReplaced == nil {
-                        try? FileManager.default.removeItem(at: resolved.target)
+                        Self.removePartialWrite(at: resolved.target)
                     }
                 }
             } catch {
-                // **どの項目で止まったか**を必ず残す [LG2-01]。一括処理の
-                // 途中で失敗すると、それまでに成功した分の `OpReceipt` は
-                // 破棄されて Undo にも操作履歴にも残らない（フェーズ1完了前
-                // 監査で記録済みの既知の課題）。せめてログには、何件目まで
-                // 実際にファイルが動いたのかが残るようにしておく。
+                // **どの項目で止まったか**を必ず残す [LG2-01]。
                 Log.fileOps.error(
                     "\(kind.logLabel) が \(receipts.count) 件成功後に失敗: \(item.path) → \(resolved.target.path) — \(error.localizedDescription)"
                 )
-                throw error
+                // **そこまでに動いた分の受領書を捨てない** [ER-13][ER-16]
+                //［監査で発見］。以前はここで受領書ごと捨てていたため、
+                // 実際に移動し終えた項目が Undo にも操作履歴にも残らず、
+                // ユーザーには元に戻す手段が無かった。
+                // 1 件も動いていなければ運ぶものが無いので、素の失敗として投げる。
+                if receipts.isEmpty { throw error }
+                throw PartialTransferFailure(receipts: receipts, failedItem: item, underlying: error)
             }
             if cancelled {
                 Log.fileOps.info("\(kind.logLabel) を中断しました（\(receipts.count)/\(items.count) 件まで完了）")
@@ -561,6 +816,33 @@ public actor FileOperationService {
         } catch {
             restoreReplacedItem(resolved)
             throw error
+        }
+    }
+
+    /// 中断で書きかけになった宛先を片付ける。
+    ///
+    /// **黙って諦めない**。以前は `try?` 1 回で、失敗しても何も残らなかった。
+    /// ここが失敗すると「中断したのに中途半端なフォルダが残る」——しかも
+    /// 運び終えていない項目は受領書を返さない＝ Undo にも履歴にも載らないので、
+    /// ユーザーには片付ける手立てが無い。
+    ///
+    /// 一時的な失敗（`EBUSY` など、直前まで書いていた相手なら起こり得る）に
+    /// 備えて一度だけ待って試し直し、それでも駄目なら**ログには必ず残す**
+    /// [ER-04: 無言で握りつぶさない]。これで消えない場合があるかどうかは
+    /// 実測できていないが、消え残ったことに気づく手段が無い状態は避ける。
+    private static func removePartialWrite(at url: URL) {
+        let fm = FileManager.default
+        for attempt in 0..<2 {
+            do {
+                try fm.removeItem(at: url)
+                return
+            } catch {
+                guard fm.fileExists(atPath: url.path) else { return } // 既に無い＝目的は達成
+                if attempt == 0 { Thread.sleep(forTimeInterval: 0.05); continue }
+                Log.fileOps.warning(
+                    "中断後の書きかけを片付けられませんでした: \(Log.path(url)) — \(error.localizedDescription)"
+                )
+            }
         }
     }
 

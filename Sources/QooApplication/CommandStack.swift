@@ -80,35 +80,56 @@ public final class CommandStack {
         return result
     }
 
-    public func undo() async {
-        guard let command = undoStack.popLast() else { return }
+    /// 取り消す。**結果は呼び出し側へ返す** [ER-01]。
+    ///
+    /// **ここで `NotificationRouter` を待ってはいけない**［実装中に踏んだ］。
+    /// 一度この中から提示していたが、2 つ問題があった:
+    /// 1. `presentModally` はユーザーがダイアログを閉じるまで返らないため、
+    ///    提示側がいないテストでは**永久に返らない**。
+    /// 2. 呼び出し側が進捗ウインドウを片付ける前にダイアログが出てしまう
+    ///    （`FolderOperations.run` が「エラーを見せる前に片付ける」ために
+    ///    わざわざ順序を作っているのを台無しにする）。
+    ///
+    /// 記録（ログ・操作履歴）はここの責務のまま。**いつ・どう見せるか**だけを
+    /// 呼び出し側に委ねる。
+    @discardableResult
+    public func undo() async -> UndoOutcome {
+        guard let command = undoStack.popLast() else { return .nothingToDo }
         do {
             let result = try await command.undo()
             switch result {
             case .complete:
                 record(command, action: .undone)
                 redoStack.append(command)
+                return .complete(operationName: command.displayName)
             case .partial(let succeeded, let failed):
                 record(command, action: .undonePartially(succeeded: succeeded, failedCount: failed.count))
                 redoStack.append(command)
+                return .partial(operationName: command.displayName, succeeded: succeeded, failed: failed)
             case .impossible(let reason):
                 record(command, action: .undoFailed(reason: reason))
                 // スタックへ戻さない（同じコマンドの Undo を再試行しても直らないため）。
+                return .failed(operationName: command.displayName, reason: reason)
             }
         } catch {
             record(command, action: .undoFailed(reason: error.localizedDescription))
+            return .failed(operationName: command.displayName, reason: error.localizedDescription)
         }
     }
 
-    public func redo() async {
-        guard let command = redoStack.popLast() else { return }
+    /// やり直す。`undo()` と同じ理由で結果だけを返す。
+    @discardableResult
+    public func redo() async -> UndoOutcome {
+        guard let command = redoStack.popLast() else { return .nothingToDo }
         do {
             let result = try await command.redo()
             record(command, action: .redone)
             await playCompletionSound(for: command, result: result)
             undoStack.append(command)
+            return .complete(operationName: command.displayName)
         } catch {
             record(command, action: .redoFailed(reason: error.localizedDescription))
+            return .failed(operationName: command.displayName, reason: error.localizedDescription)
         }
     }
 
@@ -152,6 +173,29 @@ public final class CommandStack {
         operationHistory.append(OperationHistoryEntry(date: Date(), displayName: command.displayName, action: action))
         if operationHistory.count > historyLimit {
             operationHistory.removeFirst()
+        }
+    }
+}
+
+/// 取り消し・やり直しの結果。**提示は呼び出し側（UI）が行う** [ER-01]。
+///
+/// 以前は `CommandStack` がログと操作履歴に書くだけで、失敗しても**画面には
+/// 何も出なかった**。操作履歴には閲覧 UI が無い（フェーズ2の課題）ため、
+/// ⌘Z が失敗しても「取り消したはずのファイルが戻っていない」という結果だけが
+/// ユーザーに残っていた。取り消しは「やり直しがきく」という前提を支える機能
+/// なので、その前提が崩れたことこそ真っ先に伝えなければならない［監査で発見］。
+public enum UndoOutcome: Sendable {
+    /// スタックが空だった（何も起きていない。提示するものは無い）。
+    case nothingToDo
+    case complete(operationName: String)
+    case partial(operationName: String, succeeded: Int, failed: [FailedItem])
+    case failed(operationName: String, reason: String)
+
+    /// ユーザーに知らせる必要があるか（成功と空振りは黙っていてよい）。
+    public var needsAttention: Bool {
+        switch self {
+        case .nothingToDo, .complete: false
+        case .partial, .failed: true
         }
     }
 }

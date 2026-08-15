@@ -58,11 +58,26 @@ public actor ArchiveCompressor {
         // 総数はここで数える [ユーザー要望: 総ファイル数と残り件数を出したい]。
         // バックエンドは詰めながら数えるので総数を先には知れない。走査の
         // 上乗せは、実際に圧縮する時間に比べれば無視できる。
+        //
+        // **進捗表示の有無に関わらず数える**［監査で発見］。この値は空き容量の
+        // 事前検査にも使うようになったため、進捗の都合で検査が抜けてはならない
+        // （`ProgressTracker` が同じ理由で同じ形にしてある）。
+        let totals = Self.totals(of: items)
         var reporter: ProgressReporter?
         if let progress {
-            let totals = Self.totals(of: items)
             reporter = ProgressThrottle.wrap(progress, totalItems: totals.files, totalBytes: totals.bytes)
         }
+
+        // **圧縮には空き容量の事前検査が一切無かった**［監査で発見］。
+        // アーカイブはいったんステージング（アプリコンテナ＝起動ボリューム）
+        // に作られるため、保存先に十分な空きがあっても起動ボリュームが
+        // 手薄だと途中で失敗する。しかもその失敗は libarchive の
+        // 「Write error」という英語 1 語しか返さず、容量不足だと分からなかった。
+        //
+        // 圧縮後の大きさは事前には分からないので、**非圧縮時の総バイト数**を
+        // 要求量とする（実際にはこれより小さくなるため、断りすぎない側では
+        // なく安全側の見積もりになる）。
+        try Self.checkStagingCapacity(stagingDir, required: totals.bytes)
         do {
             try await LibarchiveBackend.shared.compress(
                 items, to: stagingArchive, options: options, passphrase: passphrase,
@@ -87,6 +102,22 @@ public actor ArchiveCompressor {
         }
         Log.archive.info("圧縮完了: \(Log.path(finalURL))")
         return finalURL
+    }
+
+    /// 作業領域に、非圧縮時の総バイト数ぶんの空きがあるか。
+    ///
+    /// 空きが分からないボリュームでは検査を飛ばす（`VolumeCapacity` の
+    /// 判断に合わせる — 断る側に倒すと正当な操作までできなくなる）。
+    private static func checkStagingCapacity(_ staging: URL, required: Int64) throws {
+        guard required > 0, let available = VolumeCapacity.available(at: staging) else { return }
+        let margin = VolumeCapacity.margin(
+            requested: AppLimits.FileOperations.freeSpaceMargin, at: staging
+        )
+        guard available < required + margin else { return }
+        Log.archive.error(
+            "圧縮を開始前に中止: 作業領域の空き容量不足（必要 \(required) / 空き \(available)）"
+        )
+        throw ExtractError.insufficientStagingSpace(required: required, available: available)
     }
 
     /// 圧縮対象の総ファイル数・総バイト数（シンボリックリンクは辿らない）。

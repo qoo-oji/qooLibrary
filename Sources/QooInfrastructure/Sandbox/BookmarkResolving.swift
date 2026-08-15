@@ -29,3 +29,28 @@ public enum BookmarkAccessError: Error, Sendable, Equatable {
     case offline(OfflineReason)
     case accessDenied
 }
+
+/// [ER-03]［監査で発見］。環境設定「アクセス権」タブの追加・取り消しなど、
+/// この型がそのままユーザーへ提示される経路があるため、「エラー0」形式へ
+/// 落ちないよう説明を持たせる。
+extension BookmarkAccessError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case let .offline(reason):
+            switch reason {
+            case .volumeNotMounted:
+                return "このフォルダがあるボリュームが接続されていません。"
+                    + "接続してから、もう一度お試しください。"
+            case .permissionDenied:
+                return "このフォルダへアクセスする許可がありません。"
+                    + "環境設定の「アクセス権」で、この場所へのアクセスを許可してください。"
+            case .invalidBookmark:
+                return "保存されていたフォルダの参照が使えなくなっています。"
+                    + "いったん登録を解除して、選び直してください。"
+            }
+        case .accessDenied:
+            return "このフォルダへアクセスできませんでした。"
+                + "環境設定の「アクセス権」で、この場所へのアクセスを許可してください。"
+        }
+    }
+}

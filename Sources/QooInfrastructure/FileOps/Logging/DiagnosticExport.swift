@@ -7,6 +7,21 @@ public enum DiagnosticExportError: Error, Sendable, Equatable {
     case stagingFailed(String)
 }
 
+/// [ER-03]［監査で発見］。ヘルプメニューと環境設定「詳細」タブの
+/// 「診断情報を書き出す」から直接ユーザーへ提示されるため、
+/// 「エラー0」形式へ落ちないよう説明を持たせる。
+extension DiagnosticExportError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .noLogFiles:
+            return "書き出せる診断ログがまだありません。"
+                + "環境設定の「詳細」でログレベルを上げてからしばらく使い、もう一度お試しください。"
+        case let .stagingFailed(reason):
+            return "診断情報をまとめられませんでした。（\(reason)）"
+        }
+    }
+}
+
 public extension DiagnosticLog {
     /// 診断情報バンドル（zip）を書き出す [LG2-05][LG2-06][CB-22][CB-24]。
     ///

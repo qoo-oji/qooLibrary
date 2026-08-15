@@ -99,6 +99,29 @@ public enum CommandResult: Sendable {
     case partial(succeeded: Int, failed: [FailedItem])
 }
 
+extension PartialTransferFailure {
+    /// 途中で止まった一括処理を `CommandResult` に翻訳する [ER-13][ER-14]。
+    ///
+    /// **例外として投げ直さないことが肝心**。`CommandStack.run` は
+    /// `execute()` が投げると Undo スタックへ積まないため、投げ直すと
+    /// **実際に動いたファイルを取り消す手段が無くなる**。部分的な成功として
+    /// 返せば、スタックにも操作履歴にも載り、`CommandStack` が理由を
+    /// ユーザーへ提示する。
+    public func commandResult(total: Int) -> CommandResult {
+        let remaining = max(total - receipts.count, 1)
+        var failed = [FailedItem(item: failedItem.lastPathComponent, reason: underlying.localizedDescription)]
+        // 止まった時点で手つかずのまま残った項目があることも伝える
+        // （「30 件成功・1 件失敗」だけだと残り 69 件の行方が分からない）。
+        if remaining > 1 {
+            failed.append(FailedItem(
+                item: "ほか \(remaining - 1) 件",
+                reason: "先の失敗により処理していません"
+            ))
+        }
+        return .partial(succeeded: receipts.count, failed: failed)
+    }
+}
+
 public enum UndoResult: Sendable {
     case complete
     case partial(succeeded: Int, failed: [FailedItem])

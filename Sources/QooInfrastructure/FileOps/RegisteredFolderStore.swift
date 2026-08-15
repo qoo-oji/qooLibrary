@@ -67,6 +67,27 @@ public enum RegisteredFolderError: Error, Sendable, Equatable {
     case unsupportedFileSystem(VolumeRejection) // [RG-08]
 }
 
+/// [ER-03]［監査で発見］。`FolderTreePane` は自前の対応表でこの 2 つを
+/// 日本語にしているが、それは登録パネル経由の 1 箇所だけ。ほかの経路
+/// （将来の初回セットアップウィザード 2-17 など）から出たときに
+/// 「エラー0」形式へ落ちないよう、型自身にも説明を持たせる。
+extension RegisteredFolderError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .nestedRegistration:
+            return "すでに登録されているフォルダの中、または親にあたるフォルダは登録できません。"
+                + "重ならない場所のフォルダを選んでください。"
+        case let .unsupportedFileSystem(reason):
+            switch reason {
+            case let .noPersistentFileID(fileSystem), let .persistentIDNotPreserved(fileSystem):
+                return "このフォルダがあるボリューム（\(fileSystem)）は、"
+                    + "ファイルを移動しても同一と判別できる仕組みに対応していないため登録できません。"
+                    + "APFS または Mac OS 拡張のボリュームを選んでください。"
+            }
+        }
+    }
+}
+
 /// フォルダ登録の永続化 [8.7 節、RG-01〜RG-08]。1-13 の時点ではまだ SwiftData
 /// （`Library`/`TemporaryFolder` モデル）が無いため、ロードマップの注記通り
 /// **「エイリアス相当」**に留める: 実フォルダへの参照（Security-Scoped

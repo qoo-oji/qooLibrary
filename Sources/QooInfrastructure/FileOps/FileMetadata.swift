@@ -1,4 +1,36 @@
 import Foundation
+
+/// クラウド上にしか実体が無いファイル（iCloud Drive の「ストレージを最適化」で
+/// ローカルから追い出されたもの）を見分ける。
+///
+/// ## 実測で分かったこと
+/// `~/Library/Mobile Documents` 上のファイルを `evictUbiquitousItem` で
+/// 追い出すと `st_flags` に `SF_DATALESS` が立ち、`totalFileAllocatedSize` は
+/// **0** になる（`fileSize` は満額のまま）。この状態で読み取ると:
+///
+/// | 読み方 | 結果 |
+/// |---|---|
+/// | 素の `Data(contentsOf:)`（協調なし） | **成功**。ただし約 1 秒かかる（その場でダウンロード）|
+/// | `FileHandle` で先頭だけ読む | **成功**。同じく約 1 秒 |
+/// | `NSFileCoordinator` 経由 | 成功。**協調なしと差が無かった** |
+///
+/// つまり**読めなくなるわけでも、固まるわけでもない**。当初は
+/// 「協調読み取りをしていないので失敗・ハングする」と疑っていたが、
+/// 実測で否定された（`NSFileCoordinator` の導入も不要と判断した根拠）。
+///
+/// **本当の問題は別**: 1 件あたり約 1 秒かけて**実際にダウンロードが走る**こと。
+/// サムネイルは一覧を表示しただけで自動的に何百件も生成されるため、
+/// クラウドに預けたライブラリを開くと、ユーザーが頼んでもいないのに
+/// 蔵書全体のダウンロードが始まってしまう。Finder も追い出されたファイルの
+/// サムネイルは作らず、雲のバッジ付きの汎用アイコンを見せる。
+public enum CloudMaterialization {
+    /// 実体がローカルに無いか。判定できなければ `false`（＝ふつうのファイルとして扱う）。
+    public static func isDataless(_ url: URL) -> Bool {
+        var info = stat()
+        guard stat(url.path, &info) == 0 else { return false }
+        return info.st_flags & UInt32(SF_DATALESS) != 0
+    }
+}
 import QooKit
 
 /// `stat(2)` とボリューム UUID から、ファイルの識別子 [ID-01] と

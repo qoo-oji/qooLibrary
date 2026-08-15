@@ -713,16 +713,57 @@ private struct UndoRedoMenuCommands: View {
             // `DirectoryChangeHub` へ伝える [10章 §10.0]。取り消しも
             // 結局そのサービスを通ってファイルを動かすため、ここで
             // 別途知らせる必要は無い。
-            Task { await CommandStack.shared.undo() }
+            Task { await Self.present(await CommandStack.shared.undo(), isUndo: true) }
         }
         .fixedKeyboardShortcut(.undo)
         .disabled(!stack.canUndo)
 
         Button(redoTitle(stack.redoTitle), systemImage: "arrow.uturn.forward") {
-            Task { await CommandStack.shared.redo() }
+            Task { await Self.present(await CommandStack.shared.redo(), isUndo: false) }
         }
         .fixedKeyboardShortcut(.redo)
         .disabled(!stack.canRedo)
+    }
+
+    /// **取り消し・やり直しの失敗をユーザーに見せる** [ER-01]［監査で発見］。
+    ///
+    /// 以前は `CommandStack` がログと操作履歴に書くだけで、⌘Z が失敗しても
+    /// **画面には何も出なかった**（操作履歴には閲覧 UI が無い）。
+    /// ユーザーには「取り消したはずのファイルが戻っていない」という結果だけが
+    /// 残る。取り消しは「やり直しがきく」という前提を支える機能なので、
+    /// その前提が崩れたことこそ真っ先に伝えなければならない。
+    ///
+    /// 提示を `CommandStack` の中で行わないのは、そこが `NotificationRouter`
+    /// を待つとテストで永久に返らないため（`CommandStack.undo()` のコメント参照）。
+    @MainActor
+    private static func present(_ outcome: UndoOutcome, isUndo: Bool) async {
+        guard outcome.needsAttention else { return }
+        let locale = AppLanguage.effectiveLocale
+        let title = String(
+            localized: isUndo ? "error.undoFailed" : "error.redoFailed", locale: locale
+        )
+        let body: String
+        switch outcome {
+        case let .partial(operationName, succeeded, failed):
+            var lines = [operationName, ""]
+            lines.append(String(
+                format: String(localized: "error.partialCounts", locale: locale), succeeded, failed.count
+            ))
+            for item in failed.prefix(5) { lines.append("• \(item.item): \(item.reason)") }
+            if failed.count > 5 {
+                lines.append(String(
+                    format: String(localized: "error.partialMore", locale: locale), failed.count - 5
+                ))
+            }
+            body = lines.joined(separator: "\n")
+        case let .failed(operationName, reason):
+            body = "\(operationName)\n\n\(reason)"
+        case .complete, .nothingToDo:
+            return
+        }
+        await NotificationRouter.shared.present(NotificationItem(
+            category: .error, severity: .sheet, title: title, body: body
+        ))
     }
 
     private func undoTitle(_ operationName: String?) -> String {

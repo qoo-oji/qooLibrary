@@ -1975,6 +1975,57 @@
         }
       }
     },
+    "error.partialCounts": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Completed: %1$d · Not completed: %2$d"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完了: %1$d 件 / 未完了: %2$d 件"
+          }
+        }
+      }
+    },
+    "error.partialMore": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "…and %d more"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ほか %d 件"
+          }
+        }
+      }
+    },
+    "error.partiallyCompleted": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Some Items Were Not Processed"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一部の項目を処理できませんでした"
+          }
+        }
+      }
+    },
     "error.pasteFailed": {
       "localizations": {
         "en": {
@@ -1987,6 +2038,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "ペーストに失敗しました"
+          }
+        }
+      }
+    },
+    "error.redoFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn’t Redo"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "やり直せませんでした"
           }
         }
       }
@@ -2035,6 +2103,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "ゴミ箱への移動に失敗しました"
+          }
+        }
+      }
+    },
+    "error.undoFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn’t Undo"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "元に戻せませんでした"
           }
         }
       }

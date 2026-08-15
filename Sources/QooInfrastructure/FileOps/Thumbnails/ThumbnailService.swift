@@ -32,6 +32,7 @@ public actor ThumbnailService {
     /// あり、将来の呼び出し元が確認を忘れても成立させるため**
     /// [`FileOperationService` への集約と同じ「構造で保証する」方針]。
     private let isGloballyHidden: @Sendable () async -> Bool
+    private let isDataless: @Sendable (URL) -> Bool
 
     // PF-11: 同時実行数を制限したタスクキュー。実際の重い処理（アーカイブ
     // 読み込み・デコード）はアクター分離の外（`Task.detached`）で行うが、
@@ -58,7 +59,11 @@ public actor ThumbnailService {
         // 読めてしまう**。隔離をここに書いておけば、意図が推論に依存しない。
         isGloballyHidden: @escaping @Sendable () async -> Bool = { @MainActor in
             ThumbnailVisibility.shared.isGloballyHidden
-        }
+        },
+        // テストから差し替えられるようにしておく。dataless なファイルは
+        // iCloud に預けた実ファイルでしか作れず、検証のたびにユーザーの
+        // クラウドへ書き込むわけにはいかないため。
+        isDataless: @escaping @Sendable (URL) -> Bool = { CloudMaterialization.isDataless($0) }
     ) {
         self.maxConcurrent = maxConcurrent
         self.cache = cache
@@ -66,6 +71,7 @@ public actor ThumbnailService {
         self.videoThumbnailLoader = videoThumbnailLoader
         self.pdfThumbnailLoader = pdfThumbnailLoader
         self.isGloballyHidden = isGloballyHidden
+        self.isDataless = isDataless
     }
 
     /// `url` はフォルダ、または対応アーカイブ形式のファイル。フォルダ表示モード
@@ -95,6 +101,18 @@ public actor ThumbnailService {
         // フォールバックするのが非表示時の正しい表示 [DS-01] だからで、
         // キャッシュ済みかどうかで見た目が変わってはならない。
         if await isGloballyHidden() { return nil }
+        // **クラウドにしか実体が無いファイルは、サムネイルのために
+        // ダウンロードしない**［実測に基づく判断］。
+        //
+        // 読むこと自体はできる（協調なしでも成功する）が、1 件あたり約 1 秒
+        // かけて実際にダウンロードが走る。サムネイルは一覧を開いただけで
+        // 何百件も自動生成されるため、クラウドに預けたライブラリを開くと、
+        // ユーザーが頼んでもいないのに蔵書全体のダウンロードが始まる。
+        // Finder も追い出されたファイルのサムネイルは作らない。
+        //
+        // ユーザーが明示的に頼んだ操作（Quick Look・展開・開く）は別経路で、
+        // そちらは従来どおり実体化する——頼まれた仕事はやる。
+        if isDataless(url) { return nil }
         // **キャッシュの鍵は `FileIdentity` ではなく `FileContentStamp`**
         // （更新日時とサイズを含む）。識別子だけで引くと、外部で差し替えた
         // ファイルに古いサムネイルが出続け、削除→新規作成で inode が

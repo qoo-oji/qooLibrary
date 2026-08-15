@@ -32,7 +32,14 @@ public final class MoveFilesCommand: Command {
     public let completionSound: SystemSoundEffect? = .operationComplete
 
     public func execute() async throws -> CommandResult {
-        receipts = try await fileOps.move(items, to: destination, options: options)
+        do {
+            receipts = try await fileOps.move(items, to: destination, options: options)
+        } catch let partial as PartialTransferFailure {
+            // **動いた分は必ず引き取る** [ER-13][ER-16]。これを捨てると
+            // 移動済みのファイルが Undo にも履歴にも残らない。
+            receipts = partial.receipts
+            return partial.commandResult(total: items.count)
+        }
         return receipts.count == items.count ? .success : .partial(succeeded: receipts.count, failed: [])
     }
 
@@ -88,7 +95,14 @@ public final class CopyFilesCommand: Command {
     public let completionSound: SystemSoundEffect? = .operationComplete
 
     public func execute() async throws -> CommandResult {
-        receipts = try await fileOps.copy(items, to: destination, options: options)
+        do {
+            receipts = try await fileOps.copy(items, to: destination, options: options)
+        } catch let partial as PartialTransferFailure {
+            // `MoveFilesCommand` と同じ理由。コピー済みの分を Undo で
+            // 片付けられるようにしておく。
+            receipts = partial.receipts
+            return partial.commandResult(total: items.count)
+        }
         return receipts.count == items.count ? .success : .partial(succeeded: receipts.count, failed: [])
     }
 

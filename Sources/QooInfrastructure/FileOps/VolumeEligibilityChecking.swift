@@ -1,4 +1,5 @@
 import Foundation
+import QooKit
 
 /// フォルダ登録の前段で必ず通すファイルシステム適合検証 [FS-01〜FS-09]。
 public struct VolumeCapability: Sendable, Equatable {
@@ -39,7 +40,26 @@ public enum VolumeEligibility: Sendable, Equatable {
 
 public enum VolumeEligibilityError: Error, Sendable, Equatable {
     /// FS-03 実測用の一時ファイルを作成できなかった。
-    case probeSetupFailed
+    case probeSetupFailed(errnoCode: Int32)
+    /// 読み取り専用のボリューム。登録しても書き込めないため受け付けない。
+    case readOnlyVolume(fileSystem: String)
+}
+
+/// **`LocalizedError` に準拠させる理由** [ER-03]［監査で発見］。準拠して
+/// いなかったため、フォルダ登録の失敗がそのままユーザーに出ると
+/// 「操作を完了できませんでした。（QooInfrastructure.VolumeEligibilityError
+/// エラー0）」という、原因が一切分からない既定文言になっていた
+/// （`FileOperationError`/`ExtractError` で踏んだのと同じ落とし穴）。
+extension VolumeEligibilityError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case let .probeSetupFailed(code):
+            return "このフォルダを登録できるか確認できませんでした。\(PosixFailure.explain(code))"
+        case let .readOnlyVolume(fileSystem):
+            return "このフォルダは読み取り専用のボリューム（\(fileSystem)）にあるため登録できません。"
+                + "書き込みできるボリューム上のフォルダを選んでください。"
+        }
+    }
 }
 
 public protocol VolumeEligibilityChecking: Sendable {

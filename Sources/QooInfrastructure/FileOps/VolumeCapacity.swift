@@ -36,6 +36,35 @@ public enum VolumeCapacity {
     ///
     /// 書き込み先がまだ存在しない場合（展開先のフォルダをこれから作る等）は、
     /// 実在する祖先まで遡って尋ねる。
+    /// 事前検査で確保しておく「余裕分」。**要求された値をそのまま使わない。**
+    ///
+    /// 余裕分は「ディレクトリのメタデータ等で少し余分に食う」ぶんを吸収する
+    /// ためのもので、固定値だと小さなボリュームで破綻する。実際、コピーの
+    /// 余裕分 64MB をそのまま使っていたため、**空きが 64MB を下回る
+    /// ボリュームではどんな小さなコピーも拒否**されていた（60MB の
+    /// ディスクイメージへ 1MB を運ぼうとして「空き容量が足りません」と
+    /// 断られる形で発覚）。展開側の既定は 1GB なので、影響はさらに広い。
+    ///
+    /// ボリューム全体の 5% を上限にする。1TB なら 64MB / 1GB なら 51MB /
+    /// 60MB なら 3MB と、大きさに応じて素直に縮む。**誤って断ると正当な操作が
+    /// できなくなる**のに対し、通してしまっても失敗は `ENOSPC` として捕まり
+    /// 理由付きで伝わる、という害の非対称に従う（この型の他の判断と同じ）。
+    public static func margin(requested: Int64, at url: URL) -> Int64 {
+        guard let total = totalCapacity(at: url), total > 0 else { return requested }
+        return min(requested, total / 20)
+    }
+
+    private static func totalCapacity(at url: URL) -> Int64? {
+        var target = url
+        let fm = FileManager.default
+        while !fm.fileExists(atPath: target.path), target.pathComponents.count > 1 {
+            target = target.deletingLastPathComponent()
+        }
+        guard let value = (try? target.resourceValues(forKeys: [.volumeTotalCapacityKey]))?.volumeTotalCapacity
+        else { return nil }
+        return Int64(value)
+    }
+
     public static func available(at url: URL) -> Int64? {
         var target = url
         let fm = FileManager.default

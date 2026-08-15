@@ -65,9 +65,32 @@ public actor SecureExtractor {
         // 空き容量が分からないボリュームでは検査を飛ばす（`VolumeCapacity`
         // 参照 — 断る側に倒すと、空のディスクイメージのように
         // `…ForImportantUsage` が 0 を返す先へ展開できなくなる）。
+        // 余裕分はボリュームの大きさに応じて縮める（既定 1GB をそのまま
+        // 使うと、1GB 未満のボリュームへは何も展開できなくなる）。
+        let destinationMargin = VolumeCapacity.margin(
+            requested: options.limits.freeSpaceMargin, at: options.destination
+        )
         if let available = Self.availableCapacity(at: options.destination),
-           available < declaredTotal + options.limits.freeSpaceMargin {
+           available < declaredTotal + destinationMargin {
             throw ExtractError.insufficientFreeSpace(required: declaredTotal, available: available)
+        }
+        // **ステージング側の空きも確かめる**［監査で発見］。展開は必ず
+        // いったんアプリコンテナ配下（＝起動ボリューム）へ書き出してから
+        // 最終位置へ移す。展開先が外部ボリュームでも、**全量ぶんの空きが
+        // 起動ボリュームに要る**のに、以前はそちらを一切見ていなかった。
+        // その結果、起動ボリュームが手薄なときは検査を素通りしてから
+        // 書き込みの途中で失敗していた（しかも当時は書き込みの失敗が
+        // Objective-C 例外になり、アプリごと落ちていた）。
+        //
+        // 展開先とステージングが同じボリュームなら二重に要求しない。
+        if !Self.isSameVolume(staging, options.destination),
+           let stagingAvailable = Self.availableCapacity(at: staging),
+           stagingAvailable < declaredTotal + VolumeCapacity.margin(
+               requested: options.limits.freeSpaceMargin, at: staging
+           ) {
+            throw ExtractError.insufficientStagingSpace(
+                required: declaredTotal, available: stagingAvailable
+            )
         }
 
         // `listEntries` が既にエンコーディングを判定済み [AR-02]。呼び出し側が
@@ -188,5 +211,17 @@ public actor SecureExtractor {
 
     private static func availableCapacity(at url: URL) -> Int64? {
         VolumeCapacity.available(at: url)
+    }
+
+    /// 2 つの場所が同じボリュームか。判定できなければ「違う」とみなす
+    /// （空き容量を二重に要求する側＝安全側に倒す）。`.volumeURLKey` ではなく
+    /// `.volumeUUIDStringKey` を使うのは、サンドボックス配下の経路で前者の
+    /// 解決に失敗することがあったため [1-6 の D&D で実際に踏んだ]。
+    private static func isSameVolume(_ a: URL, _ b: URL) -> Bool {
+        guard
+            let uuidA = try? a.resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString,
+            let uuidB = try? b.resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString
+        else { return false }
+        return uuidA == uuidB
     }
 }

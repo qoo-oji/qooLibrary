@@ -113,12 +113,19 @@ public enum BulkRename {
         return markingConflicts(changes, existingNames: existingNames)
     }
 
-    /// [BR-09] 衝突する行に印を付ける。
+    /// [BR-09] そのまま実行できない行に印を付ける。
     ///
-    /// 2 種類ある: ①変更後の名前どうしがぶつかる ②対象外の既存項目とぶつかる。
+    /// 3 種類ある: ①変更後の名前どうしがぶつかる ②対象外の既存項目とぶつかる
+    /// ③そもそも名前として使えない。
     /// **大文字小文字だけが違う名前もぶつかる扱いにする** — macOS の既定の
     /// ファイルシステムは大文字小文字を区別しないため、区別する前提で通すと
     /// 実行時に初めて失敗する。
+    ///
+    /// ③を加えたのは監査での指摘による。置換文字列に `/` を含めると、
+    /// リネームのつもりが**別フォルダへの移動**になる（実測で再現）。
+    /// 一括リネームは 1 件ずつ順に実行するため、途中で弾かれると
+    /// 「半分だけ名前が変わった」状態が残る。**プレビューの時点で印を付け、
+    /// 実行させない**のがいちばん安全 [`FileNameValidation`]。
     static func markingConflicts(_ changes: [Change], existingNames: Set<String>) -> [Change] {
         let foldedExisting = Set(existingNames.map { $0.lowercased() })
         var counts: [String: Int] = [:]
@@ -131,6 +138,7 @@ public enum BulkRename {
             marked.conflicts = change.newName.isEmpty
                 || counts[folded, default: 0] > 1
                 || foldedExisting.contains(folded)
+                || !FileNameValidation.isAcceptable(change.newName)
             return marked
         }
     }

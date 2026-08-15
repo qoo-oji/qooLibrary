@@ -63,6 +63,32 @@ public struct OpOptions: Sendable {
     }
 }
 
+/// 一括処理が途中で失敗したときに、**そこまでに実際に動いた分の受領書**を
+/// 一緒に運ぶ [ER-13][ER-16]。
+///
+/// **なぜ要るのか**［監査で発見］: 以前は `transfer` が失敗した時点で
+/// `receipts` を捨てて例外を投げていた。100 件のうち 30 件が実際に移動した
+/// あとで 31 件目が失敗すると、**移動済みの 30 件が Undo にも操作履歴にも
+/// 残らない**。ユーザーから見ると「エラーが出た。でもファイルは動いている。
+/// 元に戻す手段が無い」という状態になる。
+///
+/// 受領書さえ運べれば、呼び出し側（`Command`）は「部分的に成功した」として
+/// 記録でき、⌘Z で戻せる。
+public struct PartialTransferFailure: Error {
+    /// そこまでに完了した分。**捨ててはならない。**
+    public let receipts: [OpReceipt]
+    /// どの項目で止まったか。
+    public let failedItem: URL
+    /// 本来の失敗理由。ユーザーへの提示にはこちらを使う。
+    public let underlying: any Error
+
+    public init(receipts: [OpReceipt], failedItem: URL, underlying: any Error) {
+        self.receipts = receipts
+        self.failedItem = failedItem
+        self.underlying = underlying
+    }
+}
+
 public struct OpReceipt: Sendable {
     public let before: FileIdentity?
     public let after: FileIdentity?
@@ -154,6 +180,32 @@ public enum FileOperationError: Error, Sendable, Equatable {
     case copyFailed(source: URL, destination: URL, errnoCode: Int32)
     /// 運ぶ前に空きが足りないと分かった [ER-03]。**書き始める前に**投げる。
     case insufficientFreeSpace(required: Int64, available: Int64, destination: URL)
+    /// フォルダを、それ自身またはその配下へ運ぼうとした。**1 バイトも
+    /// 書かずに断る** — 実測では `copyfile(3)` が 332 階層まで自己増殖し、
+    /// ユーザーのフォルダの中にゴミの木を残してから `ENAMETOOLONG` で
+    /// 失敗した（同一ボリュームの移動は `EINVAL` で止まるが、コピーは
+    /// 止まらない）。Finder もこの操作は実行前に断る。
+    case destinationInsideSource(source: URL, destination: URL)
+    /// 書き込み先が読み取り専用ボリューム上にある。**書き始める前に**投げる。
+    case destinationIsReadOnly(URL)
+    /// ユーザーが入力した名前が使えない [`FileNameValidation`]。
+    case invalidName(String, reason: FileNameValidation.Failure)
+    /// 出来上がるパスがボリュームの上限（実測で全形式 1024 バイト＝
+    /// `PATH_MAX`）を超える。**書き始める前に**投げる。
+    case pathTooLong(item: URL, destination: URL, resultingBytes: Int, limitBytes: Int)
+    /// 運んでいる最中に、元のファイルが他のアプリに書き換えられた。
+    /// **写した内容は最新ではない**ので、移動なら元を消さず、コピーなら
+    /// 中途半端な結果を残さない。
+    case sourceChangedDuringOperation(URL)
+    /// 名前が書き込み先のファイルシステムの上限を超える。
+    /// **Mac 内では使える名前でも、書き込み先では使えないことがある** —
+    /// 上限の数え方が形式ごとに違うため（`NameLengthLimit` 参照）。
+    case nameTooLongForDestination(name: String, item: URL, length: Int, limit: Int, unitIsBytes: Bool)
+    /// 1 ファイルが書き込み先のファイルシステムの上限を超える。
+    /// **FAT32 は 4GB 弱が上限**で、動画ファイルでは普通に超える。
+    /// 上限は OS が `volumeMaximumFileSizeKey` で答えるため、**書き始める
+    /// 前に**確実に判定できる（実測: 超過は `EFBIG` で拒否される）。
+    case fileTooLargeForDestination(item: URL, size: Int64, limit: Int64, destination: URL)
 }
 
 /// **`LocalizedError` に準拠させる理由** [ER-03、実機検証で発見]。
@@ -186,26 +238,63 @@ extension FileOperationError: LocalizedError {
                 + "\(formatter.string(fromByteCount: required)) が必要ですが、"
                 + "空きは \(formatter.string(fromByteCount: available)) しかありません。"
                 + "不要な項目を削除してから、もう一度お試しください。"
+        case let .destinationInsideSource(source, destination):
+            return "「\(source.lastPathComponent)」を、それ自身の中にある"
+                + "「\(destination.lastPathComponent)」へは移動・コピーできません。"
+                + "フォルダの外にある別の場所を選んでください。"
+        case let .destinationIsReadOnly(destination):
+            return "「\(destination.lastPathComponent)」は読み取り専用のため、書き込めません。"
+                + "書き込みできる別の場所を選ぶか、ボリュームの設定を確認してください。"
+        case let .invalidName(name, reason):
+            let detail = reason.errorDescription ?? ""
+            return name.isEmpty
+                ? detail
+                : "「\(name)」は名前として使えません。\(detail)"
+        case let .sourceChangedDuringOperation(source):
+            return "「\(source.lastPathComponent)」は、処理している間にほかのアプリが書き換えました。"
+                + "途中までの内容を写してしまうため中止しました。"
+                + "ダウンロードや書き出しが終わってから、もう一度お試しください。"
+        case let .nameTooLongForDestination(name, _, length, limit, unitIsBytes):
+            // **どこがどう長いのかを数字で示す。** 「長すぎます」だけでは、
+            // 同じ名前が Mac 内で使えている理由が分からない。
+            let unit = unitIsBytes ? "バイト" : "文字ぶん"
+            let hint = unitIsBytes
+                ? "書き込み先は名前の長さをバイト数で数えます（日本語は 1 文字あたり 3 バイト）。"
+                : ""
+            return "「\(name)」は、書き込み先で使える名前の長さを超えています"
+                + "（\(length) \(unit)、上限 \(limit) \(unit)）。\(hint)"
+                + "名前を短くしてから、もう一度お試しください。"
+        case let .fileTooLargeForDestination(item, size, limit, destination):
+            let formatter = ByteCountFormatter()
+            return "「\(item.lastPathComponent)」（\(formatter.string(fromByteCount: size))）は、"
+                + "書き込み先「\(destination.lastPathComponent)」が扱えるファイルの上限"
+                + "（\(formatter.string(fromByteCount: limit))）を超えています。"
+                + "書き込み先が FAT32 の場合は exFAT で初期化し直すと、この上限は無くなります。"
+        case let .pathTooLong(item, destination, resultingBytes, limitBytes):
+            return "「\(item.lastPathComponent)」を「\(destination.lastPathComponent)」へ置くと、"
+                + "パスが長くなりすぎます（\(resultingBytes) バイト、上限 \(limitBytes) バイト）。"
+                + "階層の浅い場所を選ぶか、途中のフォルダ名を短くしてください。"
         }
     }
 
+    /// 失敗の技術詳細 [ER-03 の折りたたみ部分]。`errno` の英語表記のように、
+    /// 説明本文に混ぜると読みにくいが、問い合わせの際には要る情報を置く。
+    public var technicalReason: String? {
+        switch self {
+        case let .copyFailed(_, _, code):
+            return "errno \(code): \(PosixFailure.systemReason(code))"
+        default:
+            return nil
+        }
+    }
+
+    /// 「何ができないのか」＋「なぜか」。理由の翻訳は `PosixFailure` に
+    /// 一本化しており、コピー・移動・展開のどの経路でも同じ説明になる。
     private static func copyFailureMessage(source: URL, destination: URL, errnoCode: Int32) -> String {
         let name = source.lastPathComponent
-        let system = String(cString: strerror(errnoCode))
-        switch errnoCode {
-        case ENOSPC:
-            let folder = destination.deletingLastPathComponent().lastPathComponent
-            return "「\(name)」をコピーできませんでした。"
-                + "コピー先「\(folder)」の空き容量が足りません。"
-                + "不要な項目を削除してから、もう一度お試しください。"
-        case EACCES, EPERM:
-            return "「\(name)」をコピーできませんでした。コピー先に書き込む権限がありません。（\(system)）"
-        case EDQUOT:
-            return "「\(name)」をコピーできませんでした。ディスク使用量の割り当てを超えています。（\(system)）"
-        case EEXIST:
-            return "「\(name)」をコピーできませんでした。同じ名前の項目がすでに存在します。"
-        default:
-            return "「\(name)」をコピーできませんでした。（\(system)）"
-        }
+        // 「コピー先」と書かない — この関数はクロスボリュームの移動からも
+        // 呼ばれるため、操作名を決め打ちすると嘘になる。
+        return "「\(name)」を書き込み先「\(destination.deletingLastPathComponent().lastPathComponent)」へ"
+            + "処理できませんでした。\(PosixFailure.explain(errnoCode))"
     }
 }

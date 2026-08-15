@@ -151,7 +151,11 @@ public struct LibarchiveBackend: ArchiveReading {
 
             try fm.createDirectory(at: validated.targetURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             guard fm.createFile(atPath: validated.targetURL.path, contents: nil) else {
-                throw ExtractError.backendFailure("could not create \(validated.targetURL.path)")
+                // **理由を捨てない** [ER-03]。以前はパスだけを英語で並べており、
+                // 「なぜ作れないのか」（空き容量／権限／名前が長すぎる）が
+                // ユーザーにもログにも残らなかった。`createFile` は失敗を
+                // Bool でしか返さないので、直後の `errno` を読む。
+                throw ExtractError.writeFailed(reason: PosixFailure.explain(errno))
             }
             let handle = try FileHandle(forWritingTo: validated.targetURL)
 
@@ -164,7 +168,8 @@ public struct LibarchiveBackend: ArchiveReading {
                 if bytesRead < 0 {
                     try? handle.close()
                     let message = Self.errorMessage(reader)
-                    throw Self.passphraseError(from: message) ?? ExtractError.backendFailure(message)
+                    throw Self.passphraseError(from: message, suppliedPassphrase: options.passphrase != nil)
+                        ?? ExtractError.backendFailure(message)
                 }
                 if bytesRead == 0 { break extractEntry }
 
@@ -181,7 +186,20 @@ public struct LibarchiveBackend: ArchiveReading {
                     throw ExtractError.compressionRatioExceeded(limit: options.limits.ratioAbort)
                 }
 
-                handle.write(Data(bytes: buffer, count: bytesRead))
+                // **`write(contentsOf:)`（throwing 版）でなければならない。**
+                // 非 throwing の `write(_:)` は失敗を Swift のエラーではなく
+                // Objective-C 例外（`NSFileHandleOperationException`）で投げる。
+                // Swift はこれを捕捉できないため、**展開先の空きが尽きた瞬間に
+                // アプリがそのまま異常終了する**（実測: 20MB のボリュームへ
+                // 展開して SIGABRT。同じ事故は SwiftyBeaver でも報告されている）。
+                // Apple のドキュメントにも「no free space is left on the file
+                // system」で例外を送出すると明記がある。
+                do {
+                    try handle.write(contentsOf: Data(bytes: buffer, count: bytesRead))
+                } catch {
+                    try? handle.close()
+                    throw Self.writeFailure(error)
+                }
                 // 巨大な 1 エントリでもバーが動くよう、バイト単位でも報告する
                 // （間引きは `ProgressThrottle` が行う）。
                 options.progress?.report(OperationProgress(
@@ -467,12 +485,47 @@ public struct LibarchiveBackend: ArchiveReading {
     /// 関連のエラー文言を判別する [libarchive `archive_read_support_format_zip.c`
     /// の既知の文言、WebSearch で確認: "Passphrase required for this entry"/
     /// "Incorrect passphrase"]。該当しなければ `nil`。
-    private static func passphraseError(from message: String) -> ExtractError? {
-        guard message.localizedCaseInsensitiveContains("assphrase") else { return nil }
-        if message.localizedCaseInsensitiveContains("ncorrect") {
-            return .incorrectPassphrase
+    /// - Parameter suppliedPassphrase: パスフレーズを渡して展開しているか。
+    ///
+    ///   **渡しているのに復号後のデータが壊れていたら、まずパスワード違いを
+    ///   疑う** [ER-03]。従来型の ZIP 暗号化（ZipCrypto）は 1 バイトの検査値
+    ///   しか持たないため、誤ったパスワードでも **約 1/256 の確率でその検査を
+    ///   通過し**、そのあと展開の段で「ZIP decompression failed (-3)」という
+    ///   意味の分からない文言になる（既存テストが不定期に落ちる形で判明した。
+    ///   アーカイブごとに乱数が変わるため確率的に再現する）。
+    ///
+    ///   ユーザーにとっては同じ「パスワードを間違えた」操作なのに、返る文言が
+    ///   運任せで変わるのは受け入れられない。パスフレーズを渡している場面での
+    ///   復号・展開の失敗は `incorrectPassphrase` に寄せる。
+    private static func passphraseError(
+        from message: String, suppliedPassphrase: Bool = false
+    ) -> ExtractError? {
+        if message.localizedCaseInsensitiveContains("assphrase") {
+            return message.localizedCaseInsensitiveContains("ncorrect")
+                ? .incorrectPassphrase
+                : .passwordProtected
         }
-        return .passwordProtected
+        if suppliedPassphrase { return .incorrectPassphrase }
+        return nil
+    }
+
+    /// `FileHandle.write(contentsOf:)` が投げた失敗を、原因の分かる
+    /// `ExtractError` に翻訳する [ER-03]。
+    ///
+    /// Foundation は POSIX の失敗を `NSPOSIXErrorDomain` の `NSError` として
+    /// 返すため、`errno` を取り出して `PosixFailure` に翻訳を任せる
+    /// （コピー・移動と同じ説明になる）。それ以外は Foundation の文言をそのまま使う。
+    static func writeFailure(_ error: any Error) -> ExtractError {
+        let nsError = error as NSError
+        if nsError.domain == NSPOSIXErrorDomain {
+            return .writeFailed(reason: PosixFailure.explain(Int32(nsError.code)))
+        }
+        if nsError.domain == NSCocoaErrorDomain,
+           let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError,
+           underlying.domain == NSPOSIXErrorDomain {
+            return .writeFailed(reason: PosixFailure.explain(Int32(underlying.code)))
+        }
+        return .writeFailed(reason: error.localizedDescription)
     }
 
     private static func closeReader(_ a: OpaquePointer) {

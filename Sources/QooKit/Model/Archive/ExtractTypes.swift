@@ -137,10 +137,20 @@ public enum ExtractError: Error, Sendable, Equatable {
     /// パスフレーズを渡したが復号に失敗した（誤ったパスワード）。
     case incorrectPassphrase
     case insufficientFreeSpace(required: Int64, available: Int64) // [EX-23]
+    /// 展開先ではなく**作業領域**（アプリコンテナ＝起動ボリューム）の空きが
+    /// 足りない。展開は必ずいったんここへ書き出してから最終位置へ移すため、
+    /// 展開先に十分な空きがあっても起動ボリュームが手薄だと実行できない。
+    /// 展開先の不足とは対処法が違うので別のケースにしてある。
+    case insufficientStagingSpace(required: Int64, available: Int64)
     case tooManyEntries(limit: Int) // [EX-21]
     case expansionLimitExceeded(limit: Int64) // [EX-20][EX-21]
     case compressionRatioExceeded(limit: Double) // [EX-20][EX-21]
     case cancelled // [EX-24]
+    /// 展開先への書き込みそのものが失敗した（空き容量・権限・名前の長さ等）。
+    /// **`backendFailure` と分けている理由**: あちらは libarchive/UnRAR の
+    /// 英語メッセージをそのまま抱える「アーカイブ側の問題」で、こちらは
+    /// 書き込み先の問題。ユーザーが取るべき行動がまったく違う。
+    case writeFailed(reason: String)
     case backendFailure(String)
     /// `ArchiveReading.readEntry` 用 [9.6 節、サムネイル生成の単一エントリ読み込み]。
     case entryNotFound(String)
@@ -165,11 +175,24 @@ extension ExtractError: LocalizedError {
         case .passwordProtected:
             return "このアーカイブはパスワードで保護されています。"
         case .incorrectPassphrase:
-            return "パスワードが違います。"
+            // **「壊れている可能性」も併記する。** 復号したデータが読めない
+            // ことは分かっても、原因がパスワード違いなのかアーカイブ自体の
+            // 破損なのかは、この時点では区別できない（従来型の ZIP 暗号化は
+            // 1 バイトの検査値しか持たないため特にそうなる）。断定せず、
+            // まず試すべきこと＝パスワードの確認を先に示す。
+            return "パスワードが違うか、アーカイブが壊れています。"
+                + "パスワードを確認して、もう一度お試しください。"
         case let .insufficientFreeSpace(required, available):
             return "展開先の空き容量が足りません。"
                 + "\(formatter.string(fromByteCount: required)) が必要ですが、"
                 + "空きは \(formatter.string(fromByteCount: available)) しかありません。"
+                + "不要な項目を削除してから、もう一度お試しください。"
+        case let .insufficientStagingSpace(required, available):
+            return "起動ディスクの空き容量が足りません。"
+                + "展開はいったん起動ディスク上の作業領域へ書き出すため、"
+                + "展開先とは別に \(formatter.string(fromByteCount: required)) が必要ですが、"
+                + "空きは \(formatter.string(fromByteCount: available)) しかありません。"
+                + "起動ディスクの不要な項目を削除してから、もう一度お試しください。"
         case let .tooManyEntries(limit):
             return "アーカイブに含まれる項目が多すぎます（上限 \(limit) 件）。"
         case let .expansionLimitExceeded(limit):
@@ -180,6 +203,8 @@ extension ExtractError: LocalizedError {
                 + "壊れているか、極端に膨らむアーカイブの可能性があります。"
         case .cancelled:
             return "処理を中断しました。"
+        case let .writeFailed(reason):
+            return "展開先へ書き込めませんでした。\(reason)"
         case let .backendFailure(message):
             return "アーカイブを処理できませんでした。（\(message)）"
         case let .entryNotFound(name):

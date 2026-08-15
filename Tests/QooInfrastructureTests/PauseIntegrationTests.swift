@@ -17,7 +17,12 @@ import Testing
 ///
 /// ディスクイメージを作れない環境では静かに飛ばす（`FreeSpacePreflightTests`
 /// と同じ `TinyVolume` を使う）。
-@Suite struct PauseIntegrationTests {
+/// **`.serialized`**: この suite の各検証は使い捨てのディスクイメージを
+/// 作って外す。並列に走らせると `hdiutil` が同時に何本も動いてディスクを
+/// 圧迫し、FSEvents の到達を待つ別の検証（`DirectoryWatchIntegrationTests`）が
+/// 10 秒の猶予でも間に合わなくなることがある。I/O 律速でそもそも並列にする
+/// 価値が無いため直列にする。
+@Suite(.serialized) struct PauseIntegrationTests {
     @Test func pausedCopyDoesNotMoveAnyBytesUntilResumed() async throws {
         guard let volume = TinyVolume.make(megabytes: 300) else { return }
         defer { volume.destroy() }
@@ -117,19 +122,39 @@ import Testing
         let observed = ByteWatcher()
         let token = PauseToken()
         let service = FileOperationService()
+        // **最初のバイトが報告された「その場で」止める。**
+        //
+        // 以前は「バイトが動き出すのをポーリングで待ってから `pause()`」と
+        // していたが、それでは 80MB のコピーが気づくより先に終わってしまう
+        // ことがあり、`.completed`（正しく残る）と `.cancelled`（消えるべき）を
+        // 取り違えて不定期に落ちていた。報告はコピーと同じスレッドから同期的に
+        // 来るので、ここで止めれば以降は最大 1 チャンクしか進まない。
+        //
+        // **`completedBytes > 0` を条件にする。** 進捗は開始時と項目の
+        // 切り替わりでも報告され、そのときはまだ 0 バイト。0 で止めると
+        // 1 バイトも書かれず、「途中の状態」自体が作れない。
         let options = OpOptions(
             conflictPolicy: .keepBoth,
-            progress: ProgressReporter { observed.note($0.completedBytes) },
+            progress: ProgressReporter { progress in
+                guard progress.completedBytes > 0 else { return }
+                if observed.max == 0 { token.pause() }
+                observed.note(progress.completedBytes)
+            },
             pauseToken: token
         )
         let copying = Task { try await service.copy([source], to: volume.mountPoint, options: options) }
 
-        // バイトが動き出したところで止める（＝確実に「途中」の状態）。
         for _ in 0..<600 where observed.max == 0 {
             try? await Task.sleep(for: .milliseconds(10))
         }
-        token.pause()
         try? await Task.sleep(for: .milliseconds(200))
+        // 止まっていること（＝まだ終わっていないこと）をここで確かめておく。
+        // これが崩れると、以降の検証は「消えるべきものが消えたか」ではなく
+        // 「完了したものが残っているか」を見てしまう。
+        #expect(!copying.isCancelled)
+        let midway = observed.max
+        try? await Task.sleep(for: .milliseconds(150))
+        #expect(observed.max == midway, "一時停止が効いておらず、コピーが進み続けている")
 
         let destination = volume.mountPoint.appendingPathComponent(source.lastPathComponent)
         #expect(FileManager.default.fileExists(atPath: destination.path), "途中の状態を作れていない")

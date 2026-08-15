@@ -18,7 +18,12 @@ import Testing
 ///
 /// ディスクイメージを作れない環境では静かに飛ばす（CI の実行環境に
 /// `hdiutil` の可否を前提として持ち込まない）。
-@Suite struct FreeSpacePreflightTests {
+/// **`.serialized`**: この suite の各検証は使い捨てのディスクイメージを
+/// 作って外す。並列に走らせると `hdiutil` が同時に何本も動いてディスクを
+/// 圧迫し、FSEvents の到達を待つ別の検証（`DirectoryWatchIntegrationTests`）が
+/// 10 秒の猶予でも間に合わなくなることがある。I/O 律速でそもそも並列にする
+/// 価値が無いため直列にする。
+@Suite(.serialized) struct FreeSpacePreflightTests {
     @Test func refusesBeforeWritingAnythingWhenTheDestinationIsTooSmall() async throws {
         guard let volume = TinyVolume.make(megabytes: 20) else { return }
         defer { volume.destroy() }
@@ -79,18 +84,23 @@ struct TinyVolume {
     let mountPoint: URL
     private let imagePath: URL
 
-    static func make(megabytes: Int) -> TinyVolume? {
+    /// - Parameter fileSystem: `hdiutil` の `-fs` に渡す形式名。既定は APFS。
+    ///   `"ExFAT"` などを渡すと、永続ファイル ID を持たないボリュームを作れる
+    ///   （登録の可否を確かめるのに使う）。
+    static func make(megabytes: Int, fileSystem: String = "APFS") -> TinyVolume? {
         let name = "QooTest\(UUID().uuidString.prefix(8))"
         let image = FileManager.default.temporaryDirectory.appendingPathComponent("\(name).dmg")
         guard run("/usr/bin/hdiutil", [
-            "create", "-quiet", "-size", "\(megabytes)m", "-fs", "APFS", "-volname", name, image.path,
+            "create", "-quiet", "-size", "\(megabytes)m", "-fs", fileSystem, "-volname", name, image.path,
         ]) else { return nil }
-        guard run("/usr/bin/hdiutil", ["attach", "-quiet", "-nobrowse", image.path]) else {
-            try? FileManager.default.removeItem(at: image)
-            return nil
-        }
-        let mountPoint = URL(fileURLWithPath: "/Volumes/\(name)", isDirectory: true)
-        guard FileManager.default.fileExists(atPath: mountPoint.path) else {
+        // **マウント先を volname から推測してはいけない。**
+        // FAT（msdos）はボリューム名を大文字化するため、`QooTest1a2b` を渡すと
+        // `/Volumes/QOOTEST1A` にマウントされる。推測して照合していたときは
+        // 一致せず `nil` を返し、**FAT を使う検証がすべて静かに飛んでいた**
+        // （しかもマウントしたまま画像が残った）。`attach` の出力から実際の
+        // マウント先を取る。
+        guard let mountPoint = attachAndReportMountPoint(image) else {
+            _ = run("/usr/bin/hdiutil", ["detach", "-quiet", "-force", "/Volumes/\(name)"])
             try? FileManager.default.removeItem(at: image)
             return nil
         }
@@ -100,6 +110,43 @@ struct TinyVolume {
     func destroy() {
         _ = Self.run("/usr/bin/hdiutil", ["detach", "-quiet", "-force", mountPoint.path])
         try? FileManager.default.removeItem(at: imagePath)
+    }
+
+    /// いったん外して読み取り専用で付け直す。読み取り専用ボリュームに対する
+    /// 挙動（登録の拒否など）を実際のボリュームで確かめるためのもの。
+    /// 付け直せなければ `nil`（呼び出し側は検証を飛ばす）。
+    ///
+    /// - Returns: 読み取り専用でマウントされた場所。`destroy()` はこの
+    ///   マウントも同じ場所を指すため、そのまま片付けられる。
+    func remountReadOnly() -> URL? {
+        guard Self.run("/usr/bin/hdiutil", ["detach", "-quiet", "-force", mountPoint.path]) else { return nil }
+        guard Self.run("/usr/bin/hdiutil", [
+            "attach", "-quiet", "-nobrowse", "-readonly", "-mountpoint", mountPoint.path, imagePath.path,
+        ]) else { return nil }
+        guard FileManager.default.fileExists(atPath: mountPoint.path) else { return nil }
+        return mountPoint
+    }
+
+    /// `hdiutil attach` の出力から、実際にマウントされた場所を取る。
+    /// 形式によって名前が変わる（FAT は大文字化）ため、推測は当てにならない。
+    private static func attachAndReportMountPoint(_ image: URL) -> URL? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
+        process.arguments = ["attach", "-nobrowse", image.path]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return nil }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0, let text = String(data: data, encoding: .utf8) else { return nil }
+        // 各行は「デバイス \t 種別 \t マウント先」。マウント先を持つ最後の行を使う。
+        let mounts = text.split(separator: "\n").compactMap { line -> String? in
+            guard let range = line.range(of: "/Volumes/") else { return nil }
+            return String(line[range.lowerBound...]).trimmingCharacters(in: .whitespaces)
+        }
+        guard let last = mounts.last, FileManager.default.fileExists(atPath: last) else { return nil }
+        return URL(fileURLWithPath: last, isDirectory: true)
     }
 
     @discardableResult
