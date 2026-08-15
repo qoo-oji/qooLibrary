@@ -73,6 +73,19 @@ struct FolderContentView: View {
     /// このビューはダイアログ本体（`.alert`）と実際の作成処理のみを担う。
     @Binding var showingNewFolderPrompt: Bool
     @Binding var newFolderName: String
+    /// パスバー・ステータスバーの表示 [1-16 表示メニュー、Finder の
+    /// 「パスバーを隠す」「ステータスバーを隠す」相当]。**`@AppStorage` では
+    /// なく素の `Bool` として受け取る** — 永続化と `UserDefaults` の読み書きは
+    /// `MainWindowView` 側が `isRightPaneCollapsed` と同じ「素の値を一度だけ
+    /// 読み、変更時に明示的に書き戻す」パターンで行う（`@AppStorage` を
+    /// ビュー構造を決める `if` 条件で直接読むとハングする既知の不具合を
+    /// 避けるため、`ThreePaneWindow.isRightPaneCollapsed` のコメント参照）。
+    let isPathBarVisible: Bool
+    let isStatusBarVisible: Bool
+    /// 名前での絞り込み [1-16 検索]。タブごとに独立して保持する
+    /// （`TabState.searchText`。1-3 の時点から型としてはあったが、この節まで
+    /// どこからも書き込まれない状態だった）。
+    @Binding var searchText: String
 
     @State private var entries: [FolderEntry] = []
     @State private var loadError: String?
@@ -93,6 +106,9 @@ struct FolderContentView: View {
     /// 終わったらこれに戻す。
     @State private var selectionBeforeDropHighlight: Set<URL>?
     @FocusState private var isListFocused: Bool
+    /// 検索フィールドのフォーカス [1-16]。⌘F（`ActionID.focusSearch`）で
+    /// `.searchable` のフィールドへフォーカスを移すために使う。
+    @FocusState private var isSearchFieldFocused: Bool
     /// Shift クリックでの範囲選択の起点 [LV-06 相当]。
     @State private var selectionAnchor: URL?
     /// 複数選択された行を一度にドラッグするための `dragContainer` 系 API のスコープ
@@ -172,6 +188,7 @@ struct FolderContentView: View {
         // スクロール領域を包む）[ユーザー要望]。
         ScrollViewReader { scrollProxy in
         VStack(alignment: .leading, spacing: 0) {
+            Group {
             if let loadError {
                 PlaceholderPane(title: String(localized: "folder.loadError", locale: locale), subtitle: loadError)
             } else if listStyle == .icon {
@@ -410,39 +427,23 @@ struct FolderContentView: View {
                 }
                 .background(TableHorizontalScrollDisabler())
             }
-
-            if let folder {
-                Divider()
-                HStack(spacing: Tokens.spacing.s) {
-                    PathBarView(folder: folder, onNavigate: onNavigate) // [ユーザー要望: Finder 流のパスバー]
-                    // リスト/アイコン表示モード依存のコントロールをパスバーの右端に統一
-                    // [ユーザー要望: 上段の行をリスト/アイコンどちらでも同じ配置にしたい
-                    // ため、以前は上段に置いていたこの2つをここへ移動]。
-                    if listStyle == .icon { // [IV-04]
-                        Slider(value: $iconSize, in: Tokens.iconSize.min...Tokens.iconSize.max, step: Tokens.iconSize.step)
-                            .frame(width: 100)
-                            .help("folder.iconSize")
-                    } else {
-                        Menu {
-                            Toggle("column.modificationDate", isOn: $showModificationDateColumn)
-                            Toggle("column.size", isOn: $showSizeColumn)
-                            Toggle("column.kind", isOn: $showKindColumn)
-                            Toggle("column.creationDate", isOn: $showCreationDateColumn)
-                            Toggle("column.addedDate", isOn: $showAddedDateColumn)
-                            Divider()
-                            Toggle("preferences.general.groupFoldersAtTop", isOn: $groupFoldersAtTop) // [LV-03]
-                        } label: {
-                            Image(systemName: "line.3.horizontal.decrease.circle")
-                        }
-                        .menuStyle(.borderlessButton)
-                        .fixedSize()
-                        .help("folder.visibleColumns") // [LV-02]
-                    }
-                }
-                .padding(.horizontal, Tokens.spacing.m)
-                .padding(.vertical, Tokens.spacing.xs)
-                .background(.thinMaterial)
             }
+            // 絞り込んだ結果が 0 件のとき。**一覧の領域にだけ重ねる**——
+            // 外側（`VStack` 全体）に付けるとパスバー・ステータスバーまで
+            // 覆ってしまい、現在地も件数も見えなくなる（実機で確認）。
+            // 読み込みエラー（`loadError`）とは別物なので、一覧の構造そのものは
+            // 変えずに重ねるだけにしている。
+            .overlay {
+                if hasActiveSearch, displayedEntries.isEmpty, loadError == nil {
+                    PlaceholderPane(
+                        title: String(localized: "folder.noSearchResults", locale: locale),
+                        subtitle: String(localized: "folder.noSearchResultsHint", locale: locale)
+                    )
+                    .background(.background)
+                }
+            }
+
+            bottomBars
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background {
@@ -509,6 +510,12 @@ struct FolderContentView: View {
                 KeyBindingButtons(action: .compress, store: keyBindingStore, isDisabled: selection.isEmpty) {
                     compressHere(Array(selection))
                 }
+                // 検索フィールドへフォーカス（既定 ⌘F）[1-16]。1-8 で
+                // `ActionID.focusSearch` として登録だけしてあったものを、
+                // ここで初めて実際に配線した。
+                KeyBindingButtons(action: .focusSearch, store: keyBindingStore, isDisabled: folder == nil) {
+                    isSearchFieldFocused = true
+                }
             }
             .frame(width: 0, height: 0)
             .opacity(0)
@@ -536,6 +543,18 @@ struct FolderContentView: View {
             return true
         } isTargeted: { isDropTargeted = $0 }
         // File/Edit メニューバーへの橋渡し [`FolderMenuActions` 参照]。
+        // 名前での絞り込み [1-16 検索]。**`.searchable` を使う** [設計判断] ——
+        // 検索フィールドをツールバーへ置く（Finder と同じ位置）・クリアボタン・
+        // macOS 標準の見た目を自前で組み立てずに済む。1-9 で記録した
+        // 「`.primaryAction` の項目は右ペインを開くとインスペクタ側へ移動する」
+        // 制約はこの検索フィールドにも当てはまるが、そこは既存の表示切替・
+        // 新規フォルダボタンと同じ既知のトレードオフとして受け入れる。
+        .searchable(
+            text: $searchText,
+            placement: .toolbar,
+            prompt: Text("folder.searchPrompt")
+        )
+        .searchFocused($isSearchFieldFocused)
         .focusedSceneValue(\.folderMenuActions, currentFolderMenuActions)
         .task(id: folder) {
             reload()
@@ -614,6 +633,61 @@ struct FolderContentView: View {
     /// `FolderMenuActions` の値。File/Edit メニューの各項目はこの値を通じて
     /// 現在のフォルダ・選択に対して動作する [`.focusedSceneValue` の呼び出し
     /// 箇所参照]。
+    /// 中央ペイン下端のパスバーとステータスバー [1-16 表示メニューで表示切替を
+    /// 追加]。**`body` から切り出している** — ステータスバーを足した時点で
+    /// `body` 全体が「型検査に時間がかかりすぎる」というコンパイルエラーに
+    /// なったため（SwiftUI の `ViewBuilder` は 1 つの式が大きくなるほど推論が
+    /// 急激に重くなる）。同様に `body` が膨らんだら、まずこうした独立した
+    /// 区画を計算プロパティへ切り出すこと。
+    @ViewBuilder
+    private var bottomBars: some View {
+        if let folder, isPathBarVisible {
+            Divider()
+            HStack(spacing: Tokens.spacing.s) {
+                PathBarView(folder: folder, onNavigate: onNavigate) // [ユーザー要望: Finder 流のパスバー]
+                // リスト/アイコン表示モード依存のコントロールをパスバーの右端に統一
+                // [ユーザー要望: 上段の行をリスト/アイコンどちらでも同じ配置にしたい
+                // ため、以前は上段に置いていたこの2つをここへ移動]。
+                if listStyle == .icon { // [IV-04]
+                    Slider(value: $iconSize, in: Tokens.iconSize.min...Tokens.iconSize.max, step: Tokens.iconSize.step)
+                        .frame(width: 100)
+                        .help("folder.iconSize")
+                } else {
+                    Menu {
+                        Toggle("column.modificationDate", isOn: $showModificationDateColumn)
+                        Toggle("column.size", isOn: $showSizeColumn)
+                        Toggle("column.kind", isOn: $showKindColumn)
+                        Toggle("column.creationDate", isOn: $showCreationDateColumn)
+                        Toggle("column.addedDate", isOn: $showAddedDateColumn)
+                        Divider()
+                        Toggle("preferences.general.groupFoldersAtTop", isOn: $groupFoldersAtTop) // [LV-03]
+                    } label: {
+                        Image(systemName: "line.3.horizontal.decrease.circle")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .help("folder.visibleColumns") // [LV-02]
+                }
+            }
+            .padding(.horizontal, Tokens.spacing.m)
+            .padding(.vertical, Tokens.spacing.xs)
+            .background(.thinMaterial)
+        }
+
+        // ステータスバー [1-16 表示メニュー、Finder の ⌘/ 相当]。パスバーと
+        // 同じく、表示するフォルダがあるときだけ描く。
+        if folder != nil, isStatusBarVisible {
+            Divider()
+            StatusBarView(
+                folder: folder,
+                // 絞り込み中は一致件数を出す（Finder の検索結果表示と同じ）。
+                itemCount: displayedEntries.count,
+                selectedCount: selection.count,
+                reloadToken: SessionState.shared.reloadToken
+            )
+        }
+    }
+
     private var currentFolderMenuActions: FolderMenuActions {
         let selected = Array(selection)
         var actions = FolderMenuActions()
@@ -661,7 +735,54 @@ struct FolderContentView: View {
         actions.selectAll = { selectAllInCurrentFolder() }
         actions.deselectAll = { selection.removeAll() }
         actions.revealInFinder = { NSWorkspace.shared.activateFileViewerSelecting(selected) }
+
+        // 表示メニュー [1-16]。並び替え・カラムの状態はこのビューが持つため、
+        // ここから公開する（ペイン・バーの表示状態のようなウインドウ全体の
+        // ものは `MainWindowView` が `WindowMenuActions` として公開する）。
+        //
+        // **`.commands` 側に `@AppStorage` を直接読ませない**ことがこの経路の
+        // 眼目 [設計判断]。カラムの実体は `@AppStorage` だが、メニュー側は
+        // ここで渡される `Set<FolderColumn>` とクロージャしか見ない —— メニュー
+        // バーの `Toggle` を `@AppStorage` に直接束縛し、かつ同じキーを
+        // ビュー構造を決める `if` で読むと、SwiftUI の Observation が無限に
+        // 再評価してアプリがハングする既知の不具合（CLAUDE.md「タブバー表示
+        // トグル」）を踏むパターンそのものになる。
+        actions.isListStyleActive = listStyle == .list
+        actions.sortKey = sortOrder.first?.key ?? .name
+        actions.sortAscending = (sortOrder.first?.order ?? .forward) == .forward
+        actions.setSortKey = { key in
+            sortOrder = [FolderSortComparator(key: key, order: sortOrder.first?.order ?? .forward)]
+        }
+        actions.setSortAscending = { ascending in
+            sortOrder = [FolderSortComparator(key: sortOrder.first?.key ?? .name, order: ascending ? .forward : .reverse)]
+        }
+        actions.visibleColumns = visibleColumns
+        actions.setColumnVisible = { column, isVisible in setColumnVisible(column, isVisible) }
+        actions.groupFoldersAtTop = groupFoldersAtTop
+        actions.setGroupFoldersAtTop = { groupFoldersAtTop = $0 }
         return actions
+    }
+
+    /// 現在表示中のカラム [LV-02]。`FolderColumn` と `@AppStorage` の対応を
+    /// この 2 つのヘルパーに閉じ込め、他の箇所がキー文字列を直接扱わないようにする。
+    private var visibleColumns: Set<FolderColumn> {
+        var result: Set<FolderColumn> = []
+        if showModificationDateColumn { result.insert(.modificationDate) }
+        if showSizeColumn { result.insert(.size) }
+        if showKindColumn { result.insert(.kind) }
+        if showCreationDateColumn { result.insert(.creationDate) }
+        if showAddedDateColumn { result.insert(.addedDate) }
+        return result
+    }
+
+    private func setColumnVisible(_ column: FolderColumn, _ isVisible: Bool) {
+        switch column {
+        case .modificationDate: showModificationDateColumn = isVisible
+        case .size: showSizeColumn = isVisible
+        case .kind: showKindColumn = isVisible
+        case .creationDate: showCreationDateColumn = isVisible
+        case .addedDate: showAddedDateColumn = isVisible
+        }
     }
 
     private static let sizeFormatter: ByteCountFormatter = {
@@ -764,8 +885,20 @@ struct FolderContentView: View {
     /// 適用した、実際に `Table` へ渡す並び。`filter` は相対順序を保つため、
     /// グルーピングを先にソートした結果へ適用しても各グループ内の順序は
     /// 崩れない。
+    /// 絞り込みが有効か [1-16 検索]。空白のみの入力は「絞り込んでいない」扱い。
+    private var hasActiveSearch: Bool {
+        !searchText.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
     private var displayedEntries: [FolderEntry] {
         var result = entries
+        // 名前での絞り込み [1-16 検索、`ActionID.focusSearch`]。**現在のフォルダの
+        // 直下だけを対象にする**——ライブラリ横断検索・ラベル検索はフェーズ2の
+        // 担当で、ここはあくまで Finder の検索フィールドに当たる軽い絞り込み。
+        // 一致判定の規則とその理由は `NameFilter` 側にまとめてある。
+        if hasActiveSearch {
+            result = result.filter { NameFilter.matches(name: $0.name, query: searchText) }
+        }
         result.sort(using: sortOrder)
         if groupFoldersAtTop {
             result = result.filter(\.isDirectory) + result.filter { !$0.isDirectory }
@@ -1526,8 +1659,11 @@ struct FolderEntry: Identifiable {
 /// リスト表示の全カラム共通のソートキー [LV-01]。`Table` の `sortOrder` は
 /// 単一のコンパレータ型の配列を要求するため、キーの種類を enum で切り替える
 /// 1つの型にまとめている（各カラムがそれぞれ別のコンパレータ型を持つことはできない）。
-private struct FolderSortComparator: SortComparator {
-    enum Key: Hashable {
+/// `private` を外してモジュール内可視にしている — 表示メニュー
+/// （`ViewMenuCommands`）が並び替えの選択肢としてこの `Key` を参照するため
+/// [1-16、`FolderEntry`/`DropIntoFolderModifier` と同じ扱い]。
+struct FolderSortComparator: SortComparator {
+    enum Key: Hashable, CaseIterable {
         case name, modificationDate, size, kind, creationDate, addedDate
     }
 

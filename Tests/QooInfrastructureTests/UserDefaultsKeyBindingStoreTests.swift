@@ -87,4 +87,41 @@ import Testing
         let second = UserDefaultsKeyBindingStore(defaults: defaults, storageKey: "overrides")
         #expect(second.binding(for: .rename).combos == [KeyCombo(key: "e", modifiers: .command)])
     }
+
+    /// 廃止された `ActionID`（アプリの更新でケースが消えた場合）が保存領域に
+    /// 残っていても、**他の割り当てが道連れにならない** [1-16 で発見]。
+    /// 以前は `[ActionID: [KeyCombo]]` として一括デコードしていたため、
+    /// 未知のキーが 1 つあるだけでデコード全体が失敗し、`try?` に握りつぶされて
+    /// ユーザーのキー設定が丸ごと既定へ戻っていた。
+    @Test func unknownActionIDInStorageDoesNotDiscardTheOtherOverrides() throws {
+        let suiteName = "qoo-keybinding-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        let payload: [String: [KeyCombo]] = [
+            "rename": [KeyCombo(key: "e", modifiers: .command)],
+            "someRemovedActionFromAnOlderBuild": [KeyCombo(key: "j", modifiers: .command)],
+        ]
+        defaults.set(try JSONEncoder().encode(payload), forKey: "overrides")
+
+        let store = UserDefaultsKeyBindingStore(defaults: defaults, storageKey: "overrides")
+        #expect(store.binding(for: .rename).combos == [KeyCombo(key: "e", modifiers: .command)])
+    }
+
+    /// 旧形式（`ActionID` をキーにした辞書。Swift の `Codable` はこれを
+    /// キーと値が交互に並ぶ平坦な配列として書き出す）で保存された設定を、
+    /// 新形式へ移行しても失わない [1-16 で保存形式を変更したことへの対応]。
+    @Test func legacyFlatArrayStorageIsStillReadable() throws {
+        let suiteName = "qoo-keybinding-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        let legacy: [ActionID: [KeyCombo]] = [.rename: [KeyCombo(key: "e", modifiers: .command)]]
+        defaults.set(try JSONEncoder().encode(legacy), forKey: "overrides")
+
+        let store = UserDefaultsKeyBindingStore(defaults: defaults, storageKey: "overrides")
+        #expect(store.binding(for: .rename).combos == [KeyCombo(key: "e", modifiers: .command)])
+
+        // 次の保存で新形式に置き換わり、以後も読めること。
+        try store.setBinding([KeyCombo(key: "y", modifiers: .command)], for: .duplicate)
+        let reopened = UserDefaultsKeyBindingStore(defaults: defaults, storageKey: "overrides")
+        #expect(reopened.binding(for: .rename).combos == [KeyCombo(key: "e", modifiers: .command)])
+        #expect(reopened.binding(for: .duplicate).combos == [KeyCombo(key: "y", modifiers: .command)])
+    }
 }

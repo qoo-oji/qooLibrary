@@ -188,7 +188,16 @@ struct FolderTreeContextMenu: View {
     private var groupSpecificSection: some View {
         switch context.group {
         case .volume:
-            EmptyView()
+            // 取り出す [1-16]。ボリュームのマウントポイント行で、かつ実際に
+            // 取り出せるボリューム（内蔵の起動ディスクを除く）のときだけ出す。
+            // **コンテキストメニューは「出さない」、メニューバーは「無効にする」**
+            // という既存の使い分けに従う（`FileMenuCommands` 冒頭のコメント参照）。
+            if context.role == .volumeRoot, context.node.isEjectableVolume {
+                Divider()
+                Button("action.eject") {
+                    Task { await VolumeEjectAction.eject(context.url) }
+                }
+            }
         case .temporary:
             EmptyView()
         case .library:

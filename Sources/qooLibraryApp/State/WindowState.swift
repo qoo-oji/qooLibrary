@@ -146,6 +146,20 @@ public final class WindowState {
         tabs[index].folder = url
         tabs[index].title = url.lastPathComponent
         tabs[index].navigationRoot = resolvedRoot
+        tabs[index].searchText = "" // [1-16] 移動したら絞り込みは解除する（Finder と同じ）
+        // 「最近使ったフォルダ」[1-16 移動メニュー]。**`goBack`/`goForward` は
+        // この経路を通らないため履歴に積まれない** — 履歴を行き来しただけで
+        // 「最近使った」一覧の順序が入れ替わるのは Finder の挙動とも直感とも
+        // ずれるため、意図してこの共通経路だけに置いている。
+        RecentFoldersStore.shared.record(url)
+    }
+
+    /// 移動メニューの「ホーム」[1-16]。サンドボックスの仮想ホーム
+    /// （`FolderContentView` の `canGoToParent` が上限としている場所と同じ）へ
+    /// 移動する。ユーザーに見せる表記は実装詳細を出さず単に「ホーム」にする
+    /// [ユーザー指摘、環境設定「起動時に開くフォルダ」と同じ方針]。
+    public func goHome() {
+        navigateCurrentTab(to: FileManager.default.homeDirectoryForCurrentUser, root: .volume)
     }
 
     public var canGoBack: Bool {
@@ -198,6 +212,7 @@ public final class WindowState {
         tabs[index].folder = previous.url
         tabs[index].navigationRoot = previous.navigationRoot
         tabs[index].title = previous.url.lastPathComponent
+        tabs[index].searchText = "" // [1-16]
         revealIfParent(of: leavingFolder, newFolder: previous.url, at: index)
     }
 
@@ -210,6 +225,7 @@ public final class WindowState {
         tabs[index].folder = next.url
         tabs[index].navigationRoot = next.navigationRoot
         tabs[index].title = next.url.lastPathComponent
+        tabs[index].searchText = "" // [1-16]
     }
 
     /// `⌘↑` 相当 [KB-02]。`goBack`/`goForward` と同じく `navigateCurrentTab(to:)`
@@ -267,6 +283,7 @@ public final class WindowState {
         tabs[index].folder = target
         tabs[index].title = target.lastPathComponent
         tabs[index].selection = []
+        tabs[index].searchText = "" // [1-16]
         tabs[index].backHistory.removeAll { !fileManager.fileExists(atPath: $0.url.path) }
         tabs[index].forwardHistory.removeAll { !fileManager.fileExists(atPath: $0.url.path) }
         return true
@@ -311,6 +328,9 @@ public final class WindowState {
         tab.navigationRoot = root
         tabs.append(tab)
         selectedTabID = tab.id
+        if let folder {
+            RecentFoldersStore.shared.record(folder) // [1-16 移動メニュー]
+        }
     }
 
     /// タブバーの「＋」・`⌘T` の共通経路 [KB-02 相当]。フォルダ登録・環境設定が

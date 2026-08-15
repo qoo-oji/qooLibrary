@@ -193,6 +193,22 @@
         }
       }
     },
+    "action.decreaseIconSize": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Decrease Icon Size"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アイコンを小さく"
+          }
+        }
+      }
+    },
     "action.deletePermanently": {
       "localizations": {
         "en": {
@@ -221,6 +237,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "すべてを選択解除"
+          }
+        }
+      }
+    },
+    "action.eject": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eject"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取り出す"
+          }
+        }
+      }
+    },
+    "action.ejectAll": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eject All"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "すべてを取り出す"
           }
         }
       }
@@ -273,6 +321,22 @@
         }
       }
     },
+    "action.goToFolder": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Go to Folder"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "フォルダへ移動"
+          }
+        }
+      }
+    },
     "action.goToParent": {
       "localizations": {
         "en": {
@@ -285,6 +349,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "上の階層へ"
+          }
+        }
+      }
+    },
+    "action.increaseIconSize": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Increase Icon Size"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アイコンを大きく"
           }
         }
       }
@@ -481,18 +561,66 @@
         }
       }
     },
-    "action.toggleDisplayMode": {
+    "action.toggleInspector": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Toggle View Mode"
+            "value": "Show or Hide Inspector"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "表示モード切替"
+            "value": "インスペクタの表示切替"
+          }
+        }
+      }
+    },
+    "action.togglePathBar": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show or Hide Path Bar"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パスバーの表示切替"
+          }
+        }
+      }
+    },
+    "action.toggleSidebar": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show or Hide Sidebar"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サイドバーの表示切替"
+          }
+        }
+      }
+    },
+    "action.toggleStatusBar": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show or Hide Status Bar"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ステータスバーの表示切替"
           }
         }
       }
@@ -925,6 +1053,54 @@
           "stringUnit": {
             "state": "translated",
             "value": "書き出す"
+          }
+        }
+      }
+    },
+    "eject.failed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” couldn’t be ejected"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「%@」を取り出せませんでした"
+          }
+        }
+      }
+    },
+    "eject.failedGeneric": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The volume couldn’t be ejected"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ボリュームを取り出せませんでした"
+          }
+        }
+      }
+    },
+    "eject.someFailed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Some volumes couldn’t be ejected"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取り出せなかったボリュームがあります"
           }
         }
       }
@@ -1681,6 +1857,38 @@
         }
       }
     },
+    "folder.noSearchResults": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Results"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "見つかりません"
+          }
+        }
+      }
+    },
+    "folder.noSearchResultsHint": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No items in this folder match your search."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このフォルダ内に一致する項目はありません。"
+          }
+        }
+      }
+    },
     "folder.openEachInNewTab": {
       "localizations": {
         "en": {
@@ -1821,6 +2029,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Finder で表示"
+          }
+        }
+      }
+    },
+    "folder.searchPrompt": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search this folder"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このフォルダ内を検索"
           }
         }
       }
@@ -2193,6 +2417,118 @@
         }
       }
     },
+    "goToFolder.go": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Go"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移動"
+          }
+        }
+      }
+    },
+    "goToFolder.menuItem": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Go to Folder…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "フォルダへ移動…"
+          }
+        }
+      }
+    },
+    "goToFolder.noAccess": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "qooLibrary doesn’t have permission to open that folder. Grant access in Settings › Access."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "そのフォルダを開く権限がありません。環境設定の「アクセス権」で許可してください。"
+          }
+        }
+      }
+    },
+    "goToFolder.notAFolder": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That path is a file, not a folder."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "そのパスはフォルダではなくファイルです。"
+          }
+        }
+      }
+    },
+    "goToFolder.notFound": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That path doesn’t exist. Check the spelling and try again."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "そのパスは存在しません。入力内容を確認してください。"
+          }
+        }
+      }
+    },
+    "goToFolder.placeholder": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter a path"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パスを入力"
+          }
+        }
+      }
+    },
+    "goToFolder.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Go to Folder"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "フォルダへ移動"
+          }
+        }
+      }
+    },
     "inspector.containedFileCount": {
       "localizations": {
         "en": {
@@ -2461,6 +2797,86 @@
           "stringUnit": {
             "state": "translated",
             "value": "詳細を表示"
+          }
+        }
+      }
+    },
+    "menu.go": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Go"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移動"
+          }
+        }
+      }
+    },
+    "menu.go.clearRecentFolders": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear Menu"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "メニューを消去"
+          }
+        }
+      }
+    },
+    "menu.go.home": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Home"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ホーム"
+          }
+        }
+      }
+    },
+    "menu.go.noRecentFolders": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Recent Folders"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "履歴なし"
+          }
+        }
+      }
+    },
+    "menu.go.recentFolders": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recent Folders"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最近使ったフォルダ"
           }
         }
       }
@@ -4449,6 +4865,102 @@
         }
       }
     },
+    "sort.ascending": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ascending"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "昇順"
+          }
+        }
+      }
+    },
+    "sort.descending": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Descending"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "降順"
+          }
+        }
+      }
+    },
+    "statusBar.available": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ available"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 空き"
+          }
+        }
+      }
+    },
+    "statusBar.itemCount": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld items"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 項目"
+          }
+        }
+      }
+    },
+    "statusBar.selectedCount": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld selected"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 項目を選択"
+          }
+        }
+      }
+    },
+    "statusBar.separator": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": ", "
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "、"
+          }
+        }
+      }
+    },
     "tabBar.closeOtherTabs": {
       "localizations": {
         "en": {
@@ -4477,6 +4989,134 @@
           "stringUnit": {
             "state": "translated",
             "value": "タブを閉じる"
+          }
+        }
+      }
+    },
+    "view.hideInspector": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide Inspector"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "インスペクタを隠す"
+          }
+        }
+      }
+    },
+    "view.hidePathBar": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide Path Bar"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パスバーを隠す"
+          }
+        }
+      }
+    },
+    "view.hideSidebar": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide Sidebar"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サイドバーを隠す"
+          }
+        }
+      }
+    },
+    "view.hideStatusBar": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide Status Bar"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ステータスバーを隠す"
+          }
+        }
+      }
+    },
+    "view.showInspector": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show Inspector"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "インスペクタを表示"
+          }
+        }
+      }
+    },
+    "view.showPathBar": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show Path Bar"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パスバーを表示"
+          }
+        }
+      }
+    },
+    "view.showSidebar": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show Sidebar"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サイドバーを表示"
+          }
+        }
+      }
+    },
+    "view.showStatusBar": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show Status Bar"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ステータスバーを表示"
           }
         }
       }

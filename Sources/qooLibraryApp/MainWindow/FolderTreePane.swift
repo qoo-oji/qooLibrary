@@ -151,7 +151,15 @@ struct FolderTreePane: View {
             // 状態になる（実機検証で発見）。登録の追加・解除・改名を伴う経路は
             // 他にもあり得るので、発生源ごとに手当てするのではなく、他の
             // ペインと同じ共通シグナルを見て読み直す。
+            // **ボリューム一覧も同じ理由で読み直す** [1-16 のイジェクト実装時に
+            // 実機検証で発見]。`volumes` も登録フォルダと同じくこのペインが
+            // `@State` に抱えたコピーで、`.task` の初回しか読み込んでいなかった
+            // ため、取り出したボリュームがツリーに残り続けていた。着脱の検知
+            // （`NSWorkspace` のボリューム通知、VD-01〜06）は 2-2 の担当なので、
+            // ここではアプリ内の操作を拾う共通シグナルに乗せるに留める
+            // ——Finder 側で取り出した場合などはまだ追随しない [既知の限界]。
             .onChange(of: SessionState.shared.reloadToken) { _, _ in
+                volumes = FolderTreeNode.mountedVolumes()
                 Task { await reloadRegisteredFolders() }
             }
         }
@@ -395,6 +403,11 @@ struct FolderTreePane: View {
         async let temporaries = RegisteredFolderStore.shared.folders(kind: .temporary)
         libraryEntries = await Self.entries(for: libraries, kind: .library)
         temporaryEntries = await Self.entries(for: temporaries, kind: .temporary)
+        // 「移動」メニュー用のキャッシュも同じタイミングで更新する [1-16]。
+        // 登録の追加・解除・表示名変更・`SessionState.reloadToken` の変化は
+        // すべてこのメソッドを経由するため、更新経路をここ 1 本に集約できる
+        // [`RegisteredFolderIndex` のコメント参照]。
+        await RegisteredFolderIndex.shared.refresh()
     }
 
     private static func entries(for folders: [RegisteredFolder], kind: FolderTreeNode.Kind) async -> [RegisteredFolderEntry] {

@@ -41,6 +41,9 @@ public enum ActionID: String, Sendable, Codable, CaseIterable {
     case goToParent
     case goBack
     case goForward
+    /// Finder の「フォルダへ移動…」（⇧⌘G）[1-16 移動メニュー]。パスを直接
+    /// 入力して移動する。
+    case goToFolder
     case rename
     case moveToTrash
     case deletePermanently
@@ -55,7 +58,27 @@ public enum ActionID: String, Sendable, Codable, CaseIterable {
     case moveItemsHere
     case cut
     case focusSearch
-    case toggleDisplayMode
+    /// 表示モードの直接指定（⌘1 / ⌘2）[1-16 表示メニュー]。
+    ///
+    /// **旧 `toggleDisplayMode` を置き換えたもの。** Finder は表示モードを
+    /// ⌘1〜⌘4 の直接指定で切り替え「トグル」の概念自体を持たないため、
+    /// Finder 準拠のメニューを用意する段になって、トグル 1 個という設計
+    /// そのものが合わないと判明した（旧ケースはどこからも呼ばれておらず
+    /// 既定キーも空だった）。
+    case displayAsIcons
+    case displayAsList
+    /// アイコンサイズの拡大・縮小（⌘+ / ⌘-）[IV-04][1-16 表示メニュー]。
+    case increaseIconSize
+    case decreaseIconSize
+    /// ボリュームの取り出し [1-16]。`ejectAll` は Finder の「取り出す」の
+    /// ⌥ 代替「すべてを取り出す」に対応し、Finder 自身と同じく既定キーは持たない。
+    case eject
+    case ejectAll
+    /// ペイン・バーの表示切替 [1-16 表示メニュー]。いずれも Finder 標準キー。
+    case toggleSidebar
+    case toggleInspector
+    case togglePathBar
+    case toggleStatusBar
     case clearLabelFilter
     case moveToVault
     case undo
@@ -129,6 +152,7 @@ public enum DefaultKeyBindings {
             KeyCombo(key: "]", modifiers: .command),
             KeyCombo(key: "right", modifiers: .command),
         ]),
+        KeyBinding(id: .goToFolder, combos: [KeyCombo(key: "g", modifiers: [.command, .shift])]), // Finder 標準
         KeyBinding(id: .rename, combos: [KeyCombo(key: "r", modifiers: .command)]), // [KB-03]
         KeyBinding(id: .moveToTrash, combos: [KeyCombo(key: "delete", modifiers: .command)]),
         KeyBinding(id: .deletePermanently, combos: [], isDestructive: true), // [FM-16]
@@ -144,13 +168,21 @@ public enum DefaultKeyBindings {
         KeyBinding(id: .moveItemsHere, combos: [KeyCombo(key: "v", modifiers: [.command, .option])]),
         KeyBinding(id: .cut, combos: [KeyCombo(key: "x", modifiers: .command)]),
         KeyBinding(id: .focusSearch, combos: [KeyCombo(key: "f", modifiers: .command)]),
-        // ⌘L は Finder 標準の「エイリアスを作成」（`makeAlias`）に譲る
-        // [1-12b フォローアップでの衝突解消]。Finder はリスト/アイコン等の
-        // 表示切替に ⌘1〜⌘4（種類ごとの直接指定）を使い「トグル」の概念自体が
-        // 無いため、本アプリ独自のこの操作に借用すべき Finder 標準キーが無い。
-        // 未実装のまま（`toggleDisplayMode` は 2026-08 時点でどこからも
-        // 呼ばれていない）なので、既定は空にして衝突検出だけ有効にしておく。
-        KeyBinding(id: .toggleDisplayMode, combos: []),
+        // 表示メニュー [1-16]。いずれも Finder 標準のキーに合わせている
+        // （⌘1/⌘2 は Finder のアイコン表示/リスト表示、本アプリはこの 2 種類
+        // のみのため ⌘3/⌘4 に当たるものは無い）。
+        KeyBinding(id: .displayAsIcons, combos: [KeyCombo(key: "1", modifiers: .command)]),
+        KeyBinding(id: .displayAsList, combos: [KeyCombo(key: "2", modifiers: .command)]),
+        KeyBinding(id: .increaseIconSize, combos: [KeyCombo(key: "+", modifiers: .command)]),
+        KeyBinding(id: .decreaseIconSize, combos: [KeyCombo(key: "-", modifiers: .command)]),
+        KeyBinding(id: .toggleSidebar, combos: [KeyCombo(key: "s", modifiers: [.command, .control])]),
+        // Finder の「プレビューを隠す」（⇧⌘P）に相当。本アプリでは常設の
+        // インスペクタ（右ペイン、1-10）がその役割。
+        KeyBinding(id: .toggleInspector, combos: [KeyCombo(key: "p", modifiers: [.command, .shift])]),
+        KeyBinding(id: .togglePathBar, combos: [KeyCombo(key: "p", modifiers: [.command, .option])]),
+        KeyBinding(id: .toggleStatusBar, combos: [KeyCombo(key: "/", modifiers: .command)]),
+        KeyBinding(id: .eject, combos: [KeyCombo(key: "e", modifiers: .command)]), // Finder 標準
+        KeyBinding(id: .ejectAll, combos: []), // Finder も ⌥ 代替のみでキーは持たない
         KeyBinding(id: .clearLabelFilter, combos: [KeyCombo(key: "k", modifiers: [.command, .shift])]), // [LF-07]
         KeyBinding(id: .moveToVault, combos: [KeyCombo(key: "a", modifiers: [.command, .control])]),
         KeyBinding(id: .undo, combos: [KeyCombo(key: "z", modifiers: .command)]),

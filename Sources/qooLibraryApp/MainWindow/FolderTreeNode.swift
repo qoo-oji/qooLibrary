@@ -1,4 +1,5 @@
 import Foundation
+import QooInfrastructure
 
 /// フォルダツリーの 1 ノード [14章 §14.2]。
 public struct FolderTreeNode: Identifiable, Sendable, Hashable {
@@ -16,6 +17,11 @@ public struct FolderTreeNode: Identifiable, Sendable, Hashable {
     /// たびに発生するため（中央ペインが `FolderEntry.isLocked` を
     /// `reload()` で一括取得しているのと同じ考え方）。
     public var isLocked: Bool = false
+    /// 取り出せるボリュームか [1-16、Finder の「取り出す」相当]。ボリューム
+    /// ルート行にだけ意味があり、それ以外は常に `false`。`isLocked` と同じく
+    /// **一覧を作るときにまとめて読む**（メニューを組み立てるたびに
+    /// `resourceValues` を呼ばない）。
+    public var isEjectableVolume: Bool = false
 
     public enum Kind: Sendable, Hashable {
         case volume, temporary, library, plainFolder
@@ -23,7 +29,8 @@ public struct FolderTreeNode: Identifiable, Sendable, Hashable {
 
     public init(
         url: URL, displayName: String? = nil, kind: Kind,
-        isOnline: Bool = true, isSymlink: Bool = false, isLocked: Bool = false
+        isOnline: Bool = true, isSymlink: Bool = false, isLocked: Bool = false,
+        isEjectableVolume: Bool = false
     ) {
         self.id = url.standardizedFileURL.path
         self.url = url
@@ -32,6 +39,7 @@ public struct FolderTreeNode: Identifiable, Sendable, Hashable {
         self.isOnline = isOnline
         self.isSymlink = isSymlink
         self.isLocked = isLocked
+        self.isEjectableVolume = isEjectableVolume
     }
 
     /// 子ノードを列挙する。実 FileManager 呼び出しを伴う（読み取りのみ、
@@ -78,7 +86,12 @@ public struct FolderTreeNode: Identifiable, Sendable, Hashable {
 
         return urls.map { url in
             let name = (try? url.resourceValues(forKeys: [.volumeLocalizedNameKey]))?.volumeLocalizedName
-            return FolderTreeNode(url: url, displayName: name, kind: .volume)
+            return FolderTreeNode(
+                url: url,
+                displayName: name,
+                kind: .volume,
+                isEjectableVolume: VolumeEjector.isEjectable(url) // [1-16]
+            )
         }
         .sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
     }

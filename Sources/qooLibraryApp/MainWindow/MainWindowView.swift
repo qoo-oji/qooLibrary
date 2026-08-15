@@ -47,6 +47,20 @@ struct MainWindowView: View {
     /// 保持したい、の両方に対応]。
     @State private var isRightPaneCollapsed: Bool
     private static let isRightPaneCollapsedKey = "qoo.mainWindow.isRightPaneCollapsed"
+    /// パスバー・ステータスバーの表示 [1-16 表示メニュー]。**`isRightPaneCollapsed`
+    /// と全く同じ扱いにしている** — `init` で `UserDefaults` から素の値として
+    /// 一度だけ読み（リアクティブな購読ではない）、切り替え時に明示的に書き戻す。
+    /// `@AppStorage` にしてビュー構造を決める `if` 条件で読むと SwiftUI の
+    /// Observation が無限に再評価してハングする既知の不具合があるため
+    /// （CLAUDE.md「タブバー表示トグル」参照）、そのパターンを踏まない。
+    @State private var isPathBarVisible: Bool
+    @State private var isStatusBarVisible: Bool
+    private static let isPathBarVisibleKey = "qoo.mainWindow.isPathBarVisible"
+    private static let isStatusBarVisibleKey = "qoo.mainWindow.isStatusBarVisible"
+    /// サイドバー（左ペイン）の表示 [1-16 表示メニュー、Finder の ⌃⌘S 相当]。
+    /// `NavigationSplitView` 自身が持つ表示状態なので、こちらは永続化せず
+    /// `@State` のみ（ウインドウを開き直せば既定に戻る）。
+    @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
     /// 新規フォルダ作成ダイアログの状態。ボタン自体はウインドウの実ツールバーに
     /// あるが、`.alert` 本体は `FolderContentView` 側（`folder`/`CommandStack` を
     /// 参照できる場所）に置いたままにしたいため、ここへ持ち上げてバインディング
@@ -54,6 +68,8 @@ struct MainWindowView: View {
     /// フォルダ・右ペイン折りたたみをすべて実ツールバーへ統合]。
     @State private var showingNewFolderPrompt = false
     @State private var newFolderName = String(localized: "action.newFolder", locale: AppLanguage.effectiveLocale)
+    /// 「フォルダへ移動…」（⇧⌘G）[1-16 移動メニュー、`GoToFolderSheet`]。
+    @State private var showingGoToFolderSheet = false
     /// サイドバー（左ペイン）・インスペクタ（右ペイン）の幅 [UI-02 相当]。
     /// `NavigationSplitView`/`.inspector()` は `ideal:` を初期表示幅として
     /// 素直に尊重してくれる（`HSplitView` の `.frame(idealWidth:)` は無視される
@@ -92,7 +108,18 @@ struct MainWindowView: View {
         _windowState = State(initialValue: state)
         _quickLook = State(initialValue: QuickLookController(windowState: state))
         _isRightPaneCollapsed = State(initialValue: UserDefaults.standard.bool(forKey: Self.isRightPaneCollapsedKey))
+        // パスバー・ステータスバーはどちらも既定で表示する。`bool(forKey:)` は
+        // 未設定のとき `false` を返してしまうため、`object(forKey:)` で
+        // 「設定されているか」を先に見る（`isRightPaneCollapsed` は既定 `false`
+        // ＝表示なのでこの区別が要らなかった）。
+        _isPathBarVisible = State(initialValue: Self.storedFlag(Self.isPathBarVisibleKey, default: true))
+        _isStatusBarVisible = State(initialValue: Self.storedFlag(Self.isStatusBarVisibleKey, default: true))
         wasLaunchedWithoutExplicitFolder = initialFolder == nil
+    }
+
+    private static func storedFlag(_ key: String, default defaultValue: Bool) -> Bool {
+        guard UserDefaults.standard.object(forKey: key) != nil else { return defaultValue }
+        return UserDefaults.standard.bool(forKey: key)
     }
 
     /// これから「アプリ起動時に開くフォルダ」の `.task` がタブの `folder`/
@@ -116,6 +143,70 @@ struct MainWindowView: View {
         return FileManager.default.displayName(atPath: folder.path)
     }
 
+    /// 「移動」メニューへ公開するナビゲーション操作 [1-16]。
+    private var currentWindowMenuActions: WindowMenuActions {
+        WindowMenuActions(
+            canGoBack: windowState.canGoBack,
+            canGoForward: windowState.canGoForward,
+            canGoToParent: windowState.canGoToParent,
+            goBack: { windowState.goBack() },
+            goForward: { windowState.goForward() },
+            goToParent: { windowState.goToParent() },
+            goHome: { windowState.goHome() },
+            beginGoToFolder: { showingGoToFolderSheet = true },
+            navigate: { url, root in windowState.navigateCurrentTab(to: url, root: root) },
+            // 表示メニュー [1-16]。
+            listStyle: windowState.listStyle,
+            setListStyle: { windowState.listStyle = $0 },
+            canIncreaseIconSize: windowState.listStyle == .icon && windowState.iconSize < Tokens.iconSize.max,
+            canDecreaseIconSize: windowState.listStyle == .icon && windowState.iconSize > Tokens.iconSize.min,
+            increaseIconSize: { adjustIconSize(by: Tokens.iconSize.step) },
+            decreaseIconSize: { adjustIconSize(by: -Tokens.iconSize.step) },
+            isSidebarVisible: sidebarVisibility != .detailOnly,
+            isInspectorVisible: !isRightPaneCollapsed,
+            isPathBarVisible: isPathBarVisible,
+            isStatusBarVisible: isStatusBarVisible,
+            toggleSidebar: { sidebarVisibility = sidebarVisibility == .detailOnly ? .all : .detailOnly },
+            toggleInspector: { setRightPaneCollapsed(!isRightPaneCollapsed) },
+            togglePathBar: {
+                isPathBarVisible.toggle()
+                UserDefaults.standard.set(isPathBarVisible, forKey: Self.isPathBarVisibleKey)
+            },
+            toggleStatusBar: {
+                isStatusBarVisible.toggle()
+                UserDefaults.standard.set(isStatusBarVisible, forKey: Self.isStatusBarVisibleKey)
+            },
+            // 取り出す [1-16]。Finder と同じく「今表示しているものが乗っている
+            // ボリューム」が対象。
+            canEject: ejectTargetVolume != nil,
+            canEjectAll: !VolumeEjector.ejectableVolumes().isEmpty,
+            eject: {
+                guard let volume = ejectTargetVolume else { return }
+                Task { await VolumeEjectAction.eject(volume) }
+            },
+            ejectAll: { Task { await VolumeEjectAction.ejectAll() } }
+        )
+    }
+
+    /// File メニューの「取り出す」の対象。
+    private var ejectTargetVolume: URL? {
+        VolumeEjectAction.ejectableVolume(containing: windowState.currentTab?.folder)
+    }
+
+    /// アイコンサイズを 1 段階動かす [IV-04]。中央ペインのスライダーと同じ
+    /// 範囲・刻みに収める。
+    private func adjustIconSize(by delta: Double) {
+        windowState.iconSize = min(max(windowState.iconSize + delta, Tokens.iconSize.min), Tokens.iconSize.max)
+    }
+
+    /// 右ペインの表示状態を変える唯一の経路（ツールバーのボタン・`.inspector` の
+    /// バインディング・表示メニューがいずれもここを通る）。永続化の書き戻しを
+    /// 1 箇所に集約するため。
+    private func setRightPaneCollapsed(_ collapsed: Bool) {
+        isRightPaneCollapsed = collapsed
+        UserDefaults.standard.set(collapsed, forKey: Self.isRightPaneCollapsedKey)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // タブが2つ以上のときだけ自動表示する（Safari/Finder 流、ユーザー指摘）。
@@ -130,7 +221,7 @@ struct MainWindowView: View {
                 TabBarView(windowState: windowState)
                 Divider()
             }
-            NavigationSplitView {
+            NavigationSplitView(columnVisibility: $sidebarVisibility) {
                 VSplitView {
                     FolderTreePane(
                         selectedURL: windowState.currentTabIndex.flatMap { windowState.tabs[$0].folder },
@@ -186,7 +277,13 @@ struct MainWindowView: View {
                             listStyle: $windowState.listStyle,
                             iconSize: $windowState.iconSize,
                             showingNewFolderPrompt: $showingNewFolderPrompt,
-                            newFolderName: $newFolderName
+                            newFolderName: $newFolderName,
+                            isPathBarVisible: isPathBarVisible,
+                            isStatusBarVisible: isStatusBarVisible,
+                            searchText: Binding(
+                                get: { windowState.tabs[index].searchText },
+                                set: { windowState.tabs[index].searchText = $0 }
+                            )
                         )
                     } else {
                         PlaceholderPane(title: String(localized: "mainWindow.noTabs", locale: locale), subtitle: "")
@@ -194,10 +291,7 @@ struct MainWindowView: View {
                 }
                 .inspector(isPresented: Binding(
                     get: { !isRightPaneCollapsed },
-                    set: { isPresented in
-                        isRightPaneCollapsed = !isPresented
-                        UserDefaults.standard.set(isRightPaneCollapsed, forKey: Self.isRightPaneCollapsedKey)
-                    }
+                    set: { setRightPaneCollapsed(!$0) }
                 )) {
                     InspectorPane(
                         folder: windowState.currentTabIndex.flatMap { windowState.tabs[$0].folder },
@@ -303,8 +397,7 @@ struct MainWindowView: View {
                 // 公開 API では制御できないと判断した [既知の制限として記録]。
                 ToolbarItem(placement: .primaryAction) {
                     Button {
-                        isRightPaneCollapsed.toggle()
-                        UserDefaults.standard.set(isRightPaneCollapsed, forKey: Self.isRightPaneCollapsedKey)
+                        setRightPaneCollapsed(!isRightPaneCollapsed)
                     } label: {
                         Image(systemName: "sidebar.trailing")
                     }
@@ -314,6 +407,21 @@ struct MainWindowView: View {
         }
         .frame(minWidth: 900, minHeight: 560)
         .windowFrameAutosave("qoo.MainWindow") // [実機検証時のユーザー要望]
+        // 「移動」メニューへナビゲーション操作を公開する [1-16、
+        // `WindowMenuActions` のコメント参照]。戻る/進むの履歴と現在のタブは
+        // `windowState`（ウインドウ単位）が持つため、`FolderContentView` では
+        // なくここから公開する。
+        .focusedSceneValue(\.windowMenuActions, currentWindowMenuActions)
+        .sheet(isPresented: $showingGoToFolderSheet) {
+            GoToFolderSheet { url in
+                // 入口は「ボリューム」扱いにする — 入力されたパスが結果的に
+                // 登録フォルダの中を指していても、ユーザーはツリーの登録
+                // フォルダ行から入ったわけではないため [`NavigationRoot` の
+                // 「URL から逆算しない」方針に従う]。
+                windowState.navigateCurrentTab(to: url, root: .volume)
+            }
+            .appLanguageOverride()
+        }
         // マウスのサイドボタン・トラックパッドのスワイプでの戻る/進む
         // [ユーザー要望、13章 §13.6「将来検討」に記録していたものを実装]。
         // ウインドウ直下（`MainWindowView`）に1回だけ適用する
@@ -334,6 +442,58 @@ struct MainWindowView: View {
             Group {
                 KeyBindingButtons(action: .newTab, store: keyBindingStore) {
                     windowState.openDefaultTab()
+                }
+                // 「フォルダへ移動…」（既定 ⇧⌘G）[1-16 移動メニュー]。
+                // ⌘T と同じく特定のタブ・選択に依存しないため、ウインドウ直下に
+                // 配線する。
+                KeyBindingButtons(action: .goToFolder, store: keyBindingStore) {
+                    showingGoToFolderSheet = true
+                }
+                // 表示メニュー [1-16]。いずれもタブ・選択に依存しない
+                // ウインドウ全体の操作なので、⌘T と同じくここに配線する。
+                KeyBindingButtons(action: .displayAsIcons, store: keyBindingStore) {
+                    windowState.listStyle = .icon
+                }
+                KeyBindingButtons(action: .displayAsList, store: keyBindingStore) {
+                    windowState.listStyle = .list
+                }
+                KeyBindingButtons(
+                    action: .increaseIconSize,
+                    store: keyBindingStore,
+                    isDisabled: !currentWindowMenuActions.canIncreaseIconSize
+                ) {
+                    adjustIconSize(by: Tokens.iconSize.step)
+                }
+                KeyBindingButtons(
+                    action: .decreaseIconSize,
+                    store: keyBindingStore,
+                    isDisabled: !currentWindowMenuActions.canDecreaseIconSize
+                ) {
+                    adjustIconSize(by: -Tokens.iconSize.step)
+                }
+                KeyBindingButtons(action: .toggleSidebar, store: keyBindingStore) {
+                    sidebarVisibility = sidebarVisibility == .detailOnly ? .all : .detailOnly
+                }
+                KeyBindingButtons(action: .toggleInspector, store: keyBindingStore) {
+                    setRightPaneCollapsed(!isRightPaneCollapsed)
+                }
+                KeyBindingButtons(action: .togglePathBar, store: keyBindingStore) {
+                    isPathBarVisible.toggle()
+                    UserDefaults.standard.set(isPathBarVisible, forKey: Self.isPathBarVisibleKey)
+                }
+                KeyBindingButtons(action: .toggleStatusBar, store: keyBindingStore) {
+                    isStatusBarVisible.toggle()
+                    UserDefaults.standard.set(isStatusBarVisible, forKey: Self.isStatusBarVisibleKey)
+                }
+                // 取り出す（既定 ⌘E）[1-16]。`ejectAll` は Finder 同様に既定キーを
+                // 持たないため、`KeyBindingButtons` はボタンを 1 つも生成しない
+                // （環境設定で割り当てたときだけ効く）。
+                KeyBindingButtons(action: .eject, store: keyBindingStore, isDisabled: ejectTargetVolume == nil) {
+                    guard let volume = ejectTargetVolume else { return }
+                    Task { await VolumeEjectAction.eject(volume) }
+                }
+                KeyBindingButtons(action: .ejectAll, store: keyBindingStore) {
+                    Task { await VolumeEjectAction.ejectAll() }
                 }
                 // [UD-02] Undo/Redo はウインドウ単位ではなくアプリ全体で単一の
                 // `CommandStack.shared` を操作するため、特定のタブ/フォルダに

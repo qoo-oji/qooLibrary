@@ -47,6 +47,17 @@ struct QooLibraryApp: App {
         // 異なる。CLAUDE.md「設計の大原則」——固定値を強制するのではなく、
         // ここでは OS 自身が用意した「密度」プリセットに乗る形で解決した）。
         UserDefaults.standard.register(defaults: ["NSTableViewDefaultSizeMode": 1])
+        // macOS ネイティブのウインドウタブ機能を無効にする [1-16 表示メニュー]。
+        //
+        // **本アプリは独自のタブ（`TabBarView`/`TabState`）を持っており、
+        // AppKit が「表示」メニューへ自動的に挿し込む「タブバーを表示」
+        // 「すべてのタブを表示」は、それとは別物のネイティブなウインドウタブを
+        // 指す**。同じ「タブバー」という語で違うものを切り替える項目が並ぶのは
+        // 紛らわしいうえ、本アプリのタブバーは 2 枚以上で自動表示する設計
+        // （`MainWindowView` 参照）なので、そもそも対応する概念が無い。
+        // 併せて、この 2 項目が「表示」メニューの先頭を占めていたのが無くなり、
+        // Finder と同じく表示モード（⌘1/⌘2）が先頭に来る。
+        NSWindow.allowsAutomaticWindowTabbing = false
         // 診断ログ [LG2-01〜LG2-08、1-15]。**他の起動処理より先に**行う —
         // 以降の初期化（ステージングの後始末、登録フォルダ／ボリューム許可の
         // 読み込み）で起きた事象も、正しいログレベルで記録されるようにする
@@ -64,6 +75,10 @@ struct QooLibraryApp: App {
         // `RegisteredFolderStore.loadAndActivateAll()` のコメント参照]。
         Task {
             await RegisteredFolderStore.shared.loadAndActivateAll()
+            // 「移動」メニューが同期的に読める形で登録フォルダを載せておく
+            // [1-16、`RegisteredFolderIndex` のコメント参照]。以降の更新は
+            // `FolderTreePane.reloadRegisteredFolders()` から取る。
+            await RegisteredFolderIndex.shared.refresh()
         }
         // 環境設定「アクセス権」タブでユーザーが許可したボリューム／フォルダも
         // 同様に、アプリ終了までアクセスを開始したままにする
@@ -135,6 +150,20 @@ struct QooLibraryApp: App {
             CommandGroup(replacing: .help) {
                 DiagnosticExportMenuButton()
             }
+            // [1-16 表示メニュー] **`CommandMenu` で新設しない** — SwiftUI は
+            // 「表示」メニュー自体を標準で用意しており（タブバーを表示／すべての
+            // タブを表示／フルスクリーンにする が既に入っている）、`CommandMenu`
+            // を足すと同じ名前のメニューが 2 つ並ぶ。`.sidebar` 配置の手前へ
+            // 挿し込むことで Finder と同じく表示モードが先頭に来る。
+            CommandGroup(before: .sidebar) {
+                ViewMenuCommands()
+            }
+            // [1-16 移動メニュー] Finder の「移動」メニュー相当。こちらは標準の
+            // `CommandGroup` に対応する配置が無いため独立した `CommandMenu` に
+            // する（SwiftUI は宣言順に Window メニューの手前へ挿入する）。
+            CommandMenu("menu.go") {
+                GoMenuCommands()
+            }
         }
 
         Window("about.windowTitle", id: "about") {
@@ -202,6 +231,10 @@ private struct DiagnosticExportMenuButton: View {
 /// （`actions` が `nil`）はすべて無効化する。
 private struct FileMenuCommands: View {
     @FocusedValue(\.folderMenuActions) private var actions
+    /// 「取り出す」だけは `WindowMenuActions` 側から読む [1-16]。対象は選択でも
+    /// 現在のフォルダでもなく「そのフォルダが乗っているボリューム」で、判定に
+    /// 必要な `windowState` を持っているのが `MainWindowView` のため。
+    @FocusedValue(\.windowMenuActions) private var window
 
     var body: some View {
         Button("action.newFolder") { actions?.newFolder() }
@@ -243,6 +276,15 @@ private struct FileMenuCommands: View {
         Divider()
         Button("folder.revealInFinder") { actions?.revealInFinder() }
             .disabled(actions?.canRevealInFinder != true)
+        // 取り出す [1-16]。Finder と同じく ⌥ で「すべてを取り出す」に
+        // 入れ替わる。既定キー ⌘E も Finder 標準（`ejectAll` 側は Finder 自身も
+        // キーを割り当てていないため無し）。
+        Button("action.eject") { window?.eject() }
+            .disabled(window?.canEject != true)
+            .modifierKeyAlternate(.option) {
+                Button("action.ejectAll") { window?.ejectAll() }
+                    .disabled(window?.canEjectAll != true)
+            }
         Divider()
         Button("folder.moveToTrash", role: .destructive) { actions?.moveToTrash() }
             .disabled(actions?.canMoveToTrash != true)
@@ -259,6 +301,212 @@ private struct FileMenuCommands: View {
         // 「パス名をコピー」はここに退避していた「その他」サブメニューではなく、
         // Finder と同じく Edit メニューの「コピー」の ⌥ 代替になった
         // （`EditMenuCommands` 参照）。
+    }
+}
+
+/// 「表示」メニューへ足す項目 [1-16]。SwiftUI 標準の「表示」メニューの先頭
+/// （`.sidebar` 配置の手前）へ挿し込む。
+///
+/// 状態は 2 つの `@FocusedValue` から読む: 表示モード・アイコンサイズ・ペイン
+/// とバーの表示は `WindowMenuActions`（`MainWindowView` が公開）、並び替えと
+/// カラムは `FolderMenuActions`（`FolderContentView` が公開）——それぞれ状態を
+/// 実際に持っている側から公開するほうが素直なため。
+///
+/// **`@AppStorage` をこのビューで直接読まない**（カラムの実体は `@AppStorage`
+/// だが、必ず `FolderMenuActions` のクロージャ越しに触る）。メニューバーの
+/// `Toggle` を `@AppStorage` に束縛し、かつ同じキーをビュー構造を決める `if`
+/// で読むと SwiftUI の Observation が無限に再評価してハングする既知の不具合を
+/// 踏むため [CLAUDE.md「タブバー表示トグル」参照]。
+///
+/// 表示/非表示の項目は Finder に倣い、チェックマークではなく「〜を表示」/
+/// 「〜を隠す」の動的なタイトルで出す。
+private struct ViewMenuCommands: View {
+    @FocusedValue(\.windowMenuActions) private var window
+    @FocusedValue(\.folderMenuActions) private var folder
+
+    var body: some View {
+        // 表示モードの直接指定（⌘1/⌘2）[LV-04]。Finder と同じく現在のモードに
+        // チェックマークが付くよう `Picker` + `.pickerStyle(.inline)` にする。
+        Picker("common.view", selection: listStyleBinding) {
+            Label("common.icon", systemImage: "square.grid.2x2").tag(ListStyle.icon)
+            Label("common.list", systemImage: "list.bullet").tag(ListStyle.list)
+        }
+        .pickerStyle(.inline)
+        .labelsHidden()
+        .disabled(window == nil)
+        // `.pickerStyle(.inline)` は自身の前後に区切り線を作るため、ここで
+        // `Divider()` を足すと二重線になる（実アプリのメニューをダンプして確認）。
+        Menu("common.sortBy") { // [LV-01]
+            Picker("common.sortBy", selection: sortKeyBinding) {
+                Text("column.name").tag(FolderSortComparator.Key.name)
+                Text("column.modificationDate").tag(FolderSortComparator.Key.modificationDate)
+                Text("column.size").tag(FolderSortComparator.Key.size)
+                Text("column.kind").tag(FolderSortComparator.Key.kind)
+                Text("column.creationDate").tag(FolderSortComparator.Key.creationDate)
+                Text("column.addedDate").tag(FolderSortComparator.Key.addedDate)
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+            // ここも `Divider()` は足さない（インラインの `Picker` が前後に
+            // 区切り線を作るため、入れると三重線になる）。
+            Picker("common.sortBy", selection: sortAscendingBinding) {
+                Text("sort.ascending").tag(true)
+                Text("sort.descending").tag(false)
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        }
+        .disabled(folder == nil)
+        Menu("folder.visibleColumns") { // [LV-02]
+            ForEach(FolderColumn.allCases) { column in
+                Toggle(column.localizationKey, isOn: columnBinding(column))
+            }
+            Divider()
+            Toggle("preferences.general.groupFoldersAtTop", isOn: groupFoldersBinding) // [LV-03]
+        }
+        // カラムはリスト表示のときだけ意味を持つ（Finder も表示モードに応じて
+        // 「表示オプション」の中身が変わる）。
+        .disabled(folder?.isListStyleActive != true)
+        Divider()
+        Button("action.increaseIconSize") { window?.increaseIconSize() } // [IV-04]
+            .disabled(window?.canIncreaseIconSize != true)
+        Button("action.decreaseIconSize") { window?.decreaseIconSize() }
+            .disabled(window?.canDecreaseIconSize != true)
+        Divider()
+        Button(window?.isSidebarVisible == false ? "view.showSidebar" : "view.hideSidebar") {
+            window?.toggleSidebar()
+        }
+        .disabled(window == nil)
+        Button(window?.isInspectorVisible == false ? "view.showInspector" : "view.hideInspector") {
+            window?.toggleInspector()
+        }
+        .disabled(window == nil)
+        Button(window?.isPathBarVisible == false ? "view.showPathBar" : "view.hidePathBar") {
+            window?.togglePathBar()
+        }
+        .disabled(window == nil)
+        Button(window?.isStatusBarVisible == false ? "view.showStatusBar" : "view.hideStatusBar") {
+            window?.toggleStatusBar()
+        }
+        .disabled(window == nil)
+    }
+
+    // `@FocusedValue` は読み取り専用なので、`Picker`/`Toggle` に渡す
+    // `Binding` はここで get/set のペアとして組み立てる。値が来ていない
+    // （フォーカス中のウインドウが無い）ときは無害な既定値を返し、set は
+    // 何もしない — 項目自体は `.disabled` で押せない状態になっている。
+
+    private var listStyleBinding: Binding<ListStyle> {
+        Binding(
+            get: { window?.listStyle ?? .list },
+            set: { window?.setListStyle($0) }
+        )
+    }
+
+    private var sortKeyBinding: Binding<FolderSortComparator.Key> {
+        Binding(
+            get: { folder?.sortKey ?? .name },
+            set: { folder?.setSortKey($0) }
+        )
+    }
+
+    private var sortAscendingBinding: Binding<Bool> {
+        Binding(
+            get: { folder?.sortAscending ?? true },
+            set: { folder?.setSortAscending($0) }
+        )
+    }
+
+    private func columnBinding(_ column: FolderColumn) -> Binding<Bool> {
+        Binding(
+            get: { folder?.visibleColumns.contains(column) ?? false },
+            set: { folder?.setColumnVisible(column, $0) }
+        )
+    }
+
+    private var groupFoldersBinding: Binding<Bool> {
+        Binding(
+            get: { folder?.groupFoldersAtTop ?? false },
+            set: { folder?.setGroupFoldersAtTop($0) }
+        )
+    }
+}
+
+/// 「移動」メニュー本体 [1-16]。File/Edit メニューと同じく、実際のキーボード
+/// ショートカットはここでは付けない（`KeyBindingButtons` がアプリ唯一の配線
+/// 経路、`FileMenuCommands` 冒頭のコメント参照）。
+///
+/// **登録フォルダ・最近使ったフォルダは `@Observable` なシングルトンから
+/// 同期的に読む**。メニューバーのメニューはアプリ起動時に構築され「開いた」
+/// だけでは再評価されない（1-14 の ⌥ 代替調査で実測）が、`@Observable` な
+/// 状態の変化による再評価は起きる（Undo メニューの動的タイトルが既存の実例）
+/// ため、非同期に解決した結果をあらかじめ載せておく設計にしている
+/// [`RegisteredFolderIndex` のコメント参照]。
+private struct GoMenuCommands: View {
+    @FocusedValue(\.windowMenuActions) private var actions
+    /// `@Observable` なので、参照した `library`/`temporary`/`paths` が変われば
+    /// このビューは再評価される。
+    private var registeredFolders: RegisteredFolderIndex { .shared }
+    private var recentFolders: RecentFoldersStore { .shared }
+
+    var body: some View {
+        Button("action.goBack") { actions?.goBack() }
+            .disabled(actions?.canGoBack != true)
+        Button("action.goForward") { actions?.goForward() }
+            .disabled(actions?.canGoForward != true)
+        Button("action.goToParent") { actions?.goToParent() }
+            .disabled(actions?.canGoToParent != true)
+        Divider()
+        // Finder の「ホーム」相当。実体はサンドボックスの仮想ホームだが、
+        // 表記に実装詳細を出さない [ユーザー指摘、環境設定の「起動時に開く
+        // フォルダ」と同じ方針]。
+        Button("menu.go.home") { actions?.goHome() }
+            .disabled(actions == nil)
+        // Finder は書類・デスクトップ等の標準の場所を並べるが、本アプリで
+        // それに当たるのは登録済みのライブラリ／テンポラリフォルダ
+        // [設計判断: Finder の項目をそのまま移植しても、サンドボックスでは
+        // アクセス許可が無ければ開けず意味を成さない]。1 件も登録が無い
+        // グループはサブメニュー自体を出さない。
+        if !registeredFolders.library.isEmpty {
+            Menu("folderTree.libraryFolders") {
+                registeredFolderButtons(registeredFolders.library)
+            }
+        }
+        if !registeredFolders.temporary.isEmpty {
+            Menu("folderTree.temporaryFolders") {
+                registeredFolderButtons(registeredFolders.temporary)
+            }
+        }
+        Divider()
+        Menu("menu.go.recentFolders") {
+            let recents = recentFolders.existingFolders
+            if recents.isEmpty {
+                Button("menu.go.noRecentFolders") {}
+                    .disabled(true)
+            } else {
+                ForEach(recents, id: \.self) { url in
+                    Button(FileManager.default.displayName(atPath: url.path)) {
+                        actions?.navigate(url, .volume)
+                    }
+                    .disabled(actions == nil)
+                }
+                Divider()
+                Button("menu.go.clearRecentFolders") { recentFolders.clear() }
+            }
+        }
+        Divider()
+        Button("goToFolder.menuItem") { actions?.beginGoToFolder() }
+            .disabled(actions == nil)
+    }
+
+    @ViewBuilder
+    private func registeredFolderButtons(_ entries: [RegisteredFolderIndex.Entry]) -> some View {
+        ForEach(entries) { entry in
+            Button(entry.displayName) {
+                actions?.navigate(entry.url, .registeredFolder(id: entry.id, rootURL: entry.url))
+            }
+            .disabled(actions == nil)
+        }
     }
 }
 

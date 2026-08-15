@@ -63,6 +63,57 @@ struct FolderMenuActions {
     var selectAll: () -> Void = {}
     var deselectAll: () -> Void = {}
     var revealInFinder: () -> Void = {}
+
+    // MARK: - 表示メニュー [1-16]
+
+    /// リスト表示の並び替え [LV-01]。中央ペインのカラムヘッダ・空きスペースの
+    /// 右クリックメニューと同じ状態を、メニューバーからも操作できるようにする。
+    var sortKey: FolderSortComparator.Key = .name
+    var sortAscending = true
+    var setSortKey: (FolderSortComparator.Key) -> Void = { _ in }
+    var setSortAscending: (Bool) -> Void = { _ in }
+    /// カラムの表示/非表示 [LV-02]。
+    var visibleColumns: Set<FolderColumn> = []
+    var setColumnVisible: (FolderColumn, Bool) -> Void = { _, _ in }
+    /// フォルダを上にまとめる [LV-03]。
+    var groupFoldersAtTop = false
+    var setGroupFoldersAtTop: (Bool) -> Void = { _ in }
+    /// 並び替え・カラムはリスト表示のときだけ意味を持つ。アイコン表示中は
+    /// メニュー項目を無効化する（Finder も同様に、表示モードに応じて
+    /// 「表示オプション」の中身が変わる）。
+    var isListStyleActive = false
+}
+
+/// リスト表示のカラム [LV-02]。名前列は常に表示されるため含めない。
+///
+/// 中央ペインの漏斗アイコンメニュー・環境設定「表示」タブ・表示メニューの
+/// 3 箇所が同じ `UserDefaults` キーを共有しており、この enum はそのキーを
+/// 1 箇所にまとめて取り違えを防ぐためのもの [1-16]。
+enum FolderColumn: String, CaseIterable, Identifiable, Sendable {
+    case modificationDate, size, kind, creationDate, addedDate
+
+    var id: String { rawValue }
+
+    var storageKey: String {
+        switch self {
+        case .modificationDate: "qoo.folderList.showModificationDateColumn"
+        case .size: "qoo.folderList.showSizeColumn"
+        case .kind: "qoo.folderList.showKindColumn"
+        case .creationDate: "qoo.folderList.showCreationDateColumn"
+        case .addedDate: "qoo.folderList.showAddedDateColumn"
+        }
+    }
+
+    /// 表示名は既存のカラムヘッダ・環境設定と同じローカライズキーを再利用する。
+    var localizationKey: LocalizedStringKey {
+        switch self {
+        case .modificationDate: "column.modificationDate"
+        case .size: "column.size"
+        case .kind: "column.kind"
+        case .creationDate: "column.creationDate"
+        case .addedDate: "column.addedDate"
+        }
+    }
 }
 
 private struct FolderMenuActionsKey: FocusedValueKey {
