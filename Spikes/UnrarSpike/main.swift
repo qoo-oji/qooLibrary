@@ -28,13 +28,14 @@ final class CallbackBox {
 }
 
 nonisolated(unsafe) let entryCallback: QooUnrarEntryCallback = { entryPtr, contextPtr in
-    guard let entryPtr, let contextPtr else { return }
+    guard let entryPtr, let contextPtr else { return 0 }
     let box = Unmanaged<CallbackBox>.fromOpaque(contextPtr).takeUnretainedValue()
     box.count += 1
     let name = String(cString: entryPtr.pointee.utf8Path)
     let size = entryPtr.pointee.unpackedSize
     let kind = entryPtr.pointee.isDirectory != 0 ? "dir " : "file"
     print("  [\(kind)] \(name)\t\(size) bytes")
+    return 0 // 0 で続行（`QooUnrarBridge.h` 参照）
 }
 
 func run(_ mode: String, _ archivePath: String, _ destinationDir: String?) throws {

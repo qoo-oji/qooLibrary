@@ -435,7 +435,23 @@ public actor FileOperationService {
                 }) {
                     try perform(item, resolved.target) { bytes in tracker.addBytes(bytes) }
                 }
-                if case .cancelled = outcome { cancelled = true }
+                if case .cancelled = outcome {
+                    cancelled = true
+                    // **中断した項目の書きかけを消す**［実機検証で発見］。
+                    // `copyfile` は 1 ファイルなら書きかけの宛先を自分で
+                    // 片付けるが、**再帰的なフォルダコピーを中断した場合は
+                    // 途中まで作った木を残す**（1.1GB のアーカイブ展開を
+                    // 止めたあと、134MB の中途半端なフォルダが残って発覚）。
+                    // 運び終えていない以上、受領書も返さない＝ Undo にも
+                    // 残らないので、ここで消さないと誰も片付けられない。
+                    //
+                    // 消してよいのは**この呼び出しで新しく作った場所**だから。
+                    // `.replace` で既存を退避している場合は
+                    // `restoreReplacedItem` が消して元へ戻すので触らない。
+                    if resolved.backupOfReplaced == nil {
+                        try? FileManager.default.removeItem(at: resolved.target)
+                    }
+                }
             } catch {
                 // **どの項目で止まったか**を必ず残す [LG2-01]。一括処理の
                 // 途中で失敗すると、それまでに成功した分の `OpReceipt` は

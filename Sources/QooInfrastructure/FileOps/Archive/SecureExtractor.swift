@@ -128,6 +128,22 @@ public actor SecureExtractor {
             )
         )
 
+        // **移送の途中で中断されたら、出しかけた分を片付ける**［実機検証で発見]。
+        // `transfer` は中断時に「そこまで運び終えた分」を返す設計 [ER-16 の
+        // 精神] で、コピーや移動ではそれが正しい（運んだものは残したい）。
+        // だが展開では、ユーザーが止めたのに 20MB ぶんの中途半端なフォルダが
+        // 残り、しかも成功として扱われていた。ここで作ったものは
+        // `.keepBoth` で必ず新規に作った項目なので、消しても既存のファイルを
+        // 巻き込まない。完全削除ではなくゴミ箱へ送る（取り違えても戻せる）。
+        if Task.isCancelled {
+            let created = receipts.map(\.toURL)
+            if !created.isEmpty {
+                Log.archive.info("展開を中断したため、出しかけた \(created.count) 件を片付けます")
+                _ = try? await fileOps.trash(created)
+            }
+            throw ExtractError.cancelled
+        }
+
         Log.archive.info(
             "展開完了（\(result.extractedCount) 件 / \(result.totalBytesWritten) バイト / 拒否 \(result.rejected.count) 件 / 改名 \(result.renamedForCaseCollision.count) 件）: \(Log.path(archiveURL))"
         )

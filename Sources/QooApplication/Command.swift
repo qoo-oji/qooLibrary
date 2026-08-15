@@ -144,8 +144,27 @@ public final class CompositeCommand: Command {
     }
 
     public func execute() async throws -> CommandResult {
+        var executed: [any Command] = []
         for child in children {
-            _ = try await child.execute()
+            do {
+                _ = try await child.execute()
+            } catch {
+                // **中断されたら、すでに実行した子を巻き戻す**［実機検証で発見］。
+                // 「〈名前〉に展開」は「フォルダを作る」＋「展開する」の 2 つ。
+                // 展開を止めたのに空のフォルダだけが残っていた（しかも
+                // `execute()` が投げるので Undo スタックにも積まれず、
+                // ユーザーには片付ける手立てが無い）。
+                //
+                // **巻き戻すのは中断のときだけ。** 失敗（容量不足など）では
+                // 巻き戻さない — 5 個中 3 個目で失敗したときに、成功した 2 個
+                // まで消えるのは驚きが大きく、部分的な成功をどう見せるかは
+                // 別の設計課題（`BatchNotificationSession`、フェーズ2）。
+                if CommandStack.isCancellation(error) {
+                    for done in executed.reversed() { _ = try? await done.undo() }
+                }
+                throw error
+            }
+            executed.append(child)
         }
         return .success
     }

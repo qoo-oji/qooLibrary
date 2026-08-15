@@ -91,6 +91,57 @@ import Testing
         #expect(!FileManager.default.fileExists(atPath: copied.path))
     }
 
+    /// **中断したフォルダのコピーは、書きかけを残さない。**
+    ///
+    /// `copyfile(3)` は 1 ファイルなら書きかけの宛先を自分で片付けるが、
+    /// **再帰的なフォルダコピーを中断した場合は途中まで作った木を残す**
+    /// （1.1GB のアーカイブ展開を止めたあと 134MB の中途半端なフォルダが
+    /// 残って発覚）。運び終えていない項目は受領書も返らない＝ Undo にも
+    /// 残らないので、`transfer` が消さなければ誰も片付けられない。
+    ///
+    /// **一時停止を使って「途中で止まった状態」を確実に作る。** 素朴に
+    /// 「コピー中に取り消す」と書くと、速いディスクではコピーが先に
+    /// 終わってしまい、何も検証しないまま通る。
+    @Test func cancellingAPausedFolderCopyLeavesNoPartialTree() async throws {
+        guard let volume = TinyVolume.make(megabytes: 300) else { return }
+        defer { volume.destroy() }
+
+        let source = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qoo-partial-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: source) }
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        for index in 0..<40 {
+            try Data(count: 2_000_000).write(to: source.appendingPathComponent("page\(index).bin"))
+        }
+
+        let observed = ByteWatcher()
+        let token = PauseToken()
+        let service = FileOperationService()
+        let options = OpOptions(
+            conflictPolicy: .keepBoth,
+            progress: ProgressReporter { observed.note($0.completedBytes) },
+            pauseToken: token
+        )
+        let copying = Task { try await service.copy([source], to: volume.mountPoint, options: options) }
+
+        // バイトが動き出したところで止める（＝確実に「途中」の状態）。
+        for _ in 0..<600 where observed.max == 0 {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        token.pause()
+        try? await Task.sleep(for: .milliseconds(200))
+
+        let destination = volume.mountPoint.appendingPathComponent(source.lastPathComponent)
+        #expect(FileManager.default.fileExists(atPath: destination.path), "途中の状態を作れていない")
+
+        copying.cancel()
+        _ = try? await copying.value
+        #expect(
+            !FileManager.default.fileExists(atPath: destination.path),
+            "中断したのに書きかけのフォルダが残っている"
+        )
+    }
+
     /// 報告されたバイト数の最大値を覚えるだけの箱（報告は任意のスレッドから来る）。
     private final class ByteWatcher: @unchecked Sendable {
         private let lock = NSLock()

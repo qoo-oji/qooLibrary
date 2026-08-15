@@ -147,3 +147,45 @@ public enum ExtractError: Error, Sendable, Equatable {
     /// `ArchiveReading.readEntry` 用。`IM-02`（1エントリの読み込み上限）超過。
     case entryReadLimitExceeded(limit: Int)
 }
+
+/// **`LocalizedError` に準拠させる理由** [ER-03]。準拠していないと
+/// `localizedDescription` が「操作を完了できませんでした。
+/// （QooKit.ExtractError エラー10）」という、原因が一切分からない既定文言に
+/// なる（`FileOperationError` で実際に踏んだのと同じ落とし穴）。
+/// `NotificationRouter` も診断ログもこの値を読む。
+///
+/// 文言は日本語のリテラル。この層は文字列カタログ（アプリターゲットの
+/// リソース）を参照できないため［既知の限界、`FileOperationError` と同じ］。
+extension ExtractError: LocalizedError {
+    public var errorDescription: String? {
+        let formatter = ByteCountFormatter()
+        switch self {
+        case .unsupportedFormat:
+            return "この形式のアーカイブには対応していません。"
+        case .passwordProtected:
+            return "このアーカイブはパスワードで保護されています。"
+        case .incorrectPassphrase:
+            return "パスワードが違います。"
+        case let .insufficientFreeSpace(required, available):
+            return "展開先の空き容量が足りません。"
+                + "\(formatter.string(fromByteCount: required)) が必要ですが、"
+                + "空きは \(formatter.string(fromByteCount: available)) しかありません。"
+        case let .tooManyEntries(limit):
+            return "アーカイブに含まれる項目が多すぎます（上限 \(limit) 件）。"
+        case let .expansionLimitExceeded(limit):
+            return "展開後の大きさが上限（\(formatter.string(fromByteCount: limit))）を超えました。"
+                + "環境設定の「圧縮／展開」で上限を変更できます。"
+        case let .compressionRatioExceeded(limit):
+            return "圧縮率が上限（\(Int(limit)) 倍）を超えました。"
+                + "壊れているか、極端に膨らむアーカイブの可能性があります。"
+        case .cancelled:
+            return "処理を中断しました。"
+        case let .backendFailure(message):
+            return "アーカイブを処理できませんでした。（\(message)）"
+        case let .entryNotFound(name):
+            return "アーカイブ内に「\(name)」が見つかりません。"
+        case let .entryReadLimitExceeded(limit):
+            return "読み込みの上限（\(formatter.string(fromByteCount: Int64(limit)))）を超えました。"
+        }
+    }
+}

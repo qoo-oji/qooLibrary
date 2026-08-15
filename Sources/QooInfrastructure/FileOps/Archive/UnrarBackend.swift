@@ -8,18 +8,26 @@ import QooUnrarBridge
 /// （libarchive 自身の RAR リーダー）にフォールバックする [LC-12][LC-13]。
 ///
 /// `QooUnrarBridge` は UnRAR の RARDLL API を薄くラップしたもので、
-/// `qoo_unrar_extract_all` は **すべてのエントリを一括で** 展開先ディレクトリ
-/// へ直接書き出す（libarchive のようなエントリ単位のストリーミング取得や
-/// 途中キャンセルはできない）[設計判断]。そのため libarchive バックエンドと
-/// 異なり、
+/// `qoo_unrar_extract_all` は展開先ディレクトリへ直接書き出す
+/// （libarchive のようなエントリ単位のストリーミング取得はできない）。
+/// そのため libarchive バックエンドと異なり、
 /// - 展開爆弾対策（実バイト数によるリアルタイム中断 [EX-20]）は不可能なので、
 ///   展開完了後にステージング全体の実サイズを検証し、超過していれば
 ///   ステージングごと破棄する事後チェックにしている。
 /// - エントリ単位の安全でないパスは、展開前の一覧取得（`qoo_unrar_list`）で
 ///   検出し、1件でもあればアーカイブ全体を拒否する（部分展開はできない）。
-/// より踏み込んだ対応（UnRAR の `UCM_PROCESSDATA` コールバックを使った
-/// バイト単位の途中中断）が必要になった場合は `QooUnrarBridge.mm` の拡張を
-/// 検討する（ライセンス上は自作ラッパーなので改変は問題ない。改変対象は
+///
+/// ## 進捗・一時停止・中断はエントリ境界で受ける
+/// `qoo_unrar_extract_all` は**1 エントリ書き出すたびにコールバックを呼ぶ**
+/// ので、そこで進み具合を報告し、待ち、止められる［当初「一括 API なので
+/// 何もできない」と記録していたが誤りだった。宣言を読み直して判明］。
+/// コールバックは呼び出し元のスレッドで走るため、`Task.isCancelled` も
+/// `PauseToken` もそのまま使える（`copyfile` の status コールバックと同じ形）。
+///
+/// **粒度は 1 エントリ**。`RARProcessFileW` は 1 エントリを書き終えるまで
+/// 戻らないため、巨大な 1 ファイルの**途中**では止まれない。バイト単位まで
+/// 踏み込むなら UnRAR の `UCM_PROCESSDATA` コールバックを使う拡張が要る
+/// （ライセンス上は自作ラッパーなので改変は問題ない。改変対象は
 /// `ThirdParty/unrar/` 配下の UnRAR 本体ソースではない）。
 ///
 /// ステージングディレクトリの作成は `FileManager` を直接使う
@@ -76,7 +84,11 @@ public struct UnrarBackend: ArchiveReading {
         }
 
         if Task.isCancelled { throw ExtractError.cancelled }
-        try Self.extractAll(url, to: staging)
+        let box = CallbackBox()
+        box.collectsEntries = false
+        box.progress = options.progress
+        box.pauseToken = options.pauseToken
+        try Self.extractAll(url, to: staging, box: box)
         if Task.isCancelled { throw ExtractError.cancelled }
 
         // 実バイト数によるリアルタイム中断ができないため、展開後に検証する
@@ -137,26 +149,54 @@ public struct UnrarBackend: ArchiveReading {
 
     // MARK: - QooUnrarBridge の呼び出し
 
+    /// コールバックとやり取りする箱。一覧（`list`）と展開（`extractAll`）で
+    /// 同じコールバックを共有し、どちらの用途かは詰めた中身で決まる。
     private final class CallbackBox {
+        /// 一覧用。展開時は集めない（数万件を二重に持つ意味が無い）。
+        var collectsEntries = true
         var entries: [ArchiveEntry] = []
+        /// 展開用。
+        var progress: ProgressReporter?
+        var pauseToken: PauseToken?
+        var writtenBytes: Int64 = 0
+        var fileCount = 0
     }
 
+    /// **戻り値 0 で続行、非 0 で中断**（`QooUnrarBridge.h` 参照）。
+    /// C の関数ポインタへ変換されるため、外の値を捕捉してはならない。
     private static let entryCallback: QooUnrarEntryCallback = { entryPtr, contextPtr in
-        guard let entryPtr, let contextPtr else { return }
+        guard let entryPtr, let contextPtr else { return 0 }
         let box = Unmanaged<CallbackBox>.fromOpaque(contextPtr).takeUnretainedValue()
         let name = String(cString: entryPtr.pointee.utf8Path)
         let size = Int64(entryPtr.pointee.unpackedSize)
         let isDirectory = entryPtr.pointee.isDirectory != 0
-        // QooUnrarBridge の C API はシンボリックリンク／特殊ファイルの情報を
-        // 公開していないため、常に false として扱う [既知の制限]。
-        box.entries.append(ArchiveEntry(
-            pathname: name, uncompressedSize: size, isDirectory: isDirectory,
-            isSymlink: false, isSpecialEntry: false
+        if box.collectsEntries {
+            // QooUnrarBridge の C API はシンボリックリンク／特殊ファイルの情報を
+            // 公開していないため、常に false として扱う [既知の制限]。
+            box.entries.append(ArchiveEntry(
+                pathname: name, uncompressedSize: size, isDirectory: isDirectory,
+                isSymlink: false, isSpecialEntry: false
+            ))
+        }
+        if !isDirectory {
+            // 総数は `SecureExtractor` がディレクトリを除いて数えているので、
+            // こちらも数えない（進捗が総数を超えないようにする）。
+            box.fileCount += 1
+            box.writtenBytes += size
+        }
+        box.progress?.report(OperationProgress(
+            completedBytes: box.writtenBytes,
+            completedItems: box.fileCount,
+            currentItemName: (name as NSString).lastPathComponent
         ))
+        // 一時停止はここで待つ。待っている間もキャンセルは効く。
+        box.pauseToken?.waitWhilePaused()
+        return Task.isCancelled ? 1 : 0
     }
 
     private static func list(_ url: URL) throws -> [ArchiveEntry] {
         let box = CallbackBox()
+        box.collectsEntries = true
         let boxPtr = Unmanaged.passUnretained(box).toOpaque()
         var errorBuffer = [CChar](repeating: 0, count: 512)
 
@@ -165,14 +205,14 @@ public struct UnrarBackend: ArchiveReading {
                 qoo_unrar_list(archiveCStr, entryCallback, boxPtr, errBuf.baseAddress, Int32(errBuf.count))
             }
         }
+        if rc == QOO_UNRAR_ERROR_CANCELLED { throw ExtractError.cancelled }
         guard rc == 0 else {
             throw ExtractError.backendFailure(Self.errorMessage(from: errorBuffer, code: rc))
         }
         return box.entries
     }
 
-    private static func extractAll(_ url: URL, to destination: URL) throws {
-        let box = CallbackBox()
+    private static func extractAll(_ url: URL, to destination: URL, box: CallbackBox) throws {
         let boxPtr = Unmanaged.passUnretained(box).toOpaque()
         var errorBuffer = [CChar](repeating: 0, count: 512)
 
@@ -186,6 +226,9 @@ public struct UnrarBackend: ArchiveReading {
                 }
             }
         }
+        // 中断は失敗ではない。ここまでに書いたものはステージングにしか無く、
+        // `SecureExtractor` の `defer` が丸ごと捨てる [EX-24]。
+        if rc == QOO_UNRAR_ERROR_CANCELLED { throw ExtractError.cancelled }
         guard rc == 0 else {
             throw ExtractError.backendFailure(Self.errorMessage(from: errorBuffer, code: rc))
         }

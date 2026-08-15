@@ -32,7 +32,14 @@ typedef struct {
     int isDirectory;         // 0 / 1
 } QooUnrarEntry;
 
-typedef void (*QooUnrarEntryCallback)(const QooUnrarEntry *entry, void *context);
+// Invoked once per entry. Return 0 to continue, non-zero to abort the
+// walk — the enclosing call then returns QOO_UNRAR_ERROR_CANCELLED.
+//
+// This is how callers stop a long extraction: UnRAR's RARProcessFileW is
+// blocking and has no cancellation of its own, so the earliest a walk can
+// be stopped is at an entry boundary. (Callers can also block inside the
+// callback to pause the walk — it runs on the caller's own thread.)
+typedef int (*QooUnrarEntryCallback)(const QooUnrarEntry *entry, void *context);
 
 // Lists all entries in the archive, invoking `callback` once per entry.
 // Returns 0 on success, or a QOO_UNRAR_ERROR_* / UnRAR ERAR_* code on
@@ -46,7 +53,8 @@ int qoo_unrar_list(const char *archivePathUTF8,
 
 // Extracts every entry to `destinationDirUTF8`, creating intermediate
 // directories as needed. `callback` is invoked once per entry actually
-// written (directories included, matching `qoo_unrar_list`).
+// written (directories included, matching `qoo_unrar_list`), which is
+// what callers use for progress, pausing and cancellation.
 int qoo_unrar_extract_all(const char *archivePathUTF8,
                            const char *destinationDirUTF8,
                            QooUnrarEntryCallback callback,
@@ -75,6 +83,10 @@ int qoo_unrar_extract_one(const char *archivePathUTF8,
 #define QOO_UNRAR_ERROR_HEADER_FAILED   -2
 #define QOO_UNRAR_ERROR_PROCESS_FAILED  -3
 #define QOO_UNRAR_ERROR_ENTRY_NOT_FOUND -4
+// The callback asked to stop (returned non-zero). Not a failure of the
+// archive: whatever was written so far is left in place for the caller
+// to discard.
+#define QOO_UNRAR_ERROR_CANCELLED       -5
 
 #ifdef __cplusplus
 }

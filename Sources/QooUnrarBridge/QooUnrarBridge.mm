@@ -136,7 +136,13 @@ int RunArchive(const char *archivePathUTF8,
             entry.utf8Path = entryName.UTF8String;
             entry.unpackedSize = ((uint64_t)headerData.UnpSizeHigh << 32) | headerData.UnpSize;
             entry.isDirectory = isDirectory ? 1 : 0;
-            callback(&entry, context);
+            // The callback may block (to pause) and may ask to stop. This is
+            // the only place a walk can be interrupted: RARProcessFileW is
+            // blocking, so the granularity is one entry.
+            if (callback(&entry, context) != 0) {
+                result = QOO_UNRAR_ERROR_CANCELLED;
+                break;
+            }
         }
     }
 

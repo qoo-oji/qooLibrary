@@ -1,5 +1,6 @@
 import Foundation
 import QooInfrastructure
+import QooKit
 
 /// Undo/Redo スタック本体 [11章 §11.2、UD-02][UD-05][UD-11]。アプリ全体で
 /// 単一のインスタンスを使う想定（`FileOperationService.shared`/
@@ -38,6 +39,14 @@ public final class CommandStack {
     /// コマンドを実行しスタックへ積む [UD-01][CS-05]。新しい操作を実行したら
     /// redo スタックは破棄する（一般的な Undo/Redo の規則: 分岐した「やり直し」
     /// 先は残さない）。
+    /// ユーザーの中断か（`Task` の取り消しと、バックエンドが投げる
+    /// 専用エラーの両方を受ける）。
+    static func isCancellation(_ error: any Error) -> Bool {
+        if error is CancellationError { return true }
+        if let extractError = error as? ExtractError, extractError == .cancelled { return true }
+        return false
+    }
+
     @discardableResult
     public func run(_ command: any Command) async throws -> CommandResult {
         let result: CommandResult
@@ -47,7 +56,16 @@ public final class CommandStack {
             // 失敗したコマンドは `record` を通らないため、ここで明示的に残す
             // [LG2-01]。ユーザーには `NotificationRouter` 経由でエラーが
             // 提示されるが、ログには「どのコマンドが」失敗したかも要る。
-            Log.command.error("実行に失敗: \(command.logDescription) — \(error.localizedDescription)")
+            //
+            // **中断は失敗ではない**（ユーザー自身の意思）ので、`error` では
+            // なく `info` で残す。`error` にすると、既定のログレベルしか
+            // 出していない環境でキャンセルの記録だけが目立ち、本当の失敗が
+            // 埋もれる。
+            if Self.isCancellation(error) {
+                Log.command.info("中断しました: \(command.logDescription)")
+            } else {
+                Log.command.error("実行に失敗: \(command.logDescription) — \(error.localizedDescription)")
+            }
             throw error
         }
         record(command, action: .executed)
