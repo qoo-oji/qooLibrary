@@ -95,7 +95,7 @@ final class QuickLookController: NSObject, @MainActor QLPreviewPanelDelegate {
         // `shared()` はパネルがまだ無ければここで生成する（存在確認だけを
         // したい `visiblePanel` と違い、ここでは生成させたい）。
         guard let panel = QLPreviewPanel.shared() else { return }
-        folderWhenOpened = windowState.currentTab?.folder
+        folderWhenOpened = windowState.folder
         if !panel.isVisible {
             panel.makeKeyAndOrderFront(nil)
         }
@@ -117,7 +117,7 @@ final class QuickLookController: NSObject, @MainActor QLPreviewPanelDelegate {
 
     /// 現在の選択でプレビューできるものがあるか（メニュー項目の活性判定用）。
     var canPreviewSelection: Bool {
-        !(windowState.currentTab?.selection.isEmpty ?? true)
+        !windowState.selection.isEmpty
     }
 
     /// レスポンダチェーンからこのコントローラが見つからなかった場合の保険。
@@ -142,7 +142,7 @@ final class QuickLookController: NSObject, @MainActor QLPreviewPanelDelegate {
         // 別ウインドウから制御権が移ってきた場合、`items` にはこのウインドウの
         // 古い選択が残っていることがあるため、必ず組み直す。
         rebuildItems()
-        if folderWhenOpened == nil { folderWhenOpened = windowState.currentTab?.folder }
+        if folderWhenOpened == nil { folderWhenOpened = windowState.folder }
         panel.reloadData()
         // 項目数が減っていると、パネルが保持している添字が範囲外のままになり
         // `previewItemAt` が `nil` を返して何も表示されなくなる。範囲外のときだけ
@@ -190,7 +190,8 @@ final class QuickLookController: NSObject, @MainActor QLPreviewPanelDelegate {
     /// 選択を中央ペインの表示順に並べたもの。Finder と同じく「プレビューの
     /// 対象は現在の選択」とし、複数選択ならパネルの ‹ › で選択内を巡れる。
     private func selectedURLsInDisplayOrder() -> [URL] {
-        guard let selection = windowState.currentTab?.selection, !selection.isEmpty else { return [] }
+        let selection = windowState.selection
+        guard !selection.isEmpty else { return [] }
         let ordered = orderedURLs.filter(selection.contains)
         guard ordered.count == selection.count else {
             // 表示順がまだ届いていない／古い場合の保険。順序を安定させるため
@@ -263,8 +264,8 @@ final class QuickLookController: NSObject, @MainActor QLPreviewPanelDelegate {
     /// [`NotificationRouterPresenterController.observe()` と同じパターン]。
     private func observeTab() {
         withObservationTracking {
-            _ = windowState.currentTab?.selection
-            _ = windowState.currentTab?.folder
+            _ = windowState.selection
+            _ = windowState.folder
         } onChange: { [weak self] in
             Task { @MainActor in
                 guard let self, self.isObservingTab else { return }
@@ -278,7 +279,7 @@ final class QuickLookController: NSObject, @MainActor QLPreviewPanelDelegate {
         guard isControllingPanel, let panel = visiblePanel else { return }
         // フォルダを移動したらプレビューを閉じる。移動先に無いファイルを
         // 映し続けるより自然で、Finder の挙動とも一致する。
-        if windowState.currentTab?.folder != folderWhenOpened {
+        if windowState.folder != folderWhenOpened {
             panel.orderOut(nil)
             return
         }
@@ -341,18 +342,18 @@ final class QuickLookController: NSObject, @MainActor QLPreviewPanelDelegate {
     /// 一覧の表示順で `delta` ぶん隣の項目を単独選択にする。端では何もしない
     /// （Finder と同じく、先頭より前・末尾より後ろへは回り込まない）。
     private func moveSelection(by delta: Int) -> Bool {
-        guard let index = windowState.currentTabIndex, !orderedURLs.isEmpty else { return false }
-        let selection = windowState.tabs[index].selection
+        guard !orderedURLs.isEmpty else { return false }
+        let selection = windowState.selection
         let selectedPositions = orderedURLs.indices.filter { selection.contains(orderedURLs[$0]) }
         guard let first = selectedPositions.first, let last = selectedPositions.last else { return false }
         let target = delta < 0 ? first + delta : last + delta
         guard orderedURLs.indices.contains(target) else { return true }
 
         let url = orderedURLs[target]
-        windowState.tabs[index].selection = [url]
+        windowState.selection = [url]
         // 一覧側もその項目までスクロールさせる（プレビューだけが進んで一覧が
         // 置き去りになると、パネルを閉じたときに現在位置を見失うため）。
-        windowState.tabs[index].pendingRevealURL = url
+        windowState.pendingRevealURL = url
         // 監視経由でも同期されるが、キー操作への追従は 1 サイクルでも遅らせたく
         // ないためここでも同期する（`rebuildItems()` が冪等なので二重にならない）。
         syncWithCurrentTab()

@@ -89,9 +89,10 @@ struct MainWindowView: View {
     /// ユーザー要望]。
     @AppStorage("qoo.backForwardSwipeDirectionInverted") private var swipeDirectionInverted = false
 
-    /// `initialFolder` は `WindowGroup(for: URL.self)` から渡される値。⌘N や
-    /// Dock からの起動では `nil`（既定の仮想ホーム）、「新規ウインドウで開く」
-    /// からは特定のフォルダになる。
+    /// `target` は `WindowGroup(for: TabTarget.self)` から渡される値。⌘N や
+    /// Dock からの起動では `nil`（既定の仮想ホーム）、「新規タブ／ウインドウで
+    /// 開く」からは特定のフォルダと入口（`NavigationRoot`）になる
+    /// [ネイティブタブ移行で `URL` から `TabTarget` へ拡張した]。
     ///
     /// `initialFolder == nil` の場合だけ「アプリ起動時に開くフォルダ」の環境
     /// 設定を適用する余地がある（`initialFolder` が明示的に指定されている
@@ -103,8 +104,8 @@ struct MainWindowView: View {
     private let wasLaunchedWithoutExplicitFolder: Bool
     nonisolated(unsafe) private static var hasAppliedStartupFolderThisLaunch = false
 
-    init(initialFolder: URL?) {
-        let state = initialFolder.map(WindowState.init(initialFolder:)) ?? WindowState()
+    init(target: TabTarget?) {
+        let state = WindowState(target: target ?? .home)
         _windowState = State(initialValue: state)
         _quickLook = State(initialValue: QuickLookController(windowState: state))
         _isRightPaneCollapsed = State(initialValue: UserDefaults.standard.bool(forKey: Self.isRightPaneCollapsedKey))
@@ -114,7 +115,7 @@ struct MainWindowView: View {
         // ＝表示なのでこの区別が要らなかった）。
         _isPathBarVisible = State(initialValue: Self.storedFlag(Self.isPathBarVisibleKey, default: true))
         _isStatusBarVisible = State(initialValue: Self.storedFlag(Self.isStatusBarVisibleKey, default: true))
-        wasLaunchedWithoutExplicitFolder = initialFolder == nil
+        wasLaunchedWithoutExplicitFolder = target == nil
     }
 
     private static func storedFlag(_ key: String, default defaultValue: Bool) -> Bool {
@@ -137,9 +138,7 @@ struct MainWindowView: View {
     /// ウインドウタイトル [ユーザー要望]。タブが無い/フォルダが無い場合のみ
     /// アプリ名にフォールバックする。
     private var currentFolderTitle: String {
-        guard let index = windowState.currentTabIndex, let folder = windowState.tabs[index].folder else {
-            return "qooLibrary"
-        }
+        guard let folder = windowState.folder else { return "qooLibrary" }
         return FileManager.default.displayName(atPath: folder.path)
     }
 
@@ -154,7 +153,7 @@ struct MainWindowView: View {
             goToParent: { windowState.goToParent() },
             goHome: { windowState.goHome() },
             beginGoToFolder: { showingGoToFolderSheet = true },
-            navigate: { url, root in windowState.navigateCurrentTab(to: url, root: root) },
+            navigate: { url, root in windowState.navigate(to: url, root: root) },
             // 表示メニュー [1-16]。
             listStyle: windowState.listStyle,
             setListStyle: { windowState.listStyle = $0 },
@@ -190,7 +189,7 @@ struct MainWindowView: View {
 
     /// File メニューの「取り出す」の対象。
     private var ejectTargetVolume: URL? {
-        VolumeEjectAction.ejectableVolume(containing: windowState.currentTab?.folder)
+        VolumeEjectAction.ejectableVolume(containing: windowState.folder)
     }
 
     /// アイコンサイズを 1 段階動かす [IV-04]。中央ペインのスライダーと同じ
@@ -207,111 +206,28 @@ struct MainWindowView: View {
         UserDefaults.standard.set(collapsed, forKey: Self.isRightPaneCollapsedKey)
     }
 
-    var body: some View {
-        VStack(spacing: 0) {
-            // タブが2つ以上のときだけ自動表示する（Safari/Finder 流、ユーザー指摘）。
-            // `@AppStorage` で「常に表示」に切り替えられるようにする案も試したが、
-            // この `if` 条件の中で `@AppStorage` の値を読むと SwiftUI の
-            // Observation が無限に再評価を繰り返しアプリがハングすることを
-            // 実機検証で確認した（`windowState.tabs.count` 単独の条件に戻すと
-            // 再現しない）。原因を安全に切り分けられる状況になかったため、
-            // 「常に表示」トグルは見送り、この単純な条件のみにした
-            // [フォローアップ: 原因調査、1-12 で改めて検討]。
-            if windowState.tabs.count >= 2 {
-                TabBarView(windowState: windowState)
-                Divider()
-            }
-            NavigationSplitView(columnVisibility: $sidebarVisibility) {
-                VSplitView {
-                    FolderTreePane(
-                        selectedURL: windowState.currentTabIndex.flatMap { windowState.tabs[$0].folder },
-                        navigationRoot: windowState.currentTabIndex.map { windowState.tabs[$0].navigationRoot } ?? .volume,
-                        skipsInitialAutoExpand: hasPendingStartupFolderOverride,
-                        onSelect: { url, root in windowState.navigateCurrentTab(to: url, root: root) },
-                        // ツリーのコンテキストメニュー「新規タブ／ウインドウで
-                        // 開く」[ユーザー要望]。新規タブは `NavigationRoot` も
-                        // 引き継ぐ（ライブラリ／テンポラリ配下から開いたタブが
-                        // `.volume` に戻らないように）。新規ウインドウは
-                        // `WindowGroup(for: URL.self)` の値型が `URL` 固定の
-                        // ため引き継げない [既知の制限、CLAUDE.md
-                        // フェーズ1完了前監査の記録と同じ項目]。
-                        onOpenInNewTab: { url, root in windowState.openTab(for: url, root: root) },
-                        onOpenInNewWindow: { openWindow(value: $0) }
-                    )
-                    PlaceholderPane(
-                        title: String(localized: "mainWindow.labelFilter", locale: locale),
-                        subtitle: String(localized: "mainWindow.implementedIn28", locale: locale)
-                    )
-                }
-                .navigationSplitViewColumnWidth(min: 180, ideal: leftWidth, max: 400)
-                .modifier(PaneWidthPersisting(storedWidth: $leftWidth))
-            } detail: {
-                Group {
-                    if let index = windowState.currentTabIndex {
-                        FolderContentView(
-                            folder: windowState.tabs[index].folder,
-                            currentFolder: { windowState.tabs[index].folder },
-                            selection: Binding(
-                                get: { windowState.tabs[index].selection },
-                                set: { windowState.tabs[index].selection = $0 }
-                            ),
-                            pendingRevealURL: Binding(
-                                get: { windowState.tabs[index].pendingRevealURL },
-                                set: { windowState.tabs[index].pendingRevealURL = $0 }
-                            ),
-                            onNavigate: { windowState.navigateCurrentTab(to: $0) },
-                            onGoBack: { windowState.goBack() },
-                            onGoForward: { windowState.goForward() },
-                            canGoBack: windowState.canGoBack,
-                            canGoForward: windowState.canGoForward,
-                            onGoToParent: { windowState.goToParent() },
-                            canGoToParent: windowState.canGoToParent,
-                            relocateIfFolderVanished: { windowState.relocateCurrentTabIfFolderVanished() },
-                            // 現在のタブの `NavigationRoot` を新しいタブへ
-                            // 引き継ぐ [フェーズ1完了前監査で記録した
-                            // 「登録フォルダ配下のサブフォルダを新規タブで
-                            // 開くと `.volume` に戻る」抜け穴の修正]。
-                            onOpenInNewTab: { windowState.openTab(for: $0, root: windowState.currentTab?.navigationRoot ?? .volume) },
-                            onOpenInNewWindow: { openWindow(value: $0) },
-                            quickLook: quickLook,
-                            listStyle: $windowState.listStyle,
-                            iconSize: $windowState.iconSize,
-                            showingNewFolderPrompt: $showingNewFolderPrompt,
-                            newFolderName: $newFolderName,
-                            isPathBarVisible: isPathBarVisible,
-                            isStatusBarVisible: isStatusBarVisible,
-                            searchText: Binding(
-                                get: { windowState.tabs[index].searchText },
-                                set: { windowState.tabs[index].searchText = $0 }
-                            )
-                        )
-                    } else {
-                        PlaceholderPane(title: String(localized: "mainWindow.noTabs", locale: locale), subtitle: "")
-                    }
-                }
-                .inspector(isPresented: Binding(
-                    get: { !isRightPaneCollapsed },
-                    set: { setRightPaneCollapsed(!$0) }
-                )) {
-                    InspectorPane(
-                        folder: windowState.currentTabIndex.flatMap { windowState.tabs[$0].folder },
-                        selection: windowState.currentTabIndex.map { windowState.tabs[$0].selection } ?? []
-                    )
-                    .inspectorColumnWidth(min: 220, ideal: rightWidth, max: 420)
-                    .modifier(PaneWidthPersisting(storedWidth: $rightWidth))
-                }
-            }
-            // ウインドウタイトルをカレントフォルダ名にする [ユーザー要望:
-            // ツールバーの戻る/進む/上の階層への右に並ぶタイトルが常に
-            // アプリ名「qooLibrary」のままだったのを、Finder と同じくカレント
-            // フォルダ名にしたい]。Finder 準拠のローカライズされた表示名
-            // （`PathBarView`/`FileIconProvider` と同じ設計判断）を使う。
-            .navigationTitle(currentFolderTitle)
-            // 戻る・進む・上の階層へを実ウインドウツールバーに置く [ユーザー要望]。
-            // `NavigationSplitView` に直接付けることで、`.navigation` 配置の
-            // 項目がサイドバーの分割線を追跡し、detail（中央）ペインの左端に
-            // 揃う（`NSTrackingSeparatorToolbarItem` 相当、実機検証で確認）。
-            .toolbar {
+    /// 新しいタブとして開く [ネイティブタブ移行]。`WindowTabJoiner` に合流先を
+    /// 予約してから `openWindow` するのが要点——予約が無いと macOS の設定次第で
+    /// 別ウインドウとして開いてしまう（`WindowTabJoiner` のコメント参照）。
+    private func openAsTab(_ target: TabTarget) {
+        WindowTabJoiner.shared.prepareToOpenAsTab(from: NSApp.keyWindow)
+        openWindow(value: target)
+    }
+
+    /// 独立した新規ウインドウとして開く。直前のタブ操作の予約が残っていても
+    /// 巻き込まれないよう、明示的に予約を捨ててから開く。
+    private func openAsWindow(_ target: TabTarget) {
+        WindowTabJoiner.shared.prepareToOpenAsWindow()
+        openWindow(value: target)
+    }
+
+
+    /// ウインドウのツールバー。**`body` から切り出している** — 独自タブバーを
+    /// 外して `body` の構造が変わった際に「型検査に時間がかかりすぎる」という
+    /// コンパイルエラーになったため（`FolderContentView.bottomBars` と同じ理由。
+    /// SwiftUI のビルダーは 1 つの式が大きくなるほど推論が急激に重くなる）。
+    @ToolbarContentBuilder
+    private var mainToolbar: some ToolbarContent {
                 // 戻る・進む・上の階層への3つを1つの `ToolbarItemGroup(placement: .navigation)`
                 // にまとめている。`ControlGroup`（戻る/進むだけを丸皮でグループ化する案）を
                 // 併用すると、実機検証で `ControlGroup` の中身だけが `.navigation`
@@ -403,45 +319,64 @@ struct MainWindowView: View {
                     }
                     .help(isRightPaneCollapsed ? "mainWindow.showInspector" : "mainWindow.hideInspector")
                 }
-            }
-        }
-        .frame(minWidth: 900, minHeight: 560)
-        .windowFrameAutosave("qoo.MainWindow") // [実機検証時のユーザー要望]
-        // 「移動」メニューへナビゲーション操作を公開する [1-16、
-        // `WindowMenuActions` のコメント参照]。戻る/進むの履歴と現在のタブは
-        // `windowState`（ウインドウ単位）が持つため、`FolderContentView` では
-        // なくここから公開する。
-        .focusedSceneValue(\.windowMenuActions, currentWindowMenuActions)
-        .sheet(isPresented: $showingGoToFolderSheet) {
-            GoToFolderSheet { url in
-                // 入口は「ボリューム」扱いにする — 入力されたパスが結果的に
-                // 登録フォルダの中を指していても、ユーザーはツリーの登録
-                // フォルダ行から入ったわけではないため [`NavigationRoot` の
-                // 「URL から逆算しない」方針に従う]。
-                windowState.navigateCurrentTab(to: url, root: .volume)
-            }
-            .appLanguageOverride()
-        }
-        // マウスのサイドボタン・トラックパッドのスワイプでの戻る/進む
-        // [ユーザー要望、13章 §13.6「将来検討」に記録していたものを実装]。
-        // ウインドウ直下（`MainWindowView`）に1回だけ適用する
-        // [`BackForwardGestureSupport.swift` のコメント参照: タブごとに
-        // 再生成されうる `FolderContentView` に付けるとジェスチャー途中で
-        // モニタが再設置され、イベントストリームが途切れることを実機検証で
-        // 確認した]。
-        .backForwardGestureSupport(
-            onGoBack: { windowState.goBack() },
-            onGoForward: { windowState.goForward() },
-            twoFingerSwipeForNavigation: twoFingerSwipeForNavigation,
-            swipeDirectionInverted: swipeDirectionInverted
-        )
-        // `QLPreviewPanel` の制御権をこのウインドウの `quickLook` へ渡すための
-        // レスポンダ差し込み [QL-01、`QuickLookPanelInstaller` のコメント参照]。
-        .background(QuickLookPanelInstaller(controller: quickLook))
-        .background {
+    }
+
+
+    /// 中央ペイン＋インスペクタ。`mainToolbar` と同じ理由で `body` から
+    /// 切り出している（型検査の負荷を分割するため）。
+    @ViewBuilder
+    private var detailPane: some View {
+                Group {
+                    FolderContentView(
+                            folder: windowState.folder,
+                            currentFolder: { windowState.folder },
+                            selection: $windowState.selection,
+                            pendingRevealURL: $windowState.pendingRevealURL,
+                            onNavigate: { windowState.navigate(to: $0) },
+                            onGoBack: { windowState.goBack() },
+                            onGoForward: { windowState.goForward() },
+                            canGoBack: windowState.canGoBack,
+                            canGoForward: windowState.canGoForward,
+                            onGoToParent: { windowState.goToParent() },
+                            canGoToParent: windowState.canGoToParent,
+                            relocateIfFolderVanished: { windowState.relocateIfFolderVanished() },
+                            // 現在のタブの `NavigationRoot` を新しいタブへ
+                            // 引き継ぐ [フェーズ1完了前監査で記録した
+                            // 「登録フォルダ配下のサブフォルダを新規タブで
+                            // 開くと `.volume` に戻る」抜け穴の修正]。
+                            onOpenInNewTab: { openAsTab(windowState.target(for: $0)) },
+                            onOpenInNewWindow: { openAsWindow(windowState.target(for: $0)) },
+                            quickLook: quickLook,
+                            listStyle: $windowState.listStyle,
+                            iconSize: $windowState.iconSize,
+                            showingNewFolderPrompt: $showingNewFolderPrompt,
+                            newFolderName: $newFolderName,
+                            isPathBarVisible: isPathBarVisible,
+                            isStatusBarVisible: isStatusBarVisible,
+                            searchText: $windowState.searchText
+                        )
+                }
+                .inspector(isPresented: Binding(
+                    get: { !isRightPaneCollapsed },
+                    set: { setRightPaneCollapsed(!$0) }
+                )) {
+                    InspectorPane(
+                        folder: windowState.folder,
+                        selection: windowState.selection
+                    )
+                    .inspectorColumnWidth(min: 220, ideal: rightWidth, max: 420)
+                    .modifier(PaneWidthPersisting(storedWidth: $rightWidth))
+                }
+    }
+
+
+    /// キーボードショートカットの配線（可視要素を持たない不可視ボタン群）。
+    /// `mainToolbar`/`detailPane` と同じ理由で `body` から切り出している。
+    @ViewBuilder
+    private var keyBindingButtons: some View {
             Group {
                 KeyBindingButtons(action: .newTab, store: keyBindingStore) {
-                    windowState.openDefaultTab()
+                    openAsTab(.home)
                 }
                 // 「フォルダへ移動…」（既定 ⇧⌘G）[1-16 移動メニュー]。
                 // ⌘T と同じく特定のタブ・選択に依存しないため、ウインドウ直下に
@@ -516,7 +451,85 @@ struct MainWindowView: View {
             }
             .frame(width: 0, height: 0)
             .opacity(0)
+    }
+
+    var body: some View {
+        Group {
+            NavigationSplitView(columnVisibility: $sidebarVisibility) {
+                VSplitView {
+                    FolderTreePane(
+                        selectedURL: windowState.folder,
+                        navigationRoot: windowState.navigationRoot,
+                        skipsInitialAutoExpand: hasPendingStartupFolderOverride,
+                        onSelect: { url, root in windowState.navigate(to: url, root: root) },
+                        // ツリーのコンテキストメニュー「新規タブ／ウインドウで
+                        // 開く」[ユーザー要望]。**タブ・ウインドウのどちらも
+                        // `NavigationRoot` を引き継ぐ** — `WindowGroup` の値型を
+                        // `URL` から `TabTarget` へ拡張したため、以前「新規
+                        // ウインドウで開くだけは引き継げない」として記録して
+                        // いた既知の制限は解消した [ネイティブタブ移行]。
+                        onOpenInNewTab: { url, root in openAsTab(TabTarget(url: url, navigationRoot: root)) },
+                        onOpenInNewWindow: { openAsWindow(windowState.target(for: $0)) }
+                    )
+                    PlaceholderPane(
+                        title: String(localized: "mainWindow.labelFilter", locale: locale),
+                        subtitle: String(localized: "mainWindow.implementedIn28", locale: locale)
+                    )
+                }
+                .navigationSplitViewColumnWidth(min: 180, ideal: leftWidth, max: 400)
+                .modifier(PaneWidthPersisting(storedWidth: $leftWidth))
+            } detail: {
+                detailPane
+            }
+            // ウインドウタイトルをカレントフォルダ名にする [ユーザー要望:
+            // ツールバーの戻る/進む/上の階層への右に並ぶタイトルが常に
+            // アプリ名「qooLibrary」のままだったのを、Finder と同じくカレント
+            // フォルダ名にしたい]。Finder 準拠のローカライズされた表示名
+            // （`PathBarView`/`FileIconProvider` と同じ設計判断）を使う。
+            .navigationTitle(currentFolderTitle)
+            // 戻る・進む・上の階層へを実ウインドウツールバーに置く [ユーザー要望]。
+            // `NavigationSplitView` に直接付けることで、`.navigation` 配置の
+            // 項目がサイドバーの分割線を追跡し、detail（中央）ペインの左端に
+            // 揃う（`NSTrackingSeparatorToolbarItem` 相当、実機検証で確認）。
+            .toolbar { mainToolbar }
         }
+        .frame(minWidth: 900, minHeight: 560)
+        .windowFrameAutosave("qoo.MainWindow") // [実機検証時のユーザー要望]
+        // 新しく開いたウインドウをネイティブのタブグループへ合流させる
+        // [ネイティブタブ移行、`WindowTabJoiner` のコメント参照]。
+        .windowTabJoiner()
+        // 「移動」メニューへナビゲーション操作を公開する [1-16、
+        // `WindowMenuActions` のコメント参照]。戻る/進むの履歴と現在のタブは
+        // `windowState`（ウインドウ単位）が持つため、`FolderContentView` では
+        // なくここから公開する。
+        .focusedSceneValue(\.windowMenuActions, currentWindowMenuActions)
+        .sheet(isPresented: $showingGoToFolderSheet) {
+            GoToFolderSheet { url in
+                // 入口は「ボリューム」扱いにする — 入力されたパスが結果的に
+                // 登録フォルダの中を指していても、ユーザーはツリーの登録
+                // フォルダ行から入ったわけではないため [`NavigationRoot` の
+                // 「URL から逆算しない」方針に従う]。
+                windowState.navigate(to: url, root: .volume)
+            }
+            .appLanguageOverride()
+        }
+        // マウスのサイドボタン・トラックパッドのスワイプでの戻る/進む
+        // [ユーザー要望、13章 §13.6「将来検討」に記録していたものを実装]。
+        // ウインドウ直下（`MainWindowView`）に1回だけ適用する
+        // [`BackForwardGestureSupport.swift` のコメント参照: タブごとに
+        // 再生成されうる `FolderContentView` に付けるとジェスチャー途中で
+        // モニタが再設置され、イベントストリームが途切れることを実機検証で
+        // 確認した]。
+        .backForwardGestureSupport(
+            onGoBack: { windowState.goBack() },
+            onGoForward: { windowState.goForward() },
+            twoFingerSwipeForNavigation: twoFingerSwipeForNavigation,
+            swipeDirectionInverted: swipeDirectionInverted
+        )
+        // `QLPreviewPanel` の制御権をこのウインドウの `quickLook` へ渡すための
+        // レスポンダ差し込み [QL-01、`QuickLookPanelInstaller` のコメント参照]。
+        .background(QuickLookPanelInstaller(controller: quickLook))
+        .background { keyBindingButtons }
         // アプリ起動時に開くフォルダ [ユーザー要望、環境設定「一般」タブ]。
         // アプリ起動後、最初に開く（＝明示的なフォルダ指定を受けていない）
         // ウインドウにだけ適用する [`hasAppliedStartupFolderThisLaunch` の
@@ -529,10 +542,9 @@ struct MainWindowView: View {
                   UserDefaults.standard.string(forKey: StartupFolderPreference.kindKey) != StartupFolderKind.virtualHome.rawValue
             else { return }
             let (url, root) = await StartupFolderPreference.resolve()
-            guard let index = windowState.currentTabIndex else { return }
-            windowState.tabs[index].folder = url
-            windowState.tabs[index].navigationRoot = root
-            windowState.tabs[index].title = FileManager.default.displayName(atPath: url.path)
+            windowState.folder = url
+            windowState.navigationRoot = root
+            windowState.title = FileManager.default.displayName(atPath: url.path)
         }
     }
 }

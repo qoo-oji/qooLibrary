@@ -8,9 +8,44 @@ import SwiftUI
 /// （フォルダツリーで手動でボリュームを辿って登録フォルダと同じ実フォルダに
 /// たどり着くこともあり得るため）どちらの入口から来たか判別できないため、
 /// タブの状態として明示的に持ち回る。
-public enum NavigationRoot: Sendable, Equatable {
+///
+/// **`Codable`/`Hashable` にしているのは `TabTarget` の一部として
+/// `WindowGroup(for:)` の値になるため** [ネイティブタブ移行]。新しいタブを
+/// 開くときに入口の文脈も一緒に運ぶ必要がある。
+public enum NavigationRoot: Sendable, Hashable, Codable {
     case volume
     case registeredFolder(id: UUID, rootURL: URL)
+}
+
+/// 新しいタブ／ウインドウの行き先 [ネイティブタブ移行]。
+///
+/// `WindowGroup(for:)` に渡す値。**`URL` 単体ではなく `NavigationRoot` も
+/// 運ぶ**——以前は「新規ウインドウで開く」だけが `WindowGroup(for: URL.self)`
+/// の制約で入口を引き継げないという既知の制限だったが、タブも同じ仕組みに
+/// 乗せる以上「新規タブで開く」まで文脈を失うのは受け入れられないため、
+/// 値型を拡張した。
+public struct TabTarget: Sendable, Hashable, Codable {
+    public var url: URL?
+    public var navigationRoot: NavigationRoot
+    /// **同じ行き先でも毎回新しいタブを開くための一意な印** [実機検証で発見]。
+    ///
+    /// `openWindow(value:)` は、その値を既に表示しているウインドウがあれば
+    /// **新しいシーンを作らずそれを前面に出すだけ**という仕様。これが無いと
+    /// ⌘T を 2 回押しても（どちらも行き先がホームなので）タブが 1 つしか
+    /// 増えず、同じフォルダを「新規タブで開く」も 2 回目以降が効かない。
+    /// 生成のたびに異なる値を持たせることで、常に新しいタブになる。
+    public var instanceID: UUID
+
+    public init(url: URL?, navigationRoot: NavigationRoot = .volume, instanceID: UUID = UUID()) {
+        self.url = url
+        self.navigationRoot = navigationRoot
+        self.instanceID = instanceID
+    }
+
+    /// ⌘T・タブバーの ＋・Dock からの起動などで開く既定の行き先。
+    public static var home: TabTarget {
+        TabTarget(url: FileManager.default.homeDirectoryForCurrentUser, navigationRoot: .volume)
+    }
 }
 
 /// 戻る/進む履歴の1件 [KB-02 相当]。フォルダ URL だけでなく `NavigationRoot`
@@ -18,38 +53,6 @@ public enum NavigationRoot: Sendable, Equatable {
 struct TabHistoryEntry: Sendable, Equatable {
     let url: URL
     let navigationRoot: NavigationRoot
-}
-
-/// 1 タブ分の状態。フォルダごとに独立して選択・スクロール位置・検索文字列を持つ。
-public struct TabState: Identifiable, Sendable, Equatable {
-    public let id: UUID
-    public var folder: URL?
-    public var title: String
-    public var selection: Set<URL> = []
-    public var searchText: String = ""
-    /// 現在のフォルダがどちらの入口から辿り着いたか [`NavigationRoot` 参照]。
-    public var navigationRoot: NavigationRoot = .volume
-    /// 戻る/進む用の履歴 [KB-02 相当、Finder ツールバーの矢印ボタンと同等の機能]。
-    /// タブごとに独立させる（タブ切替で他タブの履歴に影響しない）。
-    var backHistory: [TabHistoryEntry] = []
-    var forwardHistory: [TabHistoryEntry] = []
-    /// 「戻る」「1階層上へ」で親フォルダへ移動したとき、直前までいた
-    /// フォルダまで中央ペインをスクロールさせるための一時的な信号
-    /// [ユーザー要望: 「戻る」「一階層上へ」の操作で1つ上の階層のフォルダに
-    /// 移動した場合、それまでいたフォルダをハイライトし、表示できる位置まで
-    /// あらかじめスクロールしておいてほしい]。ハイライト自体は `selection`
-    /// を直接更新するだけで済むが、スクロールは `FolderContentView` 側の
-    /// `pendingScrollTarget`（「ここに圧縮」で確立済みの、ユーザー自身の
-    /// クリックとプログラム的な選択変更を区別する仕組み）に伝える必要がある
-    /// ため、この専用フィールドで橋渡しする。`FolderContentView` が消費後に
-    /// `nil` へ戻す。
-    public var pendingRevealURL: URL?
-
-    public init(id: UUID = UUID(), folder: URL?, title: String) {
-        self.id = id
-        self.folder = folder
-        self.title = title
-    }
 }
 
 public enum DisplayMode: Sendable, Equatable {
@@ -64,39 +67,63 @@ public enum ListStyle: String, Sendable, Equatable {
 }
 
 /// ウインドウ固有状態 [11章 §11.4 状態の 3 分類]。**DB に保存しない** [ST-20]。
-/// ウインドウ（＝この View 階層のインスタンス）ごとに独立して生成する。同じ
-/// フォルダを 2 ウインドウで開いても、タブ構成・選択・表示モードは互いに影響しない。
 ///
-/// `labelSelection` / `ratingFilter` / `sort` はラベル・評価ドメイン型
-/// （`Label`, `RatingFilter`, `SortDescriptorSpec`）がまだ存在しない
-/// （フェーズ 2 で導入）ため未実装。タブと表示・選択の骨格のみ、このフェーズで
-/// 実装する。
+/// **1 ウインドウ ＝ 1 タブ** [ネイティブタブ移行、ユーザー要望「Finder と同じ
+/// タブおよびタブバーの外観・仕様にしたい」]。以前はこの型が `tabs: [TabState]`
+/// を抱え、独自の `TabBarView` がそれを描いていたが、**Finder のタブはそもそも
+/// macOS ネイティブのウインドウタブそのもの**で、独自実装を Finder に似せる
+/// 方向には勝ち目が無い（材質・アニメーション・ドラッグ挙動まで含めて）。
+/// ネイティブタブでは 1 つのタブが 1 つの `NSWindow` ＝ この `WindowState` の
+/// 1 インスタンスに対応するため、タブの配列そのものが不要になった。
+/// タブを束ねる役目は `WindowTabJoiner` が持つ。
+///
+/// この移行で **MW-03（タブのドラッグによる並べ替え・別ウインドウへの移動）が
+/// 自動的に満たされた**——独自タブバーでは未実装のまま残っていた要件。
+///
+/// [ST-22 の変更] `listStyle`/`iconSize` は以前「ウインドウ単位でタブ間共有」
+/// だったが、1 ウインドウ＝1 タブになったことで**タブごと**になった。
+/// **Finder も表示モードはタブごとに記憶する**ため、Finder 準拠としてはむしろ
+/// 正しくなっている [ユーザー承認済みの仕様変更、`docs/Specifications/11_アプリ層_コマンドとロック.md` 更新済み]。
 @MainActor
 @Observable
 public final class WindowState {
-    public var tabs: [TabState]
-    public var selectedTabID: TabState.ID
+    public var folder: URL?
+    /// ウインドウ／タブのタイトル。`MainWindowView` が `.navigationTitle` に
+    /// 渡し、**それがそのままネイティブタブのタイトルになる**（Finder と同じく
+    /// フォルダ名がタブに出る）。
+    public var title: String
+    public var selection: Set<URL> = []
+    public var searchText: String = ""
+    /// 現在のフォルダがどちらの入口から辿り着いたか [`NavigationRoot` 参照]。
+    public var navigationRoot: NavigationRoot = .volume
+    /// 戻る/進む用の履歴 [KB-02 相当、Finder ツールバーの矢印ボタンと同等の機能]。
+    /// タブごとに独立する（＝ウインドウごと。ネイティブタブでは同じこと）。
+    var backHistory: [TabHistoryEntry] = []
+    var forwardHistory: [TabHistoryEntry] = []
+    /// 「戻る」「1階層上へ」で親フォルダへ移動したとき、直前までいた
+    /// フォルダまで中央ペインをスクロールさせるための一時的な信号
+    /// [ユーザー要望]。ハイライト自体は `selection` を直接更新するだけで
+    /// 済むが、スクロールは `FolderContentView` 側の `pendingScrollTarget`
+    /// （「ここに圧縮」で確立済みの、ユーザー自身のクリックとプログラム的な
+    /// 選択変更を区別する仕組み）に伝える必要があるため、この専用フィールドで
+    /// 橋渡しする。`FolderContentView` が消費後に `nil` へ戻す。
+    public var pendingRevealURL: URL?
     public var displayMode: DisplayMode = .folder // [ST-22]
-    // 既定は `.list`。1-9 でアイコン表示を実装するまで `.icon` になっていたが
-    // 何にも参照されておらず（`Table` が常に表示されていた）、実質的な既定表示は
-    // ずっとリストだった。アイコン表示の配線に合わせてここで初めて意味を持つ値に
-    // なるため、今回の変更で見た目が急に変わらないよう明示的に `.list` にする。
-    //
-    // 1-12 で、この既定値自体を環境設定「表示」タブから変更できるようにした
-    // （`DisplayPreferencesTab.swift` 参照）。ウインドウ固有状態自体は
-    // 引き続き DB に保存しない [ST-20] が、「次に開くウインドウの既定値」だけは
-    // `UserDefaults` から `init` 時に一度だけ読む（`MainWindowView.init` の
-    // `isRightPaneCollapsed` と同じ「素の値を一度だけ読む」パターン。
-    // `@AppStorage` を `if` 条件内で直接使うと SwiftUI の Observation が
-    // 無限に再評価を繰り返す不具合を実機検証で確認済みのため、そのパターンは
-    // 避けている）。
-    public var listStyle: ListStyle // [ST-22][LV-04]
-    public var iconSize: Double // [IV-04][ST-22]
+    // 既定は `.list`。1-12 で、この既定値自体を環境設定「表示」タブから変更
+    // できるようにした（`DisplayPreferencesTab.swift` 参照）。ウインドウ固有
+    // 状態自体は引き続き DB に保存しない [ST-20] が、「次に開くウインドウの
+    // 既定値」だけは `UserDefaults` から `init` 時に一度だけ読む
+    // （`MainWindowView.init` の `isRightPaneCollapsed` と同じ「素の値を一度
+    // だけ読む」パターン。`@AppStorage` を `if` 条件内で直接使うと SwiftUI の
+    // Observation が無限に再評価を繰り返す不具合を実機検証で確認済みのため、
+    // そのパターンは避けている）。
+    public var listStyle: ListStyle // [LV-04]
+    public var iconSize: Double // [IV-04]
 
-    public init(initialFolder: URL? = FileManager.default.homeDirectoryForCurrentUser) {
-        let firstTab = TabState(folder: initialFolder, title: initialFolder?.lastPathComponent ?? String(localized: "action.newTab", locale: AppLanguage.effectiveLocale))
-        self.tabs = [firstTab]
-        self.selectedTabID = firstTab.id
+    public init(target: TabTarget = .home) {
+        self.folder = target.url
+        self.navigationRoot = target.navigationRoot
+        self.title = target.url?.lastPathComponent ?? String(localized: "action.newTab", locale: AppLanguage.effectiveLocale)
         self.listStyle = Self.loadDefaultListStyle()
         self.iconSize = Self.loadDefaultIconSize()
     }
@@ -113,40 +140,27 @@ public final class WindowState {
         return stored > 0 ? stored : 96
     }
 
-    public var currentTabIndex: Int? {
-        tabs.firstIndex { $0.id == selectedTabID }
-    }
-
-    public var currentTab: TabState? {
-        get { currentTabIndex.map { tabs[$0] } }
-        set {
-            guard let newValue, let index = currentTabIndex else { return }
-            tabs[index] = newValue
-        }
-    }
-
-    /// アクティブなタブの表示先を変更する。フォルダツリーでの選択 [LP-06] と
-    /// 中央ペインでのフォルダ移動（ダブルクリック・Enter・1階層上に戻る等）の
-    /// 両方から使う共通経路。呼ぶたびに戻る履歴へ積み、進む履歴は破棄する
-    /// （ブラウザ・Finder と同じ規則）。`goBack`/`goForward` 自身はこのメソッドを
-    /// 経由しない（履歴を壊さずに移動するため）。
+    /// このタブの表示先を変更する。フォルダツリーでの選択 [LP-06] と中央ペイン
+    /// でのフォルダ移動（ダブルクリック・Enter・1階層上に戻る等）の両方から使う
+    /// 共通経路。呼ぶたびに戻る履歴へ積み、進む履歴は破棄する（ブラウザ・Finder と
+    /// 同じ規則）。`goBack`/`goForward` 自身はこのメソッドを経由しない
+    /// （履歴を壊さずに移動するため）。
     ///
     /// `root` は `NavigationRoot` を明示的に切り替えたいとき（フォルダツリーの
     /// ボリューム行／登録フォルダ行をクリックしたとき）だけ渡す。`nil`
-    /// （既定）は「現在のタブの文脈を引き継ぐ」ことを意味し、中央ペインでの
+    /// （既定）は「現在の文脈を引き継ぐ」ことを意味し、中央ペインでの
     /// ダブルクリック・Enter・「1階層上へ」など、ツリーを経由しないナビゲー
     /// ションではこちらを使う。
-    public func navigateCurrentTab(to url: URL, root: NavigationRoot? = nil) {
-        guard let index = currentTabIndex else { return }
-        let resolvedRoot = root ?? tabs[index].navigationRoot
-        if let current = tabs[index].folder, current != url {
-            tabs[index].backHistory.append(TabHistoryEntry(url: current, navigationRoot: tabs[index].navigationRoot))
-            tabs[index].forwardHistory.removeAll()
+    public func navigate(to url: URL, root: NavigationRoot? = nil) {
+        let resolvedRoot = root ?? navigationRoot
+        if let current = folder, current != url {
+            backHistory.append(TabHistoryEntry(url: current, navigationRoot: navigationRoot))
+            forwardHistory.removeAll()
         }
-        tabs[index].folder = url
-        tabs[index].title = url.lastPathComponent
-        tabs[index].navigationRoot = resolvedRoot
-        tabs[index].searchText = "" // [1-16] 移動したら絞り込みは解除する（Finder と同じ）
+        folder = url
+        title = url.lastPathComponent
+        navigationRoot = resolvedRoot
+        searchText = "" // [1-16] 移動したら絞り込みは解除する（Finder と同じ）
         // 「最近使ったフォルダ」[1-16 移動メニュー]。**`goBack`/`goForward` は
         // この経路を通らないため履歴に積まれない** — 履歴を行き来しただけで
         // 「最近使った」一覧の順序が入れ替わるのは Finder の挙動とも直感とも
@@ -155,20 +169,15 @@ public final class WindowState {
     }
 
     /// 移動メニューの「ホーム」[1-16]。サンドボックスの仮想ホーム
-    /// （`FolderContentView` の `canGoToParent` が上限としている場所と同じ）へ
-    /// 移動する。ユーザーに見せる表記は実装詳細を出さず単に「ホーム」にする
-    /// [ユーザー指摘、環境設定「起動時に開くフォルダ」と同じ方針]。
+    /// （`canGoToParent` が上限としている場所と同じ）へ移動する。ユーザーに
+    /// 見せる表記は実装詳細を出さず単に「ホーム」にする [ユーザー指摘、
+    /// 環境設定「起動時に開くフォルダ」と同じ方針]。
     public func goHome() {
-        navigateCurrentTab(to: FileManager.default.homeDirectoryForCurrentUser, root: .volume)
+        navigate(to: FileManager.default.homeDirectoryForCurrentUser, root: .volume)
     }
 
-    public var canGoBack: Bool {
-        currentTabIndex.map { !tabs[$0].backHistory.isEmpty } ?? false
-    }
-
-    public var canGoForward: Bool {
-        currentTabIndex.map { !tabs[$0].forwardHistory.isEmpty } ?? false
-    }
+    public var canGoBack: Bool { !backHistory.isEmpty }
+    public var canGoForward: Bool { !forwardHistory.isEmpty }
 
     /// サンドボックスの仮想ホーム（`~/Library/Containers/<bundle-id>/Data`、
     /// `FileManager.homeDirectoryForCurrentUser` が返す値 [1-3 の実機検証で
@@ -186,9 +195,9 @@ public final class WindowState {
     /// 適用しない — `navigationRoot` で入口を区別しているため、同じ URL でも
     /// 挙動が変わり得る、意図した設計]。
     public var canGoToParent: Bool {
-        guard let tab = currentTab, let folder = tab.folder else { return false }
+        guard let folder else { return false }
         if folder.standardizedFileURL == Self.sandboxHomeDirectory { return false }
-        if case .registeredFolder(_, let rootURL) = tab.navigationRoot,
+        if case .registeredFolder(_, let rootURL) = navigationRoot,
            folder.standardizedFileURL == rootURL.standardizedFileURL {
             return false
         }
@@ -198,38 +207,36 @@ public final class WindowState {
     /// Finder ツールバーの「戻る」相当 [KB-02]。
     ///
     /// **移動先が直前までいたフォルダの親であれば、そのフォルダをハイライト
-    /// してスクロールする**［ユーザー要望: 「戻る」「一階層上へ」で1つ上の
-    /// 階層へ移動した場合、それまでいたフォルダを表示できる位置まで
-    /// あらかじめハイライト・スクロールしておいてほしい］。「戻る」は必ずしも
-    /// 親フォルダへ移動するとは限らない（履歴上の任意のフォルダへ戻り得る）
-    /// ため、移動先が実際に親であるときだけ発動する条件付きの挙動にしている。
+    /// してスクロールする**［ユーザー要望］。「戻る」は必ずしも親フォルダへ
+    /// 移動するとは限らない（履歴上の任意のフォルダへ戻り得る）ため、移動先が
+    /// 実際に親であるときだけ発動する条件付きの挙動にしている。
     public func goBack() {
-        guard let index = currentTabIndex, let previous = tabs[index].backHistory.popLast() else { return }
-        let leavingFolder = tabs[index].folder
-        if let current = tabs[index].folder {
-            tabs[index].forwardHistory.append(TabHistoryEntry(url: current, navigationRoot: tabs[index].navigationRoot))
+        guard let previous = backHistory.popLast() else { return }
+        let leavingFolder = folder
+        if let current = folder {
+            forwardHistory.append(TabHistoryEntry(url: current, navigationRoot: navigationRoot))
         }
-        tabs[index].folder = previous.url
-        tabs[index].navigationRoot = previous.navigationRoot
-        tabs[index].title = previous.url.lastPathComponent
-        tabs[index].searchText = "" // [1-16]
-        revealIfParent(of: leavingFolder, newFolder: previous.url, at: index)
+        folder = previous.url
+        navigationRoot = previous.navigationRoot
+        title = previous.url.lastPathComponent
+        searchText = "" // [1-16]
+        revealIfParent(of: leavingFolder, newFolder: previous.url)
     }
 
     /// Finder ツールバーの「進む」相当 [KB-02]。
     public func goForward() {
-        guard let index = currentTabIndex, let next = tabs[index].forwardHistory.popLast() else { return }
-        if let current = tabs[index].folder {
-            tabs[index].backHistory.append(TabHistoryEntry(url: current, navigationRoot: tabs[index].navigationRoot))
+        guard let next = forwardHistory.popLast() else { return }
+        if let current = folder {
+            backHistory.append(TabHistoryEntry(url: current, navigationRoot: navigationRoot))
         }
-        tabs[index].folder = next.url
-        tabs[index].navigationRoot = next.navigationRoot
-        tabs[index].title = next.url.lastPathComponent
-        tabs[index].searchText = "" // [1-16]
+        folder = next.url
+        navigationRoot = next.navigationRoot
+        title = next.url.lastPathComponent
+        searchText = "" // [1-16]
     }
 
-    /// `⌘↑` 相当 [KB-02]。`goBack`/`goForward` と同じく `navigateCurrentTab(to:)`
-    /// を経由する（履歴に積む）。
+    /// `⌘↑` 相当 [KB-02]。`goBack`/`goForward` と同じく `navigate(to:)` を
+    /// 経由する（履歴に積む）。
     ///
     /// **`FolderContentView` ではなくここに実装している**
     /// [実機検証で発見したバグの修正]: 以前は `FolderContentView`（値型の
@@ -239,34 +246,27 @@ public final class WindowState {
     /// `folder` を参照してしまうことがあり（`Documents/Dummy` にいるつもりで
     /// ⌘↑ を押すと `Documents` を素通りして仮想ホームまで戻ってしまっていた）、
     /// 実際には「1回の入力で2回移動した」のではなく「1回移動を、1段階古い
-    /// 位置から行った」結果だった（`goToParent()`/`navigateCurrentTab(to:)` の
-    /// 双方に一時的なログを仕込んだ実機検証で確認）。`goBack`/`goForward` は
-    /// 元から `WindowState`（`@Observable` の参照型）のメソッドとして実装
-    /// されており同種の問題が出ていなかったため、同じ設計に揃えた。
+    /// 位置から行った」結果だった。`WindowState`（`@Observable` の参照型）の
+    /// メソッドにすれば常に最新状態を読める。
     ///
     /// **移動元のフォルダをハイライトしてスクロールする**［ユーザー要望、
-    /// `goBack()` と同じ。こちらは常に親フォルダへの移動のため無条件で
-    /// 発動する］。
+    /// `goBack()` と同じ。こちらは常に親フォルダへの移動のため無条件］。
     public func goToParent() {
-        guard canGoToParent, let folder = currentTab?.folder else { return }
+        guard canGoToParent, let folder else { return }
         let parent = folder.deletingLastPathComponent()
-        navigateCurrentTab(to: parent)
-        guard let index = currentTabIndex else { return }
-        tabs[index].selection = [folder]
-        tabs[index].pendingRevealURL = folder
+        navigate(to: parent)
+        selection = [folder]
+        pendingRevealURL = folder
     }
 
     /// 表示中のフォルダ自体が消えていたら、存在する直近の祖先へ静かに移動して
     /// `true` を返す。消えていなければ何もせず `false`。
     ///
-    /// [フォルダツリーにコンテキストメニューを追加したことに伴う対応]
-    /// 表示中のフォルダをゴミ箱に入れる・名前を変更する経路がツリーから直接
-    /// 届くようになり（他ウインドウでの操作・Finder 側での削除でも同じことが
-    /// 起きる）、そのままだと中央ペインが読み込みエラーのまま行き止まりに
-    /// なっていた。**発生源ごとに手当てするのではなく、実際に読み込みに失敗
-    /// した `FolderContentView.reload()` の 1 箇所から呼ぶ**ことで、経路
-    /// （ツリー／中央ペイン／D&D／別ウインドウ／アプリ外）に関わらず自己修復
-    /// する。
+    /// 表示中のフォルダをゴミ箱に入れる・名前を変更する経路はツリーからも
+    /// 中央ペインからも届く（他ウインドウでの操作・Finder 側での削除でも同じ
+    /// ことが起きる）ため、**発生源ごとに手当てするのではなく、実際に読み込みに
+    /// 失敗した `FolderContentView.reload()` の 1 箇所から呼ぶ**ことで、経路に
+    /// 関わらず自己修復する。
     ///
     /// - 履歴には積まない（消えた場所へ「戻る」ことに意味が無いため）。
     ///   併せて、既に積まれている履歴のうち実体を失ったものも取り除く。
@@ -275,17 +275,17 @@ public final class WindowState {
     ///   `FSEventsWatcher`/`IdentityResolver`）が要る。フェーズ1では
     ///   「親フォルダへ退避する」という安全側の単純な挙動に留める [設計判断]。
     @discardableResult
-    public func relocateCurrentTabIfFolderVanished() -> Bool {
-        guard let index = currentTabIndex, let folder = tabs[index].folder else { return false }
+    public func relocateIfFolderVanished() -> Bool {
+        guard let folder else { return false }
         let fileManager = FileManager.default
         guard !fileManager.fileExists(atPath: folder.path) else { return false }
         guard let target = Self.nearestExistingAncestor(of: folder) else { return false }
-        tabs[index].folder = target
-        tabs[index].title = target.lastPathComponent
-        tabs[index].selection = []
-        tabs[index].searchText = "" // [1-16]
-        tabs[index].backHistory.removeAll { !fileManager.fileExists(atPath: $0.url.path) }
-        tabs[index].forwardHistory.removeAll { !fileManager.fileExists(atPath: $0.url.path) }
+        self.folder = target
+        title = target.lastPathComponent
+        selection = []
+        searchText = "" // [1-16]
+        backHistory.removeAll { !fileManager.fileExists(atPath: $0.url.path) }
+        forwardHistory.removeAll { !fileManager.fileExists(atPath: $0.url.path) }
         return true
     }
 
@@ -311,49 +311,18 @@ public final class WindowState {
     /// `leavingFolder` が `newFolder` の直下（親子関係）である場合だけ、
     /// `leavingFolder` を選択・スクロール対象にする [`goBack()`/`goToParent()`
     /// 共通のヘルパー]。
-    private func revealIfParent(of leavingFolder: URL?, newFolder: URL, at index: Int) {
+    private func revealIfParent(of leavingFolder: URL?, newFolder: URL) {
         guard let leavingFolder,
               leavingFolder.deletingLastPathComponent().standardizedFileURL == newFolder.standardizedFileURL
         else { return }
-        tabs[index].selection = [leavingFolder]
-        tabs[index].pendingRevealURL = leavingFolder
+        selection = [leavingFolder]
+        pendingRevealURL = leavingFolder
     }
 
-    /// `root` は新しいタブの入口 [`NavigationRoot` 参照]。ライブラリ／
-    /// テンポラリ配下のフォルダを「新規タブで開く」場合に、その登録フォルダを
-    /// 入口として引き継ぐために渡す（既定の `.volume` のままだと「1階層上へ」
-    /// の境界やフォルダツリーの自動展開スコープが失われる）。
-    public func openTab(for folder: URL?, root: NavigationRoot = .volume) {
-        var tab = TabState(folder: folder, title: folder?.lastPathComponent ?? String(localized: "action.newTab", locale: AppLanguage.effectiveLocale))
-        tab.navigationRoot = root
-        tabs.append(tab)
-        selectedTabID = tab.id
-        if let folder {
-            RecentFoldersStore.shared.record(folder) // [1-16 移動メニュー]
-        }
-    }
-
-    /// タブバーの「＋」・`⌘T` の共通経路 [KB-02 相当]。フォルダ登録・環境設定が
-    /// まだ無い（1-13/1-12）ため、選択ダイアログを出さず既定の仮想ホームを開く
-    /// [設計判断、実機検証時のユーザー指摘]。
-    public func openDefaultTab() {
-        openTab(for: FileManager.default.homeDirectoryForCurrentUser)
-    }
-
-    /// 最後の 1 枚は閉じない（ウインドウ自体を閉じる操作と役割が重複するため）。
-    public func closeTab(_ id: TabState.ID) {
-        guard tabs.count > 1, let index = tabs.firstIndex(where: { $0.id == id }) else { return }
-        tabs.remove(at: index)
-        if selectedTabID == id {
-            selectedTabID = tabs[min(index, tabs.count - 1)].id
-        }
-    }
-
-    /// タブバーの右クリックメニュー「他のタブを閉じる」用。
-    public func closeOtherTabs(keeping id: TabState.ID) {
-        guard let keep = tabs.first(where: { $0.id == id }) else { return }
-        tabs = [keep]
-        selectedTabID = keep.id
+    /// このタブの現在地を、新しいタブ／ウインドウの行き先として表す。
+    /// 「新規タブで開く」などが入口の文脈ごと引き継ぐために使う。
+    public func target(for url: URL) -> TabTarget {
+        TabTarget(url: url, navigationRoot: navigationRoot)
     }
 }
 

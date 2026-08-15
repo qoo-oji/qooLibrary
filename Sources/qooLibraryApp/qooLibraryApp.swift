@@ -102,12 +102,13 @@ struct QooLibraryApp: App {
     }
 
     var body: some Scene {
-        // `for: URL.self` にすることで、右クリックの「新規ウインドウで開く」から
-        // `openWindow(value: url)` で特定のフォルダを初期表示にした新規ウインドウを
-        // 開ける（⌘N・Dock アイコンからの起動など、値を指定しない経路は
-        // 引き続き `nil` → 既定の仮想ホームになる）。
-        WindowGroup(for: URL.self) { $initialFolder in
-            MainWindowView(initialFolder: initialFolder)
+        // `for: TabTarget.self` にすることで、「新規タブ／ウインドウで開く」から
+        // フォルダと入口（`NavigationRoot`）の両方を運べる（⌘N・Dock アイコン
+        // からの起動など、値を指定しない経路は引き続き `nil` → 既定のホーム）。
+        // **1 つのシーン ＝ 1 つのタブ**で、タブとして開くかウインドウとして
+        // 開くかは `WindowTabJoiner` が決める [ネイティブタブ移行]。
+        WindowGroup(for: TabTarget.self) { $target in
+            MainWindowView(target: target)
                 .appLanguageOverride() // [1-12 ローカライズ方針、CLAUDE.md 参照]
         }
         .windowResizability(.automatic)
