@@ -29,7 +29,7 @@ struct GoToFolderSheet: View {
                 .font(.system(size: Tokens.fontSize.title2, weight: .semibold))
 
             TextField("goToFolder.placeholder", text: $path)
-                .textFieldStyle(.roundedBorder)
+                .editableFieldChrome()
                 .focused($isFieldFocused)
                 .onSubmit(go)
                 .onChange(of: path) { _, _ in errorMessage = nil }

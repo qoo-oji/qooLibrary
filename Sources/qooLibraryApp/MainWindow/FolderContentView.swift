@@ -1738,7 +1738,31 @@ struct FolderContentView: View {
     /// Finder の「名前を変更…」（複数選択時）[ユーザー要望]。単一選択のときは
     /// 従来どおり中央ペインでのインライン編集（Finder も同じ）。
     private func beginBulkRename(_ urls: [URL]) {
-        operations.beginBulkRename(urls)
+        operations.beginBulkRename(orderedForDisplay(urls))
+    }
+
+    /// **一覧に見えている順**に並べ替える［実機検証で発見］。
+    ///
+    /// 選択は `Set` なので、そのまま配列にすると順序が不定になる。
+    /// `BulkRename.plan(names:)` は「表示順で渡すこと」を前提に**その順で
+    /// 連番を振る**ので、渡す順が不定だと「1 番目に見えている項目が 5 番」の
+    /// ような結果になり、プレビューの並びも毎回変わる。ここは一括リネームへ
+    /// 入る唯一の入口なので、経路（⌘R・コンテキストメニュー・ファイル
+    /// メニュー）によらず必ず揃う。
+    ///
+    /// 一覧に無い項目（並び替えの直後など）は末尾に、名前の自然順で置く。
+    private func orderedForDisplay(_ urls: [URL]) -> [URL] {
+        var rank: [URL: Int] = [:]
+        for (index, entry) in displayedEntries.enumerated() { rank[entry.url] = index }
+        return urls.sorted { left, right in
+            switch (rank[left], rank[right]) {
+            case let (leftRank?, rightRank?): return leftRank < rightRank
+            case (nil, _?): return false
+            case (_?, nil): return true
+            case (nil, nil):
+                return left.lastPathComponent.localizedStandardCompare(right.lastPathComponent) == .orderedAscending
+            }
+        }
     }
 
     private func beginRenameFromShortcut() {

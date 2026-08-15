@@ -760,13 +760,30 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Custom Format"
+            "value": "Custom Text"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "カスタム形式"
+            "value": "任意の文字列"
+          }
+        }
+      }
+    },
+    "bulkRename.digits": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Number Format"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "桁数"
           }
         }
       }
@@ -845,13 +862,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Format"
+            "value": "Advanced"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "フォーマット"
+            "value": "高度なリネーム"
           }
         }
       }
@@ -958,6 +975,23 @@
         }
       }
     },
+    "bulkRename.replaceOriginalName": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Replace the original name"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "元のファイル名を任意の文字列で置き換える"
+          }
+        }
+      }
+    },
     "bulkRename.replaceWith": {
       "extractionState": "manual",
       "localizations": {
@@ -992,6 +1026,91 @@
         }
       }
     },
+    "bulkRename.separator": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Separator"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "区切り文字"
+          }
+        }
+      }
+    },
+    "bulkRename.separator.hyphen": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hyphen (-)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ハイフン（-）"
+          }
+        }
+      }
+    },
+    "bulkRename.separator.none": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "None"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "なし"
+          }
+        }
+      }
+    },
+    "bulkRename.separator.space": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Space"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "スペース"
+          }
+        }
+      }
+    },
+    "bulkRename.separator.underscore": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Underscore (_)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アンダースコア（_）"
+          }
+        }
+      }
+    },
     "bulkRename.startNumber": {
       "extractionState": "manual",
       "localizations": {
@@ -1005,23 +1124,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "開始番号"
-          }
-        }
-      }
-    },
-    "bulkRename.style.counter": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Name and Counter"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "名前とカウンタ"
           }
         }
       }
@@ -1056,6 +1158,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "名前と番号"
+          }
+        }
+      }
+    },
+    "bulkRename.style.numberOnly": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Number Only"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "番号のみ"
           }
         }
       }

@@ -63,7 +63,7 @@ struct AssociationPreferencesTab: View {
 
                 HStack {
                     TextField("preferences.associations.addExtensionPlaceholder", text: $newExtensionText)
-                        .textFieldStyle(.roundedBorder)
+                        .editableFieldChrome()
                         .onSubmit { addExtension() }
                     Button("preferences.associations.add") { addExtension() }
                         .disabled(newExtensionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)

@@ -17,7 +17,16 @@ public enum BulkRename {
         /// テキストを追加する。
         case addText(String, placement: Placement)
         /// フォーマット（名前＋連番／カウンタ／日付）。
-        case format(style: FormatStyle, customText: String, placement: Placement, startNumber: Int)
+        /// - Parameter customText: **`nil` は「元の名前をそのまま使う」**、
+        ///   非 `nil` は「元の名前を捨ててこの文字列にする」［ユーザー要望:
+        ///   置き換えるかどうかをチェックで明示したい］。空文字列も有効で、
+        ///   その場合は区切り文字と番号だけになる。以前は「空なら元の名前」と
+        ///   していたが、空欄の意味が 2 通りに読めて分かりにくかった。
+        case format(
+            style: FormatStyle, customText: String?, placement: Placement,
+            startNumber: Int, digits: Int = BulkRename.defaultDigits,
+            separator: Separator = BulkRename.defaultSeparator
+        )
     }
 
     public enum Placement: String, Sendable, CaseIterable {
@@ -29,13 +38,39 @@ public enum BulkRename {
     }
 
     public enum FormatStyle: String, Sendable, CaseIterable {
-        /// 名前と番号（1, 2, 3 …）。
+        /// **番号だけ**（元の名前もカスタム文字列も使わない）［ユーザー要望］。
+        /// 「001.jpg」「002.jpg」のように連番へ振り直す。
+        /// **既定**［ユーザー要望: 一番上に置き、既定にする］。
+        case numberOnly
+        /// 名前と番号（1, 2, 3 … / 桁数を指定すれば 001, 002 …）。
+        ///
+        /// Finder は「インデックス」と「カウンタ」（5 桁ゼロ詰め固定）を
+        /// 別の形式として持つが、**桁数を指定できるようにした**［ユーザー要望］
+        /// 以上、カウンタは「番号 ＋ 5 桁」と同じものになるため 1 つにまとめた
+        /// ［設計判断］。選択肢が 2 つある方が、どちらを選べばよいか迷わせる。
         case nameAndIndex
-        /// 名前とカウンタ（001, 002, 003 …）。
-        case nameAndCounter
         /// 名前と日付。
         case nameAndDate
     }
+
+    /// 連番の桁数（ゼロ詰め）。1 は詰めない。
+    public static let digitRange = 1...6
+    public static let defaultDigits = 1
+
+    /// 名前と番号のあいだに入れる文字［ユーザー要望: スペースは行儀が良くない］。
+    ///
+    /// **既定はアンダースコア。** Finder はスペースを使うが、ファイル名の
+    /// 空白はシェルや URL で毎回エスケープが要る。Finder 準拠より実用を採った
+    /// ［設計判断］。スペースが好みなら選べる。
+    public enum Separator: String, Sendable, CaseIterable {
+        case underscore = "_"
+        case hyphen = "-"
+        case space = " "
+        case none = ""
+    }
+
+    public static let defaultSeparator = Separator.underscore
+    public static let defaultFormatStyle = FormatStyle.numberOnly
 
     /// 変更前後の 1 組。プレビュー表示 [BR-08] にそのまま使う。
     public struct Change: Sendable, Equatable, Identifiable {
@@ -116,14 +151,14 @@ public enum BulkRename {
             case .after: return insertBeforeExtension(text, into: name)
             }
 
-        case .format(let style, let customText, let placement, let startNumber):
+        case .format(let style, let customText, let placement, let startNumber, let digits, let separator):
             let suffix: String
             switch style {
-            case .nameAndIndex:
-                suffix = String(index + startNumber)
-            case .nameAndCounter:
-                // Finder の「カウンタ」は 5 桁ゼロ詰め。
-                suffix = String(format: "%05d", index + startNumber)
+            case .nameAndIndex, .numberOnly:
+                // 桁数はゼロ詰めの**下限**。9 桁の番号を 3 桁指定で切り詰めたり
+                // しない（`%03d` は 1234 をそのまま 1234 と出す）。
+                let width = min(max(digits, digitRange.lowerBound), digitRange.upperBound)
+                suffix = String(format: "%0\(width)d", index + startNumber)
             case .nameAndDate:
                 let formatter = DateFormatter()
                 formatter.locale = locale
@@ -131,8 +166,13 @@ public enum BulkRename {
                 formatter.dateFormat = "yyyy-MM-dd HH.mm.ss"
                 suffix = formatter.string(from: date)
             }
-            let base = customText.isEmpty ? stem(of: name) : customText
-            let composed = placement == .before ? "\(suffix) \(base)" : "\(base) \(suffix)"
+            // 番号のみは名前を一切使わない（位置も区切り文字も意味を持たない）。
+            if style == .numberOnly {
+                return applyExtension(of: name, to: suffix)
+            }
+            let base = customText ?? stem(of: name)
+            let joiner = separator.rawValue
+            let composed = placement == .before ? "\(suffix)\(joiner)\(base)" : "\(base)\(joiner)\(suffix)"
             return applyExtension(of: name, to: composed)
         }
     }

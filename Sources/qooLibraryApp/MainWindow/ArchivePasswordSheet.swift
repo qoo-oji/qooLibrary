@@ -44,11 +44,11 @@ struct ArchivePasswordSheet: View {
             }
 
             SecureField("archivePassword.passwordField", text: $password)
-                .textFieldStyle(.roundedBorder)
+                .editableFieldChrome()
                 .focused($isPasswordFieldFocused)
             if isSetMode {
                 SecureField("archivePassword.confirmField", text: $confirmPassword)
-                    .textFieldStyle(.roundedBorder)
+                    .editableFieldChrome()
                 if !confirmPassword.isEmpty && password != confirmPassword {
                     Text("archivePassword.mismatch")
                         .font(.system(size: Tokens.fontSize.caption))

@@ -21,10 +21,13 @@ struct BulkRenameSheet: View {
     @State private var replaceText = ""
     @State private var addText = ""
     @State private var addPlacement: BulkRename.Placement = .after
-    @State private var formatStyle: BulkRename.FormatStyle = .nameAndIndex
+    @State private var formatStyle = BulkRename.defaultFormatStyle
     @State private var formatCustomText = ""
     @State private var formatPlacement: BulkRename.Placement = .after
     @State private var startNumber = 1
+    @State private var digits = BulkRename.defaultDigits
+    @State private var separator = BulkRename.defaultSeparator
+    @State private var replacesOriginalName = false
 
     private enum ModeSelection: String, CaseIterable, Identifiable {
         case replaceText, addText, format
@@ -43,8 +46,10 @@ struct BulkRenameSheet: View {
         case .replaceText: .replaceText(find: findText, replaceWith: replaceText)
         case .addText: .addText(addText, placement: addPlacement)
         case .format: .format(
-            style: formatStyle, customText: formatCustomText,
-            placement: formatPlacement, startNumber: startNumber
+            style: formatStyle,
+            customText: replacesOriginalName ? formatCustomText : nil,
+            placement: formatPlacement, startNumber: startNumber,
+            digits: digits, separator: separator
         )
         }
     }
@@ -101,10 +106,10 @@ struct BulkRenameSheet: View {
     private var controls: some View {
         switch mode {
         case .replaceText:
-            LabeledContent("bulkRename.find") { TextField("", text: $findText) }
-            LabeledContent("bulkRename.replaceWith") { TextField("", text: $replaceText) }
+            LabeledContent("bulkRename.find") { editableField($findText) }
+            LabeledContent("bulkRename.replaceWith") { editableField($replaceText) }
         case .addText:
-            LabeledContent("bulkRename.text") { TextField("", text: $addText) }
+            LabeledContent("bulkRename.text") { editableField($addText) }
             Picker("bulkRename.placement", selection: $addPlacement) {
                 Text("bulkRename.placement.before").tag(BulkRename.Placement.before)
                 Text("bulkRename.placement.after").tag(BulkRename.Placement.after)
@@ -112,22 +117,58 @@ struct BulkRenameSheet: View {
             .pickerStyle(.radioGroup)
         case .format:
             Picker("bulkRename.formatStyle", selection: $formatStyle) {
+                // 並びも既定も「番号のみ」が先頭［ユーザー要望］。
+                Text("bulkRename.style.numberOnly").tag(BulkRename.FormatStyle.numberOnly)
                 Text("bulkRename.style.index").tag(BulkRename.FormatStyle.nameAndIndex)
-                Text("bulkRename.style.counter").tag(BulkRename.FormatStyle.nameAndCounter)
                 Text("bulkRename.style.date").tag(BulkRename.FormatStyle.nameAndDate)
             }
-            LabeledContent("bulkRename.customFormat") { TextField("", text: $formatCustomText) }
-            Picker("bulkRename.placement", selection: $formatPlacement) {
-                Text("bulkRename.placement.before").tag(BulkRename.Placement.before)
-                Text("bulkRename.placement.after").tag(BulkRename.Placement.after)
+            // 「番号のみ」は元の名前もカスタム文字列も使わないので、
+            // 名前まわりの設定は出さない（効かない設定を見せない）。
+            if formatStyle != .numberOnly {
+                // 置き換えるかどうかを明示させる［ユーザー要望］。以前は
+                // 「空欄なら元の名前」という暗黙の規則で、空欄の意味が
+                // 2 通りに読めた。チェックが off の間は欄自体を触れなくする。
+                Toggle("bulkRename.replaceOriginalName", isOn: $replacesOriginalName)
+                LabeledContent("bulkRename.customFormat") {
+                    editableField($formatCustomText)
+                        .disabled(!replacesOriginalName)
+                        .opacity(replacesOriginalName ? 1 : 0.4)
+                }
+                Picker("bulkRename.placement", selection: $formatPlacement) {
+                    Text("bulkRename.placement.before").tag(BulkRename.Placement.before)
+                    Text("bulkRename.placement.after").tag(BulkRename.Placement.after)
+                }
+                .pickerStyle(.radioGroup)
+                Picker("bulkRename.separator", selection: $separator) {
+                    Text("bulkRename.separator.underscore").tag(BulkRename.Separator.underscore)
+                    Text("bulkRename.separator.hyphen").tag(BulkRename.Separator.hyphen)
+                    Text("bulkRename.separator.space").tag(BulkRename.Separator.space)
+                    Text("bulkRename.separator.none").tag(BulkRename.Separator.none)
+                }
+                .pickerStyle(.menu)
+                .frame(width: 260, alignment: .leading)
             }
-            .pickerStyle(.radioGroup)
             if formatStyle != .nameAndDate {
                 LabeledContent("bulkRename.startNumber") {
-                    TextField("", value: $startNumber, format: .number).frame(width: 80)
+                    TextField("", value: $startNumber, format: .number)
+                        .editableFieldChrome()
+                        .frame(width: 80)
                 }
+                // 桁数（ゼロ詰め）［ユーザー要望］。数を打たせるより、
+                // 実際にどう出るか（1 / 01 / 001 …）を並べて選ばせる方が速い。
+                Picker("bulkRename.digits", selection: $digits) {
+                    ForEach(Array(BulkRename.digitRange), id: \.self) { width in
+                        Text(String(format: "%0\(width)d", 1)).tag(width)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 200, alignment: .leading)
             }
         }
+    }
+
+    private func editableField(_ text: Binding<String>) -> some View {
+        TextField("", text: text).editableFieldChrome()
     }
 
     private var previewTable: some View {
