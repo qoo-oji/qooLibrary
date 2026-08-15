@@ -150,6 +150,20 @@ public actor FileOperationService {
             try? FileManager.default.removeItem(at: target)
             throw FileOperationError.sourceChangedDuringOperation(source)
         }
+        // **更新日時に依存しない確認を重ねる**［ユーザー指摘: NAS の OS は
+        // 千差万別で、手元の 1 台で確かめられたことを一般化できない］。
+        //
+        // 上の検査は更新日時とサイズを見るが、その精度は書き込み先次第で、
+        // FAT は 2 秒（実測でナノ秒が常に 0）。1 秒精度のサーバなら、
+        // 「同じ大きさのまま中身が入れ替わる」書き込み（プリアロケートした
+        // 領域へ書く torrent など）を取り逃がす。**取り逃がした先にあるのは
+        // 元ファイルの削除＝データ喪失**なので、内容そのものを抜き取りで
+        // 突き合わせてから消す（`MoveVerification`）。
+        guard MoveVerification.looksIdentical(source: source, destination: target) else {
+            Log.fileOps.error("移動の検証に失敗したため元を残します: \(Log.path(source))")
+            try? FileManager.default.removeItem(at: target)
+            throw FileOperationError.sourceChangedDuringOperation(source)
+        }
         try FileManager.default.removeItem(at: source)
         return outcome
     }
