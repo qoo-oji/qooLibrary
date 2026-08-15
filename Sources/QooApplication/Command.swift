@@ -49,6 +49,18 @@ public protocol Command: AnyObject {
     /// （完全削除等、Undo 不可能な操作用）[UD-10]。
     var isUndoable: Bool { get }
 
+    /// 実行が成功したときに鳴らす UI サウンド。`nil`（既定）なら無音
+    /// [ユーザー要望、要件定義書には無い]。
+    ///
+    /// **Finder と同じ構造にしている**: Finder も操作コントローラの仮想メソッドが
+    /// SystemSoundID を返し、進捗ビューが消えるとき（＝操作完了時）に鳴らす。
+    /// 既定を「無音」にしているのは、名前の変更・新規フォルダのように一瞬で
+    /// 終わり結果が画面上ですぐ分かる操作にまで音を付けないため。
+    ///
+    /// 鳴らすのは `CommandStack` の 1 箇所だけ（`record` と同じ考え方で、
+    /// 経路が増えても鳴らし忘れ・二重再生が構造的に起きないようにする）。
+    var completionSound: SystemSoundEffect? { get }
+
     func execute() async throws -> CommandResult
     func undo() async throws -> UndoResult
     /// 多くのコマンドでは `execute()` の再実行と同じ（`undo()` が完全に元の
@@ -63,6 +75,8 @@ extension Command {
     }
 
     public var logDescription: String { displayName }
+
+    public var completionSound: SystemSoundEffect? { nil }
 
     /// `logDescription` を組み立てる共通ヘルパー。
     /// 例: `move: /Volumes/Ext/A.cbz, /Volumes/Ext/B.cbz → /Volumes/Ext/Sub`
@@ -121,6 +135,13 @@ public final class CompositeCommand: Command {
     }
 
     public var isUndoable: Bool { children.allSatisfy(\.isUndoable) }
+
+    /// 子のうち最初に音を持つものを 1 つだけ採用する。複数アーカイブの一括展開
+    /// のように子が N 個あっても**鳴るのは 1 回**（Finder も操作 1 回につき
+    /// 1 回しか鳴らさない）。子がどれも音を持たなければ無音。
+    public var completionSound: SystemSoundEffect? {
+        children.lazy.compactMap(\.completionSound).first
+    }
 
     public func execute() async throws -> CommandResult {
         for child in children {

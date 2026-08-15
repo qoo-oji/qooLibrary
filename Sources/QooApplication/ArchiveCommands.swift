@@ -47,6 +47,9 @@ public final class CompressCommand: Command {
     }
 
     public let isUndoable = true
+    /// [ユーザー要望] 圧縮は数秒かかることがあり、完了が分かる手がかりが要る
+    /// （`QooProgressPresenter` のオーバーレイを追加したのと同じ理由）。
+    public let completionSound: SystemSoundEffect? = .operationComplete
 
     public func execute() async throws -> CommandResult {
         resultURL = try await compressor.compress(
@@ -98,6 +101,9 @@ public final class ExtractCommand: Command {
     public var logDescription: String { "extract: \(Log.path(archiveURL)) → \(Log.path(destination))" }
 
     public let isUndoable = true
+    /// [ユーザー要望] 圧縮と同じ理由。複数アーカイブの一括展開では
+    /// `CompositeCommand` がまとめるため、鳴るのは 1 回だけ。
+    public let completionSound: SystemSoundEffect? = .operationComplete
 
     public func execute() async throws -> CommandResult {
         let options = ExtractOptions(destination: destination, limits: limits, passphrase: passphrase)

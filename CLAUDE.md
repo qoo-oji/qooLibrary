@@ -934,6 +934,64 @@ Finder の「移動」メニュー相当を `CommandMenu("menu.go")` として�
 早い（今回も、縦長・16:9・正方形・混在の 4 パターンを並べた検証用フォルダを
 作ってからは 1 往復で収束した）。
 
+### Finder のメニューアイコンと効果音（要件定義書には無い、ユーザー要望）
+
+Finder に合わせるための調査と、**効果音の実装**（メニューアイコンは調査のみで未実装）。
+
+#### 調査手法（今後 Finder 準拠を検討するときに再利用する）
+
+| 知りたいこと | 手法 |
+|---|---|
+| メニューの構造・アイコン | `MenuBar.nib` を `NSNib` で**実際にインスタンス化**して `NSMenuItem` を走査する（既出の手法）。**アイコンは `image.value(forKey: "symbolName")` で SF Symbol 名が取れる**（`image.name()` は nil） |
+| コンテキストメニュー | nib が無く実行時に組み立てられるため、実 Finder を右クリックしてスクリーンショットで実測 |
+| dyld 共有キャッシュ内のフレームワーク | **`dyld_info` はキャッシュ内の dylib をパス指定で扱える**（`-imports`/`-exports`/`-disassemble`/`-objc`）。抽出ツールは不要 |
+| 実行時のデータ構造（switch のジャンプテーブル等） | エクスポート記号の unslid アドレスと実行時アドレスの差から slide を求め、**自プロセスのメモリを直接読む**。逆アセンブルだけでは追えない対応表を確定できる |
+
+#### メニューアイコン（未実装、着手時はこの節を正とする）
+
+- **Finder はメニューバーとコンテキストメニューで同じ SF Symbol を使う**（コマンド 1 つにつき 1 シンボル）。⌥ 代替項目は主項目と**同じ**アイコン。
+- **アイコンを付けない項目**: 中身が動的なコンテナ submenu（Open With / Quick Actions / View / Clean Up By）、表示切替の一部（タブバー・ツールバー・パスバー・ステータスバー・フルスクリーン）、サードパーティのサービス項目。**submenu だから無し、ではない**（並び替え・グループを使用・圧縮 は submenu でもアイコンあり）。
+- **SwiftUI の `Label(_, systemImage:)` で実装できる**ことを実測確認済み（メニューバー・`.contextMenu`・`Menu` のラベルすべてで描画された）。AppKit の回避策は不要。
+- 主要な対応（Finder 実測値）: 開く `arrow.up.forward.app` / ゴミ箱・完全削除 `trash` / 情報 `info.circle` / 名前を変更 `pencil` / 圧縮 `zipper.page` / 複製・新規タブ `plus.square.on.square` / エイリアス `square.dashed.and.alias` / クイックルック `eye` / コピー `document.on.document` / ペースト `document.on.clipboard` / ここに項目を移動 `folder` / カット `scissors` / 選択・選択解除 `character.textbox` / Undo・Redo `arrow.uturn.backward`・`arrow.uturn.forward` / 新規フォルダ `folder.badge.plus` / 新規ウインドウ `plus.rectangle` / 共有 `square.and.arrow.up` / 取り出す `eject` / 検索 `magnifyingglass` / アイコン・リスト `square.grid.2x2`・`list.bullet` / 並び替え `arrow.up.arrow.down` / 表示オプション `gearshape` / 設定 `gear` / サイドバー・インスペクタ `sidebar.leading`・`sidebar.trailing` / 戻る・進む `chevron.backward`・`chevron.forward` / 上の階層へ `arrow.up.folder` / フォルダへ移動 `arrow.forward.folder` / 最近使った項目 `clock` / ホーム `house`
+
+#### 効果音（実装済み）
+
+**音源は macOS 同梱のシステムサウンドをそのまま使う**（自前の音源をバンドルしない）。場所は `/System/Library/Components/CoreAudio.component/Contents/SharedSupport/SystemSounds/`。
+
+**AudioToolbox の内部対応表を実行時メモリから復元して確定させた**（一部）: 1=`system/Volume Mount.aif` / 13=`finder/empty trash.aif` / 14=`finder/move to trash.aif` / 15=`dock/poof item off dock.aif` / 16=`dock/drag to trash.aif` / 24=`system/Grab.aif`。
+
+**Finder が実際に鳴らしているもの**（逆アセンブルで確定 → ユーザーが耳で確認済み）:
+
+- Finder は操作コントローラの**仮想メソッドが SystemSoundID を返し**、進捗ビューが消えるとき（＝操作完了時）に鳴らす。
+- **[訂正] 基底実装（大半の操作が使う）は「無音」ではない。** 当初この分岐を読んで「コピー・移動では音を鳴らさない」と結論したが、**ユーザーから「Finder でファイルをペーストすると音が鳴る」と実機で指摘を受けて誤りと判明した**。実際には `エラー無し && 未キャンセル && …条件… → ID 1（`Volume Mount.aif`）／それ以外 → 0` という分岐で、条件側（`>= 3` の比較と、もう 1 つの仮想メソッド呼び出し）は完全には解読できていない。**「条件付き」を「ほぼ鳴らない」と読み替えてしまったのが誤りの本体。** 教訓: 分岐の一方しか成立しないと決めつける前に、実機で確かめるか、ユーザーに聞くこと。
+- ゴミ箱に入れる → **ID 16 = `dock/drag to trash.aif`**（0.50 秒）。**`finder/move to trash.aif`（ID 14、2.19 秒）は名前に反してどこからも呼ばれていない** — ファイル名で選ぶと間違える。
+- ゴミ箱を空にする → ID 13 = `finder/empty trash.aif`。
+- Dock 側は別経路（ドラッグでのゴミ箱 → 16、poof → 15）。
+- 全ての再生は `com.apple.finder` の **`FinderSounds`**（既定 on）で一括ゲートされる。
+
+**qooLibrary の実装**（`Sources/QooInfrastructure/Sound/SystemSoundPlayer.swift`）:
+
+- `SystemSoundEffect`（`.moveToTrash` / `.permanentDelete` / `.operationComplete`）と `SystemSoundPlaying` プロトコル + `SystemSoundPlayer`（`actor`）。**列挙子は qooLibrary 側の意味で命名**（`.permanentDelete` の実体は `empty trash.aif`。qooLibrary に「ゴミ箱を空にする」機能は無く、この音を使うのは完全削除だけ）。
+- **参照はファイルパス指定**［ユーザー判断］。数値 ID の対応表が非公開なため、自己文書化されるパスを採る。読み込みに失敗したら**その音は以後鳴らさず無音へフォールバック**する（ユーザーには提示せずログのみ）。
+- 登録した `SystemSoundID` は使い回す（登録は coreaudiod への往復を伴う）。再生は Finder と同じ `AudioServicesPlaySystemSoundWithCompletion`。
+- **システム設定「ユーザインターフェイスのサウンドエフェクトを再生」を自動的に尊重する**（`kAudioServicesPropertyIsUISound` が既定 1）。**アプリ側の設定は持たない**［ユーザー判断: 環境設定に音のオン/オフは置かない］。
+- **App Sandbox 下で追加の entitlement 無しに動作する**ことを、qooLibrary と同一 entitlement の検証アプリで実測済み。
+- **鳴らす経路は `CommandStack` の 1 箇所だけ**（`Command.completionSound` を読む。Finder と同じ構造で、経路が増えても鳴らし忘れ・二重再生が起きない）。割り当て:
+
+  | コマンド | 音 | 備考 |
+  |---|---|---|
+  | `TrashCommand` | `.moveToTrash` | |
+  | `DeletePermanentlyCommand` | `.permanentDelete` | |
+  | `CompressCommand` / `ExtractCommand` | `.operationComplete` | ［ユーザー要望］Finder には無いが、数秒かかるため完了の手がかりが要る |
+  | `MoveFilesCommand` / `CopyFilesCommand` | `.operationComplete` | ペースト・複製・D&D。**Finder も鳴らす**（上記の訂正参照）。成功時は件数によらず常に鳴らす［ユーザー判断］ |
+  | 上記以外（名前の変更・新規フォルダ・エイリアス・ロック） | `nil`（無音） | 一瞬で終わり結果が画面上ですぐ分かるため |
+- **`undo()` では鳴らさない**［設計判断］— 音は「その操作が起きたこと」に付随するもので、⌘Z で圧縮完了音が鳴るのは意味が逆。取り消しの中身に応じて鳴らし分けると同じ ⌘Z が対象によって違う音になり分かりにくい。**redo は操作をもう一度起こすので鳴らす。** 部分成功でも鳴らさない（Finder も鳴らす前にエラーの有無を確認している）。
+- `CompositeCommand` は**子のうち最初に音を持つものを 1 つだけ**採用する（複数アーカイブの一括展開でも鳴るのは 1 回）。
+- `RuntimeEnvironment.isRunningTests`（`DiagnosticLog` から切り出して共有）により、**`swift test` 中は無音**。
+- テスト: `SystemSoundEffectTests`（音源の実在・`AudioServices` への登録成功・重複が無いこと。**OS 側で音源が移動したら気づけるようにするための回帰テスト**）、`CommandSoundTests`（各コマンドの割り当て・`CompositeCommand` の合成・`CommandStack` が成功時のみ鳴らし undo では鳴らさないこと）。
+
+**教訓**: 「`move to trash.aif` だからゴミ箱の音」のような名前からの推測は外れる。音を選ぶときは**実際に鳴らして耳で確認する**こと（今回もユーザーに 4 音とも聴いてもらって確定させた）。
+
 作業を始める際は、対象領域の仕様書（下記 §2 の一覧）を該当箇所だけ `Read` してから着手する。仕様書は合計 18 ファイルあり、全部を毎回読み込む必要はない。要件定義書本体は `docs/Requirements/qooLibrary_要件定義書_v2.8.md` にある（約 2,900 行）。矛盾したときの優先順位は §1 参照。
 
 ## 1. アプリ概要

@@ -58,7 +58,7 @@ public final class DiagnosticLog: DiagnosticLogging {
     /// 意図的に検証したい場合は `init(directory:)` で明示的に渡す。
     public static func defaultLogDirectory() -> URL {
         let base: URL
-        if isRunningTests {
+        if RuntimeEnvironment.isRunningTests {
             base = FileManager.default.temporaryDirectory
                 .appendingPathComponent("qooLibrary-tests", isDirectory: true)
         } else {
@@ -68,18 +68,6 @@ public final class DiagnosticLog: DiagnosticLogging {
         return base
             .appendingPathComponent("qooLibrary", isDirectory: true)
             .appendingPathComponent("Logs", isDirectory: true)
-    }
-
-    /// 実行中のプロセスがテストランナーかどうか。
-    ///
-    /// SwiftPM の Swift Testing（`swiftpm-testing-helper`）は `XCTest` の
-    /// クラスも `XCTestConfigurationFilePath` 環境変数も持たないことを実測で
-    /// 確認済みのため、プロセス名も判定材料に含めている。
-    private static var isRunningTests: Bool {
-        let info = ProcessInfo.processInfo
-        if info.environment["XCTestConfigurationFilePath"] != nil { return true }
-        if ["xctest", "swiftpm-testing-helper"].contains(info.processName) { return true }
-        return NSClassFromString("XCTestCase") != nil
     }
 
     public init(

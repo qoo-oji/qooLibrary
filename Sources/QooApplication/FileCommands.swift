@@ -26,6 +26,10 @@ public final class MoveFilesCommand: Command {
 
     public var logDescription: String { Self.logDescription("move", items, to: destination) }
     public let isUndoable = true
+    /// 移動・コピー（＝ペースト・複製・D&D）の完了音。**Finder も鳴らす**
+    /// ［当初「Finder は鳴らさない」と誤って結論し、ユーザーの実機での指摘で
+    /// 訂正した。詳細は CLAUDE.md「Finder のメニューアイコンと効果音」節］。
+    public let completionSound: SystemSoundEffect? = .operationComplete
 
     public func execute() async throws -> CommandResult {
         receipts = try await fileOps.move(items, to: destination, options: options)
@@ -80,6 +84,8 @@ public final class CopyFilesCommand: Command {
 
     public var logDescription: String { Self.logDescription("copy", items, to: destination) }
     public let isUndoable = true
+    /// `MoveFilesCommand` と同じ理由・同じ音（ペースト・複製・D&D のコピー）。
+    public let completionSound: SystemSoundEffect? = .operationComplete
 
     public func execute() async throws -> CommandResult {
         receipts = try await fileOps.copy(items, to: destination, options: options)
@@ -152,6 +158,7 @@ public final class TrashCommand: Command {
 
     public var logDescription: String { Self.logDescription("trash", items) }
     public let isUndoable = true
+    public let completionSound: SystemSoundEffect? = .moveToTrash
 
     public func execute() async throws -> CommandResult {
         receipts = try await fileOps.trash(items)
@@ -215,6 +222,10 @@ public final class DeletePermanentlyCommand: Command {
     public var logDescription: String { Self.logDescription("deletePermanently", items) }
     /// [UD-10][PD-05] 取り消せない。
     public let isUndoable = false
+    /// 実体は Finder の「ゴミ箱を空にする」音。qooLibrary に「ゴミ箱を空にする」
+    /// 機能は無いため、この音を使うのは完全削除だけ — 取り返しがつかない操作で
+    /// あることを、確認ダイアログ [FM-15] とは別に音でも伝える。
+    public let completionSound: SystemSoundEffect? = .permanentDelete
 
     public func execute() async throws -> CommandResult {
         // ① 削除前に、実体を失う登録フォルダを特定しておく。

@@ -1,4 +1,5 @@
 import Foundation
+import QooInfrastructure
 import Testing
 
 @testable import QooApplication
@@ -133,12 +134,20 @@ final class FakeCommand: Command {
     private(set) var undoCallCount = 0
     var undoResult: UndoResult = .complete
     var undoError: Error?
+    var completionSound: SystemSoundEffect?
+    var executeResult: CommandResult = .success
+    var executeError: Error?
     private let recorder: CallRecorder?
     private let label: String
 
-    init(displayName: String, isUndoable: Bool = true, recorder: CallRecorder? = nil, label: String = "") {
+    init(
+        displayName: String, isUndoable: Bool = true,
+        completionSound: SystemSoundEffect? = nil,
+        recorder: CallRecorder? = nil, label: String = ""
+    ) {
         self.displayName = displayName
         self.isUndoable = isUndoable
+        self.completionSound = completionSound
         self.recorder = recorder
         self.label = label.isEmpty ? displayName : label
     }
@@ -146,7 +155,8 @@ final class FakeCommand: Command {
     func execute() async throws -> CommandResult {
         executeCallCount += 1
         recorder?.record("\(label).execute")
-        return .success
+        if let executeError { throw executeError }
+        return executeResult
     }
 
     func undo() async throws -> UndoResult {

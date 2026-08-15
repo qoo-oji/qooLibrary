@@ -24,7 +24,11 @@ public final class CommandStack {
     public private(set) var operationHistory: [OperationHistoryEntry] = []
     private let historyLimit = 500
 
-    public init() {}
+    private let soundPlayer: any SystemSoundPlaying
+
+    public init(soundPlayer: any SystemSoundPlaying = SystemSoundPlayer.shared) {
+        self.soundPlayer = soundPlayer
+    }
 
     public var undoTitle: String? { undoStack.last?.displayName } // [UD-06]
     public var redoTitle: String? { redoStack.last?.displayName }
@@ -47,6 +51,7 @@ public final class CommandStack {
             throw error
         }
         record(command, action: .executed)
+        await playCompletionSound(for: command, result: result)
         if command.isUndoable {
             undoStack.append(command)
             if undoStack.count > depth {
@@ -80,12 +85,29 @@ public final class CommandStack {
     public func redo() async {
         guard let command = redoStack.popLast() else { return }
         do {
-            _ = try await command.redo()
+            let result = try await command.redo()
             record(command, action: .redone)
+            await playCompletionSound(for: command, result: result)
             undoStack.append(command)
         } catch {
             record(command, action: .redoFailed(reason: error.localizedDescription))
         }
+    }
+
+    /// 完了音を鳴らす唯一の経路 [ユーザー要望]。
+    ///
+    /// **`undo()` からは呼ばない**［設計判断］。音は「その操作が起きたこと」に
+    /// 付随するものなので、取り消しで圧縮完了音が鳴るのは意味が逆になる。
+    /// かといって取り消しの中身（例: 圧縮の取り消し＝生成物をゴミ箱へ）に
+    /// 応じた別の音を鳴らし分けると、同じ ⌘Z が対象によって違う音になり
+    /// かえって分かりにくい。**やり直し（redo）は操作をもう一度起こすので鳴らす。**
+    ///
+    /// 部分成功では鳴らさない — Finder も鳴らす前にエラーの有無を確認しており、
+    /// 一部失敗した操作を「完了」の音で締めるのは誤解を招く。失敗の提示自体は
+    /// `NotificationRouter` の担当 [ER-01]。
+    private func playCompletionSound(for command: any Command, result: CommandResult) async {
+        guard case .success = result, let effect = command.completionSound else { return }
+        await soundPlayer.play(effect)
     }
 
     /// 操作履歴への記録は必ずここを通る [CS-05]。診断ログへの記録も同じ
