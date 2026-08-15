@@ -93,14 +93,17 @@ struct TinyVolume {
         guard run("/usr/bin/hdiutil", [
             "create", "-quiet", "-size", "\(megabytes)m", "-fs", fileSystem, "-volname", name, image.path,
         ]) else { return nil }
-        // **マウント先を volname から推測してはいけない。**
-        // FAT（msdos）はボリューム名を大文字化するため、`QooTest1a2b` を渡すと
-        // `/Volumes/QOOTEST1A` にマウントされる。推測して照合していたときは
-        // 一致せず `nil` を返し、**FAT を使う検証がすべて静かに飛んでいた**
-        // （しかもマウントしたまま画像が残った）。`attach` の出力から実際の
-        // マウント先を取る。
-        guard let mountPoint = attachAndReportMountPoint(image) else {
-            _ = run("/usr/bin/hdiutil", ["detach", "-quiet", "-force", "/Volumes/\(name)"])
+        // **マウント先を明示する。**
+        // FAT（msdos）は `-volname` を無視して「NO NAME」でマウントするため、
+        // 名前から推測すると一致せず `nil` を返し、**FAT を使う検証がすべて
+        // 静かに飛んでいた**。さらに複数同時に作ると「NO NAME 1」「NO NAME 2」
+        // …と衝突し、外し損ねたボリュームが残り続けた（実際に 5 つ残した）。
+        // `-mountpoint` で場所を固定すれば、形式に関係なく確実に外せる。
+        let mountPoint = URL(fileURLWithPath: "/Volumes/\(name)", isDirectory: true)
+        guard run("/usr/bin/hdiutil", [
+            "attach", "-quiet", "-nobrowse", "-mountpoint", mountPoint.path, image.path,
+        ]), FileManager.default.fileExists(atPath: mountPoint.path) else {
+            _ = run("/usr/bin/hdiutil", ["detach", "-quiet", "-force", mountPoint.path])
             try? FileManager.default.removeItem(at: image)
             return nil
         }
@@ -125,28 +128,6 @@ struct TinyVolume {
         ]) else { return nil }
         guard FileManager.default.fileExists(atPath: mountPoint.path) else { return nil }
         return mountPoint
-    }
-
-    /// `hdiutil attach` の出力から、実際にマウントされた場所を取る。
-    /// 形式によって名前が変わる（FAT は大文字化）ため、推測は当てにならない。
-    private static func attachAndReportMountPoint(_ image: URL) -> URL? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
-        process.arguments = ["attach", "-nobrowse", image.path]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        guard (try? process.run()) != nil else { return nil }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0, let text = String(data: data, encoding: .utf8) else { return nil }
-        // 各行は「デバイス \t 種別 \t マウント先」。マウント先を持つ最後の行を使う。
-        let mounts = text.split(separator: "\n").compactMap { line -> String? in
-            guard let range = line.range(of: "/Volumes/") else { return nil }
-            return String(line[range.lowerBound...]).trimmingCharacters(in: .whitespaces)
-        }
-        guard let last = mounts.last, FileManager.default.fileExists(atPath: last) else { return nil }
-        return URL(fileURLWithPath: last, isDirectory: true)
     }
 
     @discardableResult
