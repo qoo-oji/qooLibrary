@@ -88,6 +88,21 @@ struct FolderContentView: View {
     @Binding var searchText: String
 
     @State private var entries: [FolderEntry] = []
+    /// 再帰検索の結果 [ユーザー要望: サブフォルダも再帰的に検索する]。
+    /// 検索していないときは空。
+    @State private var searchResults: [FolderEntry] = []
+    /// 走査中か（進捗表示用）。
+    @State private var isSearching = false
+    /// 上限（`AppLimits.Search.maxResults`）に達して打ち切ったか。
+    @State private var searchTruncated = false
+    /// 走査の世代 [実機検証で発見したバグの修正]。**キャンセルは協調的**なので、
+    /// `.task(id:)` が古い走査を打ち切っても、その走査が既に
+    /// `await MainActor.run { onBatch(...) }` の中で待っていれば、**新しい走査が
+    /// `searchResults` を空にした後で古い結果が流れ込む**。実際、`001.jpg` が
+    /// 1 つしか無いフォルダで検索すると同じ項目が 2 件並び、総数も実際の
+    /// ファイル数を超えていた（打鍵のたびに走査が作られるため）。
+    /// 世代を照合して、古い走査からの結果は捨てる。
+    @State private var searchGeneration = 0
     @State private var loadError: String?
     @State private var renamingEntry: FolderEntry?
     @State private var renameText = ""
@@ -106,9 +121,6 @@ struct FolderContentView: View {
     /// 終わったらこれに戻す。
     @State private var selectionBeforeDropHighlight: Set<URL>?
     @FocusState private var isListFocused: Bool
-    /// 検索フィールドのフォーカス [1-16]。⌘F（`ActionID.focusSearch`）で
-    /// `.searchable` のフィールドへフォーカスを移すために使う。
-    @FocusState private var isSearchFieldFocused: Bool
     /// Shift クリックでの範囲選択の起点 [LV-06 相当]。
     @State private var selectionAnchor: URL?
     /// 複数選択された行を一度にドラッグするための `dragContainer` 系 API のスコープ
@@ -163,6 +175,10 @@ struct FolderContentView: View {
     @State private var kindColumnWidth: CGFloat = 140
     @State private var creationDateColumnWidth: CGFloat = 170
     @State private var addedDateColumnWidth: CGFloat = 170
+    /// 検索結果の「場所」列 [ユーザー要望]。相対パスは長くなりがちなので、
+    /// 他の列より広めの上限を許す（実際の値は `recomputeAutoFitColumnWidths()`
+    /// が中身を計測して決める）。
+    @State private var locationColumnWidth: CGFloat = 220
     /// [ユーザー要望] 名前列に、他の列（内容に合わせて詰めた分）を差し引いた
     /// 残りの幅をすべて割り当てる。**SwiftUI の `Table`（macOS）は「最後に
     /// 宣言した列」だけを自動的に残り幅へ伸縮させる仕組みを持つが、名前列は
@@ -234,6 +250,23 @@ struct FolderContentView: View {
                 // `displayedEntries` がこの状態を見て計算する（`Table` 自身は
                 // データを自動ソートしない）。
                 Table(displayedEntries, selection: $selection, sortOrder: $sortOrder) {
+                    // 検索結果の「場所」[ユーザー要望]。検索中だけ現れ、
+                    // **「名前」の左**に入る [ユーザー要望]。
+                    // **並び替えの対象にはしない**（`sortUsing:` を付けない）——
+                    // `FolderSortComparator.Key` に加えると、検索していない
+                    // ときにも「並び替え」メニューへ意味の無い項目が並ぶため。
+                    if hasActiveSearch {
+                        TableColumn("column.location") { entry in
+                            rowCell(entry, isRenaming: renamingEntry?.url == entry.url) {
+                                Text(entry.relativeLocation.isEmpty ? "—" : entry.relativeLocation)
+                                    .font(.system(size: Tokens.fontSize.body))
+                                    .foregroundStyle(.secondary)
+                                    .help(entry.relativeLocation) // 長いパスは省略されるため
+                            }
+                        }
+                        .width(min: locationColumnWidth, max: locationColumnWidth)
+                    }
+
                     TableColumn("column.name", sortUsing: FolderSortComparator(key: .name)) { entry in
                         rowCell(entry, isRenaming: renamingEntry?.url == entry.url) {
                             // アイコンを固定幅の枠に収めて Finder のように先頭を揃える
@@ -436,8 +469,11 @@ struct FolderContentView: View {
             .overlay {
                 if hasActiveSearch, displayedEntries.isEmpty, loadError == nil {
                     PlaceholderPane(
-                        title: String(localized: "folder.noSearchResults", locale: locale),
-                        subtitle: String(localized: "folder.noSearchResultsHint", locale: locale)
+                        title: String(
+                            localized: isSearching ? "folder.searching" : "folder.noSearchResults",
+                            locale: locale
+                        ),
+                        subtitle: isSearching ? "" : String(localized: "folder.noSearchResultsHint", locale: locale)
                     )
                     .background(.background)
                 }
@@ -510,12 +546,6 @@ struct FolderContentView: View {
                 KeyBindingButtons(action: .compress, store: keyBindingStore, isDisabled: selection.isEmpty) {
                     compressHere(Array(selection))
                 }
-                // 検索フィールドへフォーカス（既定 ⌘F）[1-16]。1-8 で
-                // `ActionID.focusSearch` として登録だけしてあったものを、
-                // ここで初めて実際に配線した。
-                KeyBindingButtons(action: .focusSearch, store: keyBindingStore, isDisabled: folder == nil) {
-                    isSearchFieldFocused = true
-                }
             }
             .frame(width: 0, height: 0)
             .opacity(0)
@@ -543,18 +573,9 @@ struct FolderContentView: View {
             return true
         } isTargeted: { isDropTargeted = $0 }
         // File/Edit メニューバーへの橋渡し [`FolderMenuActions` 参照]。
-        // 名前での絞り込み [1-16 検索]。**`.searchable` を使う** [設計判断] ——
-        // 検索フィールドをツールバーへ置く（Finder と同じ位置）・クリアボタン・
-        // macOS 標準の見た目を自前で組み立てずに済む。1-9 で記録した
-        // 「`.primaryAction` の項目は右ペインを開くとインスペクタ側へ移動する」
-        // 制約はこの検索フィールドにも当てはまるが、そこは既存の表示切替・
-        // 新規フォルダボタンと同じ既知のトレードオフとして受け入れる。
-        .searchable(
-            text: $searchText,
-            placement: .toolbar,
-            prompt: Text("folder.searchPrompt")
-        )
-        .searchFocused($isSearchFieldFocused)
+        // 再帰検索 [ユーザー要望]。`.task(id:)` はキーが変わると前のタスクを
+        // 自動でキャンセルしてから始めるので、打鍵のたびに走査が積み上がらない。
+        .task(id: searchKey) { await runSearch() }
         .focusedSceneValue(\.folderMenuActions, currentFolderMenuActions)
         .task(id: folder) {
             reload()
@@ -683,7 +704,9 @@ struct FolderContentView: View {
                 // 絞り込み中は一致件数を出す（Finder の検索結果表示と同じ）。
                 itemCount: displayedEntries.count,
                 selectedCount: selection.count,
-                reloadToken: SessionState.shared.reloadToken
+                reloadToken: SessionState.shared.reloadToken,
+                isSearching: isSearching,
+                searchTruncated: searchTruncated
             )
         }
     }
@@ -857,8 +880,20 @@ struct FolderContentView: View {
                 values: entries.map { $0.addedDate.map { Self.dateFormatter.string(from: $0) } ?? "—" }
             )
         }
+        if hasActiveSearch {
+            // 相対パスは長くなりがちなので、名前列を潰さないよう上限を設ける
+            // （溢れた分はツールチップで読める）。他の列と違い**検索結果の
+            // `searchResults` を計測する**——この列は検索中にしか存在しない。
+            locationColumnWidth = min(
+                fitWidth(header: "column.location", values: searchResults.map { $0.relativeLocation.isEmpty ? "—" : $0.relativeLocation }),
+                Self.maxLocationColumnWidth
+            )
+        }
         updateNameColumnWidth(tableWidth: lastKnownTableWidth)
     }
+
+    /// 「場所」列の上限幅。深い階層だと相対パスが際限なく伸びるため。
+    private static let maxLocationColumnWidth: CGFloat = 320
 
     /// 名前列以外の、現在表示中の列の合計幅 [`nameColumnWidth` 参照]。
     private var otherColumnsWidth: CGFloat {
@@ -868,6 +903,7 @@ struct FolderContentView: View {
         if showKindColumn { total += kindColumnWidth }
         if showCreationDateColumn { total += creationDateColumnWidth }
         if showAddedDateColumn { total += addedDateColumnWidth }
+        if hasActiveSearch { total += locationColumnWidth }
         return total
     }
 
@@ -881,24 +917,149 @@ struct FolderContentView: View {
         nameColumnWidth = max(160, tableWidth - otherColumnsWidth - Self.tableChromePadding)
     }
 
-    /// `entries` に現在のソート順 [LV-01] とフォルダをまとめる設定 [LV-03] を
-    /// 適用した、実際に `Table` へ渡す並び。`filter` は相対順序を保つため、
-    /// グルーピングを先にソートした結果へ適用しても各グループ内の順序は
-    /// 崩れない。
+    /// 再帰検索の再実行トリガ。フォルダ・検索語・一覧の再読み込みのいずれかが
+    /// 変わったらやり直す。`.task(id:)` は値が変わると**前のタスクを自動的に
+    /// キャンセルしてから**新しいタスクを始めるため、打鍵のたびに走査が
+    /// 積み上がることはない。
+    private struct SearchKey: Equatable {
+        let folder: URL?
+        let query: String
+        let reloadToken: Int
+    }
+
+    private var searchKey: SearchKey {
+        SearchKey(folder: folder, query: searchText.trimmingCharacters(in: .whitespaces), reloadToken: SessionState.shared.reloadToken)
+    }
+
+    /// 現在のフォルダ以下を再帰的に走査して、名前が一致する項目を集める。
+    ///
+    /// **`Task.detached` は使わない** [1-14 で踏んだ教訓]。あれは呼び出し元の
+    /// キャンセルを引き継がないため、検索欄を消しても走査が最後まで走り続ける。
+    /// `nonisolated` な async 関数を直接 `await` すれば、メインアクタを外れつつ
+    /// キャンセルも伝わる。
+    ///
+    /// 結果は `AppLimits.Search.resultBatchSize` 件ごとに小出しで反映する
+    /// （走査の完了を待たずに出しはじめる）。上限に達したら打ち切り、
+    /// 打ち切ったことを UI に出す。
+    private func runSearch() async {
+        guard hasActiveSearch, let folder else {
+            searchResults = []
+            isSearching = false
+            searchTruncated = false
+            return
+        }
+        searchGeneration += 1
+        let generation = searchGeneration
+        isSearching = true
+        searchResults = []
+        searchTruncated = false
+        let truncated = await Self.enumerateMatches(in: folder, query: searchText) { batch in
+            // 古い走査からの取りこぼしは捨てる（この関数のコメント参照）。
+            guard generation == searchGeneration else { return }
+            searchResults.append(contentsOf: batch)
+            // 結果が増えるたびに「場所」列の幅を測り直す（小出しに反映される
+            // ため、最初のひと固まりだけで幅が決まってしまわないように）。
+            recomputeAutoFitColumnWidths()
+        }
+        guard generation == searchGeneration else { return }
+        searchTruncated = truncated
+        isSearching = false
+    }
+
+    /// 実際の走査。**メインアクタ外で動く** `nonisolated` な async 関数。
+    /// 一致した項目を `onBatch` で小出しに返し、上限で打ち切ったら `true` を返す。
+    private nonisolated static func enumerateMatches(
+        in folder: URL,
+        query: String,
+        onBatch: @escaping @MainActor ([FolderEntry]) -> Void
+    ) async -> Bool {
+        let keys: Set<URLResourceKey> = [
+            .isDirectoryKey, .fileSizeKey, .contentModificationDateKey,
+            .creationDateKey, .addedToDirectoryDateKey, .isUserImmutableKey,
+        ]
+        guard let enumerator = FileManager.default.enumerator(
+            at: folder,
+            includingPropertiesForKeys: Array(keys),
+            // 読めない場所（権限が無いサブフォルダ等）で止まらず先へ進む。
+            options: [.skipsHiddenFiles],
+            errorHandler: { _, _ in true }
+        ) else { return false }
+
+        var batch: [FolderEntry] = []
+        var total = 0
+        var truncated = false
+
+        // `NSDirectoryEnumerator` は async コンテキストで `for-in` できない
+        // （`makeIterator` が unavailable）ため `nextObject()` で回す。
+        while let url = enumerator.nextObject() as? URL {
+            if Task.isCancelled { return false }
+            guard NameFilter.matches(name: url.lastPathComponent, query: query) else { continue }
+            let values = try? url.resourceValues(forKeys: keys)
+            batch.append(FolderEntry(
+                url: url,
+                name: url.lastPathComponent,
+                isDirectory: values?.isDirectory ?? false,
+                fileSize: values?.fileSize.map(Int64.init),
+                modificationDate: values?.contentModificationDate,
+                creationDate: values?.creationDate,
+                addedDate: values?.addedToDirectoryDate,
+                isLocked: values?.isUserImmutable ?? false,
+                relativeLocation: relativeLocation(of: url, from: folder)
+            ))
+            total += 1
+            if total >= AppLimits.Search.maxResults {
+                truncated = true
+                break
+            }
+            if batch.count >= AppLimits.Search.resultBatchSize {
+                if Task.isCancelled { return false }
+                let ready = batch
+                batch = []
+                await MainActor.run { onBatch(ready) }
+            }
+        }
+        if !batch.isEmpty, !Task.isCancelled {
+            let ready = batch
+            await MainActor.run { onBatch(ready) }
+        }
+        return truncated
+    }
+
+    /// 検索の起点 `root` から見た、`url` の**親フォルダ**の相対パス
+    /// [ユーザー要望]。起点の直下なら空文字を返す。
+    ///
+    /// `pathComponents` の差分から組み立てる——`URL` の相対パス API は無く、
+    /// 文字列の前方一致で切り出すとパス区切りの扱いを誤りやすいため。
+    private nonisolated static func relativeLocation(of url: URL, from root: URL) -> String {
+        let rootComponents = root.standardizedFileURL.pathComponents
+        let parentComponents = url.standardizedFileURL.deletingLastPathComponent().pathComponents
+        guard parentComponents.count > rootComponents.count,
+              Array(parentComponents.prefix(rootComponents.count)) == rootComponents
+        else { return "" }
+        return parentComponents.dropFirst(rootComponents.count).joined(separator: "/")
+    }
+
     /// 絞り込みが有効か [1-16 検索]。空白のみの入力は「絞り込んでいない」扱い。
+    ///
+    /// 検索フィールド自体はウインドウのツールバー（`MainWindowView`）にあり、
+    /// このビューは `searchText` を受け取って一覧を絞り込む役目だけを持つ
+    /// [Finder 風の「普段はボタン、押すと検索欄」にするためツールバーへ移した]。
     private var hasActiveSearch: Bool {
         !searchText.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
+    /// `entries` に現在のソート順 [LV-01] とフォルダをまとめる設定 [LV-03] を
+    /// 適用した、実際に `Table` へ渡す並び。`filter` は相対順序を保つため、
+    /// グルーピングを先にソートした結果へ適用しても各グループ内の順序は
+    /// 崩れない。
     private var displayedEntries: [FolderEntry] {
-        var result = entries
-        // 名前での絞り込み [1-16 検索、`ActionID.focusSearch`]。**現在のフォルダの
-        // 直下だけを対象にする**——ライブラリ横断検索・ラベル検索はフェーズ2の
-        // 担当で、ここはあくまで Finder の検索フィールドに当たる軽い絞り込み。
+        // 検索中は**再帰的に集めた結果**を一覧の元にする [ユーザー要望:
+        // サブフォルダも再帰的に検索する]。Finder の検索と同じく、現在の
+        // フォルダを起点に配下すべてが対象になる。走査は `searchTask` が
+        // 非同期・キャンセル可能に行い、ここは受け取った結果を並べるだけ。
         // 一致判定の規則とその理由は `NameFilter` 側にまとめてある。
-        if hasActiveSearch {
-            result = result.filter { NameFilter.matches(name: $0.name, query: searchText) }
-        }
+        // ライブラリ横断検索・ラベル検索はフェーズ2の担当。
+        var result = hasActiveSearch ? searchResults : entries
         result.sort(using: sortOrder)
         if groupFoldersAtTop {
             result = result.filter(\.isDirectory) + result.filter { !$0.isDirectory }
@@ -1633,6 +1794,10 @@ struct FolderEntry: Identifiable {
     /// Finder の「追加日」列相当（このフォルダへ作成/移動/リネームされた日時）。
     let addedDate: Date?
     let isLocked: Bool
+    /// 検索結果のときだけ、**検索の起点フォルダから見た親フォルダの相対パス**
+    /// [ユーザー要望: 絞り込まれたファイルがどの階層のものか分かるようにしたい]。
+    /// 起点の直下にある項目は空文字（＝「ここ」）。通常の一覧では常に空。
+    var relativeLocation: String = ""
 
     /// zip/7z/rar/tar.gz（cbz/cb7/cbr のエイリアス含む）と認識できるファイル
     /// [AR-20〜AR-23]。フォルダは対象外。

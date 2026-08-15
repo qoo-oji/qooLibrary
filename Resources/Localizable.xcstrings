@@ -785,6 +785,22 @@
         }
       }
     },
+    "column.location": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Location"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "場所"
+          }
+        }
+      }
+    },
     "column.modificationDate": {
       "localizations": {
         "en": {
@@ -1878,13 +1894,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "No items in this folder match your search."
+            "value": "Nothing in this folder or its subfolders matches your search."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "このフォルダ内に一致する項目はありません。"
+            "value": "このフォルダとサブフォルダに一致する項目はありません。"
           }
         }
       }
@@ -2038,13 +2054,29 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Search this folder"
+            "value": "Search"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "このフォルダ内を検索"
+            "value": "検索"
+          }
+        }
+      }
+    },
+    "folder.searching": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Searching…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "検索中…"
           }
         }
       }
@@ -4925,6 +4957,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld 項目"
+          }
+        }
+      }
+    },
+    "statusBar.searchTruncated": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "first %lld matches"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最初の %lld 件"
+          }
+        }
+      }
+    },
+    "statusBar.searching": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "searching…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "検索中…"
           }
         }
       }

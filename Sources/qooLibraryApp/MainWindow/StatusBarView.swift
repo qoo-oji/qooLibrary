@@ -1,3 +1,4 @@
+import QooKit
 import SwiftUI
 
 /// 中央ペイン下端のステータスバー [1-16 表示メニュー、Finder の「ステータス
@@ -20,6 +21,10 @@ struct StatusBarView: View {
     /// `SessionState.reloadToken`。ファイル操作のたびに空き容量を取り直すための
     /// トリガ（値自体は使わない）。
     let reloadToken: Int
+    /// 再帰検索の状態 [ユーザー要望]。走査中であること・上限で打ち切ったことを
+    /// 件数の隣に添える（一覧が「全部」ではないと分かるようにするため）。
+    var isSearching = false
+    var searchTruncated = false
 
     @State private var availableCapacity: Int64?
 
@@ -45,6 +50,14 @@ struct StatusBarView: View {
     private var summary: String {
         var parts: [String] = []
         parts.append(String(format: String(localized: "statusBar.itemCount", locale: locale), itemCount))
+        if isSearching {
+            parts.append(String(localized: "statusBar.searching", locale: locale))
+        } else if searchTruncated {
+            parts.append(String(
+                format: String(localized: "statusBar.searchTruncated", locale: locale),
+                AppLimits.Search.maxResults
+            ))
+        }
         if selectedCount > 0 {
             parts.append(String(format: String(localized: "statusBar.selectedCount", locale: locale), selectedCount))
         }

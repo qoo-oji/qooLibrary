@@ -222,6 +222,53 @@ struct MainWindowView: View {
     }
 
 
+    /// 検索フィールドを開いているか [ユーザー要望: Finder と同じく、普段は
+    /// 虫めがねボタンで、クリックすると検索欄になる]。
+    ///
+    /// **SwiftUI の `.searchable` は使えない** [SDK を直接確認]。macOS 26 で
+    /// 追加された `searchToolbarBehavior(.minimize)`（まさにこの「普段はボタン」
+    /// の挙動）は `SearchToolbarBehavior.minimize` が
+    /// `@available(macOS, unavailable)` で **iOS/visionOS 専用**。加えて
+    /// `.searchable` が挿し込むツールバー項目は位置を選べず、「表示切替の左」
+    /// という配置指定も満たせない。そのため自前のコントロールにしている。
+    @State private var isSearchFieldExpanded = false
+
+    /// 虫めがねボタン ⇄ 検索欄。
+    ///
+    /// 開閉の規則は Finder に合わせる:
+    /// - ボタンを押す / ⌘F → 開いてフォーカス
+    /// - Esc → 内容を消して閉じる
+    /// - フォーカスを失ったとき、**入力が空なら**閉じる（入力が残っていれば
+    ///   開いたまま——絞り込みが効いていることが見えなくなるため）
+    @ViewBuilder
+    private var searchControl: some View {
+        if isSearchFieldExpanded {
+            ToolbarSearchField(
+                text: $windowState.searchText,
+                placeholder: String(localized: "folder.searchPrompt", locale: locale),
+                onCancel: { collapseSearchField(clearingText: true) },
+                onEndEditingWhileEmpty: { collapseSearchField(clearingText: false) }
+            )
+            .frame(width: 180)
+        } else {
+            Button { expandSearchField() } label: {
+                Image(systemName: "magnifyingglass")
+            }
+            // ツールチップもプレースホルダと同じ「検索」でよい [ユーザー判断]。
+            .help("folder.searchPrompt")
+        }
+    }
+
+    /// 開くだけ。フォーカスは `ToolbarSearchField` 自身が生成時に取る。
+    private func expandSearchField() {
+        isSearchFieldExpanded = true
+    }
+
+    private func collapseSearchField(clearingText: Bool) {
+        if clearingText { windowState.searchText = "" }
+        isSearchFieldExpanded = false
+    }
+
     /// ウインドウのツールバー。**`body` から切り出している** — 独自タブバーを
     /// 外して `body` の構造が変わった際に「型検査に時間がかかりすぎる」という
     /// コンパイルエラーになったため（`FolderContentView.bottomBars` と同じ理由。
@@ -276,6 +323,9 @@ struct MainWindowView: View {
                 // 収めることより実ツールバーとしての見た目・高さを優先する
                 // [ユーザー判断、既知のトレードオフとして受け入れ]。
                 ToolbarItemGroup(placement: .primaryAction) {
+                    // 検索 [1-16]。**表示切替の左**に置く [ユーザー要望]。
+                    searchControl
+
                     Picker("common.view", selection: $windowState.listStyle) { // [TB-04][LV-04]
                         Image(systemName: "list.bullet").tag(ListStyle.list)
                         Image(systemName: "square.grid.2x2").tag(ListStyle.icon)
@@ -383,6 +433,12 @@ struct MainWindowView: View {
                 // 配線する。
                 KeyBindingButtons(action: .goToFolder, store: keyBindingStore) {
                     showingGoToFolderSheet = true
+                }
+                // 検索フィールドへフォーカス（既定 ⌘F）[1-16]。閉じていれば
+                // まず開く。1-8 で `ActionID.focusSearch` として登録だけして
+                // あったものを、1-16 で初めて実際に配線した。
+                KeyBindingButtons(action: .focusSearch, store: keyBindingStore) {
+                    expandSearchField()
                 }
                 // 表示メニュー [1-16]。いずれもタブ・選択に依存しない
                 // ウインドウ全体の操作なので、⌘T と同じくここに配線する。
@@ -503,6 +559,18 @@ struct MainWindowView: View {
         // `windowState`（ウインドウ単位）が持つため、`FolderContentView` では
         // なくここから公開する。
         .focusedSceneValue(\.windowMenuActions, currentWindowMenuActions)
+        // フォルダを移動すると `WindowState.navigate` が絞り込みを解除する。
+        // その結果として空になったときは、検索欄も畳んでボタンへ戻す
+        // （入力中＝フォーカスがある間は畳まない）。
+        // フォルダを移動すると `WindowState.navigate` が絞り込みを解除する。
+        // 入力中に畳んでしまわないよう、**入力欄がキーボードフォーカスを
+        // 持っていないときだけ**畳む（判定は `NSSearchField` の実体に対して
+        // 行う——`@FocusState` はツールバー内では機能しないため）。
+        .onChange(of: windowState.searchText) { _, newValue in
+            guard newValue.isEmpty, isSearchFieldExpanded else { return }
+            guard !(NSApp.keyWindow?.firstResponder is NSText) else { return }
+            collapseSearchField(clearingText: false)
+        }
         .sheet(isPresented: $showingGoToFolderSheet) {
             GoToFolderSheet { url in
                 // 入口は「ボリューム」扱いにする — 入力されたパスが結果的に

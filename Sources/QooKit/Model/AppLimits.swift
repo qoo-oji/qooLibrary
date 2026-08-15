@@ -75,4 +75,18 @@ public enum AppLimits {
         /// 匿名化トークンの桁数（sha256 の先頭 8 桁）[CB-23]。
         public static let anonymizationTokenLength: Int = 8
     }
+
+    /// 中央ペインの検索 [1-16]。
+    public enum Search {
+        /// 再帰検索で保持する結果の上限。
+        ///
+        /// 1 ライブラリ 1万〜5万ファイル [C-07] を想定しており、短い語で検索
+        /// すればほぼ全件が一致し得る。それをすべてメモリに積んで一覧へ流すのは
+        /// 現実的でないため上限を設け、超えた時点で走査を打ち切る（打ち切った
+        /// ことは UI 側に表示する）。
+        public static let maxResults: Int = 2_000
+        /// 一覧へ小出しにする単位。走査の完了を待たず、この件数ごとに反映して
+        /// 「探している感じ」が出るようにする。
+        public static let resultBatchSize: Int = 64
+    }
 }

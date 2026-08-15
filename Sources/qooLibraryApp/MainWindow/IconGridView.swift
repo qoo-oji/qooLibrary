@@ -125,6 +125,18 @@ struct IconGridView<MenuContent: View>: View {
                             ? Color(nsColor: .alternateSelectedControlTextColor) : Color.primary
                     )
                     .frame(height: Tokens.fontSize.caption * 2.4)
+
+                // 検索結果のときだけ、どの階層のものかを名前の下に添える
+                // [ユーザー要望、リスト表示の「場所」列と同じ情報]。空
+                // （＝検索の起点直下）のときは行そのものを出さない。
+                if !entry.relativeLocation.isEmpty {
+                    Text(entry.relativeLocation)
+                        .font(.system(size: Tokens.fontSize.caption))
+                        .lineLimit(1)
+                        .truncationMode(.head) // 末尾（＝直近の親フォルダ）を優先して見せる
+                        .foregroundStyle(.secondary)
+                        .help(entry.relativeLocation)
+                }
             }
         }
         .padding(Tokens.spacing.xs)
