@@ -17,6 +17,21 @@ public actor ThumbnailService {
     private let imageLoader: ImageLoading
     private let videoThumbnailLoader: VideoThumbnailLoading
     private let pdfThumbnailLoader: PDFThumbnailLoading
+    /// [DS-05] 非表示中は生成・キャッシュを一切行わないための問い合わせ口。
+    ///
+    /// **`ThumbnailVisibility` の値を写し取らず、都度読む**（`ThumbnailVisibility`
+    /// のコメント参照: 二重に持つと「表示に戻した直後だけサービスがまだ非表示だと
+    /// 思っている」競合が生じる）。クロージャにしているのは、`@MainActor` の
+    /// `ThumbnailVisibility.shared` を `actor` の非同期メソッドから読むための
+    /// ホップをここに閉じ込めつつ、テストで注入できるようにするため。
+    ///
+    /// 実際には呼び出し側（UI）も同じ状態を見て「そもそも要求しない」ため、
+    /// この関門を通るのは通常「非表示ではない」ケースだけ——つまりホップの
+    /// コストは 1 リクエストにつき 1 回、しかもその後に控えるデコードに比べて
+    /// 無視できる。**それでもここに置くのは、DS-05 が本質的に I/O の要件で
+    /// あり、将来の呼び出し元が確認を忘れても成立させるため**
+    /// [`FileOperationService` への集約と同じ「構造で保証する」方針]。
+    private let isGloballyHidden: @Sendable () async -> Bool
 
     // PF-11: 同時実行数を制限したタスクキュー。実際の重い処理（アーカイブ
     // 読み込み・デコード）はアクター分離の外（`Task.detached`）で行うが、
@@ -29,13 +44,28 @@ public actor ThumbnailService {
         cache: CoverImageCache = DefaultCoverImageCache.shared,
         imageLoader: ImageLoading = DefaultImageLoader(),
         videoThumbnailLoader: VideoThumbnailLoading = QLVideoThumbnailLoader(),
-        pdfThumbnailLoader: PDFThumbnailLoading = CoreGraphicsPDFThumbnailLoader()
+        pdfThumbnailLoader: PDFThumbnailLoading = CoreGraphicsPDFThumbnailLoader(),
+        // 既定値が**クロージャリテラル**なのが要点: `ThumbnailVisibility.shared`
+        // は `@MainActor` 隔離のため、`actor` の（非隔離な）`init` から直接は
+        // 触れない。クロージャの中なら評価が非同期文脈まで遅れるので触れる。
+        //
+        // **`@MainActor in` を明示している。** 省略しても Swift はこの
+        // クロージャを `@MainActor` と推論し、`@Sendable () async -> Bool` へ
+        // 変換したうえで呼び出し時にホップする（使い捨てのプローブで、
+        // 呼び出し元は actor のスレッド・クロージャ本体はメインスレッド、と
+        // 実測して確認済み）。ただし推論に任せると本体側の `await` が
+        // 「不要な await」と警告され、**あたかも隔離を跨いでいないかのように
+        // 読めてしまう**。隔離をここに書いておけば、意図が推論に依存しない。
+        isGloballyHidden: @escaping @Sendable () async -> Bool = { @MainActor in
+            ThumbnailVisibility.shared.isGloballyHidden
+        }
     ) {
         self.maxConcurrent = maxConcurrent
         self.cache = cache
         self.imageLoader = imageLoader
         self.videoThumbnailLoader = videoThumbnailLoader
         self.pdfThumbnailLoader = pdfThumbnailLoader
+        self.isGloballyHidden = isGloballyHidden
     }
 
     /// `url` はフォルダ、または対応アーカイブ形式のファイル。フォルダ表示モード
@@ -60,6 +90,11 @@ public actor ThumbnailService {
     /// `CoverImageSourceResolver` に委ねる（どちらも Quick Look の独自カバー
     /// プレビュー [QL-03][QL-08] と共有する。1-14 で切り出した）。
     public func thumbnail(for url: URL, maxPixelSize: Int) async -> CGImage? {
+        // [DS-05] キャッシュの読み出しより**前**に打ち切る。非表示中は
+        // 「持っているものを返す」ことすらしない——呼び出し側が既定アイコンへ
+        // フォールバックするのが非表示時の正しい表示 [DS-01] だからで、
+        // キャッシュ済みかどうかで見た目が変わってはならない。
+        if await isGloballyHidden() { return nil }
         guard let identity = try? Self.identity(of: url) else { return nil }
         if let cached = cache.loadCachedImage(for: identity) {
             return cached

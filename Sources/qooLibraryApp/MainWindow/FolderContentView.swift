@@ -82,6 +82,14 @@ struct FolderContentView: View {
     /// 避けるため、`ThreePaneWindow.isRightPaneCollapsed` のコメント参照）。
     let isPathBarVisible: Bool
     let isStatusBarVisible: Bool
+    /// サムネイルが隠れている理由。隠れていなければ `nil` [DS-01][DS-04][DS-07]。
+    /// **合成済みの実効値を受け取るだけ**にしている（全体トグルと登録フォルダの
+    /// 強制非表示を合成するのは `WindowState.thumbnailHiddenReason` の役目で、
+    /// 同じ判定をここでも書くと二重管理になる）。
+    let thumbnailHiddenReason: ThumbnailHiddenReason?
+    /// アプリ全体のサムネイル表示トグルを反転する [DS-02]。ステータスバーの
+    /// ボタンから呼ぶ。
+    let onToggleThumbnails: () -> Void
     /// 名前での絞り込み [1-16 検索]。タブごとに独立して保持する
     /// （`TabState.searchText`。1-3 の時点から型としてはあったが、この節まで
     /// どこからも書き込まれない状態だった）。
@@ -220,6 +228,7 @@ struct FolderContentView: View {
                     entries: displayedEntries,
                     selection: $selection,
                     iconSize: iconSize,
+                    thumbnailsHidden: thumbnailHiddenReason != nil, // [DS-01]
                     dragNamespace: dragNamespace,
                     onOpenEntry: { openEntries([$0]) },
                     onSingleClick: { handleSingleClick($0) },
@@ -680,6 +689,8 @@ struct FolderContentView: View {
                 isSearching: isSearching,
                 searchTruncated: searchTruncated,
                 showHiddenFiles: $showHiddenFiles,
+                thumbnailHiddenReason: thumbnailHiddenReason, // [DS-07]
+                onToggleThumbnails: onToggleThumbnails,
                 trailing: { displayOptionControls }
             )
         }

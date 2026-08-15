@@ -19,6 +19,8 @@ struct InspectorPane: View {
     @Environment(\.locale) private var locale
     let folder: URL?
     let selection: Set<URL>
+    /// カバー画像の表示もサムネイル一括トグルに従う [DS-06][CV2-01]。
+    let thumbnailsHidden: Bool
 
     private var targets: [URL] {
         if selection.isEmpty {
@@ -32,7 +34,7 @@ struct InspectorPane: View {
             if targets.isEmpty {
                 PlaceholderPane(title: String(localized: "inspector.title", locale: locale), subtitle: "")
             } else if targets.count == 1 {
-                SingleItemInspector(url: targets[0])
+                SingleItemInspector(url: targets[0], thumbnailsHidden: thumbnailsHidden)
             } else {
                 MultiItemInspector(urls: targets)
             }
@@ -43,6 +45,7 @@ struct InspectorPane: View {
 
 private struct SingleItemInspector: View {
     let url: URL
+    let thumbnailsHidden: Bool
 
     @State private var info: FileDetailInfo?
     @State private var containedCounts: ContainedCounts?
@@ -50,7 +53,7 @@ private struct SingleItemInspector: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Tokens.spacing.m) {
-                InspectorThumbnail(url: url)
+                InspectorThumbnail(url: url, thumbnailsHidden: thumbnailsHidden)
                 Text(url.lastPathComponent)
                     .font(.system(size: Tokens.fontSize.title2, weight: .semibold))
                     .lineLimit(3)
@@ -264,6 +267,14 @@ private struct MultiItemInspector: View {
 /// 個別実装にしている。
 private struct InspectorThumbnail: View {
     let url: URL
+    let thumbnailsHidden: Bool
+
+    /// `IconGridView.ThumbnailImage.RequestKey` と同じ役割・同じ理由
+    /// （非表示への切替で生成を取り消し、再表示で生成し直す [DS-05]）。
+    private struct RequestKey: Equatable {
+        let url: URL
+        let hidden: Bool
+    }
 
     @State private var image: NSImage?
 
@@ -282,8 +293,9 @@ private struct InspectorThumbnail: View {
         }
         .frame(height: 160)
         .frame(maxWidth: .infinity)
-        .task(id: url) {
+        .task(id: RequestKey(url: url, hidden: thumbnailsHidden)) {
             image = nil
+            guard !thumbnailsHidden else { return } // [DS-06]
             guard let cgImage = await ThumbnailService.shared.thumbnail(for: url, maxPixelSize: 320) else { return }
             image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
         }

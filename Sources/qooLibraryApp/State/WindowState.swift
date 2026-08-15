@@ -1,4 +1,5 @@
 import Foundation
+import QooInfrastructure
 import SwiftUI
 
 /// 現在のタブがどちらの入口から辿り着いたかを表す [ユーザー要望: 実体として
@@ -324,6 +325,43 @@ public final class WindowState {
     public func target(for url: URL) -> TabTarget {
         TabTarget(url: url, navigationRoot: navigationRoot)
     }
+
+    // MARK: - サムネイル表示 [DS-01][DS-04][DS-06][DS-07]
+
+    /// サムネイルを隠している理由。隠していなければ `nil`。
+    ///
+    /// **実効値の判定がここにあるのは、判断材料が 2 つに分かれているから**:
+    /// 全体トグル（`ThumbnailVisibility`、アプリ全体）と、登録フォルダごとの
+    /// 強制非表示（`RegisteredFolderIndex`）で、後者は「今どの入口から入った
+    /// タブなのか」（`navigationRoot`）を知らないと引けない。その文脈を持つ
+    /// のはこの型だけなので、合成もここで行い、UI 各所へは合成済みの値だけを
+    /// 配る（同じ合成を複数箇所に散らさない）。
+    ///
+    /// どちらも `@Observable` な状態を読むため、SwiftUI の `body` から読めば
+    /// 変化に追従する [DS-03 の「全ウインドウ・全タブに即座に反映」]。
+    public var thumbnailHiddenReason: ThumbnailHiddenReason? {
+        // **登録フォルダ側を先に見る。** 両方効いている場合、ユーザーがこの
+        // ウインドウで全体トグルを戻しても表示は変わらない——「なぜ隠れて
+        // いるのか」として案内すべきは、その動かない側 [DS-07]。
+        if case .registeredFolder(let id, _) = navigationRoot,
+           let entry = RegisteredFolderIndex.shared.entry(id: id),
+           entry.thumbnailsAlwaysHidden {
+            return .registeredFolder(displayName: entry.displayName)
+        }
+        return ThumbnailVisibility.shared.isGloballyHidden ? .globalToggle : nil
+    }
+
+    /// このウインドウでサムネイル・カバー画像を出すか [DS-01][DS-04]。
+    public var areThumbnailsHidden: Bool { thumbnailHiddenReason != nil }
+}
+
+/// サムネイルが隠れている理由 [DS-07: 「非表示になっている理由が分かる
+/// ようにする」]。
+public enum ThumbnailHiddenReason: Sendable, Equatable {
+    /// アプリ全体のトグル（⌃⌘I・表示メニュー・ステータスバー）で隠している。
+    case globalToggle
+    /// この登録フォルダが「常に非表示」に設定されている [DS-04]。
+    case registeredFolder(displayName: String)
 }
 
 /// セッション一時状態 [11章 §11.4]。メモリのみ、DB にもウインドウ復元にも

@@ -300,4 +300,123 @@ import Testing
         #expect(results.count == 6)
         #expect(results.allSatisfy { $0 })
     }
+
+    // MARK: - サムネイル一括非表示 [DS-01][DS-05]
+
+    /// 実際にデコードが走ったかを数える `ImageLoading`。「生成しない」ことの
+    /// 検証は戻り値が `nil` かどうかだけでは足りない（生成に失敗しても `nil`）
+    /// ため、**呼ばれた回数そのもの**を見る。
+    private final class CountingImageLoader: ImageLoading, @unchecked Sendable {
+        private let lock = NSLock()
+        private var calls = 0
+        var makeThumbnailCallCount: Int { lock.withLock { calls } }
+
+        private let underlying = DefaultImageLoader()
+
+        func imageSize(from data: Data) -> CGSize? { underlying.imageSize(from: data) }
+        func isWithinPixelCountLimit(_ data: Data) -> Bool { underlying.isWithinPixelCountLimit(data) }
+        func makeThumbnail(from data: Data, maxPixelSize: Int) throws -> CGImage {
+            lock.withLock { calls += 1 }
+            return try underlying.makeThumbnail(from: data, maxPixelSize: maxPixelSize)
+        }
+    }
+
+    /// 切り替え可能な「全体トグル」。`ThumbnailVisibility.shared`（プロセス
+    /// 共有）を書き換えると並行実行される他のテストに干渉するため、
+    /// `ThumbnailService` へ注入するほうを使う。
+    private final class VisibilityBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var hidden: Bool
+        init(hidden: Bool) { self.hidden = hidden }
+        var isHidden: Bool {
+            get { lock.withLock { hidden } }
+            set { lock.withLock { hidden = newValue } }
+        }
+    }
+
+    private func makeService(
+        cacheDirectory: URL,
+        imageLoader: ImageLoading,
+        visibility: VisibilityBox
+    ) -> ThumbnailService {
+        ThumbnailService(
+            maxConcurrent: 2,
+            cache: DefaultCoverImageCache(baseDirectory: cacheDirectory),
+            imageLoader: imageLoader,
+            isGloballyHidden: { visibility.isHidden }
+        )
+    }
+
+    /// [DS-05] 非表示中は生成もキャッシュもしない。**戻り値が `nil` になる
+    /// だけでなく、デコードが 1 回も走らず、キャッシュにも何も残らない**こと
+    /// までを見る（この要件の主眼は「不要な I/O を避ける」ことなので、
+    /// 表示上の結果だけでは検証したことにならない）。
+    @Test func doesNotGenerateOrCacheWhileGloballyHidden() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("qoo-thumbnail-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cacheDirectory = root.appendingPathComponent("cache")
+        let folder = root.appendingPathComponent("folder", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try TestImageFixture.makePNGData(width: 20, height: 20).write(to: folder.appendingPathComponent("cover.png"))
+
+        let loader = CountingImageLoader()
+        let service = makeService(cacheDirectory: cacheDirectory, imageLoader: loader, visibility: VisibilityBox(hidden: true))
+
+        let thumbnail = await service.thumbnail(for: folder, maxPixelSize: 50)
+
+        #expect(thumbnail == nil)
+        #expect(loader.makeThumbnailCallCount == 0)
+        let cached = try? FileManager.default.contentsOfDirectory(atPath: cacheDirectory.path)
+        #expect((cached ?? []).isEmpty)
+    }
+
+    /// [DS-05] 「再表示時に生成する」。同じサービス・同じフォルダで、
+    /// トグルを戻すだけで生成が始まることを確認する。
+    @Test func generatesAgainOnceThumbnailsAreShownAgain() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("qoo-thumbnail-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let folder = root.appendingPathComponent("folder", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try TestImageFixture.makePNGData(width: 20, height: 20).write(to: folder.appendingPathComponent("cover.png"))
+
+        let loader = CountingImageLoader()
+        let visibility = VisibilityBox(hidden: true)
+        let service = makeService(
+            cacheDirectory: root.appendingPathComponent("cache"),
+            imageLoader: loader,
+            visibility: visibility
+        )
+
+        #expect(await service.thumbnail(for: folder, maxPixelSize: 50) == nil)
+
+        visibility.isHidden = false
+
+        #expect(await service.thumbnail(for: folder, maxPixelSize: 50) != nil)
+        #expect(loader.makeThumbnailCallCount == 1)
+    }
+
+    /// [DS-01] 非表示中は**キャッシュ済みでも**返さない。キャッシュの有無で
+    /// 見た目が変わってしまうと「無効時は汎用アイコンに切り替わる」が
+    /// 一部のファイルだけ守られない、という状態になるため。
+    @Test func doesNotReturnAlreadyCachedThumbnailWhileHidden() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("qoo-thumbnail-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let folder = root.appendingPathComponent("folder", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try TestImageFixture.makePNGData(width: 20, height: 20).write(to: folder.appendingPathComponent("cover.png"))
+
+        let visibility = VisibilityBox(hidden: false)
+        let service = makeService(
+            cacheDirectory: root.appendingPathComponent("cache"),
+            imageLoader: CountingImageLoader(),
+            visibility: visibility
+        )
+
+        // まず表示状態で生成してキャッシュに載せる。
+        #expect(await service.thumbnail(for: folder, maxPixelSize: 50) != nil)
+
+        visibility.isHidden = true
+
+        #expect(await service.thumbnail(for: folder, maxPixelSize: 50) == nil)
+    }
 }

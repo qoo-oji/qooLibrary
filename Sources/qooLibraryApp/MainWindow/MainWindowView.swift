@@ -403,6 +403,8 @@ struct MainWindowView: View {
                             newFolderName: $newFolderName,
                             isPathBarVisible: isPathBarVisible,
                             isStatusBarVisible: isStatusBarVisible,
+                            thumbnailHiddenReason: windowState.thumbnailHiddenReason, // [DS-01][DS-07]
+                            onToggleThumbnails: { ThumbnailVisibility.shared.toggleGlobal() },
                             searchText: $windowState.searchText
                         )
                 }
@@ -412,7 +414,8 @@ struct MainWindowView: View {
                 )) {
                     InspectorPane(
                         folder: windowState.folder,
-                        selection: windowState.selection
+                        selection: windowState.selection,
+                        thumbnailsHidden: windowState.areThumbnailsHidden // [DS-06][CV2-01]
                     )
                     .inspectorColumnWidth(min: 220, ideal: rightWidth, max: 420)
                     .modifier(PaneWidthPersisting(storedWidth: $rightWidth))
@@ -475,6 +478,18 @@ struct MainWindowView: View {
                 KeyBindingButtons(action: .toggleStatusBar, store: keyBindingStore) {
                     isStatusBarVisible.toggle()
                     UserDefaults.standard.set(isStatusBarVisible, forKey: Self.isStatusBarVisibleKey)
+                }
+                // サムネイル表示の一括切替（既定 ⌃⌘I）[DS-01][DS-02]。
+                // 1-8 で `ActionID.toggleThumbnails` として登録だけしてあった
+                // ものを、ここで初めて実際に配線した。**アプリ全体の状態**を
+                // 反転するので、どのウインドウから押しても同じ [DS-03]。
+                // ライブラリ側の強制非表示 [DS-04] が効いている場面でも
+                // 無効化しない——これは全体設定の変更であり、その場の見た目が
+                // 変わらないことを理由に設定操作自体を塞ぐのは行き過ぎのため
+                // （ステータスバーのボタンだけは、押しても見た目が変わらない
+                // ので無効化している。役割の違いは `StatusBarView` のコメント参照）。
+                KeyBindingButtons(action: .toggleThumbnails, store: keyBindingStore) {
+                    ThumbnailVisibility.shared.toggleGlobal()
                 }
                 // 取り出す（既定 ⌘E）[1-16]。`ejectAll` は Finder 同様に既定キーを
                 // 持たないため、`KeyBindingButtons` はボタンを 1 つも生成しない

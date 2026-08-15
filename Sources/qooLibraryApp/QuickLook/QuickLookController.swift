@@ -57,6 +57,9 @@ final class QuickLookController: NSObject, @MainActor QLPreviewPanelDelegate {
     private var isObservingTab = false
     /// パネルを開いたときのフォルダ。ナビゲーションを検出して閉じるために持つ。
     private var folderWhenOpened: URL?
+    /// 今表示している項目のカバーを、どちらの前提（サムネイル表示 / 非表示）で
+    /// 解決したか [DS-06]。パネルを開いたままトグルされたことを検出するために持つ。
+    private var thumbnailsHiddenWhenResolved = false
 
     init(windowState: WindowState) {
         self.windowState = windowState
@@ -91,6 +94,9 @@ final class QuickLookController: NSObject, @MainActor QLPreviewPanelDelegate {
         // （変化の有無）で早期 return してはならない——同じ項目を選んだまま
         // 2 回目に開こうとしたときに何も起きなくなる。
         rebuildItems()
+        // 選択が変わっていなければ `rebuildItems()` は何もしない。閉じている
+        // 間にサムネイル表示を切り替えていた場合はここで揃える [DS-06]。
+        syncCoverVisibility()
         guard !items.isEmpty else { return }
         // `shared()` はパネルがまだ無ければここで生成する（存在確認だけを
         // したい `visiblePanel` と違い、ここでは生成させたい）。
@@ -142,6 +148,10 @@ final class QuickLookController: NSObject, @MainActor QLPreviewPanelDelegate {
         // 別ウインドウから制御権が移ってきた場合、`items` にはこのウインドウの
         // 古い選択が残っていることがあるため、必ず組み直す。
         rebuildItems()
+        // 別ウインドウから制御権が移ってきた場合、そのウインドウとこちらとで
+        // 実効値が違うことがある（ライブラリ側の強制非表示 [DS-04] は
+        // ウインドウごとに変わるため）。
+        syncCoverVisibility()
         if folderWhenOpened == nil { folderWhenOpened = windowState.folder }
         panel.reloadData()
         // 項目数が減っていると、パネルが保持している添字が範囲外のままになり
@@ -184,6 +194,33 @@ final class QuickLookController: NSObject, @MainActor QLPreviewPanelDelegate {
         guard urls != items.map(\.sourceURL) else { return false }
         cancelCoverResolution()
         items = urls.map(QuickLookPreviewItem.init(sourceURL:))
+        thumbnailsHiddenWhenResolved = windowState.areThumbnailsHidden
+        return true
+    }
+
+    /// 表示中の項目のカバーを、今のサムネイル表示状態に合わせる [DS-06]。
+    /// 状態が変わっていなければ何もしない。変わっていれば**項目の顔ぶれは
+    /// 変えず**、解決済みのカバーだけを捨てて振り出しに戻す。
+    ///
+    /// `rebuildItems()` と別経路にしてあるのは、それが「選択が変わっていなければ
+    /// 何もしない」造りだから。トグルは選択を変えないので、そちらに相乗り
+    /// させると次の 2 つを取りこぼす:
+    /// - パネルを**閉じている間**に切り替えて、同じ選択のまま開き直した場合
+    ///   （`items` は `itemSource` に残り、`coverState` も残っている）。
+    /// - 選択が空のまま開き続けている場合（空きスペースをクリックしても内容は
+    ///   保つ、`syncWithCurrentTab()` の設計判断）。
+    ///
+    /// - Returns: 実際に捨てたか（呼び出し側がパネルを描き直すかの判断に使う）。
+    @discardableResult
+    private func syncCoverVisibility() -> Bool {
+        let hidden = windowState.areThumbnailsHidden
+        guard hidden != thumbnailsHiddenWhenResolved else { return false }
+        cancelCoverResolution()
+        for item in items {
+            item.previewURL = item.sourceURL
+            item.coverState = .notStarted
+        }
+        thumbnailsHiddenWhenResolved = hidden
         return true
     }
 
@@ -207,6 +244,18 @@ final class QuickLookController: NSObject, @MainActor QLPreviewPanelDelegate {
     /// ユーザーが見た分しか読み込まないため、無駄なアーカイブ走査が起きない。
     private func resolveCoverIfNeeded(for item: QuickLookPreviewItem) {
         guard item.coverState == .notStarted else { return }
+        // サムネイル一括非表示中は独自カバーを作らない [DS-06][DS-05]。
+        // `.unavailable` にすると元の URL のまま標準 Quick Look に委ねられ、
+        // アーカイブ／フォルダのアイコンが出る——これがそのまま
+        // 「汎用アイコンに切り替わる」[DS-01] の Quick Look での見え方になる。
+        //
+        // **影響を受けるのは独自カバー [QL-03][QL-08] だけ。** pdf / 画像 /
+        // 動画の標準プレビュー [QL-02] は、そもそも本アプリが生成したもの
+        // ではないのでトグルの対象外（DS-06 が挙げるのも QL-03）。
+        guard !windowState.areThumbnailsHidden else {
+            item.coverState = .unavailable
+            return
+        }
         // pdf / epub / 画像 / 動画は標準 Quick Look にそのまま委ねる [QL-02]。
         guard PreviewableFileKind.of(item.sourceURL).needsCustomCoverPreview else {
             item.coverState = .unavailable
@@ -266,6 +315,7 @@ final class QuickLookController: NSObject, @MainActor QLPreviewPanelDelegate {
         withObservationTracking {
             _ = windowState.selection
             _ = windowState.folder
+            _ = windowState.areThumbnailsHidden // [DS-06]
         } onChange: { [weak self] in
             Task { @MainActor in
                 guard let self, self.isObservingTab else { return }
@@ -281,6 +331,13 @@ final class QuickLookController: NSObject, @MainActor QLPreviewPanelDelegate {
         // 映し続けるより自然で、Finder の挙動とも一致する。
         if windowState.folder != folderWhenOpened {
             panel.orderOut(nil)
+            return
+        }
+        // サムネイル表示のトグル [DS-06]。**選択の有無を見る前に**判定する
+        // ——選択が空のまま開いている場合でも、表示中のカバーは切り替えに
+        // 追従しなければならないため。
+        if syncCoverVisibility() {
+            panel.reloadData()
             return
         }
         // 選択が空になっただけ（空きスペースのクリック等）でプレビューを畳むと

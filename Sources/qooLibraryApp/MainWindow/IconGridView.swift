@@ -21,6 +21,10 @@ struct IconGridView<MenuContent: View>: View {
     let entries: [FolderEntry]
     @Binding var selection: Set<URL>
     let iconSize: Double
+    /// サムネイル・カバー画像を出さない [DS-01][DS-04]。実効値の合成は
+    /// `WindowState.thumbnailHiddenReason` が済ませており、ここは結果だけを
+    /// 受け取る。
+    let thumbnailsHidden: Bool
     let dragNamespace: Namespace.ID
     /// ダブルクリック時に呼ばれる。フォルダなら移動、ファイルなら関連付けた
     /// アプリで開く、の判定は呼び出し側（`FolderContentView.openEntries`）に
@@ -88,7 +92,7 @@ struct IconGridView<MenuContent: View>: View {
     private func cell(for entry: FolderEntry) -> some View {
         let isRenaming = renamingURL == entry.url
         VStack(spacing: Tokens.spacing.xs) {
-            ThumbnailImage(entry: entry, size: iconSize)
+            ThumbnailImage(entry: entry, size: iconSize, thumbnailsHidden: thumbnailsHidden)
             if isRenaming {
                 // Finder 流のインライン名前編集 [ユーザー要望]。
                 TextField("column.name", text: $renameText)
@@ -223,6 +227,19 @@ struct IconGridView<MenuContent: View>: View {
 private struct ThumbnailImage: View {
     let entry: FolderEntry
     let size: Double
+    let thumbnailsHidden: Bool
+
+    /// `.task(id:)` の識別子。**サムネイル表示の可否も含める**のが要点
+    /// [DS-05]。これにより、
+    /// - 非表示に切り替えた瞬間に生成中のタスクが取り消され（無駄な I/O が
+    ///   その場で止まる）、
+    /// - 表示に戻した瞬間にタスクが再実行されて生成が始まる
+    ///   （「再表示時に生成する」）、
+    /// の両方が SwiftUI の標準の仕組みだけで成立する。
+    private struct RequestKey: Equatable {
+        let url: URL
+        let hidden: Bool
+    }
 
     @State private var image: NSImage?
 
@@ -243,8 +260,11 @@ private struct ThumbnailImage: View {
             }
         }
         .frame(width: size, height: size)
-        .task(id: entry.url) {
+        .task(id: RequestKey(url: entry.url, hidden: thumbnailsHidden)) {
             image = nil
+            // [DS-01] 非表示中は汎用アイコン（上の `else` 側）のまま。
+            // [DS-05] 要求そのものを出さないので生成もキャッシュも起きない。
+            guard !thumbnailsHidden else { return }
             // 最大ピクセルサイズは表示サイズの2倍（Retina 相当）を目安にする。
             guard let cgImage = await ThumbnailService.shared.thumbnail(for: entry.url, maxPixelSize: Int(size * 2)) else {
                 return

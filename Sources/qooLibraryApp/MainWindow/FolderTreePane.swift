@@ -330,7 +330,11 @@ struct FolderTreePane: View {
                 prompt = .renameDisplayName(folder)
                 promptText = folder.displayName
             },
-            unregister: { unregisterFolder($0) }
+            unregister: { unregisterFolder($0) },
+            // [DS-04] 状態はメインアクタ上のキャッシュから同期的に読み、
+            // 書き込みだけ非同期でストアへ送ってからキャッシュを取り直す。
+            isThumbnailsAlwaysHidden: { RegisteredFolderIndex.shared.hidesThumbnails(registeredFolderID: $0.id) },
+            setThumbnailsAlwaysHidden: { setThumbnailsAlwaysHidden($0, hidden: $1) }
         )
     }
 
@@ -410,6 +414,30 @@ struct FolderTreePane: View {
                     title: String(localized: "folderTree.registrationFailedTitle", locale: locale), body: Self.errorMessage(for: error)
                 ))
             }
+        }
+    }
+
+    /// この登録フォルダでサムネイルを常に非表示にするか [DS-04]。
+    ///
+    /// **`unregisterFolder` と同じく View のメソッドとして持つ**（コンテキスト
+    /// メニューの `FolderTreeContextMenuActions` へ直接書かない）。あちらは
+    /// 一行のクロージャを並べた対応表として読めるようにしておきたいため。
+    private func setThumbnailsAlwaysHidden(_ folder: RegisteredFolder, hidden: Bool) {
+        Task {
+            do {
+                try await RegisteredFolderStore.shared.setThumbnailsAlwaysHidden(hidden, for: folder.id)
+            } catch {
+                await NotificationRouter.shared.presentError(
+                    error,
+                    whatHappened: String(localized: "folderTree.thumbnailSettingFailed", locale: locale)
+                )
+                return
+            }
+            // `RegisteredFolderIndex` を取り直すと、この設定を見ているすべての
+            // ウインドウが `@Observable` 経由で追従する [DS-03 と同じ即時反映]。
+            // ツリーの行そのものは変わらないので `SessionState.reloadToken` は
+            // 増やさない（フォルダ一覧の再読み込みまで巻き込む必要が無い）。
+            await RegisteredFolderIndex.shared.refresh()
         }
     }
 

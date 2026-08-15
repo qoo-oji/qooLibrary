@@ -2177,6 +2177,22 @@
         }
       }
     },
+    "folderTree.alwaysHideThumbnails": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Always Hide Thumbnails"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サムネイルを常に非表示"
+          }
+        }
+      }
+    },
     "folderTree.chooseLibraryFolder": {
       "localizations": {
         "en": {
@@ -2429,6 +2445,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "テンポラリフォルダ"
+          }
+        }
+      }
+    },
+    "folderTree.thumbnailSettingFailed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The thumbnail setting could not be saved."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サムネイルの設定を保存できませんでした。"
           }
         }
       }
@@ -4993,6 +5025,22 @@
         }
       }
     },
+    "statusBar.hideThumbnails": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide Thumbnails"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サムネイルを隠す"
+          }
+        }
+      }
+    },
     "statusBar.itemCount": {
       "localizations": {
         "en": {
@@ -5085,6 +5133,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "隠しファイルを表示"
+          }
+        }
+      }
+    },
+    "statusBar.showThumbnails": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show Thumbnails"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サムネイルを表示"
+          }
+        }
+      }
+    },
+    "statusBar.thumbnailsHiddenByFolder": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” is set to always hide thumbnails."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「%@」はサムネイルを常に非表示に設定しています。"
           }
         }
       }
@@ -5185,6 +5265,22 @@
         }
       }
     },
+    "view.hideThumbnails": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide Thumbnails"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サムネイルを隠す"
+          }
+        }
+      }
+    },
     "view.showInspector": {
       "localizations": {
         "en": {
@@ -5245,6 +5341,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "ステータスバーを表示"
+          }
+        }
+      }
+    },
+    "view.showThumbnails": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show Thumbnails"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サムネイルを表示"
           }
         }
       }

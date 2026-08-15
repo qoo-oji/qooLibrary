@@ -10,11 +10,42 @@ public struct RegisteredFolder: Codable, Sendable, Identifiable, Equatable {
     public var displayName: String // [RG-05]
     public var bookmarkData: Data // [RG-07]
 
-    public init(id: UUID = UUID(), kind: RegisteredFolderKind, displayName: String, bookmarkData: Data) {
+    /// この登録フォルダの配下ではサムネイル・カバー画像を**常に**表示しない
+    /// [DS-04]。フェーズ2で SwiftData の `Library` が入ったらそちらの属性へ
+    /// 移す（仕様書 07章 §7.2 / 09章 DS2-04）。
+    ///
+    /// **「既定値」ではなく「強制」の意味にしている** [設計判断、ユーザー確認済み。
+    /// 仕様書側も同じ意味に訂正済み]。要件の文言は「ライブラリごとに既定値を
+    /// 持てる」だが、全体トグルは DS-03 によりアプリ全体で共有される状態なので、
+    /// 「ライブラリへ入った瞬間に全体トグルが書き換わる」形にすると**他の
+    /// ウインドウの表示まで巻き添えで変わる**。そのため全体トグルを書き換えず、
+    /// 実効値を `全体トグルOFF || このフラグ` として合成する形にした。
+    /// 要件が挙げる運用（「特定のライブラリだけ常に非表示にする」）はこちらで
+    /// 素直に満たせる。
+    ///
+    /// **`Bool?`（Optional）なのは後方互換のため。** Swift の合成された
+    /// `Decodable` はプロパティの既定値を使わず、キーが無いと `keyNotFound` で
+    /// 失敗する（実測で確認済み）。既存の `registeredFolders.json` にはこの
+    /// キーが無いため、Optional にして「キーが無い＝未設定」を表現する
+    /// [`AppAssociationStore.StorageDTO.hasUnifiedDefaults` と同じ理由・同じ手法]。
+    /// 読むときは常に ``hidesThumbnails`` を使うこと。
+    public var thumbnailsAlwaysHidden: Bool?
+
+    /// ``thumbnailsAlwaysHidden`` の未設定を `false` に畳んだ読み出し口。
+    public var hidesThumbnails: Bool { thumbnailsAlwaysHidden ?? false }
+
+    public init(
+        id: UUID = UUID(),
+        kind: RegisteredFolderKind,
+        displayName: String,
+        bookmarkData: Data,
+        thumbnailsAlwaysHidden: Bool? = nil
+    ) {
         self.id = id
         self.kind = kind
         self.displayName = displayName
         self.bookmarkData = bookmarkData
+        self.thumbnailsAlwaysHidden = thumbnailsAlwaysHidden
     }
 }
 
@@ -209,6 +240,15 @@ public actor RegisteredFolderStore {
         ensureLoaded()
         guard let index = folders.firstIndex(where: { $0.id == id }) else { return }
         folders[index].displayName = displayName
+        try save()
+    }
+
+    /// この登録フォルダの配下でサムネイルを常に非表示にするか [DS-04]。
+    /// 未登録の ID を渡した場合は何もしない（`rename` と同じ方針）。
+    public func setThumbnailsAlwaysHidden(_ hidden: Bool, for id: UUID) throws {
+        ensureLoaded()
+        guard let index = folders.firstIndex(where: { $0.id == id }) else { return }
+        folders[index].thumbnailsAlwaysHidden = hidden
         try save()
     }
 

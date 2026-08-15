@@ -344,6 +344,25 @@ private struct ViewMenuCommands: View {
         .disabled(window == nil)
         // `.pickerStyle(.inline)` は自身の前後に区切り線を作るため、ここで
         // `Divider()` を足すと二重線になる（実アプリのメニューをダンプして確認）。
+        //
+        // サムネイル表示の一括切替 [DS-01][DS-02]。仕様書 13章 §13.7 の表示
+        // メニュー順（表示モード → サムネイル → 並び替え → …）に合わせてここへ置く。
+        //
+        // **`@FocusedValue` を経由せず `ThumbnailVisibility` を直接読む。**
+        // これはウインドウごとの設定ではなくアプリ全体の状態 [DS-03] なので、
+        // フォーカス中のウインドウの有無で使えなくなるのはおかしい
+        // （他の項目が `.disabled(window == nil)` なのは、いずれも対象の
+        // ウインドウが要る操作だから）。`@Observable` なのでメニューの
+        // タイトルは状態の変化に追従する。
+        //
+        // **タイトルは実効値ではなく「全体トグルの状態」を出す** — ライブラリ側の
+        // 強制非表示 [DS-04] は全体設定を変えないため、実効値で出すと
+        // 「表示」を選んでも何も起きないように見えてしまう。その場で何が
+        // 起きているかはステータスバー側が理由付きで示す [DS-07]。
+        Button(thumbnailsGloballyHidden ? "view.showThumbnails" : "view.hideThumbnails") {
+            ThumbnailVisibility.shared.toggleGlobal()
+        }
+        Divider()
         Menu("common.sortBy") { // [LV-01]
             Picker("common.sortBy", selection: sortKeyBinding) {
                 Text("column.name").tag(FolderSortComparator.Key.name)
@@ -397,6 +416,13 @@ private struct ViewMenuCommands: View {
             window?.toggleStatusBar()
         }
         .disabled(window == nil)
+    }
+
+    /// `@Observable` を `body` から読むことで、トグルの変化がメニュー項目の
+    /// タイトルに反映される（メニューバーは「開いた」だけでは再評価されないが、
+    /// `@Observable` な状態の変化では再評価される。`GoMenuCommands` のコメント参照）。
+    private var thumbnailsGloballyHidden: Bool {
+        ThumbnailVisibility.shared.isGloballyHidden
     }
 
     // `@FocusedValue` は読み取り専用なので、`Picker`/`Toggle` に渡す

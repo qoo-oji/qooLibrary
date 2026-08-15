@@ -28,6 +28,11 @@ struct StatusBarView<Trailing: View>: View {
     /// 隠しファイルを表示するか [ユーザー要望、Finder の ⇧⌘. 相当]。
     /// **左端**のボタンで切り替える。
     @Binding var showHiddenFiles: Bool
+    /// サムネイルが隠れている理由。隠れていなければ `nil` [DS-07]。
+    /// 隠しファイルのボタンの隣に、同じ体裁のトグルとして常設する。
+    let thumbnailHiddenReason: ThumbnailHiddenReason?
+    /// アプリ全体のトグルを反転する [DS-01][DS-02]。
+    let onToggleThumbnails: () -> Void
     /// **右端**に置く表示オプション（リスト表示なら表示カラムのメニュー、
     /// アイコン表示ならサイズのスライダー）[ユーザー要望でパスバーから移動]。
     /// 実体は `FolderContentView` 側にある（設定値をそこが持っているため）
@@ -54,6 +59,8 @@ struct StatusBarView<Trailing: View>: View {
                 .controlSize(.small)
                 .help(showHiddenFiles ? "statusBar.hideHiddenFiles" : "statusBar.showHiddenFiles")
 
+                thumbnailToggle
+
                 Spacer()
 
                 trailing()
@@ -64,6 +71,45 @@ struct StatusBarView<Trailing: View>: View {
         .background(.thinMaterial)
         .task(id: TaskKey(folder: folder, reloadToken: reloadToken)) {
             availableCapacity = await Self.availableCapacity(of: folder)
+        }
+    }
+
+    /// サムネイル表示の状態表示と切り替え [DS-07][DS-01][DS-02]。
+    ///
+    /// 隠しファイルのボタンと同じ「状態を絵で示す＋押して切り替える」体裁に
+    /// 揃え、**非表示のときだけ強調される**（`isOn` に非表示を渡している）。
+    /// 通常の状態を強調しないほうが、目立つのは異常時だけになって読みやすい
+    /// ——隠しファイル側も「表示している間だけ強調される」で同じ考え方。
+    ///
+    /// **ライブラリ側の強制非表示 [DS-04] のときは押せない。** そのとき全体
+    /// トグルを反転しても見た目は変わらないため、押せてしまうほうが不親切に
+    /// なる。代わりにツールチップで理由と直し方を案内する [DS-07]。
+    @ViewBuilder
+    private var thumbnailToggle: some View {
+        let isHidden = thumbnailHiddenReason != nil
+        let isLockedByFolder: Bool = if case .registeredFolder = thumbnailHiddenReason { true } else { false }
+
+        Toggle(isOn: Binding(get: { isHidden }, set: { _ in onToggleThumbnails() })) {
+            Image(systemName: isHidden ? "photo.badge.exclamationmark" : "photo")
+        }
+        .toggleStyle(.button)
+        .buttonStyle(.borderless)
+        .controlSize(.small)
+        .disabled(isLockedByFolder)
+        .help(thumbnailHelp)
+    }
+
+    private var thumbnailHelp: String {
+        switch thumbnailHiddenReason {
+        case .registeredFolder(let displayName):
+            String(
+                format: String(localized: "statusBar.thumbnailsHiddenByFolder", locale: locale),
+                displayName
+            )
+        case .globalToggle:
+            String(localized: "statusBar.showThumbnails", locale: locale)
+        case nil:
+            String(localized: "statusBar.hideThumbnails", locale: locale)
         }
     }
 

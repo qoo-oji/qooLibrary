@@ -33,12 +33,28 @@ public final class RegisteredFolderIndex {
         public let id: UUID
         public let displayName: String
         public let url: URL
+        /// この登録フォルダの配下でサムネイルを常に非表示にするか [DS-04]。
+        public let thumbnailsAlwaysHidden: Bool
     }
 
     public private(set) var library: [Entry] = []
     public private(set) var temporary: [Entry] = []
 
     private init() {}
+
+    /// 種別を問わず ID で 1 件引く。呼び出し側（`WindowState`・フォルダツリーの
+    /// コンテキストメニュー）は `NavigationRoot`/`FolderTreeBranch` から ID しか
+    /// 持っていないため、ライブラリ／テンポラリの両方を横断して探す。
+    public func entry(id: UUID) -> Entry? {
+        library.first { $0.id == id } ?? temporary.first { $0.id == id }
+    }
+
+    /// [DS-04] 未知の ID（未登録・オフラインで解決できない）は `false`
+    /// ——「分からないから隠す」より「分からないなら通常どおり」のほうが
+    /// 驚きが少ないため。
+    public func hidesThumbnails(registeredFolderID id: UUID) -> Bool {
+        entry(id: id)?.thumbnailsAlwaysHidden ?? false
+    }
 
     public func refresh() async {
         async let libraries = RegisteredFolderStore.shared.folders(kind: .library)
@@ -51,7 +67,12 @@ public final class RegisteredFolderIndex {
         var result: [Entry] = []
         for folder in folders {
             guard let url = await RegisteredFolderStore.shared.resolvedURL(for: folder) else { continue }
-            result.append(Entry(id: folder.id, displayName: folder.displayName, url: url))
+            result.append(Entry(
+                id: folder.id,
+                displayName: folder.displayName,
+                url: url,
+                thumbnailsAlwaysHidden: folder.hidesThumbnails
+            ))
         }
         return result
     }

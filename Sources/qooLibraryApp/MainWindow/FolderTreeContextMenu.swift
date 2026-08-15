@@ -198,10 +198,26 @@ struct FolderTreeContextMenu: View {
                     Task { await VolumeEjectAction.eject(context.url) }
                 }
             }
-        case .temporary:
-            EmptyView()
-        case .library:
-            EmptyView()
+        case .temporary, .library:
+            // サムネイルを常に非表示にする [DS-04]。**登録ルート行だけ**に出す
+            // ——設定の持ち主は登録フォルダ 1 件（`RegisteredFolder`）であって、
+            // その配下の任意のフォルダではないため。
+            //
+            // ライブラリとテンポラリで同じ項目を出す [設計判断]。要件が挙げるのは
+            // ライブラリだが、設定を持つ器（`RegisteredFolderStore`）も、
+            // 効かせる仕組み（`NavigationRoot`）も両者で共通で、テンポラリだけ
+            // 出さない理由が無い（取り込み直後の大量ファイルでサムネイル生成を
+            // 止めたい、はむしろテンポラリで起きやすい）。
+            if context.role == .registeredRoot, let folder = context.registeredFolder {
+                Divider()
+                Toggle(
+                    "folderTree.alwaysHideThumbnails",
+                    isOn: Binding(
+                        get: { actions.isThumbnailsAlwaysHidden(folder) },
+                        set: { actions.setThumbnailsAlwaysHidden(folder, $0) }
+                    )
+                )
+            }
         }
     }
 
@@ -353,4 +369,12 @@ struct FolderTreeContextMenuActions {
     var beginRenameDisplayName: (RegisteredFolder) -> Void = { _ in }
     /// 登録解除 [RG-06 の簡易版]。
     var unregister: (RegisteredFolder) -> Void = { _ in }
+    /// この登録フォルダでサムネイルを常に非表示にするか [DS-04]。
+    ///
+    /// **読み出しは `RegisteredFolderStore`（`actor`）ではなく
+    /// `RegisteredFolderIndex`（メインアクタ上のキャッシュ）から行う**
+    /// ——メニュー項目の組み立ては同期的で `await` できないため
+    /// （`RegisteredFolderIndex` がまさにこの用途で 1-16 に作られている）。
+    var isThumbnailsAlwaysHidden: (RegisteredFolder) -> Bool = { _ in false }
+    var setThumbnailsAlwaysHidden: (RegisteredFolder, Bool) -> Void = { _, _ in }
 }

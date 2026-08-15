@@ -88,6 +88,72 @@ import Testing
         #expect(libraries.isEmpty)
     }
 
+    // MARK: - サムネイルを常に非表示 [DS-04]
+
+    @Test func thumbnailsAreNotAlwaysHiddenByDefault() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let target = root.appendingPathComponent("Library1", isDirectory: true)
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        let store = makeStore(storageURL: root.appendingPathComponent("state.json"))
+
+        let registered = try await store.register(url: target, kind: .library, displayName: nil)
+
+        #expect(registered.hidesThumbnails == false)
+    }
+
+    @Test func thumbnailsAlwaysHiddenRoundTripsAndPersists() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let target = root.appendingPathComponent("Library1", isDirectory: true)
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        let storageURL = root.appendingPathComponent("state.json")
+        let store = makeStore(storageURL: storageURL)
+        let registered = try await store.register(url: target, kind: .library, displayName: nil)
+
+        try await store.setThumbnailsAlwaysHidden(true, for: registered.id)
+        #expect(await store.folders(kind: .library).first?.hidesThumbnails == true)
+
+        // 別インスタンス＝アプリを再起動した状態。
+        let reopened = makeStore(storageURL: storageURL)
+        #expect(await reopened.folders(kind: .library).first?.hidesThumbnails == true)
+
+        try await reopened.setThumbnailsAlwaysHidden(false, for: registered.id)
+        #expect(await reopened.folders(kind: .library).first?.hidesThumbnails == false)
+    }
+
+    /// **この属性を足す前に書かれた `registeredFolders.json` を読めること。**
+    ///
+    /// Swift の合成された `Decodable` はプロパティの既定値を使わず、キーが
+    /// 無いと `keyNotFound` で失敗する。もし非 Optional で足していたら、
+    /// 既存ユーザーのファイルは丸ごとデコードに失敗し——`load()` は失敗を
+    /// バックアップへ退避して**空**で続行するため——登録済みのライブラリ／
+    /// テンポラリがすべて消えたように見えるところだった。
+    @Test func decodesStorageWrittenBeforeTheThumbnailAttributeExisted() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let target = root.appendingPathComponent("Library1", isDirectory: true)
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        let storageURL = root.appendingPathComponent("state.json")
+
+        // 旧形式をそのまま組み立てる（`thumbnailsAlwaysHidden` のキーが無い）。
+        let bookmark = try target.bookmarkData(options: .withSecurityScope)
+        let legacy: [[String: Any]] = [[
+            "id": UUID().uuidString,
+            "kind": "library",
+            "displayName": "Library1",
+            "bookmarkData": bookmark.base64EncodedString(),
+        ]]
+        try JSONSerialization.data(withJSONObject: legacy).write(to: storageURL)
+
+        let store = makeStore(storageURL: storageURL)
+        let libraries = await store.folders(kind: .library)
+
+        #expect(libraries.count == 1)
+        #expect(libraries.first?.displayName == "Library1")
+        #expect(libraries.first?.hidesThumbnails == false)
+    }
+
     @Test func renameChangesDisplayNameOnly() async throws {
         let root = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: root) }
