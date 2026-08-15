@@ -1,4 +1,5 @@
 import Foundation
+import QooKit
 
 public enum RegisteredFolderKind: String, Codable, Sendable, Equatable {
     case library, temporary
@@ -71,20 +72,44 @@ public enum RegisteredFolderError: Error, Sendable, Equatable {
 /// 日本語にしているが、それは登録パネル経由の 1 箇所だけ。ほかの経路
 /// （将来の初回セットアップウィザード 2-17 など）から出たときに
 /// 「エラー0」形式へ落ちないよう、型自身にも説明を持たせる。
-extension RegisteredFolderError: LocalizedError {
-    public var errorDescription: String? {
+extension RegisteredFolderError: UserPresentableError {
+    public var whatHappened: String {
+        switch self {
+        case .nestedRegistration: "このフォルダは登録できません。"
+        case .unsupportedFileSystem: "このフォルダがあるボリュームは登録に対応していません。"
+        }
+    }
+
+    public var whyItHappened: String {
         switch self {
         case .nestedRegistration:
-            return "すでに登録されているフォルダの中、または親にあたるフォルダは登録できません。"
-                + "重ならない場所のフォルダを選んでください。"
+            return "すでに登録されているフォルダの中、または親にあたるフォルダだからです。"
         case let .unsupportedFileSystem(reason):
             switch reason {
             case let .noPersistentFileID(fileSystem), let .persistentIDNotPreserved(fileSystem):
-                return "このフォルダがあるボリューム（\(fileSystem)）は、"
-                    + "ファイルを移動しても同一と判別できる仕組みに対応していないため登録できません。"
-                    + "APFS または Mac OS 拡張のボリュームを選んでください。"
+                return "\(fileSystem) は、ファイルを移動しても同一と判別できる仕組みに対応していません。"
+                    + "この仕組みが無いと、移動や改名のたびにラベル・評価・カバー画像との"
+                    + "結びつきが失われてしまいます。"
             }
         }
+    }
+
+    public var recoverySuggestions: [RecoveryAction] { [] }
+
+    public var recoveryHint: String? {
+        switch self {
+        case .nestedRegistration: "すでに登録した場所と重ならないフォルダを選んでください。"
+        case .unsupportedFileSystem: "APFS または Mac OS 拡張のボリューム上のフォルダを選んでください。"
+        }
+    }
+
+    public var technicalDetail: String? { nil }
+    public var severity: NotificationSeverity { .sheet }
+}
+
+extension RegisteredFolderError: LocalizedError {
+    public var errorDescription: String? {
+        [whatHappened, whyItHappened, recoveryHint ?? ""].filter { !$0.isEmpty }.joined(separator: " ")
     }
 }
 

@@ -155,7 +155,7 @@ public struct LibarchiveBackend: ArchiveReading {
                 // 「なぜ作れないのか」（空き容量／権限／名前が長すぎる）が
                 // ユーザーにもログにも残らなかった。`createFile` は失敗を
                 // Bool でしか返さないので、直後の `errno` を読む。
-                throw ExtractError.writeFailed(reason: PosixFailure.explain(errno))
+                throw ExtractError.writeFailed(reason: PosixFailure.reason(errno) + (PosixFailure.recovery(errno).map { " " + $0 } ?? ""))
             }
             let handle = try FileHandle(forWritingTo: validated.targetURL)
 
@@ -518,12 +518,12 @@ public struct LibarchiveBackend: ArchiveReading {
     static func writeFailure(_ error: any Error) -> ExtractError {
         let nsError = error as NSError
         if nsError.domain == NSPOSIXErrorDomain {
-            return .writeFailed(reason: PosixFailure.explain(Int32(nsError.code)))
+            return .writeFailed(reason: PosixFailure.reason(Int32(nsError.code)) + (PosixFailure.recovery(Int32(nsError.code)).map { " " + $0 } ?? ""))
         }
         if nsError.domain == NSCocoaErrorDomain,
            let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError,
            underlying.domain == NSPOSIXErrorDomain {
-            return .writeFailed(reason: PosixFailure.explain(Int32(underlying.code)))
+            return .writeFailed(reason: PosixFailure.reason(Int32(underlying.code)) + (PosixFailure.recovery(Int32(underlying.code)).map { " " + $0 } ?? ""))
         }
         return .writeFailed(reason: error.localizedDescription)
     }

@@ -158,59 +158,128 @@ public enum ExtractError: Error, Sendable, Equatable {
     case entryReadLimitExceeded(limit: Int)
 }
 
-/// **`LocalizedError` に準拠させる理由** [ER-03]。準拠していないと
-/// `localizedDescription` が「操作を完了できませんでした。
-/// （QooKit.ExtractError エラー10）」という、原因が一切分からない既定文言に
-/// なる（`FileOperationError` で実際に踏んだのと同じ落とし穴）。
-/// `NotificationRouter` も診断ログもこの値を読む。
+/// **`UserPresentableError` に準拠させる理由** [ER-03]。
+///
+/// 三要素（何が／なぜ／次に何ができるか）と技術詳細を**型として要求する**ので、
+/// **新しいケースを足したときに文言を書き忘れられない**。以前は 1 本の文字列に
+/// すべてを詰めており、libarchive の英語（「Write error」）がそのまま本文に
+/// 混ざる・対処法が無いケースが 9 件ある、といった穴があった［棚卸しで発見］。
 ///
 /// 文言は日本語のリテラル。この層は文字列カタログ（アプリターゲットの
 /// リソース）を参照できないため［既知の限界、`FileOperationError` と同じ］。
-extension ExtractError: LocalizedError {
-    public var errorDescription: String? {
+extension ExtractError: UserPresentableError {
+    public var whatHappened: String {
+        switch self {
+        case .unsupportedFormat: "この形式のアーカイブには対応していません。"
+        case .passwordProtected: "このアーカイブはパスワードで保護されています。"
+        case .incorrectPassphrase: "アーカイブを復号できませんでした。"
+        case .insufficientFreeSpace: "展開先の空き容量が足りません。"
+        case .insufficientStagingSpace: "起動ディスクの空き容量が足りません。"
+        case .tooManyEntries: "アーカイブに含まれる項目が多すぎます。"
+        case .expansionLimitExceeded: "展開後の大きさが上限を超えました。"
+        case .compressionRatioExceeded: "圧縮率が上限を超えました。"
+        case .cancelled: "処理を中断しました。"
+        case .writeFailed: "展開先へ書き込めませんでした。"
+        case .backendFailure: "アーカイブを読み書きできませんでした。"
+        case let .entryNotFound(name): "アーカイブ内に「\(name)」が見つかりません。"
+        case .entryReadLimitExceeded: "アーカイブ内の項目が大きすぎて読み込めません。"
+        }
+    }
+
+    public var whyItHappened: String {
         let formatter = ByteCountFormatter()
         switch self {
         case .unsupportedFormat:
-            return "この形式のアーカイブには対応していません。"
+            return "zip・7z・rar・tar.gz のいずれでもないか、ファイルが壊れている可能性があります。"
         case .passwordProtected:
-            return "このアーカイブはパスワードで保護されています。"
+            return "中身を取り出すにはパスワードが要ります。"
         case .incorrectPassphrase:
-            // **「壊れている可能性」も併記する。** 復号したデータが読めない
-            // ことは分かっても、原因がパスワード違いなのかアーカイブ自体の
-            // 破損なのかは、この時点では区別できない（従来型の ZIP 暗号化は
-            // 1 バイトの検査値しか持たないため特にそうなる）。断定せず、
-            // まず試すべきこと＝パスワードの確認を先に示す。
+            // 断定しない — 復号したデータが読めないことは分かっても、
+            // 原因がパスワード違いか破損かはこの時点で区別できない
+            // （従来型の ZIP 暗号化は 1 バイトの検査値しか持たないため特に）。
             return "パスワードが違うか、アーカイブが壊れています。"
-                + "パスワードを確認して、もう一度お試しください。"
         case let .insufficientFreeSpace(required, available):
-            return "展開先の空き容量が足りません。"
+            return "\(formatter.string(fromByteCount: required)) が必要ですが、"
+                + "空きは \(formatter.string(fromByteCount: available)) しかありません。"
+        case let .insufficientStagingSpace(required, available):
+            return "展開はいったん起動ディスク上の作業領域へ書き出すため、展開先とは別に "
                 + "\(formatter.string(fromByteCount: required)) が必要ですが、"
                 + "空きは \(formatter.string(fromByteCount: available)) しかありません。"
-                + "不要な項目を削除してから、もう一度お試しください。"
-        case let .insufficientStagingSpace(required, available):
-            return "起動ディスクの空き容量が足りません。"
-                + "展開はいったん起動ディスク上の作業領域へ書き出すため、"
-                + "展開先とは別に \(formatter.string(fromByteCount: required)) が必要ですが、"
-                + "空きは \(formatter.string(fromByteCount: available)) しかありません。"
-                + "起動ディスクの不要な項目を削除してから、もう一度お試しください。"
         case let .tooManyEntries(limit):
-            return "アーカイブに含まれる項目が多すぎます（上限 \(limit) 件）。"
+            return "上限は \(Self.grouped(limit)) 件です。"
         case let .expansionLimitExceeded(limit):
-            return "展開後の大きさが上限（\(formatter.string(fromByteCount: limit))）を超えました。"
-                + "環境設定の「圧縮／展開」で上限を変更できます。"
+            return "上限は \(formatter.string(fromByteCount: limit)) です。"
         case let .compressionRatioExceeded(limit):
-            return "圧縮率が上限（\(Int(limit)) 倍）を超えました。"
-                + "壊れているか、極端に膨らむアーカイブの可能性があります。"
+            return "上限は \(Self.grouped(Int(limit))) 倍です。壊れているか、極端に膨らむアーカイブの可能性があります。"
         case .cancelled:
-            return "処理を中断しました。"
+            return ""
         case let .writeFailed(reason):
-            return "展開先へ書き込めませんでした。\(reason)"
-        case let .backendFailure(message):
-            return "アーカイブを処理できませんでした。（\(message)）"
-        case let .entryNotFound(name):
-            return "アーカイブ内に「\(name)」が見つかりません。"
+            return reason
+        case .backendFailure:
+            return "アーカイブが壊れているか、対応していない機能が使われている可能性があります。"
+        case .entryNotFound:
+            return "アーカイブの中身が変わったか、一覧が古くなっている可能性があります。"
         case let .entryReadLimitExceeded(limit):
-            return "読み込みの上限（\(formatter.string(fromByteCount: Int64(limit)))）を超えました。"
+            return "1 項目あたりの読み込みは \(formatter.string(fromByteCount: Int64(limit))) までです。"
         }
+    }
+
+    public var recoverySuggestions: [RecoveryAction] { [] }
+
+    /// 提案の文言（`FileOperationError` と同じ扱い。押して意味のある操作が
+    /// 無いものはボタンにせず、本文の末尾に添える）。
+    public var recoveryHint: String? {
+        switch self {
+        case .unsupportedFormat:
+            return "別のアプリで開けるか確認してください。"
+        case .passwordProtected, .incorrectPassphrase:
+            return "パスワードを確認して、もう一度お試しください。"
+        case .insufficientFreeSpace:
+            return "不要な項目を削除して空きを増やすか、別の場所へ展開してください。"
+        case .insufficientStagingSpace:
+            return "起動ディスクの不要な項目を削除してから、もう一度お試しください。"
+        case .tooManyEntries, .expansionLimitExceeded, .compressionRatioExceeded:
+            return "この上限は環境設定の「圧縮／展開」で変更できます。"
+        case .cancelled:
+            return nil // 中断は失敗ではない。次の手を促さない
+        case .writeFailed:
+            return nil // 理由の側（`PosixFailure`）が既に対処を含む
+        case .backendFailure:
+            return "アーカイブを作り直すか、別のアプリで開けるか確認してください。"
+        case .entryNotFound:
+            return "一覧を最新にしてから、もう一度お試しください。"
+        case .entryReadLimitExceeded:
+            return nil
+        }
+    }
+
+    /// 折りたたんで見せる技術詳細 [ER-03]。**本文には混ぜない** —
+    /// libarchive/UnRAR が返すのは英語で、ユーザー向けの説明にはならない。
+    public var technicalDetail: String? {
+        switch self {
+        case let .backendFailure(message): message
+        default: nil
+        }
+    }
+
+    public var severity: NotificationSeverity {
+        // 中断はユーザー自身の操作。失敗として割り込まない。
+        self == .cancelled ? .logOnly : .sheet
+    }
+
+    private static func grouped(_ value: Int) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
+    }
+}
+
+/// `localizedDescription`（ログ・`NSError` 経由の表示）でも三要素が読めるように
+/// する。`UserPresentableError` は提示用で、ログはこちらを読むため。
+extension ExtractError: LocalizedError {
+    public var errorDescription: String? {
+        [whatHappened, whyItHappened, recoveryHint ?? ""]
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
     }
 }

@@ -61,16 +61,33 @@ final class NotificationRouterPresenterController {
         alert.informativeText = item.body
         alert.alertStyle = item.category == .error ? .critical : .warning
         if item.actions.isEmpty {
-            alert.addButton(withTitle: "OK")
+            alert.addButton(withTitle: String(localized: "action.ok", locale: AppLanguage.effectiveLocale))
         } else {
             for action in item.actions {
                 alert.addButton(withTitle: action.title)
             }
         }
+        // **技術詳細を捨てない** [ER-03]［棚卸しで発見: `NotificationItem` は
+        // 運んでいるのに、ここで無視していた］。`NSAlert` に折りたたみ表示は
+        // 無いので、本文を膨らませる代わりに「詳細をコピー」を足す。問い合わせ
+        // のときにユーザーがそのまま貼れる形にしておくのが実際に役に立つ。
+        let detailButtonIndex = item.technicalDetail == nil ? -1 : alert.buttons.count
+        if item.technicalDetail != nil {
+            alert.addButton(withTitle: String(localized: "action.copyDetails", locale: AppLanguage.effectiveLocale))
+        }
 
         let handleResponse: (NSApplication.ModalResponse) -> Void = { [weak self] response in
-            self?.isPresentingAlert = false
             let index = response.rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+            // 「詳細をコピー」はダイアログを閉じる意味を持たない。コピーだけ
+            // して、同じ内容をもう一度出す（閉じたいときは他のボタンを押す）。
+            if index == detailButtonIndex, let detail = item.technicalDetail {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString("\(item.title)\n\(item.body)\n\n\(detail)", forType: .string)
+                self?.isPresentingAlert = false
+                self?.presentIfNeeded()
+                return
+            }
+            self?.isPresentingAlert = false
             let chosen: RecoveryAction? = item.actions.indices.contains(index) ? item.actions[index] : nil
             if case .openSystemSettings(let urlString) = chosen?.kind, let url = URL(string: urlString) {
                 NSWorkspace.shared.open(url)

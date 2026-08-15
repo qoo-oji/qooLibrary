@@ -25,8 +25,16 @@ public protocol UserPresentableError: Error, Sendable {
     var whatHappened: String { get }
     /// なぜ起きたか [ER-03]
     var whyItHappened: String { get }
-    /// 次に何ができるか（0..n 個の提案）[ER-03]
+    /// 次に何ができるか（0..n 個の提案）[ER-03]。**押して意味のある操作**
+    /// だけをここに置く（「再試行」「システム設定を開く」など）。
     var recoverySuggestions: [RecoveryAction] { get }
+    /// 次に何ができるかの**文章**[ER-03]。ボタンにするほどではないが伝える
+    /// べき助言（「不要な項目を削除して空きを増やしてください」など）。
+    ///
+    /// **三要素の 3 つ目を型として要求するために分けてある。** ボタンだけを
+    /// 要求していた頃は、押せる操作が無いケースで助言そのものが落ちていた
+    /// （棚卸しで 9 件見つかった）。示せることが無ければ `nil`。
+    var recoveryHint: String? { get }
     /// 折りたたんで表示する技術詳細 [ER-03]
     var technicalDetail: String? { get }
     /// 提示強度 [13.1 節]

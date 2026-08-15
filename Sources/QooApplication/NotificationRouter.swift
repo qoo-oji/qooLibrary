@@ -60,11 +60,29 @@ public final class NotificationRouter {
         }
     }
 
-    /// `UserPresentableError` に準拠していない素の `Error` から最小限の
-    /// `NotificationItem` を組み立てる橋渡し。既存のエラー型
-    /// （`FileOperationError`/`ExtractError`/`RegisteredFolderError` 等）を
-    /// ER-03 の三要素文言（何が/なぜ/次に何ができるか）に完全準拠させるのは
-    /// 別途の作業として残している。
+    /// エラーをユーザーへ提示する唯一の入口 [ER-01]。
+    ///
+    /// 主要なエラー型（`FileOperationError`/`ExtractError`/
+    /// `RegisteredFolderError`/`VolumeEligibilityError`/
+    /// `PartialTransferFailure`）は `UserPresentableError` に準拠しており、
+    /// 三要素が**型として要求される**ため書き忘れが起きない。準拠していない
+    /// 素の `Error`（Foundation・将来増える型）にも安全網がある
+    /// （`looksLikeTheUninformativeDefault` 参照）。
+    /// - Parameter whatHappened: **何をしようとして失敗したか**（「コピー
+    ///   できませんでした」）。操作を知っているのは呼び出し側だけなので、
+    ///   ここは常にタイトルとして使う。
+    ///
+    /// ## 合成の規則（ここ 1 箇所だけが決める）[ER-03]
+    /// ```
+    /// タイトル: 何をしようとして失敗したか（呼び出し側）
+    /// 本文    : 何が起きたか → なぜ → 次に何ができるか（エラー型）
+    /// 折りたたみ: 技術詳細（errno・ライブラリの英語メッセージ）
+    /// ```
+    /// **以前は `UserPresentableError` に準拠していると呼び出し側の
+    /// `whatHappened` を捨ててタイトルを差し替えていた**ため、「どの操作で
+    /// 失敗したのか」が消えていた。逆に未準拠の型では 1 本の文字列に
+    /// 操作名まで詰め込んでいて、タイトルと本文で「できませんでした」が
+    /// 二重になっていた［棚卸しで発見］。両方をここで解消する。
     @discardableResult
     public func presentError(
         _ error: Error,
@@ -76,18 +94,50 @@ public final class NotificationRouter {
             return await present(NotificationItem(
                 category: category,
                 severity: presentable.severity,
-                title: presentable.whatHappened,
-                body: presentable.whyItHappened,
+                title: whatHappened,
+                body: Self.body(for: presentable),
                 technicalDetail: presentable.technicalDetail,
                 actions: presentable.recoverySuggestions
             ))
         }
+        let rendered = Self.body(for: error)
         return await present(NotificationItem(
             category: category,
             severity: severity,
             title: whatHappened,
-            body: Self.body(for: error)
+            body: rendered.body,
+            technicalDetail: rendered.technicalDetail
         ))
+    }
+
+    /// 「操作を完了できませんでした。（Module.Type エラー1）」という、原因が
+    /// 一切分からない既定文言かどうか。
+    ///
+    /// **安全網** [ER-03]。主要なエラー型は `UserPresentableError` に準拠させて
+    /// あるが、準拠を忘れた型・将来増える型がこの経路へ来ることは避けられない。
+    /// そのとき生の既定文言をそのまま見せるくらいなら、**説明できないことを
+    /// 正直に言い、詳細は折りたたみへ回す**ほうがまだ役に立つ。
+    static func looksLikeTheUninformativeDefault(_ text: String) -> Bool {
+        // ローカライズされるため文言では判定できない。**末尾の
+        // 「… error 1.)」「…エラー1）」という構造**で見る。
+        //
+        // 型名の形を当てにしてはいけない［実測］。入れ子で宣言された型は
+        // 「(d.(unknown context at $113f78388).Inner error 1.)」のようになり、
+        // 「Module.Type」を期待する正規表現では捕まえられなかった。
+        let pattern = #"(error|エラー)\s*-?\d+\.?[)）]\s*$"#
+        return text.range(of: pattern, options: .regularExpression) != nil
+    }
+
+    /// 三要素を 1 つの本文にする。**空の要素は行ごと落とす**（「なぜ」が
+    /// 無いケースで空行が空くのを避ける）。
+    private static func body(for error: any UserPresentableError) -> String {
+        var parts = [error.whatHappened, error.whyItHappened]
+        // 「次に何ができるか」は、押して意味のある操作（`recoverySuggestions`）
+        // が無い場合に文章として添える。両方あると重複するので片方だけ。
+        if error.recoverySuggestions.isEmpty, let hint = error.recoveryHint {
+            parts.append(hint)
+        }
+        return parts.filter { !$0.isEmpty }.joined(separator: "\n")
     }
 
     /// 素の `Error` から「なぜ起きたか」「次に何ができるか」を組み立てる [ER-03]。
@@ -100,17 +150,26 @@ public final class NotificationRouter {
     ///
     /// `localizedFailureReason` は `localizedDescription` に含まれていることが
     /// 多いので、重複しないときだけ足す。
-    private static func body(for error: Error) -> String {
+    private static func body(for error: Error) -> (body: String, technicalDetail: String?) {
         let nsError = error as NSError
-        var parts = [error.localizedDescription]
-        if let reason = nsError.localizedFailureReason,
-           !error.localizedDescription.contains(reason) {
+        let description = error.localizedDescription
+        guard !looksLikeTheUninformativeDefault(description) else {
+            // 説明できないことを正直に言い、生の文言は折りたたみへ回す。
+            return (
+                "原因を特定できないエラーが起きました。\n"
+                    + "同じ操作を繰り返して再現する場合は、ヘルプメニューの「診断情報を書き出す」で"
+                    + "記録を保存してください。",
+                description
+            )
+        }
+        var parts = [description]
+        if let reason = nsError.localizedFailureReason, !description.contains(reason) {
             parts.append(reason)
         }
         if let suggestion = nsError.localizedRecoverySuggestion {
             parts.append(suggestion)
         }
-        return parts.joined(separator: "\n")
+        return (parts.joined(separator: "\n"), nil)
     }
 
     private func presentModally(_ item: NotificationItem) async -> RecoveryAction? {

@@ -97,22 +97,83 @@ import Testing
         _ = await result
     }
 
-    @Test func presentErrorUsesUserPresentableErrorConformanceWhenAvailable() async {
+    /// **合成の規則を固定する** [ER-03]。
+    /// タイトルは呼び出し側（どの操作で失敗したか）、本文はエラー型の三要素。
+    ///
+    /// 以前は準拠している型だと**呼び出し側のタイトルを捨てて**いたため、
+    /// 「どの操作で失敗したのか」が消えていた［棚卸しで発見］。
+    @Test func presentErrorKeepsTheCallersTitleAndComposesTheThreeElements() async {
         let router = NotificationRouter()
         struct RichError: UserPresentableError {
-            var whatHappened: String { "リッチな失敗" }
-            var whyItHappened: String { "リッチな理由" }
+            var whatHappened: String { "「a.cbz」を処理できませんでした。" }
+            var whyItHappened: String { "書き込み先の空き容量が足りません。" }
             var recoverySuggestions: [RecoveryAction] { [] }
-            var technicalDetail: String? { "詳細情報" }
+            var recoveryHint: String? { "不要な項目を削除してください。" }
+            var technicalDetail: String? { "errno 28" }
             var severity: NotificationSeverity { .appModal }
         }
 
-        async let result: RecoveryAction? = router.presentError(RichError(), whatHappened: "無視される汎用メッセージ")
+        async let result: RecoveryAction? = router.presentError(RichError(), whatHappened: "コピーできませんでした")
         try? await Task.sleep(for: .milliseconds(20))
-        #expect(router.currentModalItem?.title == "リッチな失敗")
-        #expect(router.currentModalItem?.body == "リッチな理由")
-        #expect(router.currentModalItem?.technicalDetail == "詳細情報")
+        // タイトルは操作名（呼び出し側）のまま。
+        #expect(router.currentModalItem?.title == "コピーできませんでした")
+        // 本文は 何が / なぜ / 次に何ができるか。
+        let body = router.currentModalItem?.body ?? ""
+        #expect(body.contains("「a.cbz」を処理できませんでした。"))
+        #expect(body.contains("空き容量が足りません"))
+        #expect(body.contains("不要な項目を削除してください。"))
+        // 技術詳細は本文へ混ぜず、別に運ぶ。
+        #expect(!body.contains("errno"))
+        #expect(router.currentModalItem?.technicalDetail == "errno 28")
         router.resolve(nil)
         _ = await result
+    }
+
+    /// 押して意味のある操作があるときは、助言の文章を重ねない（二重になる）。
+    @Test func aButtonSuppressesTheTextualHint() async {
+        let router = NotificationRouter()
+        struct WithAction: UserPresentableError {
+            var whatHappened: String { "アクセスできませんでした。" }
+            var whyItHappened: String { "許可がありません。" }
+            var recoverySuggestions: [RecoveryAction] {
+                [RecoveryAction(id: "settings", title: "アクセス権を開く", kind: .dismiss)]
+            }
+            var recoveryHint: String? { "この文章は出さない" }
+            var technicalDetail: String? { nil }
+            var severity: NotificationSeverity { .sheet }
+        }
+
+        async let result: RecoveryAction? = router.presentError(WithAction(), whatHappened: "開けませんでした")
+        try? await Task.sleep(for: .milliseconds(20))
+        #expect(!(router.currentModalItem?.body.contains("この文章は出さない") ?? true))
+        #expect(router.currentModalItem?.actions.count == 1)
+        router.resolve(nil)
+        _ = await result
+    }
+
+    /// **安全網** [ER-03]。`UserPresentableError` に準拠していない型が来ても、
+    /// 「操作を完了できませんでした。（Module.Type エラー1）」という
+    /// 原因の分からない既定文言をそのまま見せないこと。
+    @Test func anUnexplainedErrorIsNotShownAsTheRawDefault() async {
+        struct Bare: Error {}
+        let router = NotificationRouter()
+        async let result: RecoveryAction? = router.presentError(Bare(), whatHappened: "移動に失敗しました")
+        try? await Task.sleep(for: .milliseconds(20))
+        let item = router.currentModalItem
+        #expect(item?.title == "移動に失敗しました")
+        #expect(item?.body.contains("原因を特定できない") == true)
+        // 型名は本文ではなく折りたたみへ。
+        #expect(item?.body.contains("Bare") == false)
+        #expect(item?.technicalDetail?.contains("Bare") == true)
+        router.resolve(nil)
+        _ = await result
+    }
+
+    /// 既定文言の判定が、まともなメッセージを誤って潰さないこと。
+    @Test func aProperMessageIsLeftAlone() {
+        #expect(!NotificationRouter.looksLikeTheUninformativeDefault("空き容量が足りません。"))
+        #expect(NotificationRouter.looksLikeTheUninformativeDefault(
+            "The operation couldn’t be completed. (QooKit.Sample error 1.)"
+        ))
     }
 }

@@ -89,6 +89,42 @@ public struct PartialTransferFailure: Error {
     }
 }
 
+/// **本来の理由をそのまま見せる** [ER-03]［エラー文言の棚卸しで発見］。
+///
+/// この型は「途中まで運べた」ことを呼び出し側へ伝えるための入れ物で、
+/// 失敗の理由そのものは `underlying` が持っている。準拠していなかったため、
+/// **展開の移送が途中で失敗するとユーザーには
+/// 「操作を完了できませんでした。（QooInfrastructure.PartialTransferFailure
+/// エラー1）」しか出なかった**（`MoveFilesCommand`/`CopyFilesCommand` は
+/// この型を捕まえて `.partial` に変えるので出ないが、`promoteFromStaging`
+/// を使う展開の経路はそのまま抜けてくる）。
+///
+/// 三要素も `underlying` へ委譲する。入れ物が説明を横取りしない。
+extension PartialTransferFailure: UserPresentableError {
+    private var presentable: (any UserPresentableError)? { underlying as? any UserPresentableError }
+
+    public var whatHappened: String {
+        presentable?.whatHappened ?? underlying.localizedDescription
+    }
+
+    public var whyItHappened: String { presentable?.whyItHappened ?? "" }
+    public var recoverySuggestions: [RecoveryAction] { presentable?.recoverySuggestions ?? [] }
+    public var recoveryHint: String? { presentable?.recoveryHint }
+    public var severity: NotificationSeverity { presentable?.severity ?? .sheet }
+
+    public var technicalDetail: String? {
+        // 「何件目で止まったか」は問い合わせのときに効く情報なので添える。
+        let progress = "\(receipts.count) 件まで完了 / 「\(failedItem.lastPathComponent)」で中断"
+        return [presentable?.technicalDetail, progress].compactMap { $0 }.joined(separator: "\n")
+    }
+}
+
+extension PartialTransferFailure: LocalizedError {
+    public var errorDescription: String? {
+        [whatHappened, whyItHappened, recoveryHint ?? ""].filter { !$0.isEmpty }.joined(separator: " ")
+    }
+}
+
 public struct OpReceipt: Sendable {
     public let before: FileIdentity?
     public let after: FileIdentity?
@@ -208,93 +244,178 @@ public enum FileOperationError: Error, Sendable, Equatable {
     case fileTooLargeForDestination(item: URL, size: Int64, limit: Int64, destination: URL)
 }
 
-/// **`LocalizedError` に準拠させる理由** [ER-03、実機検証で発見]。
-/// 準拠していないと `localizedDescription` が
-/// 「操作を完了できませんでした。（QooInfrastructure.FileOperationError エラー2）」
-/// という、原因が一切分からない既定文言になる。実際に、書き込み先の
-/// 空き容量が足りずにコピーが失敗した場面で、ユーザーにもログにも
-/// この文言しか出ず**容量不足だと分からなかった**。`NotificationRouter`
-/// も診断ログもこの値を読むので、ここを直せば両方に効く。
+/// **`UserPresentableError` に準拠させる理由** [ER-03]。
+///
+/// 以前は `LocalizedError` だけで、1 本の文字列にすべてを詰めていた。
+/// その形だと 3 つの問題が避けられなかった［棚卸しで発見］:
+///
+/// 1. 呼び出し側のタイトル（「コピーできませんでした」）と本文の
+///    「…できませんでした」が**二重になる**。
+/// 2. 未知の `errno` で「処理できませんでした。処理できませんでした。」と
+///    **同じ文が 2 回**出る。
+/// 3. `strerror` の**英語が本文に混ざる**。
+///
+/// このプロトコルは三要素（何が／なぜ／次に何ができるか）と技術詳細を
+/// **型として要求する**ので、**新しいケースを足したときに書き忘れられない**。
+/// 合成（どれをタイトルに、どれを本文に置くか）は
+/// `NotificationRouter.presentError` の 1 箇所だけが決める。
 ///
 /// なお文言は日本語のリテラル。この層は文字列カタログ
 /// （`Resources/Localizable.xcstrings`、アプリターゲットのリソース）を
 /// 参照できず、既存の `operationFailed` の実引数も同じく日本語リテラル
 /// なので、それに揃えている［既知の限界。ここの英語化は、エラー文言を
 /// アプリ層へ持ち上げる別作業として扱う］。
-extension FileOperationError: LocalizedError {
-    public var errorDescription: String? {
+extension FileOperationError: UserPresentableError {
+    /// 何が起きたか（1 文）。**操作名は入れない** — それは呼び出し側が
+    /// タイトルとして持っている。ここは「どの項目がどうなったか」に徹する。
+    public var whatHappened: String {
         switch self {
         case let .sourceNotFound(url):
-            return "「\(url.lastPathComponent)」が見つかりません。"
+            return "「\(url.lastPathComponent)」が見つかりませんでした。"
         case let .conflictResolutionRequired(_, destination):
-            return "「\(destination.lastPathComponent)」がすでに存在するため、処理を続けられませんでした。"
+            return "「\(destination.lastPathComponent)」がすでに存在します。"
         case let .operationFailed(message):
             return message
-        case let .copyFailed(source, destination, code):
-            return Self.copyFailureMessage(source: source, destination: destination, errnoCode: code)
-        case let .insufficientFreeSpace(required, available, destination):
-            let formatter = ByteCountFormatter()
+        case let .copyFailed(source, _, _):
+            return "「\(source.lastPathComponent)」を処理できませんでした。"
+        case let .insufficientFreeSpace(_, _, destination):
             return "「\(destination.lastPathComponent)」の空き容量が足りません。"
-                + "\(formatter.string(fromByteCount: required)) が必要ですが、"
-                + "空きは \(formatter.string(fromByteCount: available)) しかありません。"
-                + "不要な項目を削除してから、もう一度お試しください。"
         case let .destinationInsideSource(source, destination):
             return "「\(source.lastPathComponent)」を、それ自身の中にある"
                 + "「\(destination.lastPathComponent)」へは移動・コピーできません。"
-                + "フォルダの外にある別の場所を選んでください。"
         case let .destinationIsReadOnly(destination):
-            return "「\(destination.lastPathComponent)」は読み取り専用のため、書き込めません。"
-                + "書き込みできる別の場所を選ぶか、ボリュームの設定を確認してください。"
-        case let .invalidName(name, reason):
-            let detail = reason.errorDescription ?? ""
-            return name.isEmpty
-                ? detail
-                : "「\(name)」は名前として使えません。\(detail)"
+            return "「\(destination.lastPathComponent)」は読み取り専用です。"
+        case let .invalidName(name, _):
+            return name.isEmpty ? "名前が入力されていません。" : "「\(name)」は名前として使えません。"
         case let .sourceChangedDuringOperation(source):
             return "「\(source.lastPathComponent)」は、処理している間にほかのアプリが書き換えました。"
-                + "途中までの内容を写してしまうため中止しました。"
-                + "ダウンロードや書き出しが終わってから、もう一度お試しください。"
-        case let .nameTooLongForDestination(name, _, length, limit, unitIsBytes):
-            // **どこがどう長いのかを数字で示す。** 「長すぎます」だけでは、
-            // 同じ名前が Mac 内で使えている理由が分からない。
-            let unit = unitIsBytes ? "バイト" : "文字ぶん"
-            let hint = unitIsBytes
-                ? "書き込み先は名前の長さをバイト数で数えます（日本語は 1 文字あたり 3 バイト）。"
-                : ""
-            return "「\(name)」は、書き込み先で使える名前の長さを超えています"
-                + "（\(length) \(unit)、上限 \(limit) \(unit)）。\(hint)"
-                + "名前を短くしてから、もう一度お試しください。"
-        case let .fileTooLargeForDestination(item, size, limit, destination):
-            let formatter = ByteCountFormatter()
-            return "「\(item.lastPathComponent)」（\(formatter.string(fromByteCount: size))）は、"
-                + "書き込み先「\(destination.lastPathComponent)」が扱えるファイルの上限"
-                + "（\(formatter.string(fromByteCount: limit))）を超えています。"
-                + "書き込み先が FAT32 の場合は exFAT で初期化し直すと、この上限は無くなります。"
-        case let .pathTooLong(item, destination, resultingBytes, limitBytes):
+        case let .nameTooLongForDestination(name, _, _, _, _):
+            return "「\(name)」は、書き込み先で使える名前の長さを超えています。"
+        case let .fileTooLargeForDestination(item, _, _, destination):
+            return "「\(item.lastPathComponent)」は、書き込み先「\(destination.lastPathComponent)」が"
+                + "扱えるファイルの大きさを超えています。"
+        case let .pathTooLong(item, destination, _, _):
             return "「\(item.lastPathComponent)」を「\(destination.lastPathComponent)」へ置くと、"
-                + "パスが長くなりすぎます（\(resultingBytes) バイト、上限 \(limitBytes) バイト）。"
-                + "階層の浅い場所を選ぶか、途中のフォルダ名を短くしてください。"
+                + "パスが長くなりすぎます。"
         }
     }
 
-    /// 失敗の技術詳細 [ER-03 の折りたたみ部分]。`errno` の英語表記のように、
-    /// 説明本文に混ぜると読みにくいが、問い合わせの際には要る情報を置く。
-    public var technicalReason: String? {
+    /// なぜ起きたか。数字で示せるものは数字で示す（「足りません」だけでは
+    /// どれだけ空ければよいのか分からない）。
+    public var whyItHappened: String {
+        let formatter = ByteCountFormatter()
         switch self {
+        case .sourceNotFound:
+            return "ほかのアプリで移動・削除された可能性があります。"
+        case .conflictResolutionRequired:
+            return "置き換えるか別名で残すかを決められなかったため、処理を続けられませんでした。"
+        case .operationFailed:
+            return ""
         case let .copyFailed(_, _, code):
-            return "errno \(code): \(PosixFailure.systemReason(code))"
+            return PosixFailure.reason(code)
+        case let .insufficientFreeSpace(required, available, _):
+            return "\(formatter.string(fromByteCount: required)) が必要ですが、"
+                + "空きは \(formatter.string(fromByteCount: available)) しかありません。"
+        case .destinationInsideSource:
+            return "自分自身の中へ入れると、際限なく複製が繰り返されてしまいます。"
+        case .destinationIsReadOnly:
+            return "このボリュームには書き込めない設定になっています。"
+        case let .invalidName(_, reason):
+            return reason.errorDescription ?? ""
+        case .sourceChangedDuringOperation:
+            return "途中までの内容を写してしまうため中止しました。"
+        case let .nameTooLongForDestination(_, _, length, limit, unitIsBytes):
+            let unit = unitIsBytes ? "バイト" : "文字ぶん"
+            let note = unitIsBytes
+                ? "書き込み先は名前の長さをバイト数で数えます（日本語は 1 文字あたり 3 バイト）。"
+                : ""
+            return "\(length) \(unit)ありますが、上限は \(limit) \(unit)です。\(note)"
+        case let .fileTooLargeForDestination(_, size, limit, _):
+            return "\(formatter.string(fromByteCount: size)) ありますが、"
+                + "上限は \(formatter.string(fromByteCount: limit)) です。"
+        case let .pathTooLong(_, _, resultingBytes, limitBytes):
+            return "\(resultingBytes) バイトになりますが、上限は \(limitBytes) バイトです。"
+        }
+    }
+
+    /// **押して意味のある操作は無い** [ER-03]。
+    ///
+    /// 一度これを「助言の文章をボタンにする」実装にしたが、
+    /// 「不要な項目を削除して空きを増やすか、別の場所を選んでください。」が
+    /// **ボタン名**になるうえ、`presentError` が「ボタンがあるなら文章は
+    /// 出さない」規則なので**助言が本文から消えた**（棚卸しで発見）。
+    /// 助言は文章（`recoveryHint`）として本文に置く。
+    ///
+    /// 将来 `RecoveryAction.Kind` に「環境設定の該当タブを開く」が入れば、
+    /// 権限まわりはボタンにする価値がある（現在の `Kind` は
+    /// `retry`/`openSystemSettings`/`dismiss` の 3 つで、アプリ内の
+    /// 環境設定を指す手段が無い）。
+    public var recoverySuggestions: [RecoveryAction] { [] }
+
+    /// 次に何ができるか [ER-03]。**示せることが無ければ `nil`**
+    /// （当たり障りのない一般論で埋めない）。
+    public var recoveryHint: String? { Self.suggestion(for: self) }
+
+    private static func suggestion(for error: FileOperationError) -> String? {
+        switch error {
+        case .sourceNotFound:
+            return "一覧を最新にしてから、もう一度お試しください。"
+        case .conflictResolutionRequired:
+            return "もう一度実行して、置き換えるか別名にするかを選んでください。"
+        case .operationFailed:
+            return nil
+        case let .copyFailed(_, _, code):
+            return PosixFailure.recovery(code)
+        case .insufficientFreeSpace:
+            return "不要な項目を削除して空きを増やすか、別の場所を選んでください。"
+        case .destinationInsideSource:
+            return "そのフォルダの外にある場所を選んでください。"
+        case .destinationIsReadOnly:
+            return "書き込みできる別の場所を選ぶか、ボリュームの設定を確認してください。"
+        case let .invalidName(_, reason):
+            switch reason {
+            case .empty: return "名前を入力してください。"
+            case .forbiddenCharacter: return "その文字を別の文字に置き換えてください。"
+            case .reservedDotName: return "別の名前を付けてください。"
+            case .tooLong: return "短い名前を入力してください。"
+            }
+        case .sourceChangedDuringOperation:
+            return "ダウンロードや書き出しが終わってから、もう一度お試しください。"
+        case .nameTooLongForDestination:
+            return "名前を短くしてから、もう一度お試しください。"
+        case let .fileTooLargeForDestination(_, _, limit, _):
+            // 4GB 弱という上限は FAT32 に固有。断定できるなら断定する。
+            return limit <= 4_294_967_295
+                ? "書き込み先は FAT32 です。exFAT で初期化し直すと、この上限は無くなります。"
+                : "分割するか、より大きなファイルを扱える場所を選んでください。"
+        case .pathTooLong:
+            return "階層の浅い場所を選ぶか、途中のフォルダ名を短くしてください。"
+        }
+    }
+
+    /// 折りたたんで見せる技術詳細 [ER-03]。**本文には混ぜない。**
+    public var technicalDetail: String? {
+        switch self {
+        case let .copyFailed(source, destination, code):
+            return "\(PosixFailure.technicalDetail(code))\n\(source.path)\n→ \(destination.path)"
+        case let .sourceChangedDuringOperation(source):
+            return source.path
+        case let .pathTooLong(item, destination, _, _):
+            return "\(item.path)\n→ \(destination.path)"
         default:
             return nil
         }
     }
 
-    /// 「何ができないのか」＋「なぜか」。理由の翻訳は `PosixFailure` に
-    /// 一本化しており、コピー・移動・展開のどの経路でも同じ説明になる。
-    private static func copyFailureMessage(source: URL, destination: URL, errnoCode: Int32) -> String {
-        let name = source.lastPathComponent
-        // 「コピー先」と書かない — この関数はクロスボリュームの移動からも
-        // 呼ばれるため、操作名を決め打ちすると嘘になる。
-        return "「\(name)」を書き込み先「\(destination.deletingLastPathComponent().lastPathComponent)」へ"
-            + "処理できませんでした。\(PosixFailure.explain(errnoCode))"
+    public var severity: NotificationSeverity { .sheet }
+}
+
+/// `localizedDescription`（ログ・`NSError` 経由の表示）でも三要素が読めるように
+/// する。`UserPresentableError` は提示用で、ログはこちらを読むため。
+extension FileOperationError: LocalizedError {
+    public var errorDescription: String? {
+        [whatHappened, whyItHappened, recoveryHint ?? ""]
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
     }
 }

@@ -50,15 +50,46 @@ public enum VolumeEligibilityError: Error, Sendable, Equatable {
 /// 「操作を完了できませんでした。（QooInfrastructure.VolumeEligibilityError
 /// エラー0）」という、原因が一切分からない既定文言になっていた
 /// （`FileOperationError`/`ExtractError` で踏んだのと同じ落とし穴）。
-extension VolumeEligibilityError: LocalizedError {
-    public var errorDescription: String? {
+extension VolumeEligibilityError: UserPresentableError {
+    public var whatHappened: String {
+        switch self {
+        case .probeSetupFailed: "このフォルダを登録できるか確認できませんでした。"
+        case .readOnlyVolume: "このフォルダは登録できません。"
+        }
+    }
+
+    public var whyItHappened: String {
         switch self {
         case let .probeSetupFailed(code):
-            return "このフォルダを登録できるか確認できませんでした。\(PosixFailure.explain(code))"
+            return PosixFailure.reason(code, context: .subject)
         case let .readOnlyVolume(fileSystem):
-            return "このフォルダは読み取り専用のボリューム（\(fileSystem)）にあるため登録できません。"
-                + "書き込みできるボリューム上のフォルダを選んでください。"
+            return "読み取り専用のボリューム（\(fileSystem)）にあるため、"
+                + "登録に必要な確認も、以降の書き込みもできません。"
         }
+    }
+
+    public var recoverySuggestions: [RecoveryAction] { [] }
+
+    public var recoveryHint: String? {
+        switch self {
+        case let .probeSetupFailed(code): PosixFailure.recovery(code, context: .subject)
+        case .readOnlyVolume: "書き込みできるボリューム上のフォルダを選んでください。"
+        }
+    }
+
+    public var technicalDetail: String? {
+        switch self {
+        case let .probeSetupFailed(code): PosixFailure.technicalDetail(code)
+        case .readOnlyVolume: nil
+        }
+    }
+
+    public var severity: NotificationSeverity { .sheet }
+}
+
+extension VolumeEligibilityError: LocalizedError {
+    public var errorDescription: String? {
+        [whatHappened, whyItHappened, recoveryHint ?? ""].filter { !$0.isEmpty }.joined(separator: " ")
     }
 }
 

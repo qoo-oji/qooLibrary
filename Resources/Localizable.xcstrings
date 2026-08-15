@@ -177,6 +177,23 @@
         }
       }
     },
+    "action.copyDetails": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy Details"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "詳細をコピー"
+          }
+        }
+      }
+    },
     "action.cut": {
       "localizations": {
         "en": {
@@ -461,6 +478,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "新規タブ"
+          }
+        }
+      }
+    },
+    "action.ok": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OK"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OK"
           }
         }
       }
@@ -1756,13 +1790,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The items could not be renamed."
+            "value": "The items could not be renamed"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "名前を変更できませんでした。"
+            "value": "名前を変更できませんでした"
           }
         }
       }
@@ -1820,13 +1854,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Deletion failed."
+            "value": "Deletion failed"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "削除に失敗しました。"
+            "value": "削除に失敗しました"
           }
         }
       }
@@ -1895,6 +1929,23 @@
         }
       }
     },
+    "error.moveFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move failed"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移動に失敗しました"
+          }
+        }
+      }
+    },
     "error.moveItemsHereFailed": {
       "localizations": {
         "en": {
@@ -1916,13 +1967,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Couldn't create a new folder with the selected items."
+            "value": "Couldn't create a new folder with the selected items"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "選択項目での新規フォルダ作成に失敗しました。"
+            "value": "選択項目での新規フォルダ作成に失敗しました"
           }
         }
       }
@@ -1932,13 +1983,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Couldn't open the item."
+            "value": "Couldn't open the item"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "項目を開けませんでした。"
+            "value": "項目を開けませんでした"
           }
         }
       }
