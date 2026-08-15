@@ -138,7 +138,9 @@ struct KeyboardPreferencesTab: View {
         case .toggleThumbnails: "action.toggleThumbnails"
         case .newFolder: "action.newFolder"
         case .copy: "action.copy"
+        case .copyPath: "folder.copyPath" // 既存のコンテキストメニュー表記と同じキーを再利用
         case .paste: "action.paste"
+        case .moveItemsHere: "folder.moveItemsHere" // 同上
         case .cut: "action.cut"
         case .focusSearch: "action.focusSearch"
         case .toggleDisplayMode: "action.toggleDisplayMode"
@@ -147,6 +149,7 @@ struct KeyboardPreferencesTab: View {
         case .undo: "action.undo"
         case .redo: "action.redo"
         case .selectAll: "action.selectAll"
+        case .deselectAll: "action.deselectAll"
         case .duplicate: "folder.duplicate" // 既存のコンテキストメニュー表記と同じキーを再利用
         case .makeAlias: "folder.createAlias" // 同上
         case .compress: "action.compress"

@@ -48,7 +48,11 @@ public enum ActionID: String, Sendable, Codable, CaseIterable {
     case toggleThumbnails
     case newFolder
     case copy
+    /// Finder の「パス名をコピー」（「コピー」の ⌥ 代替、⌥⌘C）[FM-10]。
+    case copyPath
     case paste
+    /// Finder の「ここに項目を移動」（「ペースト」の ⌥ 代替、⌥⌘V）。
+    case moveItemsHere
     case cut
     case focusSearch
     case toggleDisplayMode
@@ -58,6 +62,8 @@ public enum ActionID: String, Sendable, Codable, CaseIterable {
     case redo
     /// [1-12b フォローアップ] Finder/Edit メニュー整備の一環で追加。
     case selectAll
+    /// Finder の「すべてを選択解除」（「すべてを選択」の ⌥ 代替、⌥⌘A）。
+    case deselectAll
     case duplicate
     case makeAlias
     case compress
@@ -130,7 +136,12 @@ public enum DefaultKeyBindings {
         KeyBinding(id: .toggleThumbnails, combos: [KeyCombo(key: "i", modifiers: [.command, .control])]), // [DS-02]
         KeyBinding(id: .newFolder, combos: [KeyCombo(key: "n", modifiers: [.command, .shift])]),
         KeyBinding(id: .copy, combos: [KeyCombo(key: "c", modifiers: .command)]),
+        // ⌥ 代替 3 件はいずれも Finder 標準のキー [Finder 対比監査]。
+        // メニュー項目側に `.keyboardShortcut` は付けない（`KeyBindingButtons`
+        // をアプリ唯一の配線経路にする 1-8 以来の方針）。
+        KeyBinding(id: .copyPath, combos: [KeyCombo(key: "c", modifiers: [.command, .option])]),
         KeyBinding(id: .paste, combos: [KeyCombo(key: "v", modifiers: .command)]),
+        KeyBinding(id: .moveItemsHere, combos: [KeyCombo(key: "v", modifiers: [.command, .option])]),
         KeyBinding(id: .cut, combos: [KeyCombo(key: "x", modifiers: .command)]),
         KeyBinding(id: .focusSearch, combos: [KeyCombo(key: "f", modifiers: .command)]),
         // ⌘L は Finder 標準の「エイリアスを作成」（`makeAlias`）に譲る
@@ -145,6 +156,7 @@ public enum DefaultKeyBindings {
         KeyBinding(id: .undo, combos: [KeyCombo(key: "z", modifiers: .command)]),
         KeyBinding(id: .redo, combos: [KeyCombo(key: "z", modifiers: [.command, .shift])]),
         KeyBinding(id: .selectAll, combos: [KeyCombo(key: "a", modifiers: .command)]), // Finder 標準
+        KeyBinding(id: .deselectAll, combos: [KeyCombo(key: "a", modifiers: [.command, .option])]), // Finder 標準
         KeyBinding(id: .duplicate, combos: [KeyCombo(key: "d", modifiers: .command)]), // Finder 標準
         KeyBinding(id: .makeAlias, combos: [KeyCombo(key: "l", modifiers: .command)]), // Finder 標準
         KeyBinding(id: .compress, combos: []), // Finder 自身も既定キーを割り当てていない

@@ -39,6 +39,22 @@ import Testing
         ])
     }
 
+    /// [Finder 対比監査] ⌥ 代替は Finder と同じキーを既定にする。主項目と
+    /// 「⌥ が増えるだけ」の関係になっていることも、取り違えを防ぐため確認する。
+    @Test func optionAlternatesUseFinderStandardKeys() {
+        let pairs: [(primary: ActionID, alternate: ActionID, key: String)] = [
+            (.copy, .copyPath, "c"),          // ⌘C  / ⌥⌘C
+            (.paste, .moveItemsHere, "v"),    // ⌘V  / ⌥⌘V
+            (.selectAll, .deselectAll, "a"),  // ⌘A  / ⌥⌘A
+        ]
+        for pair in pairs {
+            #expect(DefaultKeyBindings.binding(for: pair.primary).combos
+                == [KeyCombo(key: pair.key, modifiers: .command)])
+            #expect(DefaultKeyBindings.binding(for: pair.alternate).combos
+                == [KeyCombo(key: pair.key, modifiers: [.command, .option])])
+        }
+    }
+
     @Test func noTwoDefaultBindingsCollide() {
         // 既定値同士が最初から衝突していると KB-04 の検証が意味を成さない。
         let combos = DefaultKeyBindings.all.flatMap(\.combos)

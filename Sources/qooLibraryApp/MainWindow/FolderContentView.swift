@@ -479,14 +479,26 @@ struct FolderContentView: View {
                 KeyBindingButtons(action: .copy, store: keyBindingStore, isDisabled: selection.isEmpty) {
                     copySelectionToPasteboard(Array(selection))
                 }
+                // ⌥ 代替の 3 件（既定は Finder 標準の ⌥⌘C / ⌥⌘V / ⌥⌘A）
+                // [Finder 対比監査]。メニュー側は `modifierKeyAlternate` で
+                // 表示を入れ替えるだけで、キーの配線はここが唯一の経路。
+                KeyBindingButtons(action: .copyPath, store: keyBindingStore, isDisabled: selection.isEmpty) {
+                    copyPaths(Array(selection))
+                }
                 KeyBindingButtons(action: .cut, store: keyBindingStore, isDisabled: selection.isEmpty) {
                     cutSelectionToPasteboard(Array(selection))
                 }
                 KeyBindingButtons(action: .paste, store: keyBindingStore, isDisabled: !canPaste || folder == nil) {
                     pasteFromPasteboard()
                 }
+                KeyBindingButtons(action: .moveItemsHere, store: keyBindingStore, isDisabled: !canPaste || folder == nil) {
+                    moveItemsHere()
+                }
                 KeyBindingButtons(action: .selectAll, store: keyBindingStore, isDisabled: entries.isEmpty) {
                     selectAllInCurrentFolder()
+                }
+                KeyBindingButtons(action: .deselectAll, store: keyBindingStore, isDisabled: selection.isEmpty) {
+                    selection.removeAll()
                 }
                 KeyBindingButtons(action: .duplicate, store: keyBindingStore, isDisabled: selection.isEmpty) {
                     duplicate(Array(selection))
