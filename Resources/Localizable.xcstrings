@@ -209,6 +209,22 @@
         }
       }
     },
+    "action.deselectAll": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deselect All"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "すべてを選択解除"
+          }
+        }
+      }
+    },
     "action.focusSearch": {
       "localizations": {
         "en": {
@@ -460,7 +476,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "すべて選択"
+            "value": "すべてを選択"
           }
         }
       }
@@ -1041,6 +1057,22 @@
         }
       }
     },
+    "error.moveItemsHereFailed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moving the items failed"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "項目の移動に失敗しました"
+          }
+        }
+      }
+    },
     "error.newFolderWithSelectionFailed": {
       "localizations": {
         "en": {
@@ -1069,6 +1101,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "項目を開けませんでした。"
+          }
+        }
+      }
+    },
+    "error.openWithApplicationFailed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opening with the application failed"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アプリケーションで開けませんでした"
           }
         }
       }
@@ -1121,6 +1169,22 @@
         }
       }
     },
+    "error.setDefaultApplicationFailed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Setting the default application failed"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "既定のアプリケーションの設定に失敗しました"
+          }
+        }
+      }
+    },
     "error.trashFailed": {
       "localizations": {
         "en": {
@@ -1149,6 +1213,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "ロック解除に失敗しました"
+          }
+        }
+      }
+    },
+    "folder.alwaysOpenWithSubmenu": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Always Open With"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "常にこのアプリケーションで開く"
           }
         }
       }
@@ -1233,6 +1313,22 @@
         }
       }
     },
+    "folder.compressHereWithPassword": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compress with Password"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パスワード付きで圧縮"
+          }
+        }
+      }
+    },
     "folder.compressPanelPrompt": {
       "localizations": {
         "en": {
@@ -1286,13 +1382,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Copy Path"
+            "value": "Copy as Pathname"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "パスをコピー"
+            "value": "パス名をコピー"
           }
         }
       }
@@ -1537,18 +1633,18 @@
         }
       }
     },
-    "folder.moreSubmenu": {
+    "folder.moveItemsHere": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "More"
+            "value": "Move Items Here"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "その他"
+            "value": "ここに項目を移動"
           }
         }
       }
@@ -1692,7 +1788,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "アプリケーションで開く"
+            "value": "このアプリケーションで開く"
           }
         }
       }

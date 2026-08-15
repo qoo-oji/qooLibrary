@@ -96,8 +96,18 @@ public actor AppAssociationStore: AppAssociationService {
         let key = ext.lowercased()
         if let bundleID {
             associations[key] = bundleID
+            // 不変条件: 関連付けを持つ拡張子は必ず一覧にも載る。さもないと
+            // 環境設定「ビューア」タブは `extensions()` だけを表示するため、
+            // コンテキストメニューの「常にこのアプリケーションで開く」で
+            // 設定した関連付けが画面に現れず、後から確認も変更もできない
+            // 迷子の設定になる。呼び出し側ではなくストア側で保証する
+            // （経路が増えても破れないようにするため）。
+            extensionSet.insert(key)
         } else {
             associations.removeValue(forKey: key) // [AS-01] `nil` でシステムの既定へ戻す
+            // 一覧からは外さない — 「システムの既定に従う」に戻しただけで、
+            // その拡張子を管理対象から降ろしたわけではないため
+            // （降ろすのは `removeExtension(_:)` の役割）。
         }
         try save()
     }

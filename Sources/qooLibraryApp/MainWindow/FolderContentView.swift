@@ -613,6 +613,10 @@ struct FolderContentView: View {
         actions.canDuplicate = !selection.isEmpty
         actions.canMakeAlias = !selection.isEmpty
         actions.canCompress = !selection.isEmpty
+        // [Finder 対比監査] 既定の圧縮形式が暗号化に対応していなければ、
+        // 選択があっても実行させない（パスワードを尋ねておきながら平文の
+        // アーカイブを作ってしまうため、`FolderOperations` のコメント参照）。
+        actions.canCompressWithPassword = !selection.isEmpty && operations.canCompressWithPassword
         actions.canMoveToTrash = !selection.isEmpty
         actions.canDeletePermanently = !selection.isEmpty // [FM-14]
         actions.canCopyPath = !selection.isEmpty // [FM-10]
@@ -620,6 +624,7 @@ struct FolderContentView: View {
         actions.canCut = !selection.isEmpty
         actions.canPaste = canPaste && folder != nil
         actions.canSelectAll = !entries.isEmpty
+        actions.canDeselectAll = !selection.isEmpty
         actions.canRevealInFinder = !selection.isEmpty
 
         actions.open = { openSelection() }
@@ -633,13 +638,16 @@ struct FolderContentView: View {
         actions.duplicate = { duplicate(selected) }
         actions.makeAlias = { createAliases(for: selected) }
         actions.compress = { compressHere(selected) }
+        actions.compressWithPassword = { compressHereWithPassword(selected) }
         actions.moveToTrash = { moveToTrash(selected) }
         actions.deletePermanently = { deletePermanently(selected) }
         actions.copyPath = { copyPaths(selected) }
         actions.copy = { copySelectionToPasteboard(selected) }
         actions.cut = { cutSelectionToPasteboard(selected) }
         actions.paste = { pasteFromPasteboard() }
+        actions.moveItemsHere = { moveItemsHere() }
         actions.selectAll = { selectAllInCurrentFolder() }
+        actions.deselectAll = { selection.removeAll() }
         actions.revealInFinder = { NSWorkspace.shared.activateFileViewerSelecting(selected) }
         return actions
     }
@@ -928,10 +936,22 @@ struct FolderContentView: View {
             }
             Button("action.paste") { pasteFromPasteboard() }
                 .disabled(!canPaste)
+                // Finder と同じく ⌥ で「ここに項目を移動」に入れ替わる
+                // [Finder 対比監査]。
+                .modifierKeyAlternate(.option) {
+                    Button("folder.moveItemsHere") { moveItemsHere() }
+                        .disabled(!canPaste)
+                }
             // Finder は空きスペースの右クリックにも「すべて選択」を出す
             // [Finder/Edit メニュー整備の一環で追加]。
             Button("action.selectAll") { selectAllInCurrentFolder() }
                 .disabled(entries.isEmpty)
+                // Finder と同じく ⌥ で「すべてを選択解除」に入れ替わる
+                // [Finder 対比監査]。
+                .modifierKeyAlternate(.option) {
+                    Button("action.deselectAll") { selection.removeAll() }
+                        .disabled(selection.isEmpty)
+                }
         } else {
             let targets = Array(urls)
             let targetEntries = entries.filter { urls.contains($0.url) }
@@ -969,6 +989,12 @@ struct FolderContentView: View {
             }
             Button("folder.duplicate") { duplicate(targets) } // [FM-02]
             Button("action.copy") { copySelectionToPasteboard(targets) } // [KB-02 相当、⌘C]
+                // Finder と同じく ⌥ で「パス名をコピー」に入れ替わる [FM-10]
+                // [Finder 対比監査。⌥ 代替の一覧と、対応しなかった項目の理由は
+                // CLAUDE.md「Finder の ⌥ 代替項目」節を参照]。
+                .modifierKeyAlternate(.option) {
+                    Button("folder.copyPath") { copyPaths(targets) }
+                }
             Button("action.cut") { cutSelectionToPasteboard(targets) } // [Finder/Edit メニュー整備、⌘X]
             // Finder の「選択項目で新規フォルダを作成」[Finder/Edit メニュー整備]。
             // 移動先を作る操作のため、フォルダ自身が対象に混ざっていても
@@ -976,10 +1002,26 @@ struct FolderContentView: View {
             Button("action.newFolderWithSelection") { newFolderWithSelection(targets) }
             Divider()
             Button("folder.moveToTrash", role: .destructive) { moveToTrash(targets) } // [FM-04]
+                // Finder と同じく ⌥ で「すぐに削除…」に入れ替わる [FM-14]
+                // [Finder 対比監査]。対にすることで、ゴミ箱が出せない場面で
+                // 完全削除だけが現れる経路を構造的に無くしている。
+                .modifierKeyAlternate(.option) {
+                    Button("folder.deletePermanentlyEllipsis", role: .destructive) {
+                        deletePermanently(targets)
+                    }
+                }
             Divider()
             // 圧縮・展開関連をサブメニューにまとめる [ユーザー要望]。
             Menu("folder.compressExtractSubmenu") {
                 Button("folder.compressHere") { compressHere(targets) } // [AR-10]
+                    // Finder と同じく ⌥ で「パスワード付きで圧縮」に入れ替わる
+                    // [Finder 対比監査]。既定の圧縮形式が暗号化に対応している
+                    // ときだけ差し替える（`canCompressWithPassword` 参照）。
+                    .modifierKeyAlternate(.option) {
+                        if operations.canCompressWithPassword {
+                            Button("folder.compressHereWithPassword") { compressHereWithPassword(targets) }
+                        }
+                    }
                 Button("folder.compressEllipsis") { compressWithDialog(targets) } // [AR-11]
                 if isExtractable(targets) {
                     Divider()
@@ -996,19 +1038,6 @@ struct FolderContentView: View {
             Button("folder.revealInFinder") { NSWorkspace.shared.activateFileViewerSelecting(targets) } // [FM-09]
             ShareLink("folder.shareEllipsis", items: targets) // [共有、既定ラベルが英語 "Share..." になるため明示的に指定]
             Button("folder.createAlias") { createAliases(for: targets) }
-            // Finder では「パスをコピー」も「すぐに削除」もどちらも ⌥ を押した
-            // ときだけ現れる項目。SwiftUI では ⌥ での入れ替えが実装できない
-            // ことを実測で確認したため（メニュー内容は初回表示時に構築されて
-            // キャッシュされ、以後 body が再評価されない）、この 2 つを
-            // サブメニューへ退避してトップレベルの誤クリックを遠ざける
-            // [ユーザー判断]。
-            Menu("folder.moreSubmenu") {
-                Button("folder.copyPath") { copyPaths(targets) } // [FM-10]
-                Divider()
-                Button("folder.deletePermanentlyEllipsis", role: .destructive) { // [FM-14]
-                    deletePermanently(targets)
-                }
-            }
             Divider()
             Button(targetEntries.allSatisfy(\.isLocked) ? "folder.unlock" : "folder.lock") {
                 toggleLock(targetEntries)
@@ -1135,6 +1164,13 @@ struct FolderContentView: View {
     private func pasteFromPasteboard() {
         guard let folder = currentFolder() else { return }
         operations.paste(into: folder) { reload() }
+    }
+
+    /// Finder の「ここに項目を移動」（「ペースト」の ⌥ 代替）[Finder 対比監査]。
+    /// 貼り付け先の解決は `pasteFromPasteboard()` と同じく `currentFolder()` を読む。
+    private func moveItemsHere() {
+        guard let folder = currentFolder() else { return }
+        operations.moveItemsHere(into: folder) { reload() }
     }
 
     private var canPaste: Bool {
@@ -1300,6 +1336,12 @@ struct FolderContentView: View {
         operations.compressHere(urls, into: folder) { selectCompressionResult($0) }
     }
 
+    /// Finder の「パスワード付きで圧縮」（「圧縮」の ⌥ 代替）[Finder 対比監査]。
+    private func compressHereWithPassword(_ urls: [URL]) {
+        guard let folder = currentFolder() else { return }
+        operations.compressHereWithPassword(urls, into: folder) { selectCompressionResult($0) }
+    }
+
     /// [AR-11] ファイル名・保存先を指定するダイアログ。
     private func compressWithDialog(_ urls: [URL]) {
         guard let folder = currentFolder() else { return }
@@ -1344,33 +1386,83 @@ struct OpenWithMenu: View {
 
     private let service: AppAssociationService = AppAssociationStore.shared
 
+    /// 「常にこのアプリケーションで開く」を出せる条件 [Finder 対比監査]。
+    /// 既定アプリは拡張子ごとに保存する（`AppAssociationService.setPrimary`）
+    /// ため、拡張子を持たないフォルダには適用できない。
+    private var canSetAsDefault: Bool {
+        !isDirectory && !url.pathExtension.isEmpty
+    }
+
     var body: some View {
         // フォルダは拡張子を持たないため `candidates(for:)`（拡張子ベース）
         // ではなく `candidatesForFolders()`（`public.folder` ベース）を使う
         // [ユーザー指摘、`AppAssociationService.candidatesForFolders()` 参照]。
         let candidates = isDirectory ? service.candidatesForFolders() : service.candidates(for: url.pathExtension)
         Menu("folder.openWithSubmenu") {
-            ForEach(candidates) { candidate in
-                Button {
-                    Task { try? await service.open([url], with: candidate.bundleID) }
-                } label: {
-                    Label {
-                        Text(candidate.name)
-                    } icon: {
-                        Image(nsImage: NSWorkspace.shared.icon(forFile: candidate.url.path))
-                    }
+            items(candidates, setAsDefault: false)
+        }
+        // Finder と同じく ⌥ でサブメニューごと「常にこのアプリケーションで
+        // 開く」に入れ替わる [Finder 対比監査、AS-01]。選んだアプリを
+        // qooLibrary 内部の既定アプリとして保存してから開く（macOS システム
+        // 全体の関連付けは変更しない、`AppAssociationService` のコメント参照）。
+        .modifierKeyAlternate(.option) {
+            if canSetAsDefault {
+                Menu("folder.alwaysOpenWithSubmenu") {
+                    items(candidates, setAsDefault: true)
                 }
             }
-            if !candidates.isEmpty {
-                Divider()
-            }
-            Button("folder.openWithOtherEllipsis") { chooseOtherApplication() }
         }
     }
 
-    /// Finder の「Open With > その他…」相当。選んだアプリはこの1回だけ使う
-    /// （既定アプリとして保存するかどうかは環境設定「関連付け」タブの役割）。
-    private func chooseOtherApplication() {
+    @ViewBuilder
+    private func items(_ candidates: [AppCandidate], setAsDefault: Bool) -> some View {
+        ForEach(candidates) { candidate in
+            Button {
+                open(with: candidate.bundleID, setAsDefault: setAsDefault)
+            } label: {
+                Label {
+                    Text(candidate.name)
+                } icon: {
+                    Image(nsImage: NSWorkspace.shared.icon(forFile: candidate.url.path))
+                }
+            }
+        }
+        if !candidates.isEmpty {
+            Divider()
+        }
+        Button("folder.openWithOtherEllipsis") { chooseOtherApplication(setAsDefault: setAsDefault) }
+    }
+
+    /// `setAsDefault` が `true` のときは、開く前にこの拡張子の既定アプリとして
+    /// 保存する [AS-01]。保存に失敗しても開く動作自体は続行する — 既定に
+    /// できなかったことと、いま開けないことは別の問題のため。
+    private func open(with bundleID: String, setAsDefault: Bool) {
+        Task {
+            if setAsDefault {
+                do {
+                    try await service.setPrimary(bundleID, for: url.pathExtension)
+                } catch {
+                    await NotificationRouter.shared.presentError(
+                        error, whatHappened: String(localized: "error.setDefaultApplicationFailed", locale: locale)
+                    )
+                }
+            }
+            do {
+                try await service.open([url], with: bundleID)
+            } catch {
+                // 以前はここで `try?` により黙って握りつぶしていた
+                // [ER-01: 失敗はすべて `NotificationRouter` 経由で提示する]。
+                await NotificationRouter.shared.presentError(
+                    error, whatHappened: String(localized: "error.openWithApplicationFailed", locale: locale)
+                )
+            }
+        }
+    }
+
+    /// Finder の「このアプリケーションで開く > その他…」相当。`setAsDefault`
+    /// が `false` なら選んだアプリはこの1回だけ使う（既定として保存するかは
+    /// 環境設定「ビューア」タブ、または ⌥ 側の「常に…」の役割）。
+    private func chooseOtherApplication(setAsDefault: Bool) {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
@@ -1380,7 +1472,7 @@ struct OpenWithMenu: View {
         guard panel.runModal() == .OK, let appURL = panel.url,
               let bundle = Bundle(url: appURL), let bundleID = bundle.bundleIdentifier
         else { return }
-        Task { try? await service.open([url], with: bundleID) }
+        open(with: bundleID, setAsDefault: setAsDefault)
     }
 }
 

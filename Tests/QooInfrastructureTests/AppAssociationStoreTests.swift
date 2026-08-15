@@ -37,6 +37,40 @@ import Testing
         #expect(primary?.bundleID == stableBundleID)
     }
 
+    /// [Finder 対比監査] コンテキストメニューの「常にこのアプリケーションで
+    /// 開く」（「このアプリケーションで開く」の ⌥ 代替）は、一覧に無い拡張子
+    /// に対しても実行できる。関連付けだけ保存して一覧に載せないと、環境設定
+    /// 「ビューア」タブ（`extensions()` しか表示しない）に現れず、後から確認も
+    /// 変更もできない迷子の設定になってしまうため、ストア側で一覧にも加える。
+    @Test func setPrimaryAddsTheExtensionToTheManagedList() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = AppAssociationStore(storageURL: root.appendingPathComponent("state.json"))
+        let before = await store.extensions()
+        #expect(!before.contains("qoo-test-ext"))
+
+        try await store.setPrimary(stableBundleID, for: "QOO-TEST-EXT") // 大文字でも小文字で登録される
+
+        let after = await store.extensions()
+        #expect(after.contains("qoo-test-ext"))
+    }
+
+    /// 逆に「システムの既定に従う」へ戻しただけでは一覧から外さない
+    /// （管理対象から降ろすのは `removeExtension(_:)` の役割）。
+    @Test func setPrimaryToNilKeepsTheExtensionInTheManagedList() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = AppAssociationStore(storageURL: root.appendingPathComponent("state.json"))
+        try await store.setPrimary(stableBundleID, for: "qoo-test-ext")
+
+        try await store.setPrimary(nil, for: "qoo-test-ext")
+
+        let extensions = await store.extensions()
+        #expect(extensions.contains("qoo-test-ext"))
+        let primary = await store.primary(for: "qoo-test-ext")
+        #expect(primary == nil)
+    }
+
     /// 拡張子は大文字小文字を区別しない。
     @Test func setPrimaryIsCaseInsensitiveForExtension() async throws {
         let root = try makeTempDir()

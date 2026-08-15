@@ -47,6 +47,11 @@ public protocol AppAssociationService: Sendable {
     /// （システムの関連付けに従う）[AS2-01]。
     func primary(for ext: String) async -> AppCandidate?
     /// `nil` を渡すと「システムの既定に従う」に戻す [AS-01]。
+    ///
+    /// 実装は、関連付けを設定したとき（`bundleID` が `nil` でないとき）その
+    /// 拡張子を `extensions()` の一覧にも必ず加えること — 環境設定「ビューア」
+    /// タブは一覧に載っている拡張子しか表示しないため、載せないと設定した
+    /// 関連付けを後から確認・変更できなくなる。
     func setPrimary(_ bundleID: String?, for ext: String) async throws
     /// 指定したアプリで開く。`bundleID` が `nil` なら `primary(for:)` →
     /// 無ければシステムの既定アプリの順にフォールバックする [FM-06]。

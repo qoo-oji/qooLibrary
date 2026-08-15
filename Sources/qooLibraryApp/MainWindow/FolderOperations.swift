@@ -320,13 +320,39 @@ final class FolderOperations {
     /// （末尾スラッシュ等）で一致しないことがあった [実機検証で発見、
     /// `SessionState.cutURLs` のコメント参照]。
     func paste(into destination: URL, onSuccess: @escaping @MainActor () -> Void = {}) {
-        guard let urls = NSPasteboard.general.readObjects(forClasses: [NSURL.self]) as? [URL], !urls.isEmpty else { return }
+        performPaste(into: destination, forcingMove: false, onSuccess: onSuccess)
+    }
+
+    /// Finder の「ここに項目を移動」（`⌥⌘V`、「ペースト」の ⌥ 代替）
+    /// [Finder 対比監査]。カット状態かどうかに関わらず常に移動として貼り付ける。
+    func moveItemsHere(into destination: URL, onSuccess: @escaping @MainActor () -> Void = {}) {
+        performPaste(into: destination, forcingMove: true, onSuccess: onSuccess)
+    }
+
+    private func performPaste(
+        into destination: URL, forcingMove: Bool,
+        onSuccess: @escaping @MainActor () -> Void
+    ) {
+        guard var urls = NSPasteboard.general.readObjects(forClasses: [NSURL.self]) as? [URL], !urls.isEmpty else { return }
         let isCutPaste = !SessionState.shared.cutURLs.isEmpty
             && Set(urls.map { $0.standardizedFileURL.path }) == SessionState.shared.cutURLs
-        let command: any Command = isCutPaste
+        let isMove = forcingMove || isCutPaste
+
+        if isMove {
+            // 既に書き込み先に居る項目を除く。移動先が現在の親と同じだと
+            // 「自分自身との衝突」になり、既定の `.ask`（`conflictResolver`
+            // 未設定）では `conflictResolutionRequired` がそのまま技術的な
+            // エラー文言で表示されてしまう。Finder も同じ状況では項目自体を
+            // 無効にするため、ここで静かに除外するのが挙動として自然。
+            let destinationPath = destination.standardizedFileURL.path
+            urls.removeAll { $0.deletingLastPathComponent().standardizedFileURL.path == destinationPath }
+            guard !urls.isEmpty else { return }
+        }
+
+        let command: any Command = isMove
             ? MoveFilesCommand(items: urls, destination: destination)
             : CopyFilesCommand(items: urls, destination: destination)
-        run(command, failure: "error.pasteFailed") {
+        run(command, failure: isMove ? "error.moveItemsHereFailed" : "error.pasteFailed") {
             if isCutPaste { SessionState.shared.cutURLs = [] }
             onSuccess()
         }
@@ -349,11 +375,22 @@ final class FolderOperations {
     /// `UserDefaults` キーを共有する]。
     var compressionOptions: CompressionOptions {
         let defaults = UserDefaults.standard
+        let format = defaults.string(forKey: PreferenceKeys.compressionFormat).flatMap(CompressibleFormat.init(rawValue:)) ?? .zip
+        let storedEncryption = defaults.string(forKey: PreferenceKeys.compressionEncryption).flatMap(ArchiveEncryptionMethod.init(rawValue:)) ?? .none
         return CompressionOptions(
-            format: defaults.string(forKey: PreferenceKeys.compressionFormat).flatMap(CompressibleFormat.init(rawValue:)) ?? .zip,
+            format: format,
             zipLevel: (defaults.object(forKey: PreferenceKeys.compressionZipLevel) as? Int).flatMap(ZipCompressionLevel.init(rawValue:)) ?? .normal,
             sevenZipCodec: defaults.string(forKey: PreferenceKeys.compressionSevenZipCodec).flatMap(SevenZipCodec.init(rawValue:)) ?? .ppmd,
-            encryption: defaults.string(forKey: PreferenceKeys.compressionEncryption).flatMap(ArchiveEncryptionMethod.init(rawValue:)) ?? .none
+            // **形式が暗号化に対応していなければ、保存されている方式は無視する。**
+            // 環境設定「圧縮／展開」タブは 7z を選ぶと暗号化の選択肢を隠すだけで
+            // 保存済みの値は消さないため、「zip + AES-256 に設定 → あとで 7z に
+            // 変更」した利用者は、正規化しないと素の「ここに圧縮」でパスワードを
+            // 尋ねられたうえで**平文の .7z** を受け取ってしまう（libarchive の
+            // 7z ライターは暗号化オプションを黙って無視する、実測済み）。
+            // 読み取りのこの 1 箇所で潰しておけば、`compressHere` /
+            // `compressWithDialog` / `compressHereWithPassword` のどの経路でも
+            // 同じ保証が効く [code-review の指摘で発見]。
+            encryption: format == .zip ? storedEncryption : .none
         )
     }
 
@@ -386,6 +423,41 @@ final class FolderOperations {
         beginCompression(PendingCompression(
             items: urls, destinationName: name, destinationFolder: destinationFolder,
             options: compressionOptions, conflictPolicy: .keepBoth, onCompleted: onCompleted
+        ))
+    }
+
+    /// Finder の「パスワード付きで圧縮」（「圧縮」の ⌥ 代替）[Finder 対比監査]。
+    /// 環境設定で暗号化を無効にしていても、この操作のときだけ暗号化を有効に
+    /// してパスワードシートを開く。
+    ///
+    /// **既定形式が zip のときだけ提供する**（`canCompressWithPassword`）。
+    /// libarchive の 7z ライターは暗号化オプション自体を持たず、指定しても
+    /// 黙って無視される（`LibarchiveBackendTests` で実測済み）ため、7z のまま
+    /// 提供するとパスワードを尋ねておきながら平文のアーカイブを作ってしまう。
+    /// 黙って zip に切り替えることもしない — 環境設定「圧縮／展開」タブで
+    /// 「7z 選択時は暗号化 UI 自体を表示しない」としたのと同じ、
+    /// 「機能しない設定を見せない」方針に揃える［設計判断］。
+    var canCompressWithPassword: Bool {
+        compressionOptions.format == .zip
+    }
+
+    func compressHereWithPassword(
+        _ urls: [URL], into destinationFolder: URL,
+        onCompleted: @escaping @MainActor (URL) -> Void = { _ in }
+    ) {
+        guard !urls.isEmpty, canCompressWithPassword else { return }
+        var options = compressionOptions
+        if options.encryption == .none {
+            // 環境設定で方式を選んでいれば尊重し、無効のときだけ既定を補う。
+            // `zipTraditional` は既知の攻撃手法で短時間に突破できる弱い暗号化
+            // （`ArchiveEncryptionMethod` のコメント参照）のため、明示的に
+            // 選ばれていない限り採用しない。
+            options.encryption = .aes256
+        }
+        let name = urls.count == 1 ? Self.archiveBaseName(urls[0]) : destinationFolder.lastPathComponent
+        beginCompression(PendingCompression(
+            items: urls, destinationName: name, destinationFolder: destinationFolder,
+            options: options, conflictPolicy: .keepBoth, onCompleted: onCompleted
         ))
     }
 

@@ -25,6 +25,12 @@ struct FolderMenuActions {
     var canDuplicate = false
     var canMakeAlias = false
     var canCompress = false
+    /// Finder の「パスワード付きで圧縮」（「圧縮」の ⌥ 代替）[Finder 対比監査]。
+    /// `canCompress`（選択があるか）に加えて、既定の圧縮形式が暗号化に対応して
+    /// いるか（`FolderOperations.canCompressWithPassword`）にも依存する。
+    /// メニューバーではこのフラグで項目を**無効化**する（項目自体を消さない
+    /// 理由は `FileMenuCommands` のコメント参照）。
+    var canCompressWithPassword = false
     var canMoveToTrash = false
     /// [FM-14] 完全削除。`canMoveToTrash` と条件は同じだが、意味が異なる
     /// （取り消せない操作）ため別のフラグとして持つ。
@@ -34,6 +40,8 @@ struct FolderMenuActions {
     var canCut = false
     var canPaste = false
     var canSelectAll = false
+    /// Finder の「すべてを選択解除」（「すべてを選択」の ⌥ 代替）[Finder 対比監査]。
+    var canDeselectAll = false
     var canRevealInFinder = false
 
     var open: () -> Void = {}
@@ -44,13 +52,16 @@ struct FolderMenuActions {
     var duplicate: () -> Void = {}
     var makeAlias: () -> Void = {}
     var compress: () -> Void = {}
+    var compressWithPassword: () -> Void = {}
     var moveToTrash: () -> Void = {}
     var deletePermanently: () -> Void = {}
     var copyPath: () -> Void = {}
     var copy: () -> Void = {}
     var cut: () -> Void = {}
     var paste: () -> Void = {}
+    var moveItemsHere: () -> Void = {}
     var selectAll: () -> Void = {}
+    var deselectAll: () -> Void = {}
     var revealInFinder: () -> Void = {}
 }
 

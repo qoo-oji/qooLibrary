@@ -34,6 +34,13 @@ struct AssociationPreferencesTab: View {
 
     @State private var candidatesByExtension: [String: [AppCandidate]] = [:]
     @State private var primaryByExtension: [String: String] = [:] // 拡張子 → bundleID（未設定は無し）
+    /// `candidates(for:)`（`urlsForApplications` の結果）に現れないのに既定に
+    /// 設定されているアプリ。コンテキストメニューの「常にこのアプリケーションで
+    /// 開く > その他…」で、その拡張子の UTType を宣言していないアプリを選んだ
+    /// 場合に起きる。選択肢に足さないと `Picker` がどのタグにも一致せず空欄に
+    /// なり、しかも触った瞬間に黙って別のアプリへ置き換わってしまう
+    /// [code-review の指摘]。
+    @State private var unlistedPrimaryByExtension: [String: AppCandidate] = [:]
     @State private var extensions: [String] = []
     @State private var newExtensionText = ""
     @State private var addExtensionErrorKey: String?
@@ -86,7 +93,7 @@ struct AssociationPreferencesTab: View {
         LabeledContent(ext.uppercased()) {
             Picker(ext.uppercased(), selection: primaryBinding(for: ext)) {
                 Text("preferences.associations.systemDefault").tag(Optional<String>.none)
-                ForEach(candidatesByExtension[ext] ?? []) { candidate in
+                ForEach(options(for: ext)) { candidate in
                     Label {
                         Text(candidate.name)
                     } icon: {
@@ -97,6 +104,17 @@ struct AssociationPreferencesTab: View {
             }
             .labelsHidden()
         }
+    }
+
+    /// 候補アプリに、一覧へ現れない既定アプリを補った選択肢
+    /// （`unlistedPrimaryByExtension` のコメント参照）。
+    private func options(for ext: String) -> [AppCandidate] {
+        var list = candidatesByExtension[ext] ?? []
+        if let unlisted = unlistedPrimaryByExtension[ext],
+           !list.contains(where: { $0.bundleID == unlisted.bundleID }) {
+            list.append(unlisted)
+        }
+        return list
     }
 
     private func primaryBinding(for ext: String) -> Binding<String?> {
@@ -136,7 +154,7 @@ struct AssociationPreferencesTab: View {
         candidatesByExtension[ext] = service.candidates(for: ext)
         Task {
             try? await service.addExtension(ext)
-            primaryByExtension[ext] = await service.primary(for: ext)?.bundleID
+            await refreshPrimary(for: ext)
         }
     }
 
@@ -144,6 +162,7 @@ struct AssociationPreferencesTab: View {
         extensions.removeAll { $0 == ext }
         candidatesByExtension.removeValue(forKey: ext)
         primaryByExtension.removeValue(forKey: ext)
+        unlistedPrimaryByExtension.removeValue(forKey: ext)
         Task {
             try? await service.removeExtension(ext)
         }
@@ -153,7 +172,19 @@ struct AssociationPreferencesTab: View {
         extensions = await service.extensions()
         for ext in extensions {
             candidatesByExtension[ext] = service.candidates(for: ext)
-            primaryByExtension[ext] = await service.primary(for: ext)?.bundleID
+            await refreshPrimary(for: ext)
+        }
+    }
+
+    /// 既定アプリを読み直し、`candidates(for:)` に含まれない場合は
+    /// `unlistedPrimaryByExtension` へ退避する（`options(for:)` 参照）。
+    private func refreshPrimary(for ext: String) async {
+        let primary = await service.primary(for: ext)
+        primaryByExtension[ext] = primary?.bundleID
+        if let primary, !(candidatesByExtension[ext] ?? []).contains(where: { $0.bundleID == primary.bundleID }) {
+            unlistedPrimaryByExtension[ext] = primary
+        } else {
+            unlistedPrimaryByExtension.removeValue(forKey: ext)
         }
     }
 }

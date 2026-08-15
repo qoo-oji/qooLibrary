@@ -222,24 +222,43 @@ private struct FileMenuCommands: View {
             .disabled(actions?.canMakeAlias != true)
         Button("action.compress") { actions?.compress() }
             .disabled(actions?.canCompress != true)
+            // Finder と同じく ⌥ で「パスワード付きで圧縮」に入れ替わる
+            // [Finder 対比監査]。
+            //
+            // **メニューバーでは「隠す」ではなく「無効にする」**。コンテキスト
+            // メニュー側（`FolderContentView`／`FolderTreeContextMenu`）は
+            // 項目自体を出さないが、ここで同じことをすると 2 つ問題がある:
+            // ① 項目の有無を `@FocusedValue` に依存させると、フォーカス中の
+            //    ウインドウがまだ値を公開していない起動直後などに項目が消える
+            //    （実測: 起動直後のダンプで代替項目が生成されなかった）。
+            // ② 代わりに `@AppStorage` を `if` 条件で読むのは、SwiftUI の
+            //    Observation が無限に再評価してハングする既知の不具合を踏む
+            //    パターンそのもの（CLAUDE.md「タブバー表示トグル」参照）。
+            // メニューバーは項目が固定で有効/無効だけが変わるのが macOS の
+            // 作法でもあるため、他の項目と同じ `.disabled` に揃える。
+            .modifierKeyAlternate(.option) {
+                Button("folder.compressHereWithPassword") { actions?.compressWithPassword() }
+                    .disabled(actions?.canCompressWithPassword != true)
+            }
         Divider()
         Button("folder.revealInFinder") { actions?.revealInFinder() }
             .disabled(actions?.canRevealInFinder != true)
         Divider()
         Button("folder.moveToTrash", role: .destructive) { actions?.moveToTrash() }
             .disabled(actions?.canMoveToTrash != true)
-        // 中央ペイン／フォルダツリーのコンテキストメニューと同じ構成にそろえる
-        // [ユーザー要望]。Finder ではどちらも ⌥ でだけ現れる項目だが、SwiftUI
-        // では ⌥ による入れ替えが実装できない（メニュー内容は初回構築後に
-        // キャッシュされ body が再評価されないことを実測で確認）ため、
-        // サブメニューへ退避する。
-        Menu("folder.moreSubmenu") {
-            Button("folder.copyPath") { actions?.copyPath() } // [FM-10]
-                .disabled(actions?.canCopyPath != true)
-            Divider()
-            Button("folder.deletePermanentlyEllipsis", role: .destructive) { actions?.deletePermanently() } // [FM-14]
-                .disabled(actions?.canDeletePermanently != true)
-        }
+            // Finder と同じく ⌥ で「すぐに削除…」に入れ替わる [FM-14]
+            // [Finder 対比監査]。**ここでは `.keyboardShortcut` を付けない**
+            // （このファイル冒頭の方針どおり）ため、⌥⌘⌫ のような既定の
+            // キー割り当ては生えない — [FM-16]「完全削除に既定のキーバインドを
+            // 割り当てない」と矛盾しないことを実測でも確認済み（代替項目の
+            // キー等価は入力不能な U+0000 になる）。
+            .modifierKeyAlternate(.option) {
+                Button("folder.deletePermanentlyEllipsis", role: .destructive) { actions?.deletePermanently() }
+                    .disabled(actions?.canDeletePermanently != true)
+            }
+        // 「パス名をコピー」はここに退避していた「その他」サブメニューではなく、
+        // Finder と同じく Edit メニューの「コピー」の ⌥ 代替になった
+        // （`EditMenuCommands` 参照）。
     }
 }
 
@@ -256,11 +275,26 @@ private struct EditMenuCommands: View {
             .disabled(actions?.canCut != true)
         Button("action.copy") { actions?.copy() }
             .disabled(actions?.canCopy != true)
+            // 以下 3 つはいずれも Finder と同じ ⌥ 代替 [Finder 対比監査。
+            // ⌥ 代替の一覧と、対応しなかった項目の理由は CLAUDE.md
+            // 「Finder の ⌥ 代替項目」節を参照]。
+            .modifierKeyAlternate(.option) {
+                Button("folder.copyPath") { actions?.copyPath() } // [FM-10]
+                    .disabled(actions?.canCopyPath != true)
+            }
         Button("action.paste") { actions?.paste() }
             .disabled(actions?.canPaste != true)
+            .modifierKeyAlternate(.option) {
+                Button("folder.moveItemsHere") { actions?.moveItemsHere() }
+                    .disabled(actions?.canPaste != true)
+            }
         Divider()
         Button("action.selectAll") { actions?.selectAll() }
             .disabled(actions?.canSelectAll != true)
+            .modifierKeyAlternate(.option) {
+                Button("action.deselectAll") { actions?.deselectAll() }
+                    .disabled(actions?.canDeselectAll != true)
+            }
     }
 }
 

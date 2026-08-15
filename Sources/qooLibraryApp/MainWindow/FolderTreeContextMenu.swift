@@ -204,6 +204,13 @@ struct FolderTreeContextMenu: View {
         Button("action.newFolder") { actions.beginNewFolder(context) } // [FM-01]
         Button("action.paste") { operations.paste(into: context.url) }
             .disabled(!operations.canPaste)
+            // Finder と同じく ⌥ で「ここに項目を移動」に入れ替わる
+            // [Finder 対比監査。⌥ 代替の一覧と、対応しなかった項目の理由は
+            // CLAUDE.md「Finder の ⌥ 代替項目」節を参照]。
+            .modifierKeyAlternate(.option) {
+                Button("folder.moveItemsHere") { operations.moveItemsHere(into: context.url) }
+                    .disabled(!operations.canPaste)
+            }
     }
 
     // MARK: 編集系
@@ -219,6 +226,14 @@ struct FolderTreeContextMenu: View {
         }
         if context.allowsItemOperations {
             Button("action.copy") { operations.copyToPasteboard([context.url]) }
+                // Finder と同じく ⌥ で「パス名をコピー」に入れ替わる [FM-10]。
+                // 対にした結果、以前は無条件に出していた「パス名をコピー」も
+                // 「コピー」と同じ条件（ボリュームのルート行では出さない）に
+                // 従う——Finder のサイドバーもボリュームにはコピー系を出さない
+                // ため、こちらの方が一貫する。
+                .modifierKeyAlternate(.option) {
+                    Button("folder.copyPath") { operations.copyPaths([context.url]) }
+                }
         }
         if context.allowsStructuralOperations {
             Button("action.cut") { operations.cutToPasteboard([context.url]) }
@@ -230,6 +245,17 @@ struct FolderTreeContextMenu: View {
         if context.allowsStructuralOperations {
             Divider()
             Button("folder.moveToTrash", role: .destructive) { operations.moveToTrash([context.url]) } // [FM-04]
+                // Finder と同じく ⌥ で「すぐに削除…」に入れ替わる [FM-14]。
+                // 対にしたことで「完全削除はゴミ箱と同じ条件でしか出さない」
+                // （ボリュームのマウントポイントと登録ルートには出さない）が
+                // 構造的に保証される — 特に登録ルートを完全削除すると復元手段が
+                // 無く、`OfflineRegisteredFolderRow` へのフォールバック [SB-05]
+                // すら意味を成さなくなる。
+                .modifierKeyAlternate(.option) {
+                    Button("folder.deletePermanentlyEllipsis", role: .destructive) {
+                        operations.deletePermanently([context.url])
+                    }
+                }
         }
     }
 
@@ -243,6 +269,16 @@ struct FolderTreeContextMenu: View {
             Divider()
             Menu("folder.compressSubmenu") {
                 Button("folder.compressHere") { operations.compressHere([context.url], into: context.parentURL) } // [AR-10]
+                    // Finder と同じく ⌥ で「パスワード付きで圧縮」に入れ替わる。
+                    // 既定の圧縮形式が暗号化に対応しているときだけ差し替える
+                    // （`FolderOperations.canCompressWithPassword` 参照）。
+                    .modifierKeyAlternate(.option) {
+                        if operations.canCompressWithPassword {
+                            Button("folder.compressHereWithPassword") {
+                                operations.compressHereWithPassword([context.url], into: context.parentURL)
+                            }
+                        }
+                    }
                 Button("folder.compressEllipsis") { operations.compressWithDialog([context.url], startingIn: context.parentURL) } // [AR-11]
             }
         }
@@ -260,20 +296,9 @@ struct FolderTreeContextMenu: View {
         if context.allowsStructuralOperations {
             Button("folder.createAlias") { operations.createAliases(for: [context.url], in: context.parentURL) }
         }
-        // 中央ペインと同じ構成 [ユーザー要望]。「完全削除」は構造を変える操作
-        // なので、ゴミ箱と同じくボリュームのマウントポイントと登録ルートには
-        // 出さない（`allowsStructuralOperations` のコメント参照）— 特に登録
-        // ルートを完全削除すると復元手段が無く、`OfflineRegisteredFolderRow`
-        // へのフォールバック [SB-05] すら意味を成さなくなる。
-        Menu("folder.moreSubmenu") {
-            Button("folder.copyPath") { operations.copyPaths([context.url]) } // [FM-10]
-            if context.allowsStructuralOperations {
-                Divider()
-                Button("folder.deletePermanentlyEllipsis", role: .destructive) { // [FM-14]
-                    operations.deletePermanently([context.url])
-                }
-            }
-        }
+        // 「パス名をコピー」「すぐに削除…」はここに退避していた「その他」
+        // サブメニューではなく、Finder と同じくそれぞれ「コピー」「ゴミ箱に
+        // 入れる」の ⌥ 代替になった（`editingSection`／`trashSection` 参照）。
     }
 
     // MARK: ロック
