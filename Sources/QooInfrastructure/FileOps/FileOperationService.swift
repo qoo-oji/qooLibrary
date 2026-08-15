@@ -63,15 +63,48 @@ public actor FileOperationService {
     }
 
     public func copy(_ items: [URL], to destination: URL, options: OpOptions = .init()) async throws -> [OpReceipt] {
-        try await transfer(items, to: destination, options: options, kind: .copy) { source, target in
-            try FileManager.default.copyItem(at: source, to: target)
+        try await transfer(items, to: destination, options: options, kind: .copy) { source, target, onBytes in
+            try FileCopyEngine.copy(from: source, to: target, onBytesCopied: onBytes)
         }
     }
 
     public func move(_ items: [URL], to destination: URL, options: OpOptions = .init()) async throws -> [OpReceipt] {
-        try await transfer(items, to: destination, options: options, kind: .move) { source, target in
-            try FileManager.default.moveItem(at: source, to: target)
+        try await transfer(items, to: destination, options: options, kind: .move) { source, target, onBytes in
+            try Self.moveItem(from: source, to: target, onBytesCopied: onBytes)
         }
+    }
+
+    /// 移動の実体。
+    ///
+    /// **同一ボリュームなら `rename(2)` で一瞬**（バイトを 1 つも運ばない）。
+    /// 別ボリュームへは Foundation と同じく「コピーしてから元を消す」しかなく、
+    /// そこは時間がかかるので `FileCopyEngine` に任せて進捗と中断を効かせる。
+    ///
+    /// 中断された場合は**元を消さない** — 運びきれていないのに消したら
+    /// データを失う。
+    private static func moveItem(
+        from source: URL, to target: URL, onBytesCopied: @escaping (Int64) -> Void
+    ) throws -> FileCopyEngine.Outcome {
+        // **`renamex_np` + `RENAME_EXCL` を使う** [レビューで発見]。素の
+        // `rename(2)` は宛先を**黙って上書きする**ため、`FileManager.moveItem`
+        // が持っていた「既にあるなら失敗する」安全弁を失っていた（コピー側は
+        // `COPYFILE_EXCL` を保っているのに移動側だけ穴が空いている、という
+        // 非対称な状態だった）。衝突は事前に解決してある約束なので、ここは
+        // 取りこぼしたときに健康なファイルを書き潰さないための最後の砦。
+        // `Darwin.` を明示するのは、素の名前がこの型自身の
+        // `rename(_:to:options:)` に解決されてしまうため。
+        if Darwin.renamex_np(source.path, target.path, UInt32(RENAME_EXCL)) == 0 {
+            return .completed(bytes: 0)
+        }
+        guard errno == EXDEV else {
+            throw FileOperationError.operationFailed(
+                "移動に失敗しました（\(String(cString: strerror(errno)))）: \(source.lastPathComponent)"
+            )
+        }
+        let outcome = try FileCopyEngine.copy(from: source, to: target, onBytesCopied: onBytesCopied)
+        guard case .completed = outcome else { return outcome }
+        try FileManager.default.removeItem(at: source)
+        return outcome
     }
 
     /// 展開のステージングディレクトリ直下の項目を最終位置へ移送する [EX-04]。
@@ -84,8 +117,8 @@ public actor FileOperationService {
         let items = try FileManager.default.contentsOfDirectory(
             at: staging, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
         )
-        return try await transfer(items, to: destination, options: options, kind: .promoteFromStaging) { source, target in
-            try FileManager.default.moveItem(at: source, to: target)
+        return try await transfer(items, to: destination, options: options, kind: .promoteFromStaging) { source, target, onBytes in
+            try Self.moveItem(from: source, to: target, onBytesCopied: onBytes)
         }
     }
 
@@ -339,23 +372,41 @@ public actor FileOperationService {
         to destination: URL,
         options: OpOptions,
         kind: OperationKind,
-        perform: (URL, URL) throws -> Void
+        perform: (URL, URL, @escaping (Int64) -> Void) throws -> FileCopyEngine.Outcome
     ) async throws -> [OpReceipt] {
         // 移動元の各項目（親フォルダの一覧が変わる）と、書き込み先フォルダ
         // （そのフォルダの一覧が変わる）の両方を伝える。
         defer { announce(items + [destination]) }
+        var tracker = ProgressTracker(
+            reporter: options.progress,
+            items: items,
+            destination: destination
+        )
+        tracker.begin()
         var receipts: [OpReceipt] = []
         for item in items {
+            // ユーザーが中断したら、そこまでに運び終えた分だけを返す
+            // （運び終えた項目は Undo できる状態で残る）[ER-16 の精神]。
+            if Task.isCancelled { break }
+            tracker.startItem(item)
             let target = destination.appendingPathComponent(item.lastPathComponent)
             guard let resolved = try await resolveDestination(item, target, options: options) else {
                 Log.fileOps.debug("\(kind.logLabel): 衝突方針によりスキップ \(Log.path(item))")
+                tracker.finishItem()
                 continue // [ConflictPolicy.skip]
             }
             let before = try? identity(of: item)
+            var cancelled = false
             do {
-                try withReplaceBackupCleanup(resolved) {
-                    try perform(item, resolved.target)
+                // 中断は「成功しなかった」として扱う — `.replace` の退避を
+                // 消させないため（`withReplaceBackupCleanup` のコメント参照）。
+                let outcome = try withReplaceBackupCleanup(resolved, succeeded: { outcome in
+                    if case .completed = outcome { return true }
+                    return false
+                }) {
+                    try perform(item, resolved.target) { bytes in tracker.addBytes(bytes) }
                 }
+                if case .cancelled = outcome { cancelled = true }
             } catch {
                 // **どの項目で止まったか**を必ず残す [LG2-01]。一括処理の
                 // 途中で失敗すると、それまでに成功した分の `OpReceipt` は
@@ -367,8 +418,13 @@ public actor FileOperationService {
                 )
                 throw error
             }
+            if cancelled {
+                Log.fileOps.info("\(kind.logLabel) を中断しました（\(receipts.count)/\(items.count) 件まで完了）")
+                break
+            }
             Log.fileOps.debug("\(kind.logLabel): \(Log.path(item)) → \(Log.path(resolved.target))")
             receipts.append(OpReceipt(before: before, after: try? identity(of: resolved.target), fromURL: item, toURL: resolved.target, kind: kind))
+            tracker.finishItem()
         }
         Log.fileOps.info("\(kind.logLabel) 完了: \(receipts.count)/\(items.count) 件 → \(Log.path(destination))")
         return receipts
@@ -431,20 +487,58 @@ public actor FileOperationService {
     /// 成功すればバックアップを削除し、失敗すればバックアップを元の場所へ書き戻して
     /// からエラーを再送出する（`.replace` 以外では `backupOfReplaced` が `nil` の
     /// ため何もしない）。
-    private func withReplaceBackupCleanup<T>(_ resolved: ResolvedDestination, _ operation: () throws -> T) throws -> T {
+    /// - Parameter succeeded: `operation` の戻り値から「本当に書き終えたか」を
+    ///   判定する。**中断は失敗として扱わなければならない** — `.replace` の
+    ///   最中にキャンセルすると `copyfile` は書きかけの宛先を消すので、
+    ///   成功扱いで退避まで消すと**退避元と書き込み先の両方を失う**
+    ///   [レビューで発見。今回入れた変更の中で最も危険な経路だった]。
+    private func withReplaceBackupCleanup<T>(
+        _ resolved: ResolvedDestination,
+        succeeded: (T) -> Bool = { _ in true },
+        _ operation: () throws -> T
+    ) throws -> T {
         do {
             let result = try operation()
+            guard succeeded(result) else {
+                restoreReplacedItem(resolved)
+                return result
+            }
             if let backup = resolved.backupOfReplaced {
-                try? FileManager.default.removeItem(at: backup)
+                // **消さずにゴミ箱へ送る** [レビューで発見]。`.replace` が UI から
+                // 到達できるようになった [FM-11] ことで、「置き換える」を選んだ
+                // 直後に ⌘Z すると、コピーは取り消されるのに置き換えられた
+                // 元のファイルはもう戻らない、という取り返しのつかない経路が
+                // できていた。ゴミ箱にあれば手で戻せる（Undo が新たなデータ
+                // 喪失を持ち込まない、という本コードベースの原則 [UD-03]）。
+                moveReplacedItemToTrash(backup)
             }
             return result
         } catch {
-            if let backup = resolved.backupOfReplaced {
-                try? FileManager.default.removeItem(at: resolved.target) // 中途半端な書き込み結果があれば破棄
-                try? FileManager.default.moveItem(at: backup, to: resolved.target)
-            }
+            restoreReplacedItem(resolved)
             throw error
         }
+    }
+
+    /// 書き込みが完了しなかったときに、退避しておいた元の項目を戻す。
+    private func restoreReplacedItem(_ resolved: ResolvedDestination) {
+        guard let backup = resolved.backupOfReplaced else { return }
+        try? FileManager.default.removeItem(at: resolved.target) // 中途半端な書き込み結果があれば破棄
+        try? FileManager.default.moveItem(at: backup, to: resolved.target)
+    }
+
+    /// 置き換えられた元の項目をゴミ箱へ送る。送れなければ最後の手段として削除する
+    /// （退避ファイルを残し続けると、次の同名操作で邪魔になる）。
+    private func moveReplacedItemToTrash(_ backup: URL) {
+        // **テスト中は実ゴミ箱に触れない** — 開発機のゴミ箱がテストの残骸で
+        // 埋まる（`DiagnosticLog` がログの出力先を振り替えるのと同じ理由）。
+        guard !RuntimeEnvironment.isRunningTests else {
+            try? FileManager.default.removeItem(at: backup)
+            return
+        }
+        var resulting: NSURL?
+        if (try? FileManager.default.trashItem(at: backup, resultingItemURL: &resulting)) != nil { return }
+        Log.fileOps.warning("置き換えた項目をゴミ箱へ送れませんでした: \(Log.path(backup))")
+        try? FileManager.default.removeItem(at: backup)
     }
 
     /// Finder に倣い `name 2.ext` `name 3.ext` の形式で連番を付与する [CF-01]。

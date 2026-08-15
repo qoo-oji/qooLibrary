@@ -131,6 +131,13 @@ struct FolderContentView: View {
     @FocusState private var isListFocused: Bool
     /// Shift クリックでの範囲選択の起点 [LV-06 相当]。
     @State private var selectionAnchor: URL?
+    /// 先頭文字で項目へ飛ぶための打鍵バッファ [ユーザー要望、Finder 標準の
+    /// type-select]。数千件のフォルダで目的の項目へ行く手段が ⌘F しか無い
+    /// のは、ファイルマネージャーとして実用に耐えない。
+    @State private var typeSelectBuffer = ListKeyboardNavigation.TypeSelectBuffer()
+    /// アイコン表示の実測列数。矢印キーの上下移動に要る
+    /// （`LazyVGrid` は自分が何列で並べたかを教えてくれない）。
+    @State private var iconGridColumnCount = 1
     /// 複数選択された行を一度にドラッグするための `dragContainer` 系 API のスコープ
     /// [DD-02][設計判断: macOS 26 で追加された API、詳細は `.draggable(containerItemID:)` の
     /// 呼び出し箇所のコメント参照]。
@@ -161,7 +168,14 @@ struct FolderContentView: View {
     /// リスト表示の現在のソート順 [LV-01]。タブ切替をまたいで保持されて構わない
     /// 軽微な状態のため `WindowState`/`TabState` へは持ち上げず、他の一時的な
     /// `@State`（`selectionAnchor` 等）と同じくこのビュー内で完結させる。
-    @State private var sortOrder: [FolderSortComparator] = [FolderSortComparator(key: .name)]
+    /// リスト表示の現在のソート順 [LV-01]。
+    ///
+    /// **アプリ全体で 1 つを覚える**［ユーザー判断］。既存のカラム表示設定・
+    /// フォルダまとめ設定と同じ扱いで、起動のたびに名前昇順へ戻らない。
+    /// Finder はフォルダごとに覚えるが、あれは `.DS_Store` に書いており、
+    /// 本アプリはライブラリ配下にファイルを作らない方針 [CL-01] なので
+    /// 同じ手は使えない。
+    @State private var sortOrder: [FolderSortComparator] = FolderSortComparator.loadPersisted()
     /// カラムの表示/非表示 [LV-02] とフォルダをまとめる設定 [LV-03] は、
     /// 特定のウインドウやタブに紐づかないアプリ全体の表示設定。1-12 環境設定
     /// （`DisplayPreferencesTab.swift`/`GeneralPreferencesTab.swift`）が
@@ -243,39 +257,7 @@ struct FolderContentView: View {
                 // コンテキストメニューの AppKit 標準機能が無いため、それぞれ
                 // `IconGridView` 側で手動再現している（詳細はそのファイルの
                 // コメント参照）。
-                IconGridView(
-                    entries: displayedEntries,
-                    selection: $selection,
-                    iconSize: iconSize,
-                    thumbnailsHidden: thumbnailHiddenReason != nil, // [DS-01]
-                    dragNamespace: dragNamespace,
-                    onOpenEntry: { openEntries([$0]) },
-                    onSingleClick: { handleSingleClick($0) },
-                    onReload: { reload() },
-                    onDropFailure: { presentFailureMessage($0) },
-                    contextMenuContent: { urls in contextMenuContent(for: urls) },
-                    renamingURL: renamingEntry?.url,
-                    renameText: $renameText,
-                    isRenameFieldFocused: $isRenameFieldFocused,
-                    onCommitRename: { commitRename() },
-                    onCancelRename: { cancelRename() },
-                    isFocused: isListFocused
-                )
-                // `Table` は標準でキーボードフォーカスを受け取れるが、
-                // `IconGridView`（`ScrollView`/`LazyVGrid`）はそうではないため
-                // `.focusable()` が無いと `.focused($isListFocused)` が何にも
-                // 結びつかず、Enter キーの `.onKeyPress` が発火しなかった
-                // [実機検証で発見]。
-                .focusable()
-                .focused($isListFocused)
-                .onKeyBindingPress(.open, store: keyBindingStore) { openSelection() }
-                .onKeyBindingPress(.quickLook, store: keyBindingStore) { quickLook.toggle() } // [QL-01]
-                .onKeyPress(.downArrow) {
-                    selectFirstOrLastIfNoneSelected(first: true) ? .handled : .ignored
-                }
-                .onKeyPress(.upArrow) {
-                    selectFirstOrLastIfNoneSelected(first: false) ? .handled : .ignored
-                }
+                iconGrid
             } else {
                 // カラムベースのリスト表示 [LV-01〜LV-03]。ソートは `sortOrder`
                 // バインディングを通してヘッダクリックで切り替わる。実際の並べ替えは
@@ -478,6 +460,11 @@ struct FolderContentView: View {
                 // [KB-02] 選択中の項目を開く。ディレクトリはダブルクリックと同じ
                 // ナビゲーション、ファイルは既定アプリで開く（Finder と同じ）。
                 .onKeyBindingPress(.open, store: keyBindingStore) { openSelection() }
+                // 先頭文字で項目へ飛ぶ [ユーザー要望]。矢印での選択移動は
+                // `Table` が AppKit から受け取るのでここでは足さない。
+                .onKeyPress(characters: .alphanumerics.union(.symbols).union(.punctuationCharacters), phases: .down) { press in
+                    handleTypeSelect(press)
+                }
                 // [QL-01] Space でプレビューを開閉する。パネルが前面にある間は
                 // 一覧がフォーカスを失うため、閉じる側は `QLPreviewPanel` 自身の
                 // Space 処理が受け持つ（Finder と同じ）。
@@ -523,41 +510,7 @@ struct FolderContentView: View {
             // ペースト・すべてを選択・複製・上の階層へ 等）は、メニュー項目自身が
             // `.fixedKeyboardShortcut(_:)` を持ちメニューにキーが表示されるので、
             // 二重登録を避けるためここからは外してある。
-            Group {
-                KeyBindingButtons(action: .rename, store: keyBindingStore, isDisabled: selection.count != 1) {
-                    beginRenameFromShortcut()
-                }
-                // [FM-16] 既定では未割り当て。環境設定「キーボード」タブで
-                // ユーザーが自分で割り当てた場合にだけ実際に効く
-                // （`KeyBindingButtons` は `combos` が空ならボタンを 1 つも
-                // 生成しない）。割り当てても確認シートは必ず経由する [FM-15]。
-                KeyBindingButtons(action: .deletePermanently, store: keyBindingStore, isDisabled: selection.isEmpty, role: .destructive) {
-                    deletePermanently(Array(selection))
-                }
-                // 戻る／進むだけは 2 つ目の ⌘←／⌘→ をここで配線する
-                // （メニュー項目が持てるショートカットは 1 つだけで、そちらは
-                // Finder 標準の ⌘[／⌘] を表示する）。
-                KeyBindingButtons(
-                    action: .goBack, store: keyBindingStore,
-                    isDisabled: !canGoBack, skipsPrimaryCombo: true
-                ) {
-                    onGoBack()
-                }
-                KeyBindingButtons(
-                    action: .goForward, store: keyBindingStore,
-                    isDisabled: !canGoForward, skipsPrimaryCombo: true
-                ) {
-                    onGoForward()
-                }
-                KeyBindingButtons(action: .makeAlias, store: keyBindingStore, isDisabled: selection.isEmpty) {
-                    createAliases(for: Array(selection))
-                }
-                KeyBindingButtons(action: .compress, store: keyBindingStore, isDisabled: selection.isEmpty) {
-                    compressHere(Array(selection))
-                }
-            }
-            .frame(width: 0, height: 0)
-            .opacity(0)
+            customisableKeyBindingButtons
         }
         .overlay {
             if isDropTargeted {
@@ -578,7 +531,7 @@ struct FolderContentView: View {
             // 過去に同種のバグが実際に踏まれている。この経路だけ移行漏れが
             // あった]。
             guard let folder = currentFolder() else { return false }
-            DropHandling.performDrop(items, into: folder, onComplete: { reload() }, onFailure: { presentFailureMessage($0) })
+            DropHandling.performDrop(items, into: folder, operations: operations, onComplete: { reload() }, onFailure: { presentFailureMessage($0) })
             return true
         } isTargeted: { isDropTargeted = $0 }
         // File/Edit メニューバーへの橋渡し [`FolderMenuActions` 参照]。
@@ -629,7 +582,10 @@ struct FolderContentView: View {
         // 3 つから決まるので、`reload()`（＝ `entries` の更新）とこの 2 つの
         // `.onChange` が揃って初めて漏れが無い（`publishQuickLookOrder()` の
         // コメント参照）。
-        .onChange(of: sortOrder) { _, _ in publishQuickLookOrder() }
+        .onChange(of: sortOrder) { _, newValue in
+            publishQuickLookOrder()
+            FolderSortComparator.persist(newValue)
+        }
         .onChange(of: groupFoldersAtTop) { _, _ in publishQuickLookOrder() }
         .alert("action.newFolder", isPresented: $showingNewFolderPrompt) {
             TextField("folder.namePlaceholder", text: $newFolderName)
@@ -721,6 +677,106 @@ struct FolderContentView: View {
         }
     }
 
+
+    /// アイコン表示 [IV-01/08/09、PF-10]。
+    ///
+    /// **`body` から切り出している** — `body` が大きくなると SwiftUI の
+    /// `ViewBuilder` 式の型検査が急激に重くなり「時間がかかりすぎる」で
+    /// 通らなくなる（`bottomBars`・`customisableKeyBindingButtons` と同じ対処）。
+    @ViewBuilder
+    private var iconGrid: some View {
+        IconGridView(
+            entries: displayedEntries,
+            selection: $selection,
+            iconSize: iconSize,
+            thumbnailsHidden: thumbnailHiddenReason != nil, // [DS-01]
+            dragNamespace: dragNamespace,
+            operations: operations,
+            onOpenEntry: { openEntries([$0]) },
+            onSingleClick: { handleSingleClick($0) },
+            onReload: { reload() },
+            onDropFailure: { presentFailureMessage($0) },
+            contextMenuContent: { urls in contextMenuContent(for: urls) },
+            renamingURL: renamingEntry?.url,
+            renameText: $renameText,
+            isRenameFieldFocused: $isRenameFieldFocused,
+            onCommitRename: { commitRename() },
+            onCancelRename: { cancelRename() },
+            isFocused: isListFocused
+        )
+        // `Table` は標準でキーボードフォーカスを受け取れるが、
+        // `IconGridView`（`ScrollView`/`LazyVGrid`）はそうではないため
+        // `.focusable()` が無いと `.focused($isListFocused)` が何にも
+        // 結びつかず、Enter キーの `.onKeyPress` が発火しなかった
+        // [実機検証で発見]。
+        .focusable()
+        .focused($isListFocused)
+        // 実測幅から列数を出す（`IconGridMetrics` のコメント参照）。
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.width
+        } action: { width in
+            iconGridColumnCount = IconGridMetrics.columnCount(width: width, iconSize: iconSize)
+        }
+        .onKeyBindingPress(.open, store: keyBindingStore) { openSelection() }
+        .onKeyBindingPress(.quickLook, store: keyBindingStore) { quickLook.toggle() } // [QL-01]
+        // アイコン表示の矢印キー移動 [ユーザー要望]。`Table` は AppKit から
+        // 無償で受け取るが `LazyVGrid` には何も無く、以前は「何も選んで
+        // いないときに先頭／末尾を選ぶ」だけで、選択後は矢印が完全に無反応
+        // だった（表示モードで挙動が食い違っていた）。
+        .onKeyPress(.downArrow) { moveIconSelection(.down) }
+        .onKeyPress(.upArrow) { moveIconSelection(.up) }
+        .onKeyPress(.leftArrow) { moveIconSelection(.left) }
+        .onKeyPress(.rightArrow) { moveIconSelection(.right) }
+        .onKeyPress(characters: .alphanumerics.union(.symbols).union(.punctuationCharacters), phases: .down) { press in
+            handleTypeSelect(press)
+        }
+    }
+
+    /// キーバインドを変更できる操作の隠しボタン一式。
+    ///
+    /// **`body` から切り出している** — ここが `body` の中にあると、
+    /// SwiftUI の `ViewBuilder` 式が大きくなりすぎて「型検査に時間が
+    /// かかりすぎる」でコンパイルが通らなくなる（このファイルでは 3 度目。
+    /// `bottomBars` と同じ対処）。
+    @ViewBuilder
+    private var customisableKeyBindingButtons: some View {
+        Group {
+            KeyBindingButtons(action: .rename, store: keyBindingStore, isDisabled: selection.count != 1) {
+                beginRenameFromShortcut()
+            }
+            // [FM-16] 既定では未割り当て。環境設定「キーボード」タブで
+            // ユーザーが自分で割り当てた場合にだけ実際に効く
+            // （`KeyBindingButtons` は `combos` が空ならボタンを 1 つも
+            // 生成しない）。割り当てても確認シートは必ず経由する [FM-15]。
+            KeyBindingButtons(action: .deletePermanently, store: keyBindingStore, isDisabled: selection.isEmpty, role: .destructive) {
+                deletePermanently(Array(selection))
+            }
+            // 戻る／進むだけは 2 つ目の ⌘←／⌘→ をここで配線する
+            // （メニュー項目が持てるショートカットは 1 つだけで、そちらは
+            // Finder 標準の ⌘[／⌘] を表示する）。
+            KeyBindingButtons(
+                action: .goBack, store: keyBindingStore,
+                isDisabled: !canGoBack, skipsPrimaryCombo: true
+            ) {
+                onGoBack()
+            }
+            KeyBindingButtons(
+                action: .goForward, store: keyBindingStore,
+                isDisabled: !canGoForward, skipsPrimaryCombo: true
+            ) {
+                onGoForward()
+            }
+            KeyBindingButtons(action: .makeAlias, store: keyBindingStore, isDisabled: selection.isEmpty) {
+                createAliases(for: Array(selection))
+            }
+            KeyBindingButtons(action: .compress, store: keyBindingStore, isDisabled: selection.isEmpty) {
+                compressHere(Array(selection))
+            }
+        }
+        .frame(width: 0, height: 0)
+        .opacity(0)
+    }
+
     /// リスト/アイコン表示モードに応じた表示オプション。**ステータスバーの
     /// 右端**に置く［ユーザー要望で移動した。以前はパスバーの右端だった］。
     @ViewBuilder
@@ -755,7 +811,8 @@ struct FolderContentView: View {
         actions.canQuickLook = !selection.isEmpty // [QL-01]
         actions.canNewFolder = folder != nil
         actions.canNewFolderWithSelection = folder != nil && !selection.isEmpty
-        actions.canRename = selection.count == 1
+        // 複数選択でも「名前を変更…」を出す（一括リネームのシートが開く）。
+        actions.canRename = !selection.isEmpty
         actions.canDuplicate = !selection.isEmpty
         actions.canMakeAlias = !selection.isEmpty
         actions.canCompress = !selection.isEmpty
@@ -793,7 +850,9 @@ struct FolderContentView: View {
             showingNewFolderPrompt = true
         }
         actions.newFolderWithSelection = { newFolderWithSelection(selected) }
-        actions.rename = { beginRenameFromShortcut() }
+        actions.rename = {
+            if selection.count > 1 { beginBulkRename(Array(selection)) } else { beginRenameFromShortcut() }
+        }
         actions.duplicate = { duplicate(selected) }
         actions.makeAlias = { createAliases(for: selected) }
         actions.compress = { compressHere(selected) }
@@ -1210,6 +1269,7 @@ struct FolderContentView: View {
                 .draggable(containerItemID: entry.url, containerNamespace: dragNamespace)
                 .modifier(DropIntoFolderModifier(
                     entry: entry,
+                    operations: operations,
                     reload: { reload() },
                     onFailure: { presentFailureMessage($0) },
                     targetedURL: $dropTargetedFolderURL,
@@ -1278,6 +1338,61 @@ struct FolderContentView: View {
     /// [実機検証時のユーザー要望、リスト・アイコン両表示で共通]。何かが既に
     /// 選択されている場合は何もしない（`false` を返し、呼び出し側は
     /// `.ignored` を返すことで `Table` 標準の行選択移動に処理を譲る）。
+    /// アイコン表示の矢印キー移動 [ユーザー要望]。
+    ///
+    /// 何も選んでいなければ、まず端の項目を選ぶ（Finder と同じ。↓ で先頭、
+    /// ↑ で末尾）。選択済みならその位置から格子上を移動する。
+    /// 移動先の計算は `ListKeyboardNavigation.gridTarget` に出してある。
+    private func moveIconSelection(_ direction: ListKeyboardNavigation.Direction) -> KeyPress.Result {
+        let items = displayedEntries
+        guard !items.isEmpty else { return .ignored }
+        guard let current = currentSelectionIndex(in: items) else {
+            // 端から入る。← → は「まだどこにも居ない」ので反応しない方が自然。
+            switch direction {
+            case .down: return selectFirstOrLastIfNoneSelected(first: true) ? .handled : .ignored
+            case .up: return selectFirstOrLastIfNoneSelected(first: false) ? .handled : .ignored
+            case .left, .right: return .ignored
+            }
+        }
+        guard let target = ListKeyboardNavigation.gridTarget(
+            from: current, direction: direction, count: items.count, columns: iconGridColumnCount
+        ) else { return .handled } // 端では動かないが、キーは消費する（ビープさせない）
+        selectSingle(items[target])
+        return .handled
+    }
+
+    /// 先頭文字で項目へ飛ぶ [ユーザー要望、Finder 標準の type-select]。
+    ///
+    /// **修飾キー付きの入力は素通しする** — ⌘C などのショートカットを
+    /// 横取りしないため。
+    private func handleTypeSelect(_ press: KeyPress) -> KeyPress.Result {
+        guard press.modifiers.isEmpty || press.modifiers == .shift else { return .ignored }
+        guard let character = press.characters.first else { return .ignored }
+        let items = displayedEntries
+        guard !items.isEmpty else { return .ignored }
+        let prefix = typeSelectBuffer.append(character)
+        guard let target = ListKeyboardNavigation.typeSelectTarget(
+            in: items, prefix: prefix, currentIndex: currentSelectionIndex(in: items), name: \.name
+        ) else { return .handled } // 一致が無くても打鍵は消費する（ビープさせない）
+        selectSingle(items[target])
+        return .handled
+    }
+
+    /// 単一選択にして、その項目までスクロールする。矢印移動・type-select 共通。
+    private func selectSingle(_ entry: FolderEntry) {
+        selection = [entry.url]
+        selectionAnchor = entry.url
+        pendingScrollTarget = entry.url
+    }
+
+    /// いま選んでいる項目の位置。複数選択なら**最後に選ばれたもの**ではなく
+    /// 表示順で最初のものを起点にする（どれを起点にしても直感に反しない
+    /// 単純な規則を選んだ）。
+    private func currentSelectionIndex(in items: [FolderEntry]) -> Int? {
+        guard !selection.isEmpty else { return nil }
+        return items.firstIndex { selection.contains($0.url) }
+    }
+
     private func selectFirstOrLastIfNoneSelected(first: Bool) -> Bool {
         guard selection.isEmpty, let target = first ? displayedEntries.first : displayedEntries.last else {
             return false
@@ -1382,9 +1497,12 @@ struct FolderContentView: View {
                 }
             }
             Divider()
-            // 名前を変更はバッチ名変更 UI が無いため単一対象時のみ。
+            // 単一選択はその場でのインライン編集、複数選択は一括リネームの
+            // シート（Finder と同じ使い分け）[FM-05、ユーザー要望]。
             if targets.count == 1, let only = targetEntries.first {
                 Button("folder.renameEllipsis", systemImage: "pencil") { beginRename(only) } // [FM-05]
+            } else if targets.count > 1 {
+                Button("menu.renameItems", systemImage: "pencil") { beginBulkRename(targets) }
             }
             Button("folder.duplicate", systemImage: "plus.square.on.square") { duplicate(targets) } // [FM-02]
             Button("action.copy", systemImage: "document.on.document") { copySelectionToPasteboard(targets) } // [KB-02 相当、⌘C]
@@ -1608,6 +1726,12 @@ struct FolderContentView: View {
 
     /// `⌘R` ショートカット用。バッチ名変更 UI が無いため単一選択時のみ動く
     /// [FM-05]。
+    /// Finder の「名前を変更…」（複数選択時）[ユーザー要望]。単一選択のときは
+    /// 従来どおり中央ペインでのインライン編集（Finder も同じ）。
+    private func beginBulkRename(_ urls: [URL]) {
+        operations.beginBulkRename(urls)
+    }
+
     private func beginRenameFromShortcut() {
         guard selection.count == 1, let url = selection.first,
               let entry = entries.first(where: { $0.url == url })
@@ -1635,15 +1759,20 @@ struct FolderContentView: View {
     /// 常にシステムの既定アプリで開いてしまっていた。
     private func openEntries(_ targets: [FolderEntry]) {
         if targets.count == 1, let only = targets.first {
-            if only.isDirectory {
-                onNavigate(only.url)
+            // [SL-02] リンクは**開くときだけ**リンク先へ追従する（表示上の
+            // 追従のみ。一覧ではリンク自体を 1 項目として見せる [SL-01]）。
+            let resolved = LinkResolver.resolve(only.url)
+            if resolved.isDirectory {
+                onNavigate(resolved.url)
             } else {
-                openWithAssociation(only.url)
+                openWithAssociation(resolved.url)
             }
             return
         }
-        for target in targets where !target.isDirectory {
-            openWithAssociation(target.url)
+        for target in targets {
+            let resolved = LinkResolver.resolve(target.url)
+            guard !resolved.isDirectory else { continue }
+            openWithAssociation(resolved.url)
         }
     }
 
@@ -1917,8 +2046,33 @@ struct FolderEntry: Identifiable {
 /// `private` を外してモジュール内可視にしている — 表示メニュー
 /// （`ViewMenuCommands`）が並び替えの選択肢としてこの `Key` を参照するため
 /// [1-16、`FolderEntry`/`DropIntoFolderModifier` と同じ扱い]。
+extension FolderSortComparator {
+    /// ソート順を覚えておく場所［ユーザー要望、アプリ全体で 1 つ］。
+    /// 既存のカラム表示設定と同じ `UserDefaults` 直接読み書きに揃える。
+    private static let persistedKeyName = "qoo.folderList.sortKey"
+    private static let persistedAscendingName = "qoo.folderList.sortAscending"
+
+    static func loadPersisted() -> [FolderSortComparator] {
+        let defaults = UserDefaults.standard
+        guard let raw = defaults.string(forKey: persistedKeyName),
+              let key = Key(rawValue: raw)
+        else { return [FolderSortComparator(key: .name)] }
+        // 未設定なら `false` が返るが、その場合は上の `guard` で抜けている。
+        let ascending = defaults.bool(forKey: persistedAscendingName)
+        return [FolderSortComparator(key: key, order: ascending ? .forward : .reverse)]
+    }
+
+    static func persist(_ comparators: [FolderSortComparator]) {
+        guard let first = comparators.first else { return }
+        UserDefaults.standard.set(first.key.rawValue, forKey: persistedKeyName)
+        UserDefaults.standard.set(first.order == .forward, forKey: persistedAscendingName)
+    }
+}
+
 struct FolderSortComparator: SortComparator {
-    enum Key: Hashable, CaseIterable {
+    /// `String` を rawValue にしているのは、並び順を `UserDefaults` へ
+    /// 保存できるようにするため（`ListStyle` と同じ理由）。
+    enum Key: String, Hashable, CaseIterable {
         case name, modificationDate, size, kind, creationDate, addedDate
     }
 
@@ -1985,6 +2139,8 @@ struct FolderSortComparator: SortComparator {
 /// 独自の背景ハイライト（既定 `true`）を使う。
 struct DropIntoFolderModifier: ViewModifier {
     let entry: FolderEntry
+    /// 衝突の判断・進捗・キャンセルを担う共有レイヤ [FM-11][UI-09]。
+    let operations: FolderOperations
     let reload: () -> Void
     let onFailure: @MainActor @Sendable (String) -> Void
     @Binding var targetedURL: URL?
@@ -1998,7 +2154,7 @@ struct DropIntoFolderModifier: ViewModifier {
                         ? Tokens.Colors.accent.opacity(0.15) : Color.clear
                 )
                 .dropDestination(for: URL.self) { items, _ in
-                    DropHandling.performDrop(items, into: entry.url, onComplete: { reload() }, onFailure: onFailure)
+                    DropHandling.performDrop(items, into: entry.url, operations: operations, onComplete: { reload() }, onFailure: onFailure)
                     return true
                 } isTargeted: { targeted in
                     if targeted {

@@ -35,4 +35,17 @@ public enum NameFilter {
         guard !trimmed.isEmpty else { return true }
         return name.range(of: trimmed, options: [.caseInsensitive, .widthInsensitive]) != nil
     }
+
+    /// `name` が `prefix` で始まるか。キー入力で項目へ飛ぶ type-select 用。
+    ///
+    /// 一致の緩さは ``matches(name:query:)`` と揃える — 同じ「見た目で一致」の
+    /// 判断が、絞り込みとキー入力で食い違ってはいけない。日本語入力のまま
+    /// 打った全角英数でも飛べる必要があるのは、こちらも同じ。
+    public static func hasPrefix(name: String, prefix: String) -> Bool {
+        guard !prefix.isEmpty else { return false }
+        guard let range = name.range(of: prefix, options: [.caseInsensitive, .widthInsensitive, .anchored]) else {
+            return false
+        }
+        return range.lowerBound == name.startIndex
+    }
 }

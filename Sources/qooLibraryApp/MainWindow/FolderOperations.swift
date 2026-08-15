@@ -41,6 +41,19 @@ final class FolderOperations {
     var pendingCompression: PendingCompression?
     /// 単一アーカイブ展開でパスワードが必要だった場合の再試行状態。
     var pendingExtractionPassword: PendingExtractionPassword?
+    /// 進行中の転送の進み具合 [UI-09][A-04]。`busyMessage` と対で使い、
+    /// 総量が分かっていれば確定進捗、分からなければ不定進捗になる。
+    var progress: OperationProgress?
+    /// 実行中の転送。進捗シートの「キャンセル」はこれを取り消す
+    /// （`FileCopyEngine` がコールバックで `Task.isCancelled` を見ている）。
+    var cancellableTask: Task<Void, Never>?
+    /// 衝突の判断を待っている状態 [FM-11]。
+    var pendingConflict: PendingConflict?
+    /// 一括リネームのシート [ユーザー要望、Finder の「名前を変更…」相当]。
+    var pendingBulkRename: PendingBulkRename?
+    /// [FM-12]「以降すべてに適用」が選ばれたあとの一括判断。1 回の操作の間だけ
+    /// 有効で、次の操作の開始時にリセットする。
+    private var conflictBlanketDecision: ConflictPolicy?
     /// 完全削除の一連のダイアログ（確認 → ロック済み項目の判断）。
     ///
     /// **1 つの `@State` に enum でまとめる** — 確認シートを閉じた直後に
@@ -71,19 +84,104 @@ final class FolderOperations {
     private func run(
         _ command: (any Command)?,
         failure: String.LocalizationValue,
+        busyMessageKey: String.LocalizationValue? = nil,
         onSuccess: @escaping @MainActor () -> Void
     ) {
         guard let command else { return }
-        Task {
+        if let busyMessageKey { busyMessage = String(localized: busyMessageKey, locale: locale) }
+        let showsProgress = busyMessageKey != nil
+        let task = Task {
+            defer {
+                // **自分が出した表示だけを片付ける** [レビューで発見]。
+                // 無条件に消すと、進捗を出さない操作（複製など）が終わった
+                // ときに、並行して走っている転送の進捗まで消えてしまう。
+                if showsProgress {
+                    busyMessage = nil
+                    progress = nil
+                    cancellableTask = nil
+                }
+            }
             do {
                 _ = try await CommandStack.shared.run(command)
                 onSuccess()
+            } catch is CancellationError {
+                // ユーザー自身が止めたので、失敗として提示しない。
             } catch {
+                // 取り消し直後は下位から任意のエラーが返り得る（中断した処理の
+                // 後片付けが失敗した等）。それも提示しない。
+                guard !Task.isCancelled else { return }
                 await NotificationRouter.shared.presentError(
                     error, whatHappened: String(localized: failure, locale: locale)
                 )
             }
         }
+        if busyMessageKey != nil { cancellableTask = task }
+    }
+
+    /// コピー・移動に渡す共通の `OpOptions` [FM-11][FM-12][UI-09]。
+    ///
+    /// **`.ask` を既定にする** — 以前はすべて `.keepBoth` 固定で、ユーザーは
+    /// 一度も尋ねられなかった。「新しい版で上書きしたい」つもりの操作が黙って
+    /// 「名前 2」を増やす、という意図と違う結果になっていた。
+    /// - Important: 呼ぶたびに「以降すべてに適用」の記憶を捨てる [FM-12]。
+    ///   **`run()` の中でリセットしてはいけない** — D&D は `run()` を通らない
+    ///   ため、前回の「置き換える」が次のドロップへ持ち越され、確認なしで
+    ///   上書きしてしまう [レビューで発見]。1 回の操作 ＝ 1 回の
+    ///   `transferOptions()` なので、ここが正しい置き場所。
+    func transferOptions() -> OpOptions {
+        conflictBlanketDecision = nil
+        return OpOptions(
+            conflictPolicy: .ask,
+            conflictResolver: { [weak self] source, destination in
+                await self?.askConflictDecision(source: source, destination: destination) ?? .skip
+            },
+            progress: ProgressReporter { [weak self] value in
+                Task { @MainActor in self?.progress = value }
+            }
+        )
+    }
+
+    /// [FM-11][FM-12] 衝突 1 件ごとの判断。「以降すべてに適用」が選ばれて
+    /// いれば以後は尋ねずにその判断を使う。
+    ///
+    /// 継続の扱いは `askLockedItemDecision` と同じ — 必ず 1 回だけ再開し、
+    /// シートが現れなかった場合の保険を置く（返らないと操作が止まる）。
+    private func askConflictDecision(source: URL, destination: URL) async -> ConflictPolicy {
+        if let blanket = conflictBlanketDecision { return blanket }
+        return await withCheckedContinuation { continuation in
+            let pending = PendingConflict(source: source, destination: destination) { [self] policy, applyToAll in
+                if applyToAll { conflictBlanketDecision = policy }
+                continuation.resume(returning: policy)
+            }
+            pendingConflict = pending
+            Task { [weak pending] in
+                try? await Task.sleep(for: .seconds(2))
+                guard let pending, !pending.didAppear else { return }
+                Log.ui.error("衝突ダイアログが表示されませんでした。安全側にスキップします: \(Log.path(destination))")
+                pending.resolve(.skip, applyToAll: false)
+                if pendingConflict === pending { pendingConflict = nil }
+            }
+        }
+    }
+
+    /// 進捗シートの副題。「3/12 件 — 1.2 GB / 8.4 GB」のように、件数と
+    /// バイト数の両方を出す（どちらか片方では「あと何個か」「あとどれくらいか」
+    /// のどちらかが分からない）。
+    var progressDetail: String? {
+        guard let progress else { return nil }
+        var parts: [String] = []
+        if progress.totalItems > 1 {
+            parts.append(String(
+                format: String(localized: "progress.itemCount", locale: locale),
+                progress.completedItems + 1, progress.totalItems
+            ))
+        }
+        if progress.totalBytes > 0 {
+            let formatter = ByteCountFormatter()
+            parts.append("\(formatter.string(fromByteCount: progress.completedBytes)) / \(formatter.string(fromByteCount: progress.totalBytes))")
+        }
+        if let name = progress.currentItemName, parts.isEmpty { parts.append(name) }
+        return parts.isEmpty ? nil : parts.joined(separator: " — ")
     }
 
     /// 複数のコマンドを 1 回の操作として 1 つの Undo 単位にまとめる [UD-04]。
@@ -98,9 +196,77 @@ final class FolderOperations {
 
     /// [FM-02] 複製。書き込み先は呼び出し側が決める（中央ペインは現在の
     /// フォルダ、ツリーは対象フォルダの親）。
+    /// **複製は尋ねない** — Finder も ⌘D では確認せず、常に「名前 2」を作る。
+    /// 「同じ場所にもう 1 つ」が操作の意図そのものだから。
     func duplicate(_ urls: [URL], into destination: URL, onSuccess: @escaping @MainActor () -> Void = {}) {
         guard !urls.isEmpty else { return }
         run(CopyFilesCommand(items: urls, destination: destination), failure: "error.duplicateFailed", onSuccess: onSuccess)
+    }
+
+    /// Finder の「名前を変更…」（複数選択時）[ユーザー要望]。
+    /// ここではシートを出すだけで、実行は `runBulkRename` から。
+    /// - Important: 対象は**すべて同じフォルダにある**必要がある。検索結果
+    ///   （再帰）ではサブフォルダの項目が混ざり得るため、呼び出し側が
+    ///   絞ってから渡すこと [レビューで発見: 表示中のフォルダと項目名を
+    ///   組み合わせて URL を作っていたため、別のファイルを改名しかねなかった]。
+    func beginBulkRename(_ urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        let parents = Set(urls.map { $0.deletingLastPathComponent().standardizedFileURL })
+        guard let folder = parents.first, parents.count == 1 else {
+            Task {
+                await NotificationRouter.shared.present(NotificationItem(
+                    category: .error, severity: .sheet,
+                    title: String(localized: "error.operationFailed", locale: locale),
+                    body: String(localized: "bulkRename.sameFolderOnly", locale: locale)
+                ))
+            }
+            return
+        }
+        let names = urls.map(\.lastPathComponent)
+        // 衝突判定は**実際のフォルダの中身**と突き合わせる（表示中の一覧では
+        // なく）。対象自身は除く — 自分とぶつかっていると誤判定しないため。
+        let siblings = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+        pendingBulkRename = PendingBulkRename(
+            folder: folder,
+            names: names,
+            existingNames: Set(siblings).subtracting(Set(names))
+        )
+    }
+
+    func runBulkRename(_ request: PendingBulkRename, changes: [BulkRename.Change]) {
+        run(
+            BulkRenameCommand(folder: request.folder, changes: changes),
+            failure: "error.bulkRenameFailed"
+        ) {}
+    }
+
+    /// D&D の実行 [DD-01]。**他の経路と同じ**進捗・キャンセル・衝突の扱いに
+    /// するため、`run()` を通す [レビューで発見: D&D だけ進捗もキャンセルも
+    /// 出なかった]。
+    func runDrop(_ command: any Command, isMove: Bool, onComplete: @escaping @MainActor () -> Void) {
+        run(
+            command, failure: "error.operationFailed",
+            busyMessageKey: isMove ? "folder.moving" : "folder.copying",
+            onSuccess: onComplete
+        )
+    }
+
+    /// [FM-11] コピー（ペースト・D&D）。衝突したら尋ねる。
+    func copy(_ urls: [URL], into destination: URL, onSuccess: @escaping @MainActor () -> Void = {}) {
+        guard !urls.isEmpty else { return }
+        run(
+            CopyFilesCommand(items: urls, destination: destination, options: transferOptions()),
+            failure: "error.pasteFailed", busyMessageKey: "folder.copying", onSuccess: onSuccess
+        )
+    }
+
+    /// [FM-11] 移動（カット＆ペースト・D&D）。衝突したら尋ねる。
+    func move(_ urls: [URL], into destination: URL, onSuccess: @escaping @MainActor () -> Void = {}) {
+        guard !urls.isEmpty else { return }
+        run(
+            MoveFilesCommand(items: urls, destination: destination, options: transferOptions()),
+            failure: "error.moveFailed", busyMessageKey: "folder.moving", onSuccess: onSuccess
+        )
     }
 
     /// [FM-04] ゴミ箱に入れる（Finder のゴミ箱と互換 [TR2-01]）。
@@ -408,10 +574,15 @@ final class FolderOperations {
             guard !urls.isEmpty else { return }
         }
 
+        let options = transferOptions() // [FM-11] 衝突したら尋ねる
         let command: any Command = isMove
-            ? MoveFilesCommand(items: urls, destination: destination)
-            : CopyFilesCommand(items: urls, destination: destination)
-        run(command, failure: isMove ? "error.moveItemsHereFailed" : "error.pasteFailed") {
+            ? MoveFilesCommand(items: urls, destination: destination, options: options)
+            : CopyFilesCommand(items: urls, destination: destination, options: options)
+        run(
+            command,
+            failure: isMove ? "error.moveItemsHereFailed" : "error.pasteFailed",
+            busyMessageKey: isMove ? "folder.moving" : "folder.copying"
+        ) {
             if isCutPaste { SessionState.shared.cutURLs = [] }
             onSuccess()
         }
@@ -757,17 +928,35 @@ private struct FolderOperationsHostModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .overlay {
-                // 圧縮・展開は数秒かかることがあり、無表示だとアプリが固まった
-                // ように見える。バイト単位の進捗（`ProgressReporter`）がまだ
-                // 無いため不定進捗のみ表示する。
+                // 長時間処理の進捗とキャンセル [UI-09][A-04]。総量が分かって
+                // いれば確定進捗、分からなければ（クローンで一瞬に終わる場合
+                // など）不定進捗になる。
                 if let busyMessage = operations.busyMessage {
                     ZStack {
                         Color.black.opacity(0.15)
-                        QooProgressPresenter(title: busyMessage)
-                            .background(.regularMaterial)
-                            .clipShape(RoundedRectangle(cornerRadius: Tokens.radius.m))
+                        QooProgressPresenter(
+                            title: busyMessage,
+                            progress: operations.progress?.fraction,
+                            detail: operations.progressDetail,
+                            onCancel: operations.cancellableTask.map { task in
+                                { task.cancel() }
+                            }
+                        )
+                        .background(.regularMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: Tokens.radius.m))
                     }
                     .ignoresSafeArea()
+                }
+            }
+            // [FM-11][FM-12] 同名の項目があったときの判断。
+            .sheet(item: $operations.pendingConflict) { pending in
+                ConflictResolutionSheet(pending: pending) {
+                    operations.pendingConflict = nil
+                }
+            }
+            .sheet(item: $operations.pendingBulkRename) { pending in
+                BulkRenameSheet(names: pending.names, existingNames: pending.existingNames) { changes in
+                    operations.runBulkRename(pending, changes: changes)
                 }
             }
             .sheet(item: $operations.pendingCompression) { pending in

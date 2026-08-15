@@ -771,7 +771,7 @@ private struct FolderTreeRow: View {
             .onTapGesture { onSelect(node.url, branch.navigationRoot) } // [LP-06]
             .dropDestination(for: URL.self) { items, _ in // [DD-05] ツリーへドロップで移動
                 DropHandling.performDrop(
-                    items, into: node.url,
+                    items, into: node.url, operations: operations,
                     onComplete: {
                         // 他のウインドウ・ペインへの反映は
                         // `FileOperationService` → `DirectoryChangeHub` が担う

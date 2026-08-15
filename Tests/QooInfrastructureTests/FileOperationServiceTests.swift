@@ -416,3 +416,39 @@ private actor AskedURLs {
     var urls: [URL] = []
     func record(_ url: URL) { urls.append(url) }
 }
+
+/// 移動が既存の項目を書き潰さないこと [レビューで発見した退行の回帰テスト]。
+///
+/// 進捗を出すために `FileManager.moveItem` を `rename(2)` へ置き換えた際、
+/// **素の `rename(2)` は宛先を黙って上書きする**ため、`FileManager.moveItem`
+/// が持っていた安全弁を失っていた。コピー側（`COPYFILE_EXCL`）だけが守られて
+/// いる非対称な状態になっており、衝突の解決を取りこぼすと健康なファイルが
+/// 消える経路になっていた。
+@Suite struct MoveOverwriteSafetyTests {
+    private func makeDirectory() -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qoo-move-safety-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    @Test func moveDoesNotSilentlyOverwriteAnExistingItem() async throws {
+        let root = makeDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sourceDir = root.appendingPathComponent("from", isDirectory: true)
+        let destinationDir = root.appendingPathComponent("to", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceDir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destinationDir, withIntermediateDirectories: true)
+        try "new".write(to: sourceDir.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+        try "existing".write(to: destinationDir.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+
+        // 衝突方針を `.skip` にして「解決されなかった」状況を作る。
+        _ = try await FileOperationService().move(
+            [sourceDir.appendingPathComponent("a.txt")], to: destinationDir,
+            options: OpOptions(conflictPolicy: .skip)
+        )
+
+        // 既存のファイルが残っていること（書き潰されていない）。
+        #expect(try String(contentsOf: destinationDir.appendingPathComponent("a.txt"), encoding: .utf8) == "existing")
+    }
+}

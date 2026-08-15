@@ -1,0 +1,109 @@
+import Foundation
+import QooKit
+
+/// 一括転送の進み具合を数えて、間引きながら報告する [UI-09][A-04]。
+///
+/// ## 総量をいつ数えるか
+/// 総バイト数を知るにはフォルダを再帰的に走査するしかなく、5 万件のライブラリ
+/// では無視できない時間がかかる。一方で**同一ボリューム内のコピーはクローンで
+/// 一瞬に終わる**（`FileCopyEngine` の実測表参照）ので、そこで数分かけて
+/// サイズを数えるのは本末転倒になる。
+///
+/// そこで `volumeSupportsFileCloning` と移動元・移動先のボリュームを見て、
+/// **「クローンで済むと分かっている場合は数えない」**。数えないときは
+/// 件数だけを報告し、UI は不定進捗になる（が、そもそも一瞬で終わる）。
+///
+/// ## 間引き
+/// `copyfile(3)` の status コールバックは 500MB のコピーで 400 回以上呼ばれる。
+/// そのたびにメインアクタへ跳ぶと更新だけで忙しくなるため、`updateInterval`
+/// より短い間隔の報告は捨てる（ただし項目の切り替わりと完了は必ず送る）。
+struct ProgressTracker {
+    /// 進捗を UI へ流す最短間隔。10 回/秒 あれば数字が滑らかに見える。
+    private static let updateInterval: Duration = .milliseconds(100)
+
+    private let reporter: ProgressReporter?
+    private var progress: OperationProgress
+    private var lastReportedAt: ContinuousClock.Instant?
+
+    init(reporter: ProgressReporter?, items: [URL], destination: URL) {
+        self.reporter = reporter
+        let totalBytes: Int64
+        if reporter == nil || Self.willBeInstant(items: items, destination: destination) {
+            // 数えても意味が無い（報告先が無い／一瞬で終わる）。
+            totalBytes = 0
+        } else {
+            totalBytes = Self.totalSize(of: items)
+        }
+        self.progress = OperationProgress(totalBytes: totalBytes, totalItems: items.count)
+    }
+
+    mutating func begin() { report(force: true) }
+
+    mutating func startItem(_ item: URL) {
+        progress.currentItemName = item.lastPathComponent
+        report(force: true)
+    }
+
+    mutating func addBytes(_ bytes: Int64) {
+        progress.completedBytes += bytes
+        report(force: false)
+    }
+
+    mutating func finishItem() {
+        progress.completedItems += 1
+        report(force: true)
+    }
+
+    private mutating func report(force: Bool) {
+        guard let reporter else { return }
+        let now = ContinuousClock.now
+        if !force, let last = lastReportedAt, now - last < Self.updateInterval { return }
+        lastReportedAt = now
+        reporter.report(progress)
+    }
+
+    // MARK: - 事前の見積もり
+
+    /// クローンで済む（＝バイトを運ばない）と分かるか。
+    ///
+    /// 同一ボリュームであることに加えて **`volumeSupportsFileCloning` まで
+    /// 見る**。同じボリュームでも exFAT の USB メモリのようにクローンできない
+    /// ファイルシステムがあり、そこでは実際に時間がかかるため進捗が要る。
+    private static func willBeInstant(items: [URL], destination: URL) -> Bool {
+        let keys: Set<URLResourceKey> = [.volumeUUIDStringKey, .volumeSupportsFileCloningKey]
+        guard let destinationValues = try? destination.resourceValues(forKeys: keys),
+              destinationValues.volumeSupportsFileCloning == true,
+              let destinationVolume = destinationValues.volumeUUIDString
+        else { return false }
+        return items.allSatisfy { item in
+            (try? item.resourceValues(forKeys: [.volumeUUIDStringKey]))?.volumeUUIDString == destinationVolume
+        }
+    }
+
+    /// 対象の合計バイト数。フォルダは再帰的に数える。
+    ///
+    /// 中断されたら数えるのをやめて 0 を返す（＝不定進捗になる）。数えている
+    /// 最中にキャンセルされた場合、そこで待たせ続ける方が害が大きい。
+    private static func totalSize(of items: [URL]) -> Int64 {
+        var total: Int64 = 0
+        for item in items {
+            if Task.isCancelled { return 0 }
+            let values = try? item.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey, .isSymbolicLinkKey])
+            if values?.isSymbolicLink == true { continue } // リンク自体は運ぶだけ [SL-01]
+            if values?.isDirectory == true {
+                guard let enumerator = FileManager.default.enumerator(
+                    at: item, includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey], options: []
+                ) else { continue }
+                while let child = enumerator.nextObject() as? URL {
+                    if Task.isCancelled { return 0 }
+                    let childValues = try? child.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
+                    guard childValues?.isRegularFile == true else { continue }
+                    total += Int64(childValues?.fileSize ?? 0)
+                }
+            } else {
+                total += Int64(values?.fileSize ?? 0)
+            }
+        }
+        return total
+    }
+}

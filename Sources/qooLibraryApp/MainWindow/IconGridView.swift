@@ -18,6 +18,32 @@ import SwiftUI
 ///   `handleSingleClick` と同じロジックをセル単位で再現している
 ///   （`onSingleClick` クロージャで実際の選択処理自体は `FolderContentView`
 ///   に委譲し、二重実装を避けている）。
+/// アイコン表示の並びの寸法。
+///
+/// **矢印キーの上下移動には「1 行が何列か」が要る**が、`LazyVGrid` は自分が
+/// 何列で並べたかを教えてくれない。実測幅から同じ式で計算し直すしかないので、
+/// 式そのものをここへ出して**レイアウトと計算が別々に変わらない**ようにする。
+enum IconGridMetrics {
+    static let spacing: CGFloat = Tokens.spacing.m
+    /// グリッド自身の左右の余白（`LazyVGrid` に付けている `.padding`）。
+    static let horizontalPadding: CGFloat = Tokens.spacing.m
+
+    /// 1 項目の最小幅。アイコンの左右に名前とパディングのぶんを足す。
+    static func minimumItemWidth(iconSize: Double) -> CGFloat { iconSize + 32 }
+
+    /// `width` の中に何列並ぶか。`LazyVGrid(.adaptive)` と同じ数え方
+    /// （項目 n 個には間隔が n-1 個ぶん入る）。
+    /// - Parameter width: グリッドを載せている**スクロールビューの実測幅**。
+    ///   グリッド自身の左右パディングはここで差し引く [レビューで発見: 引かないと
+    ///   列数が 1 つずれ、矢印キーが別の項目へ飛ぶ]。
+    static func columnCount(width: CGFloat, iconSize: Double) -> Int {
+        let minimum = minimumItemWidth(iconSize: iconSize)
+        let available = width - horizontalPadding * 2
+        guard available > 0, minimum > 0 else { return 1 }
+        return max(1, Int((available + spacing) / (minimum + spacing)))
+    }
+}
+
 struct IconGridView<MenuContent: View>: View {
     let entries: [FolderEntry]
     @Binding var selection: Set<URL>
@@ -27,6 +53,9 @@ struct IconGridView<MenuContent: View>: View {
     /// 受け取る。
     let thumbnailsHidden: Bool
     let dragNamespace: Namespace.ID
+    /// 衝突の判断・進捗・キャンセルを担う共有レイヤ [FM-11][UI-09]。
+    /// フォルダ行へのドロップがここを通る。
+    let operations: FolderOperations
     /// ダブルクリック時に呼ばれる。フォルダなら移動、ファイルなら関連付けた
     /// アプリで開く、の判定は呼び出し側（`FolderContentView.openEntries`）に
     /// 委譲する [実機検証で発見したバグの修正: 以前はここで `isDirectory` を
@@ -62,7 +91,7 @@ struct IconGridView<MenuContent: View>: View {
     @AppStorage("qoo.folderList.nameTruncationMode") private var nameTruncationMode: NameTruncationMode = .tail
 
     private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: iconSize + 32), spacing: Tokens.spacing.m)]
+        [GridItem(.adaptive(minimum: IconGridMetrics.minimumItemWidth(iconSize: iconSize)), spacing: IconGridMetrics.spacing)]
     }
 
     var body: some View {
@@ -160,6 +189,7 @@ struct IconGridView<MenuContent: View>: View {
             isEnabled: !isRenaming,
             entry: entry,
             dragNamespace: dragNamespace,
+            operations: operations,
             onOpenEntry: onOpenEntry,
             onSingleClick: onSingleClick,
             onReload: onReload,
@@ -176,6 +206,7 @@ struct IconGridView<MenuContent: View>: View {
         let isEnabled: Bool
         let entry: FolderEntry
         let dragNamespace: Namespace.ID
+        let operations: FolderOperations
         let onOpenEntry: (FolderEntry) -> Void
         let onSingleClick: (FolderEntry) -> Void
         let onReload: () -> Void
@@ -199,7 +230,7 @@ struct IconGridView<MenuContent: View>: View {
                         onSingleClick(entry)
                     })
                     .draggable(containerItemID: entry.url, containerNamespace: dragNamespace)
-                    .modifier(DropIntoFolderModifier(entry: entry, reload: onReload, onFailure: onDropFailure, targetedURL: $dropTargetedURL))
+                    .modifier(DropIntoFolderModifier(entry: entry, operations: operations, reload: onReload, onFailure: onDropFailure, targetedURL: $dropTargetedURL))
             } else {
                 content
             }

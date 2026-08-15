@@ -39,19 +39,23 @@ public enum ConflictPolicy: Sendable, Equatable {
 public struct OpOptions: Sendable {
     public var conflictPolicy: ConflictPolicy
     /// `.ask` が選ばれた場合に呼ばれる、衝突 1 件ごとの解決手段。
-    /// `BatchNotificationSession`（1-12b でも未実装、具体的な利用箇所が無い
-    /// ままの投機的実装を避けたため）がまだ無いため、暫定的に呼び出し側が
-    /// 直接解決ロジックを渡す形にしている。「以降すべてに適用」[FM-12] は
-    /// `BatchNotificationSession` 側が担う予定（実際に `.ask` を使う一括処理
-    /// フローができたタイミングで導入する）。
+    /// 「以降すべてに適用」[FM-12] の状態は**呼び出し側が持つ**
+    /// （`FolderOperations.conflictBlanketDecision`）。完全削除のロック確認
+    /// [PD-06] と同じ形で、汎用の `BatchNotificationSession`（ER-10〜16）を
+    /// 待たずに要件を満たしている。
     public var conflictResolver: (@Sendable (_ source: URL, _ destination: URL) async -> ConflictPolicy)?
+    /// 進み具合の報告先 [8章 §8.1、UI-09][A-04]。`nil` なら進捗を数える処理
+    /// 自体を行わない（合計サイズの走査を省く。`ProgressTracker` 参照）。
+    public var progress: ProgressReporter?
 
     public init(
         conflictPolicy: ConflictPolicy = .ask,
-        conflictResolver: (@Sendable (_ source: URL, _ destination: URL) async -> ConflictPolicy)? = nil
+        conflictResolver: (@Sendable (_ source: URL, _ destination: URL) async -> ConflictPolicy)? = nil,
+        progress: ProgressReporter? = nil
     ) {
         self.conflictPolicy = conflictPolicy
         self.conflictResolver = conflictResolver
+        self.progress = progress
     }
 }
 
