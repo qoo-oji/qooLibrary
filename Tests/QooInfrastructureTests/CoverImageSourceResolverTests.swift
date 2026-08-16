@@ -14,7 +14,7 @@ import Testing
 @Suite struct CoverImageSourceResolverTests {
     // MARK: - フォルダのカバー元（複数）[ユーザー要望]
 
-    @Test func coverSourceChildrenTakesPreviewableFilesInNaturalOrder() throws {
+    @Test func coverSourceChildrenTakesPreviewableFilesInNaturalOrder() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("qoo-coversources-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -29,14 +29,14 @@ import Testing
             at: root.appendingPathComponent("subfolder", isDirectory: true), withIntermediateDirectories: true
         )
 
-        let picked = CoverImageSourceResolver.coverSourceChildren(for: root, limit: 10)
+        let picked = await CoverImageSourceResolver.coverSourceChildren(for: root, limit: 10)
             .map(\.lastPathComponent)
 
         // 自然順: book2 が book10 より前。txt とサブフォルダは含まれない。
         #expect(picked == ["book2.cbz", "book10.cbz", "cover.png", "doc.pdf", "e.epub"])
     }
 
-    @Test func coverSourceChildrenRespectsTheLimit() throws {
+    @Test func coverSourceChildrenRespectsTheLimit() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("qoo-coversources-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -45,11 +45,11 @@ import Testing
             try Data("x".utf8).write(to: root.appendingPathComponent("p\(index).png"))
         }
 
-        #expect(CoverImageSourceResolver.coverSourceChildren(for: root, limit: 3).count == 3)
-        #expect(CoverImageSourceResolver.coverSourceChildren(for: root, limit: 0).isEmpty)
+        #expect(await CoverImageSourceResolver.coverSourceChildren(for: root, limit: 3).count == 3)
+        #expect(await CoverImageSourceResolver.coverSourceChildren(for: root, limit: 0).isEmpty)
     }
 
-    @Test func coverSourceChildrenIsEmptyForAFolderOfOnlySubfolders() throws {
+    @Test func coverSourceChildrenIsEmptyForAFolderOfOnlySubfolders() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("qoo-coversources-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -57,7 +57,7 @@ import Testing
             at: root.appendingPathComponent("child", isDirectory: true), withIntermediateDirectories: true
         )
 
-        #expect(CoverImageSourceResolver.coverSourceChildren(for: root).isEmpty)
+        #expect(await CoverImageSourceResolver.coverSourceChildren(for: root).isEmpty)
     }
 
     private func makeRoot() throws -> URL {

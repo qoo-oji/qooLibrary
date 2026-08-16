@@ -47,11 +47,27 @@ public struct UnrarBackend: ArchiveReading {
     }
 
     public func listEntries(_ url: URL) async throws -> ArchiveListing {
+        try await FileIO.perform { try self.listEntriesBlocking(url) }
+    }
+
+    /// - Note: **ブロッキング。`FileIO.perform` の中からのみ呼ぶ** [NV6-01]。
+    ///   アーカイブの読み書きは相手がネットワーク上なら往復が多く、応答が
+    ///   無ければ戻ってこない。協調スレッドプールの上で走らせると、コア数ぶん
+    ///   溜まった時点でアプリの `async` 処理が全部止まる。
+    private func listEntriesBlocking(_ url: URL) throws -> ArchiveListing {
         let entries = try Self.list(url)
         return ArchiveListing(entries: entries)
     }
 
     public func extract(_ url: URL, to staging: URL, options: ExtractOptions) async throws -> ExtractResult {
+        try await FileIO.perform { try self.extractBlocking(url, to: staging, options: options) }
+    }
+
+    /// - Note: **ブロッキング。`FileIO.perform` の中からのみ呼ぶ** [NV6-01]。
+    ///   アーカイブの読み書きは相手がネットワーク上なら往復が多く、応答が
+    ///   無ければ戻ってこない。協調スレッドプールの上で走らせると、コア数ぶん
+    ///   溜まった時点でアプリの `async` 処理が全部止まる。
+    private func extractBlocking(_ url: URL, to staging: URL, options: ExtractOptions) throws -> ExtractResult {
         let fm = FileManager.default
         try fm.createDirectory(at: staging, withIntermediateDirectories: true)
 
@@ -119,6 +135,14 @@ public struct UnrarBackend: ArchiveReading {
     /// は使わない — `QooUnrarBridge` は最初から UTF-8 で返すため
     /// `listEntries` 同様デコードの再判定が不要 [AR-03 のコメント参照]。
     public func readEntry(_ url: URL, entry: ArchiveEntry, encoding: String.Encoding, maxBytes: Int) async throws -> Data {
+        try await FileIO.perform { try self.readEntryBlocking(url, entry: entry, encoding: encoding, maxBytes: maxBytes) }
+    }
+
+    /// - Note: **ブロッキング。`FileIO.perform` の中からのみ呼ぶ** [NV6-01]。
+    ///   アーカイブの読み書きは相手がネットワーク上なら往復が多く、応答が
+    ///   無ければ戻ってこない。協調スレッドプールの上で走らせると、コア数ぶん
+    ///   溜まった時点でアプリの `async` 処理が全部止まる。
+    private func readEntryBlocking(_ url: URL, entry: ArchiveEntry, encoding: String.Encoding, maxBytes: Int) throws -> Data {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: tempDir) }
         let tempFile = tempDir.appendingPathComponent("entry")

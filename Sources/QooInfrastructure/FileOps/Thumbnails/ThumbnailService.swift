@@ -187,7 +187,7 @@ public actor ThumbnailService {
     ) async -> [CGImage] {
         // [DS-05] 非表示中はディレクトリの列挙すら行わない。
         if await isGloballyHidden() { return [] }
-        let children = CoverImageSourceResolver.coverSourceChildren(for: folder, limit: limit)
+        let children = await CoverImageSourceResolver.coverSourceChildren(for: folder, limit: limit)
         var images: [CGImage] = []
         for child in children {
             if Cancellation.isRequested { break }

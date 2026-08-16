@@ -219,9 +219,9 @@ public actor SecureExtractor {
     /// 解決に失敗することがあったため [1-6 の D&D で実際に踏んだ]。
     private static func isSameVolume(_ a: URL, _ b: URL) -> Bool {
         guard
-            let uuidA = try? a.resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString,
-            let uuidB = try? b.resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString
+            let idA = VolumeIdentity.identifier(for: a),
+            let idB = VolumeIdentity.identifier(for: b)
         else { return false }
-        return uuidA == uuidB
+        return idA == idB
     }
 }

@@ -35,6 +35,14 @@ public struct LibarchiveBackend: ArchiveReading {
     /// を `SecureExtractor` が `extract` の `ExtractOptions.encoding` へ引き
     /// 継ぐことで、`extract` 側は再判定なしに同じデコード結果を再現できる。
     public func listEntries(_ url: URL) async throws -> ArchiveListing {
+        try await FileIO.perform { try self.listEntriesBlocking(url) }
+    }
+
+    /// - Note: **ブロッキング。`FileIO.perform` の中からのみ呼ぶ** [NV6-01]。
+    ///   アーカイブの読み書きは相手がネットワーク上なら往復が多く、応答が
+    ///   無ければ戻ってこない。協調スレッドプールの上で走らせると、コア数ぶん
+    ///   溜まった時点でアプリの `async` 処理が全部止まる。
+    private func listEntriesBlocking(_ url: URL) throws -> ArchiveListing {
         let applyHeuristic = Self.shouldApplyEncodingHeuristic(for: url) // [AR-03]
 
         let reader = try Self.openReader(url)
@@ -69,6 +77,14 @@ public struct LibarchiveBackend: ArchiveReading {
     /// 展開爆弾対策（EX-20〜EX-21、実バイト数をその場で計測）を行う。
     /// 圧縮比の分母はアーカイブファイル自身の圧縮後サイズを使う。
     public func extract(_ url: URL, to staging: URL, options: ExtractOptions) async throws -> ExtractResult {
+        try await FileIO.perform { try self.extractBlocking(url, to: staging, options: options) }
+    }
+
+    /// - Note: **ブロッキング。`FileIO.perform` の中からのみ呼ぶ** [NV6-01]。
+    ///   アーカイブの読み書きは相手がネットワーク上なら往復が多く、応答が
+    ///   無ければ戻ってこない。協調スレッドプールの上で走らせると、コア数ぶん
+    ///   溜まった時点でアプリの `async` 処理が全部止まる。
+    private func extractBlocking(_ url: URL, to staging: URL, options: ExtractOptions) throws -> ExtractResult {
         let fm = FileManager.default
         try fm.createDirectory(at: staging, withIntermediateDirectories: true)
 
@@ -251,6 +267,14 @@ public struct LibarchiveBackend: ArchiveReading {
     /// NFC 正規化まで揃える）で都度デコードしながら先頭から走査し、一致した
     /// 時点で内容を読み切って返す。
     public func readEntry(_ url: URL, entry: ArchiveEntry, encoding: String.Encoding, maxBytes: Int) async throws -> Data {
+        try await FileIO.perform { try self.readEntryBlocking(url, entry: entry, encoding: encoding, maxBytes: maxBytes) }
+    }
+
+    /// - Note: **ブロッキング。`FileIO.perform` の中からのみ呼ぶ** [NV6-01]。
+    ///   アーカイブの読み書きは相手がネットワーク上なら往復が多く、応答が
+    ///   無ければ戻ってこない。協調スレッドプールの上で走らせると、コア数ぶん
+    ///   溜まった時点でアプリの `async` 処理が全部止まる。
+    private func readEntryBlocking(_ url: URL, entry: ArchiveEntry, encoding: String.Encoding, maxBytes: Int) throws -> Data {
         let reader = try Self.openReader(url)
         defer { Self.closeReader(reader) }
 
@@ -306,6 +330,22 @@ public struct LibarchiveBackend: ArchiveReading {
         passphrase: String? = nil, progress: ProgressReporter? = nil,
         pauseToken: PauseToken? = nil
     ) async throws {
+        try await FileIO.perform {
+            try self.compressBlocking(
+                items, to: destination, options: options,
+                passphrase: passphrase, progress: progress, pauseToken: pauseToken
+            )
+        }
+    }
+
+    /// - Note: **ブロッキング。`FileIO.perform` の中からのみ呼ぶ** [NV6-01]。
+    ///   圧縮は全バイトを読み書きするので、相手がネットワーク上なら最も長く
+    ///   スレッドを占有する処理になる。
+    private func compressBlocking(
+        _ items: [URL], to destination: URL, options: CompressionOptions,
+        passphrase: String?, progress: ProgressReporter?,
+        pauseToken: PauseToken?
+    ) throws {
         guard let writer = archive_write_new() else {
             throw ExtractError.backendFailure("archive_write_new returned NULL")
         }

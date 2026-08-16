@@ -62,7 +62,9 @@ public actor ArchiveCompressor {
         // **進捗表示の有無に関わらず数える**［監査で発見］。この値は空き容量の
         // 事前検査にも使うようになったため、進捗の都合で検査が抜けてはならない
         // （`ProgressTracker` が同じ理由で同じ形にしてある）。
-        let totals = Self.totals(of: items)
+        // 圧縮対象の木を丸ごと歩くので、相手がネットワーク上なら長い
+        // [NV6-01]。協調プールで走らせない。
+        let totals = await FileIO.perform { Self.totals(of: items) }
         var reporter: ProgressReporter?
         if let progress {
             reporter = ProgressThrottle.wrap(progress, totalItems: totals.files, totalBytes: totals.bytes)
@@ -121,6 +123,8 @@ public actor ArchiveCompressor {
     }
 
     /// 圧縮対象の総ファイル数・総バイト数（シンボリックリンクは辿らない）。
+    ///
+    /// - Note: **ブロッキング。`FileIO.perform` の中からのみ呼ぶ** [NV6-01]。
     private static func totals(of items: [URL]) -> (files: Int, bytes: Int64) {
         var files = 0
         var bytes: Int64 = 0

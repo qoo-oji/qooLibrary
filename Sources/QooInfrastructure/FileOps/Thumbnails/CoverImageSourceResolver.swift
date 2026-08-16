@@ -32,9 +32,11 @@ public enum CoverImageSourceResolver {
     ) async -> Data? {
         switch PreviewableFileKind.of(url) {
         case .folder:
-            return firstImageDataInFolder(url)
+            // **メインアクタでも協調プールでもないところで読む** [NV6-01]。
+            // 相手はユーザーのライブラリ＝ネットワーク上にあり得る。
+            return await FileIO.perform { firstImageDataInFolder(url) }
         case .image:
-            return try? Data(contentsOf: url)
+            return await FileIO.perform { try? Data(contentsOf: url) }
         case .epub:
             // EPUB は zip コンテナだが「自然順で先頭の画像」ではなく spine
             // （読み順）の先頭ページを取る必要があるため、汎用アーカイブ向けの
@@ -73,6 +75,14 @@ public enum CoverImageSourceResolver {
     public static func coverSourceChildren(
         for folder: URL,
         limit: Int = AppLimits.Thumbnail.defaultFolderCoverCount
+    ) async -> [URL] {
+        await FileIO.perform { coverSourceChildrenBlocking(for: folder, limit: limit) }
+    }
+
+    /// - Note: **ブロッキング。`FileIO.perform` の中からのみ呼ぶ** [NV6-01]。
+    private static func coverSourceChildrenBlocking(
+        for folder: URL,
+        limit: Int
     ) -> [URL] {
         guard limit > 0 else { return [] }
         guard let children = try? FileManager.default.contentsOfDirectory(
