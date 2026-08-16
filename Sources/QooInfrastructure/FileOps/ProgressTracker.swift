@@ -17,10 +17,21 @@ import QooKit
 /// `copyfile(3)` の status コールバックは 500MB のコピーで 400 回以上呼ばれる。
 /// そのたびにメインアクタへ跳ぶと更新だけで忙しくなるため、`updateInterval`
 /// より短い間隔の報告は捨てる（ただし項目の切り替わりと完了は必ず送る）。
-struct ProgressTracker {
+/// ## なぜ参照型でロックを持つのか [NV6-01]
+/// バイトを運ぶ本体（`copyfile(3)`）は `FileIO.perform` 経由で**協調プールの
+/// 外**を走る。その status コールバックは**呼び出し元のスレッドで同期的に**
+/// 呼ばれるので、進捗の受け口もそのスレッドから安全に触れなければならない。
+///
+/// `actor` にはできない——コールバックは同期であり `await` できない。
+/// 値型のまま別スレッドへ渡すこともできない——`mutating` は共有できない。
+/// **ロックで守った参照型**だけがこの制約を満たす。
+///
+/// ロックの中では `reporter.report(_:)` を呼ぶだけで、I/O も長い処理もしない。
+final class ProgressTracker: @unchecked Sendable {
     /// 進捗を UI へ流す最短間隔。10 回/秒 あれば数字が滑らかに見える。
     private static let updateInterval: Duration = .milliseconds(100)
 
+    private let lock = NSLock()
     private let reporter: ProgressReporter?
     private var progress: OperationProgress
     private var lastReportedAt: ContinuousClock.Instant?
@@ -71,29 +82,43 @@ struct ProgressTracker {
         self.progress = OperationProgress(totalBytes: totalBytes, totalItems: items.count)
     }
 
-    mutating func begin() { report(force: true) }
+    func begin() { mutate(force: true) { _ in } }
 
-    mutating func startItem(_ item: URL) {
-        progress.currentItemName = item.lastPathComponent
-        report(force: true)
+    func startItem(_ item: URL) {
+        mutate(force: true) { $0.currentItemName = item.lastPathComponent }
     }
 
-    mutating func addBytes(_ bytes: Int64) {
-        progress.completedBytes += bytes
-        report(force: false)
+    /// **別スレッドから呼ばれる。** `copyfile` の status コールバックは
+    /// `FileIO.perform` が走らせているディスパッチスレッドの上にいる。
+    func addBytes(_ bytes: Int64) {
+        mutate(force: false) { $0.completedBytes += bytes }
     }
 
-    mutating func finishItem() {
-        progress.completedItems += 1
-        report(force: true)
+    func finishItem() {
+        mutate(force: true) { $0.completedItems += 1 }
     }
 
-    private mutating func report(force: Bool) {
-        guard let reporter else { return }
+    /// 更新と報告を 1 つのロックの下で行う。**報告する値をロックの中で
+    /// 確定させてから外で渡す**——`reporter` の実装が何をするか分からないので、
+    /// ロックを持ったまま呼ばない（呼び出し先がまたロックを取ると詰まる）。
+    private func mutate(force: Bool, _ change: (inout OperationProgress) -> Void) {
+        lock.lock()
+        change(&progress)
         let now = ContinuousClock.now
-        if !force, let last = lastReportedAt, now - last < Self.updateInterval { return }
-        lastReportedAt = now
-        reporter.report(progress)
+        let shouldReport: Bool
+        if force {
+            shouldReport = true
+        } else if let last = lastReportedAt, now - last < Self.updateInterval {
+            shouldReport = false
+        } else {
+            shouldReport = true
+        }
+        if shouldReport { lastReportedAt = now }
+        let snapshot = progress
+        lock.unlock()
+
+        guard shouldReport, let reporter else { return }
+        reporter.report(snapshot)
     }
 
     // MARK: - 事前の見積もり
