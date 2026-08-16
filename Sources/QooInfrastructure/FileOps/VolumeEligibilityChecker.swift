@@ -38,9 +38,25 @@ public struct VolumeEligibilityChecker: VolumeEligibilityChecking {
         guard !cap.isReadOnly else {
             throw VolumeEligibilityError.readOnlyVolume(fileSystem: cap.fileSystemName)
         }
-        guard cap.supportsPersistentIDs else {
-            return .rejected(reason: .noPersistentFileID(fileSystem: cap.fileSystemName))
-        }
+        // **`supportsPersistentIDs` で門前払いしない** [NV3-02]。
+        //
+        // このフラグは**両方向に間違う**ことを 1-16b の実測で確認した
+        // （8章 §8.11.3）:
+        //
+        // | サーバ | フラグ | 実際の同一性 | |
+        // |---|---|---|---|
+        // | Samba(QNAP) | × | × | 一致 |
+        // | Apple SMB | ○ | ○ | 一致 |
+        // | **Windows(NTFS)** | **×** | **○** | **偽陰性** |
+        //
+        // Windows 共有は `supportsPersistentIDs = ×` を返すのに、実際には
+        // NTFS の File Reference Number がそのまま渡り、改名・移動で不変、
+        // 再利用時は sequence number が増えるため誤同定も起きない。
+        // ここで `guard` していたため、**実際には使える共有を誤って拒否**していた。
+        //
+        // 一方、下の FS-03 実測プローブ（作成→移動→ID 再取得）は
+        // **3 系統すべてを正しく分類できた**。判定はそちらに一本化する。
+        // これは「能力フラグを『できない証明』に使わない」[NV-80] の実例。
 
         let probeName = ".qoo-fsprobe-\(UUID().uuidString)"
         let tmpA = url.appendingPathComponent(probeName)
@@ -62,7 +78,14 @@ public struct VolumeEligibilityChecker: VolumeEligibilityChecking {
         try fm.moveItem(at: tmpA, to: tmpB)
         let idB = probeIdentity(of: tmpB)
 
-        guard idA == idB, idA.isMeaningful else {
+        // 2 つの拒否理由を**実測の結果で**使い分ける。フラグではなく、
+        // 実際に何が起きたかで説明する。
+        guard idA.isMeaningful else {
+            // ID をそもそも取れない。
+            return .rejected(reason: .noPersistentFileID(fileSystem: cap.fileSystemName))
+        }
+        guard idA == idB else {
+            // 取れるが移動で変わってしまう（Samba 系がここに落ちる）。
             return .rejected(reason: .persistentIDNotPreserved(fileSystem: cap.fileSystemName))
         }
 

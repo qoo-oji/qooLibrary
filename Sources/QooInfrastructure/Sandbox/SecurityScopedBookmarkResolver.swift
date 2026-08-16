@@ -12,12 +12,26 @@ public struct SecurityScopedBookmarkResolver: BookmarkResolving {
         )
     }
 
+    /// **`.withoutMounting` を必ず付ける** [RG3-01][NV-91]。理由はプロトコル側の
+    /// コメント参照——解決はマウントを起こす副作用があり、ネットワークボリューム
+    /// では起動時のブロックと認証ダイアログにつながる。
     public func resolve(_ data: Data) -> BookmarkResolution {
+        resolve(data, allowingMount: false)
+    }
+
+    /// マウントを許す解決。**ユーザーの明示的な操作からのみ**。
+    public func resolveAllowingMount(_ data: Data) -> BookmarkResolution {
+        resolve(data, allowingMount: true)
+    }
+
+    private func resolve(_ data: Data, allowingMount: Bool) -> BookmarkResolution {
         var isStale = false
+        var options: URL.BookmarkResolutionOptions = .withSecurityScope
+        if !allowingMount { options.insert(.withoutMounting) }
         do {
             let url = try URL(
                 resolvingBookmarkData: data,
-                options: .withSecurityScope,
+                options: options,
                 relativeTo: nil,
                 bookmarkDataIsStale: &isStale
             )

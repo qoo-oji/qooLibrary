@@ -115,6 +115,21 @@ struct TinyVolume {
         try? FileManager.default.removeItem(at: imagePath)
     }
 
+    /// **イメージは残したまま外す。** 「ボリュームが接続されていない」状態を
+    /// 作るためのもので、`destroy()` と違って後から `reattach()` で戻せる。
+    /// ブックマーク解決がマウントを起こすかどうかの検証に使う [NV-91]。
+    func detachKeepingImage() -> Bool {
+        Self.run("/usr/bin/hdiutil", ["detach", "-quiet", "-force", mountPoint.path])
+    }
+
+    /// `detachKeepingImage()` で外したものを付け直す。
+    @discardableResult
+    func reattach() -> Bool {
+        Self.run("/usr/bin/hdiutil", [
+            "attach", "-quiet", "-nobrowse", "-mountpoint", mountPoint.path, imagePath.path,
+        ])
+    }
+
     /// いったん外して読み取り専用で付け直す。読み取り専用ボリュームに対する
     /// 挙動（登録の拒否など）を実際のボリュームで確かめるためのもの。
     /// 付け直せなければ `nil`（呼び出し側は検証を飛ばす）。

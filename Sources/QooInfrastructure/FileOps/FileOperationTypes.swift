@@ -224,6 +224,18 @@ public enum FileOperationError: Error, Sendable, Equatable {
     case destinationInsideSource(source: URL, destination: URL)
     /// 書き込み先が読み取り専用ボリューム上にある。**書き始める前に**投げる。
     case destinationIsReadOnly(URL)
+    /// この場所にゴミ箱が無い [NV4-01]。**呼び出し側が事前に判定して
+    /// 完全削除の経路へ振り分ける**のが本筋で、これはその取りこぼしを
+    /// 捕まえる最後の砦。
+    case trashUnavailable(URL)
+    /// 待ち時間の上限に達した [NV4-04]。**I/O が止まったのではなく、
+    /// 待つのをやめただけ**である点に注意 [NV6-03]。
+    case timedOut(seconds: Double)
+    /// 書き込み先に実際には書けない（`access(2)` の `W_OK` が false）[NV-89]。
+    /// **モードビットと `volumeIsReadOnly` の両方が嘘をつく場面がある**ため
+    /// （SMB のサーバ側 ACL が POSIX へ写らない、1-16b の実測）、
+    /// `destinationIsReadOnly` とは別に持つ。**書き始める前に**投げる。
+    case destinationNotWritable(URL, errnoCode: Int32)
     /// ユーザーが入力した名前が使えない [`FileNameValidation`]。
     case invalidName(String, reason: FileNameValidation.Failure)
     /// 出来上がるパスがボリュームの上限（実測で全形式 1024 バイト＝
@@ -285,6 +297,12 @@ extension FileOperationError: UserPresentableError {
                 + "「\(destination.lastPathComponent)」へは移動・コピーできません。"
         case let .destinationIsReadOnly(destination):
             return "「\(destination.lastPathComponent)」は読み取り専用です。"
+        case let .destinationNotWritable(destination, _):
+            return "「\(destination.lastPathComponent)」に書き込めません。"
+        case let .trashUnavailable(url):
+            return "「\(url.lastPathComponent)」のある場所にはゴミ箱がありません。"
+        case .timedOut:
+            return "処理が終わるのを待てませんでした。"
         case let .invalidName(name, _):
             return name.isEmpty ? "名前が入力されていません。" : "「\(name)」は名前として使えません。"
         case let .sourceChangedDuringOperation(source):
@@ -320,6 +338,15 @@ extension FileOperationError: UserPresentableError {
             return "自分自身の中へ入れると、際限なく複製が繰り返されてしまいます。"
         case .destinationIsReadOnly:
             return "このボリュームには書き込めない設定になっています。"
+        case let .destinationNotWritable(_, code):
+            // サーバ側のアクセス許可が POSIX パーミッションへ写らないことが
+            // あるため、表示上の権限とは食い違い得る [NV-29]。
+            return PosixFailure.reason(code, context: .destination)
+        case .trashUnavailable:
+            return "ネットワーク上の共有や一部のボリュームは、ゴミ箱を持ちません。"
+        case let .timedOut(seconds):
+            return "\(Int(seconds)) 秒待っても応答がありませんでした。"
+                + "ネットワーク上の場所では、サーバの応答が返らないことがあります。"
         case let .invalidName(_, reason):
             return reason.errorDescription ?? ""
         case .sourceChangedDuringOperation:
@@ -372,6 +399,14 @@ extension FileOperationError: UserPresentableError {
             return "そのフォルダの外にある場所を選んでください。"
         case .destinationIsReadOnly:
             return "書き込みできる別の場所を選ぶか、ボリュームの設定を確認してください。"
+        case .trashUnavailable:
+            return "完全に削除してよければ、「すぐに削除」をお使いください。取り消せません。"
+        case .timedOut:
+            return "接続を確認してから、もう一度お試しください。"
+        case let .destinationNotWritable(_, code):
+            return PosixFailure.recovery(code, context: .destination)
+                ?? "この場所への書き込み権限を確認してください。共有フォルダの場合は、"
+                    + "サーバ側のアクセス許可も確認が必要です。"
         case let .invalidName(_, reason):
             switch reason {
             case .empty: return "名前を入力してください。"

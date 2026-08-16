@@ -68,6 +68,16 @@ struct PermanentDeleteConfirmationSheet: View {
                 )
             }
 
+            if request.becauseNoTrash {
+                // **黙って別の動作に落ちない** [NV-81]。ゴミ箱に入れるつもりが
+                // 完全削除になる、という食い違いをここで必ず埋める。
+                calloutRow(
+                    icon: "trash.slash",
+                    text: String(localized: "permanentDelete.noTrashOnVolume", locale: locale),
+                    isWarning: true
+                )
+            }
+
             Text("permanentDelete.irreversible") // [UD-10] 取り消せないことの明示
                 .font(.system(size: Tokens.fontSize.caption))
                 .foregroundStyle(.secondary)
@@ -246,5 +256,9 @@ struct PermanentDeletionPreflight {
 struct PendingPermanentDeletion: Identifiable {
     let id = UUID()
     let urls: [URL]
+    /// **ユーザーが「ゴミ箱に入れる」を選んだのに、その場所にゴミ箱が
+    /// 無かったため完全削除へ振り替えた** [NV4-02]。Finder と同じく、
+    /// 「なぜ完全削除の確認が出ているのか」を必ず説明するために持つ。
+    var becauseNoTrash: Bool = false
     let onSuccess: @MainActor () -> Void
 }

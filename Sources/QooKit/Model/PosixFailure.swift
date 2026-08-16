@@ -82,6 +82,31 @@ public enum PosixFailure {
             // （`FileOperationError.destinationInsideSource`）で先に弾いている
             // が、取りこぼした場合の説明として。
             return "この組み合わせでは処理できません。"
+
+        // MARK: ネットワークボリューム [NV-47]
+        //
+        // **1-16b まで、この区分の翻訳が 1 つも無かった。** ネットワーク上の
+        // 失敗はすべて default に落ち、「原因を特定できないエラー」としか
+        // 出ていなかった。ネットワークでは切断が例外ではなく通常状態なので
+        // （§8.11.4）、いちばん頻度の高い失敗がいちばん説明されない状態だった。
+        case ETIMEDOUT:
+            return "サーバが応答しませんでした。"
+        case ENOTCONN, ENETDOWN, ENETUNREACH, EHOSTDOWN, EHOSTUNREACH, ECONNRESET, ECONNABORTED, EPIPE:
+            return "サーバとの接続が切れました。"
+        case ESTALE:
+            // NFS で顕著。共有側でファイルが差し替えられると、開いたままの
+            // 参照が無効になる。
+            return "この項目への参照が無効になりました。ほかのコンピュータから変更された可能性があります。"
+        case ENOTSUP, EOPNOTSUPP:
+            // **これは「能力検出が外れたサイン」である**（§8.11 NV-80）。
+            // 能力フラグを信じて選んだ速い経路が、実際には使えなかったときに来る。
+            return "この場所ではこの操作がサポートされていません。"
+        case EINTR:
+            // NFS の soft マウント等で、待機中の I/O が中断されたときに来る。
+            return "処理が中断されました。"
+        case EAUTH:
+            // 認証失敗。`EACCES`（権限不足）とは対処が違うので分けて扱う。
+            return "サーバの認証に失敗しました。"
         default:
             // **英語の `strerror` を本文に混ぜない**［棚卸しで発見］。
             // 原因を名指しできないことは正直に言い、詳細は
@@ -118,6 +143,18 @@ public enum PosixFailure {
             return "中身を空にしてから、もう一度お試しください。"
         case ELOOP, EXDEV, ENOTDIR, EISDIR, EINVAL:
             return nil // 状況依存で、一般に示せる次の手が無い
+
+        // MARK: ネットワークボリューム [NV-47]
+        case ETIMEDOUT, ENOTCONN, ENETDOWN, ENETUNREACH, EHOSTDOWN, EHOSTUNREACH,
+             ECONNRESET, ECONNABORTED, EPIPE, EINTR:
+            return "ネットワーク接続とサーバの状態を確認してから、もう一度お試しください。"
+        case ESTALE:
+            return "一覧を最新にしてから、もう一度お試しください。"
+        case ENOTSUP, EOPNOTSUPP:
+            // ユーザーには直せないことが多いので、別の場所を選ぶ以外の手は示さない。
+            return "別の場所を選ぶか、この場所で使える操作をお試しください。"
+        case EAUTH:
+            return "サーバへ接続し直して、認証をやり直してください。"
         default:
             return nil
         }

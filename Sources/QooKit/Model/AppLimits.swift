@@ -28,6 +28,17 @@ public enum AppLimits {
         /// 消費する分を吸収できればよいので小さくしてある — 大きくすると
         /// 「空き 2.5GB へ 2GB のコピー」のような正当な操作まで断ってしまう。
         public static let freeSpaceMargin: Int64 = 64 * 1_000 * 1_000
+
+        /// `NSWorkspace.recycle` の完了を待つ上限（秒）[NV4-04]。
+        ///
+        /// **UI 文脈を持たないプロセスでは完了ハンドラが永久に呼ばれない**
+        /// （1-16b の実測で 40 秒以上確認）。`FileOperationService` は `actor`
+        /// なので、待ち続けると**アプリの全ファイル操作が止まる**。
+        ///
+        /// ゴミ箱を持たない場所では macOS が確認ダイアログを出し、**ユーザーが
+        /// 答えるまで完了しない**——人が席を外す時間を見込んで長めに取る。
+        /// 短くすると「考えていたら勝手に打ち切られた」になる。
+        public static let trashTimeoutSeconds: Double = 120
     }
 
     public enum Thumbnail {

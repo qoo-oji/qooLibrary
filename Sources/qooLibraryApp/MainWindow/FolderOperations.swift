@@ -126,7 +126,13 @@ final class FolderOperations {
             } catch {
                 // 取り消し直後は下位から任意のエラーが返り得る（中断した処理の
                 // 後片付けが失敗した等）。それも提示しない。
-                if !Task.isCancelled { failed = error }
+                //
+                // **OS が出したダイアログでのキャンセルも同じ扱いにする**
+                // [NV4-03]。ゴミ箱を持たない場所での `NSWorkspace.recycle` は
+                // macOS の確認ダイアログを出し、キャンセルすると
+                // `NSUserCancelledError` を返す。これを提示すると
+                // **ユーザーが自分でキャンセルしたのにエラーが出る**。
+                if !Task.isCancelled, !CommandStack.isCancellation(error) { failed = error }
             }
             // **エラーを見せる前に進捗表示を片付ける** [実機検証で発見]。
             // `presentError` はユーザーがダイアログを閉じるまで完了しない
@@ -395,8 +401,27 @@ final class FolderOperations {
     }
 
     /// [FM-04] ゴミ箱に入れる（Finder のゴミ箱と互換 [TR2-01]）。
+    ///
+    /// **ゴミ箱を持たない場所では、完全削除の確認へ振り替える** [NV4-02]。
+    /// SMB 3 系統すべてでゴミ箱が無いことを実測しており（8章 §8.11.4）、
+    /// そのまま `NSWorkspace.recycle` を呼ぶと:
+    ///
+    /// - macOS の**素の**確認ダイアログが出る（件数・合計サイズ [PD-02] も、
+    ///   登録フォルダが強制解除される警告 [PD-14] も出ない）
+    /// - 承諾すると完全削除されるが**返却 URL が 0 件**なので、
+    ///   `TrashReceipt.trashURL` が `nil` になり **⌘Z が無言で何もしない**
+    ///
+    /// 振り替え先は既存の完全削除フロー（アプリ自身の確認シート →
+    /// `DeletePermanentlyCommand`）で、**Undo スタックには積まれない** [PD-05]。
+    /// 「ゴミ箱に入れたのに取り消せない」という食い違いも同時に消える。
     func moveToTrash(_ urls: [URL], onSuccess: @escaping @MainActor () -> Void = {}) {
         guard !urls.isEmpty else { return }
+        guard TrashAvailability.hasTrash(forAll: urls) else {
+            pendingDeletionStep = .confirm(PendingPermanentDeletion(
+                urls: urls, becauseNoTrash: true, onSuccess: onSuccess
+            ))
+            return
+        }
         run(TrashCommand(items: urls), failure: "error.trashFailed", onSuccess: onSuccess)
     }
 

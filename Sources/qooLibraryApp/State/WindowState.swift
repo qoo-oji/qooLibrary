@@ -292,6 +292,17 @@ public final class WindowState {
         guard let folder else { return false }
         let fileManager = FileManager.default
         guard !fileManager.fileExists(atPath: folder.path) else { return false }
+        // **ボリュームが外れているだけなら退避しない** [RG3-06][NV-93]。
+        //
+        // 退避は「削除・改名で行き先を失った」ときの救済であって、
+        // 「ボリュームが一時的に外れた」ときの正しい応答ではない。
+        // 外れただけなら**挿し直せば戻れる**のに、ここで祖先へ移動して
+        // しかも履歴から実在しない項目を取り除いてしまうと、**接続し直しても
+        // 元の場所へ戻れなくなる**（[SB-05] に正面から反する）。
+        //
+        // ネットワークボリュームでは切断が例外ではなく通常状態なので
+        // （8章 §8.11）、これは稀な事故ではなく日常的に踏まれる。
+        guard !Self.isOnAnUnmountedVolume(folder) else { return false }
         guard let target = Self.nearestExistingAncestor(of: folder) else { return false }
         self.folder = target
         title = target.lastPathComponent
@@ -300,6 +311,32 @@ public final class WindowState {
         backHistory.removeAll { !fileManager.fileExists(atPath: $0.url.path) }
         forwardHistory.removeAll { !fileManager.fileExists(atPath: $0.url.path) }
         return true
+    }
+
+    /// `url` が、いま接続されていないボリューム上を指しているか [NV-93]。
+    ///
+    /// **マウント一覧と突き合わせるだけで判定する。** ブックマークを解決したり
+    /// パスを触ったりしない——RG3-01 の判定順序と同じ理由で、**判定の過程で
+    /// ボリュームをマウントしてしまう**ことを避けるため（8章 §8.7.1 BM-5）。
+    /// ネットワークではその副作用が「接続タイムアウト分のブロック」と
+    /// 「認証ダイアログ」を意味する。
+    ///
+    /// `/Volumes/…` 配下でなければ（＝起動ボリューム上なら）常に `false`。
+    /// 判定できないときは `false` に倒す——退避しない側へ倒すと「消えた
+    /// フォルダに留まり続ける」ので、こちらは従来どおり退避させる。
+    static func isOnAnUnmountedVolume(_ url: URL) -> Bool {
+        let path = url.standardizedFileURL.path
+        guard path.hasPrefix("/Volumes/") else { return false }
+        // `/Volumes/<name>` を取り出す。
+        let components = url.standardizedFileURL.pathComponents
+        guard components.count >= 3 else { return false }
+        let mountPoint = "/Volumes/" + components[2]
+        // マウント一覧に無ければ「外れている」。`fileExists` で見ないのは、
+        // `/Volumes/<name>` は外れると同時に消えるとは限らないため。
+        let mounted = FileManager.default.mountedVolumeURLs(
+            includingResourceValuesForKeys: nil, options: []
+        ) ?? []
+        return !mounted.contains { $0.standardizedFileURL.path == mountPoint }
     }
 
     /// `url` の祖先のうち、実際に存在する最も深いもの（`url` 自身は除く）。

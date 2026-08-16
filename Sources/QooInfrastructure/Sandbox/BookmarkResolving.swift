@@ -8,7 +8,22 @@ public protocol BookmarkResolving: Sendable {
     func makeBookmark(for url: URL) throws -> Data // [RG-07]
 
     /// 起動時・マウント時に解決する。失敗は throw せず `.offline` を返す。 [SB-05]
+    ///
+    /// **既定ではマウントを起こさない** [RG3-01][NV-91]。解決には
+    /// **未マウントのボリュームを実際にマウントする副作用がある**（8章 §8.7.1 BM-5
+    /// で実測）。ネットワークボリュームではこれが ①接続タイムアウト分のブロック
+    /// （NFS の hard マウントなら無限）②**ユーザーが何も操作していないのに出る
+    /// 認証ダイアログ** を意味する。起動時に全登録を解決する経路
+    /// （`RegisteredFolderStore.loadAndActivateAll()` など）がこれを踏むと、
+    /// **サーバ不在のときアプリが起動時に固まる。**
     func resolve(_ data: Data) -> BookmarkResolution
+
+    /// マウントを許して解決する。**ユーザーの明示的な操作からのみ呼ぶこと** [RG3-01]。
+    ///
+    /// 「オフラインの登録フォルダを開こうとした」のように、待たされることを
+    /// ユーザーが理解している場面だけで使う。バックグラウンドの整合性チェックや
+    /// 起動処理から呼んではならない。
+    func resolveAllowingMount(_ data: Data) -> BookmarkResolution
 
     /// 解決した URL に対する startAccessing/stopAccessing をスコープ管理する。
     func withAccess<T: Sendable>(_ data: Data, _ body: @Sendable (URL) async throws -> T) async throws -> T

@@ -41,9 +41,18 @@ public final class CommandStack {
     /// 先は残さない）。
     /// ユーザーの中断か（`Task` の取り消しと、バックエンドが投げる
     /// 専用エラーの両方を受ける）。
-    static func isCancellation(_ error: any Error) -> Bool {
+    public static func isCancellation(_ error: any Error) -> Bool {
         if error is CancellationError { return true }
         if let extractError = error as? ExtractError, extractError == .cancelled { return true }
+        // **ユーザー自身のキャンセルを失敗として扱わない** [NV4-03]。
+        // ゴミ箱を持たない場所で `NSWorkspace.recycle` を呼ぶと macOS が
+        // 「すぐに削除されます」の確認ダイアログを出し、**キャンセルすると
+        // `NSUserCancelledError`（`NSCocoaErrorDomain 3072`）が返る**
+        // （1-16b の実測、8章 §8.11.4）。これをそのまま流すと、
+        // **ユーザーが自分でキャンセルしたのにエラーダイアログが出る**。
+        if let cocoa = error as? CocoaError, cocoa.code == .userCancelled { return true }
+        if (error as NSError).domain == NSCocoaErrorDomain,
+           (error as NSError).code == NSUserCancelledError { return true }
         return false
     }
 

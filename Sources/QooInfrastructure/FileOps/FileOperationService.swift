@@ -232,16 +232,26 @@ public actor FileOperationService {
         for item in items {
             identities[item] = try? identity(of: item)
         }
+        // **ゴミ箱を持たない場所では呼ばない** [NV4-01]。呼び出し側（UI）が
+        // 先に判定して完全削除の経路へ振り分けるのが本筋だが、ここでも
+        // 徹底する——`FileOperationService` を直に使う経路が増えても、
+        // 「ゴミ箱に入れたつもりが OS のダイアログを経て完全削除される」
+        // 事故が起きないようにするため（`createDirectory` の名前検証と同じ考え方）。
+        if let first = items.first, !TrashAvailability.hasTrash(forAll: items) {
+            throw FileOperationError.trashUnavailable(first)
+        }
         // NSWorkspace.shared.recycle(_:completionHandler:) を使い、Finder の
         // 「元に戻す」と互換にする [FM-04][TR2-01]。
         let mapping: [URL: URL]
         do {
-            mapping = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[URL: URL], Error>) in
-                NSWorkspace.shared.recycle(items) { urls, error in
-                    if let error {
-                        continuation.resume(throwing: error)
-                    } else {
-                        continuation.resume(returning: urls)
+            mapping = try await Self.withTimeout(seconds: AppLimits.FileOperations.trashTimeoutSeconds) {
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[URL: URL], Error>) in
+                    NSWorkspace.shared.recycle(items) { urls, error in
+                        if let error {
+                            continuation.resume(throwing: error)
+                        } else {
+                            continuation.resume(returning: urls)
+                        }
                     }
                 }
             }
@@ -530,17 +540,44 @@ public actor FileOperationService {
         )
     }
 
-    /// 書き込み先が読み取り専用ボリューム上でないこと。
+    /// 書き込み先に実際に書けること。
     ///
     /// 実測では、読み取り専用ボリュームへの書き込みは `EROFS` になり、
     /// Foundation 経由なら「ボリュームは読み取り専用です」と説明も付く。
     /// それでも**先に断る**のは、一括処理で 100 件目まで進んでから同じ
     /// エラーを返すのではなく、1 件目に触る前に止めたいため。
+    ///
+    /// ## `volumeIsReadOnly` だけでは足りない [NV-89]
+    /// **書き込み権限の無い Windows 共有で、モードビットと `volumeIsReadOnly` の
+    /// 両方が嘘をついた**（1-16b の実測、8章 §8.11）:
+    ///
+    /// | 情報源 | 答え |
+    /// |---|---|
+    /// | `ls -l` / `stat` のモードビット | `drwx------`（書ける）→ **嘘** |
+    /// | `volumeIsReadOnly` | `×`（読み取り専用でない）→ **役に立たない** |
+    /// | **`access(2)` の `W_OK`** | **`false`（正しい）** |
+    ///
+    /// SMB ではサーバ側の共有アクセス許可と ACL が POSIX パーミッションへ
+    /// 正しく写らないため（NV-29）、モードビットは信用できない。`access(2)` は
+    /// サーバが返す実効アクセスマスクに基づくので正しく答える。
+    ///
+    /// **呼ぶのは操作ごとに 1 回**（項目ごとに呼ばない）[NV-98]。ネットワーク
+    /// ボリュームでは 1 回ごとに往復が発生し得るため、`pathLimit` と同じ理由。
     private static func checkDestinationIsWritable(_ destination: URL) throws {
         let values = try? destination.resourceValues(forKeys: [.volumeIsReadOnlyKey])
         if values?.volumeIsReadOnly == true {
             throw FileOperationError.destinationIsReadOnly(destination)
         }
+        // 存在しない書き込み先（これから作るフォルダ等）はここでは判定しない
+        // ——`access` は存在しないパスに対して当然失敗するが、それは
+        // 「書けない」ではない。作成の可否は呼び出し側が別途確かめている。
+        guard FileManager.default.fileExists(atPath: destination.path) else { return }
+        guard access(destination.path, W_OK) != 0 else { return }
+        let code = errno
+        Log.fileOps.warning(
+            "書き込み先に書き込めません（access W_OK）: \(Log.path(destination)) errno=\(code)"
+        )
+        throw FileOperationError.destinationNotWritable(destination, errnoCode: code)
     }
 
     /// 書き込み先が、運ぼうとしている項目自身またはその配下でないこと。
@@ -909,5 +946,63 @@ public actor FileOperationService {
 
     private func identity(of url: URL) throws -> FileIdentity {
         try FileMetadata.identity(of: url)
+    }
+
+    /// **待つのをやめられるようにする** [NV4-04][NV6-03]。
+    ///
+    /// `NSWorkspace.recycle` は、UI 文脈を持たないプロセスでは
+    /// **完了ハンドラが永久に呼ばれない**（1-16b の実測で 40 秒以上確認、
+    /// 8章 §8.11.4）。`withCheckedThrowingContinuation` はそれを待ち続けるので、
+    /// **`actor` がそのまま永久に塞がり、アプリの全ファイル操作が停止する**。
+    ///
+    /// ここで打ち切れるのは**待つこと**だけで、走っている I/O は止まらない
+    /// [NV6-03]。それでも「アプリが二度と動かない」よりはるかに良い。
+    ///
+    /// 上限を過ぎたら `operation` の完了は捨てる。ゴミ箱の場合、捨てた側で
+    /// 実際に削除が進む可能性はあるが、`announce` は `defer` で必ず走るので
+    /// 表示は次の読み直しで実体に追随する。
+    /// **構造化並行性を使ってはいけない。** `withThrowingTaskGroup` で
+    /// 「本体」と「スリープ」を競争させる書き方は誤りで、**本体を抜ける際に
+    /// グループが全子タスクの完了を暗黙に待つ**ため、結局待たされる。しかも
+    /// `withCheckedThrowingContinuation` はキャンセルに反応しないので
+    /// `cancelAll()` も効かない（1-15 のアプリ終了処理で実際に踏んだ）。
+    ///
+    /// 独立した 2 本の非構造化タスクを走らせ、**先に着いた方が 1 度だけ
+    /// 応答する**形にする。
+    private static func withTimeout<T: Sendable>(
+        seconds: Double, _ operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        let box = SingleResume<T>()
+        return try await withCheckedThrowingContinuation { continuation in
+            box.arm(continuation)
+            Task {
+                do { box.resume(.success(try await operation())) }
+                catch { box.resume(.failure(error)) }
+            }
+            Task {
+                try? await Task.sleep(for: .seconds(seconds))
+                box.resume(.failure(FileOperationError.timedOut(seconds: seconds)))
+            }
+        }
+    }
+
+    /// 1 度だけ再開できる継続の入れ物。二重再開は `CheckedContinuation` が
+    /// クラッシュとして検出するので、ロックで確実に 1 回に絞る。
+    private final class SingleResume<T: Sendable>: @unchecked Sendable {
+        private let lock = NSLock()
+        private var continuation: CheckedContinuation<T, Error>?
+
+        func arm(_ continuation: CheckedContinuation<T, Error>) {
+            lock.lock(); defer { lock.unlock() }
+            self.continuation = continuation
+        }
+
+        func resume(_ result: Result<T, Error>) {
+            lock.lock()
+            let pending = continuation
+            continuation = nil
+            lock.unlock()
+            pending?.resume(with: result)
+        }
     }
 }

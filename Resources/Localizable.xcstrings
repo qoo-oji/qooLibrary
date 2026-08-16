@@ -6380,6 +6380,22 @@
           }
         }
       }
+    },
+    "permanentDelete.noTrashOnVolume": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This location has no Trash, so these items will be deleted immediately."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この場所にはゴミ箱がないため、項目はすぐに削除されます。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

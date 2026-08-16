@@ -196,4 +196,18 @@ import Testing
     func actionableErrnosOfferANextStep(_ code: Int32) {
         #expect(PosixFailure.recovery(code)?.isEmpty == false, "対処が無い: errno \(code)")
     }
+
+    /// **ネットワークボリュームの `errno` を「不明」に落とさない** [NV-47]。
+    ///
+    /// 1-16b までこの区分の翻訳が 1 つも無く、**ネットワークでいちばん頻度の
+    /// 高い失敗（切断・無応答）がいちばん説明されない**状態だった。
+    /// ネットワークでは切断が例外ではなく通常状態である（8章 §8.11）。
+    @Test(arguments: [ETIMEDOUT, ENOTCONN, ENETDOWN, ENETUNREACH, EHOSTDOWN, EHOSTUNREACH,
+                      ECONNRESET, ECONNABORTED, EPIPE, ESTALE, ENOTSUP, EINTR, EAUTH])
+    func networkErrnosAreExplainedAndActionable(_ code: Int32) {
+        let reason = PosixFailure.reason(code)
+        #expect(!reason.contains("原因を特定できない"), "既定の文言に落ちている: errno \(code)")
+        #expect(!reason.contains("Error"), "英語が出ている: \(reason)")
+        #expect(PosixFailure.recovery(code)?.isEmpty == false, "対処が無い: errno \(code)")
+    }
 }
