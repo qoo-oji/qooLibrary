@@ -85,11 +85,8 @@ struct FolderTreePane: View {
     @State private var volumesWatch = DirectoryObservation()
     @State private var libraryEntries: [RegisteredFolderEntry] = []
     @State private var temporaryEntries: [RegisteredFolderEntry] = []
-    /// 表示中の入力ダイアログ [`FolderTreePrompt` 参照]。
-    @State private var prompt: FolderTreePrompt?
-    @State private var promptText = ""
     /// ファイル操作の共通レイヤ [`FolderOperations` 参照]。中央ペインと
-    /// まったく同じ実装を共有する。実行中表示・パスワードシートの描画は
+    /// まったく同じ実装を共有する。操作の途中で判断を仰ぐシートの描画は
     /// `.folderOperationsHost(_:)` が担う。
     @State private var operations = FolderOperations()
     /// [ユーザー要望、環境設定「表示」タブ] 中央ペインでフォルダを移動した
@@ -163,15 +160,6 @@ struct FolderTreePane: View {
                 await reloadRegisteredFolders()
                 guard !skipsInitialAutoExpand else { return }
                 revealSelectionIfNeeded(scrollProxy: scrollProxy)
-            }
-            // 入力を伴うダイアログは 3 種類（登録フォルダの表示名変更・実
-            // フォルダ名の変更・新規フォルダ）あるが、**同じビューに複数の
-            // `.alert` を重ねると表示が不安定になる**ため、`FolderTreePrompt`
-            // という 1 つの状態にまとめて単一の `.alert` で扱う [設計判断]。
-            .alert(promptTitle, isPresented: Binding(get: { prompt != nil }, set: { if !$0 { prompt = nil } })) {
-                TextField(promptPlaceholder, text: $promptText)
-                Button(promptConfirmTitle) { commitPrompt() }
-                Button("common.cancel", role: .cancel) {}
             }
             .folderOperationsHost(operations)
             .onChange(of: selectedURL) { _, _ in
@@ -382,18 +370,9 @@ struct FolderTreePane: View {
             open: { onSelect($0.url, $0.navigationRoot) },
             openInNewTab: { onOpenInNewTab($0.url, $0.navigationRoot) },
             openInNewWindow: { onOpenInNewWindow($0.url) },
-            beginRenameFolder: { context in
-                prompt = .renameFolder(url: context.url)
-                promptText = context.url.lastPathComponent
-            },
-            beginNewFolder: { context in
-                prompt = .newFolder(parent: context.url)
-                promptText = String(localized: "action.newFolder", locale: locale)
-            },
-            beginRenameDisplayName: { folder in
-                prompt = .renameDisplayName(folder)
-                promptText = folder.displayName
-            },
+            beginRenameFolder: { presentRenameFolderDialog($0.url) },
+            beginNewFolder: { presentNewFolderDialog(in: $0.url) },
+            beginRenameDisplayName: { presentRenameDisplayNameDialog($0) },
             unregister: { unregisterFolder($0) },
             // [DS-04] 状態はメインアクタ上のキャッシュから同期的に読み、
             // 書き込みだけ非同期でストアへ送ってからキャッシュを取り直す。
@@ -402,60 +381,72 @@ struct FolderTreePane: View {
         )
     }
 
-    // MARK: - 入力ダイアログ（3 種類を単一の `.alert` で扱う）
+    // MARK: - 入力ダイアログ
+    //
+    // いずれも `NameInputDialog` を独立したモーダルウインドウとして出す
+    // （`DialogWindowPresenter` 参照）。中央ペインのファイル名変更は従来どおり
+    // Finder 流のインライン編集で、この経路は通らない。
 
-    private var promptTitle: String {
-        switch prompt {
-        case .renameDisplayName: String(localized: "folderTree.renameDisplayName", locale: locale)
-        case .renameFolder: String(localized: "folderTree.renameFolder", locale: locale)
-        case .newFolder, .none: String(localized: "action.newFolder", locale: locale)
-        }
-    }
-
-    private var promptPlaceholder: String {
-        switch prompt {
-        case .renameDisplayName: String(localized: "folderTree.displayName", locale: locale)
-        case .renameFolder, .newFolder, .none: String(localized: "folder.namePlaceholder", locale: locale)
-        }
-    }
-
-    private var promptConfirmTitle: String {
-        switch prompt {
-        case .renameDisplayName, .renameFolder: String(localized: "action.rename", locale: locale)
-        case .newFolder, .none: String(localized: "common.create", locale: locale)
-        }
-    }
-
-    private func commitPrompt() {
-        guard let prompt else { return }
-        let name = promptText
-        self.prompt = nil
-        switch prompt {
-        case .renameDisplayName(let folder): // [RG-05]
-            guard !name.isEmpty else { return }
-            Task {
-                do {
-                    try await RegisteredFolderStore.shared.rename(folder.id, to: name)
-                } catch {
-                    // 保存失敗を握りつぶさない [ER-01、2026-08 既知の不具合の
-                    // 一掃] — 以前は `try?` で、次回起動時に変更が消えていても
-                    // 気づく手段が無かった。
-                    await NotificationRouter.shared.presentError(
-                        error, whatHappened: String(localized: "error.operationFailed", locale: locale)
-                    )
-                }
-                await reloadRegisteredFolders()
+    /// 実フォルダの名前を変更する [FM-05]。
+    private func presentRenameFolderDialog(_ url: URL) {
+        DialogWindowPresenter.shared.present(
+            title: String(localized: "folderTree.renameFolder", locale: locale)
+        ) { _ in
+            NameInputDialog(
+                placeholder: String(localized: "folder.namePlaceholder", locale: locale),
+                confirmTitle: String(localized: "action.rename", locale: locale),
+                initialName: url.lastPathComponent
+            ) { name in
+                operations.rename(url, to: name) { reloadTreeAfterMutation() }
             }
-        case .renameFolder(let url): // [FM-05]
-            operations.rename(url, to: name) { reloadTreeAfterMutation() }
-        case .newFolder(let parent): // [FM-01]
-            operations.createFolder(named: name, in: parent) {
-                // 作成先の行を開いておく——折りたたんだ行に対して実行した場合、
-                // 開かないと「何も起きなかった」ように見えるため。既に展開済み
-                // なら `SessionState.reloadToken` 側で、折りたたみ済みなら
-                // 展開を検知した `FolderTreeRow` 側で、どちらも子が読み直される。
-                expandedNodeIDs.insert(parent.standardizedFileURL.path)
-                reloadTreeAfterMutation()
+        }
+    }
+
+    /// `parent` の中に新規フォルダを作る [FM-01]。
+    private func presentNewFolderDialog(in parent: URL) {
+        DialogWindowPresenter.shared.present(
+            title: String(localized: "action.newFolder", locale: locale)
+        ) { _ in
+            NameInputDialog(
+                placeholder: String(localized: "folder.namePlaceholder", locale: locale),
+                confirmTitle: String(localized: "common.create", locale: locale),
+                initialName: String(localized: "action.newFolder", locale: locale)
+            ) { name in
+                operations.createFolder(named: name, in: parent) {
+                    // 作成先の行を開いておく——折りたたんだ行に対して実行した場合、
+                    // 開かないと「何も起きなかった」ように見えるため。既に展開済み
+                    // なら `SessionState.reloadToken` 側で、折りたたみ済みなら
+                    // 展開を検知した `FolderTreeRow` 側で、どちらも子が読み直される。
+                    expandedNodeIDs.insert(parent.standardizedFileURL.path)
+                    reloadTreeAfterMutation()
+                }
+            }
+        }
+    }
+
+    /// 登録フォルダの表示名を変更する [RG-05]。実フォルダ名は変えない。
+    private func presentRenameDisplayNameDialog(_ folder: RegisteredFolder) {
+        DialogWindowPresenter.shared.present(
+            title: String(localized: "folderTree.renameDisplayName", locale: locale)
+        ) { _ in
+            NameInputDialog(
+                placeholder: String(localized: "folderTree.displayName", locale: locale),
+                confirmTitle: String(localized: "action.rename", locale: locale),
+                initialName: folder.displayName
+            ) { name in
+                Task {
+                    do {
+                        try await RegisteredFolderStore.shared.rename(folder.id, to: name)
+                    } catch {
+                        // 保存失敗を握りつぶさない [ER-01、2026-08 既知の不具合の
+                        // 一掃] — 以前は `try?` で、次回起動時に変更が消えていても
+                        // 気づく手段が無かった。
+                        await NotificationRouter.shared.presentError(
+                            error, whatHappened: String(localized: "error.operationFailed", locale: locale)
+                        )
+                    }
+                    await reloadRegisteredFolders()
+                }
             }
         }
     }
@@ -614,19 +605,6 @@ struct FolderTreePane: View {
             return error.localizedDescription
         }
     }
-}
-
-/// ツリーから開く入力ダイアログの種類。`.alert` を種類ごとに重ねると表示が
-/// 不安定になるため、単一の `.alert` をこの状態で切り替える [設計判断]。
-private enum FolderTreePrompt {
-    /// 登録フォルダの表示名を変更する [RG-05]。実フォルダ名は変えない。
-    case renameDisplayName(RegisteredFolder)
-    /// 実フォルダの名前を変更する [FM-05]。中央ペインは Finder 流のインライン
-    /// 編集だが、ツリーにはその基盤が無いためアラート方式にしている
-    /// [ユーザー判断]。
-    case renameFolder(url: URL)
-    /// `parent` の中に新規フォルダを作る [FM-01]。
-    case newFolder(parent: URL)
 }
 
 /// 登録済みフォルダ 1 件（表示名・Security-Scoped Bookmark）と、解決済みの

@@ -132,7 +132,7 @@ public enum ExtractError: Error, Sendable, Equatable {
     /// パスワードで保護されたエントリに遭遇したが、パスフレーズが渡されて
     /// いない [AB-04][OS-09]。呼び出し側はこれを受けてユーザーにパスワード
     /// 入力を促し、`passphraseProvider` 経由で再試行する
-    /// [環境設定「圧縮／展開」タブ、`ArchivePasswordSheet` 参照]。
+    /// [環境設定「圧縮／展開」タブ、`ArchivePasswordDialog` 参照]。
     case passwordProtected
     /// パスフレーズを渡したが復号に失敗した（誤ったパスワード）。
     case incorrectPassphrase

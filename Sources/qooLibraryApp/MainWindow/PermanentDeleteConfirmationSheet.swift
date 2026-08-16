@@ -260,8 +260,7 @@ struct PermanentDeletionPreflight {
     }
 }
 
-/// 完全削除の確認シートを出すための保留状態
-/// [`PendingCompression`/`PendingExtractionPassword` と同じパターン]。
+/// 完全削除の確認シートを出すための保留状態 [`PendingConflict` と同じパターン]。
 struct PendingPermanentDeletion: Identifiable {
     let id = UUID()
     let urls: [URL]

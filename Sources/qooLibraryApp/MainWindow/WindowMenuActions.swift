@@ -21,7 +21,7 @@ struct WindowMenuActions {
     var goForward: () -> Void = {}
     var goToParent: () -> Void = {}
     var goHome: () -> Void = {}
-    /// 「フォルダへ移動…」（⇧⌘G）のシートを開く [`GoToFolderSheet`]。
+    /// 「フォルダへ移動…」（⇧⌘G）のダイアログを開く [`GoToFolderDialog`]。
     var beginGoToFolder: () -> Void = {}
     /// 登録フォルダ・最近使ったフォルダなど、行き先が確定している移動。
     /// `root` を伴うのは、ライブラリ／テンポラリから入った場合に

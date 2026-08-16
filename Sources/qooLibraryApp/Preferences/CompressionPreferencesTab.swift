@@ -11,7 +11,7 @@ import SwiftUI
 /// 表示しない（機能しない設定を見せない、という既存原則）。
 ///
 /// **パスワード文字列自体はここに保存しない**。実際のパスワードは圧縮の
-/// たびに `ArchivePasswordSheet` で入力させる（`CompressionOptions` の
+/// たびに `ArchivePasswordDialog` で入力させる（`CompressionOptions` の
 /// コメント参照、セキュリティ上の設計判断）。
 struct CompressionPreferencesTab: View {
     @AppStorage("qoo.preferences.compression.format") private var format: CompressibleFormat = .zip

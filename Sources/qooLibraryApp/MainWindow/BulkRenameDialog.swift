@@ -7,9 +7,19 @@ import SwiftUI
 /// 実行するが、一括で名前を書き換える操作は取り返しの印象が強く、実行前に
 /// 「変更前 → 変更後」を確かめられる方が安心して押せる。衝突する行は赤字で
 /// 示し、1 件でもあれば実行させない [BR-09]。
-struct BulkRenameSheet: View {
+///
+/// Finder の `BulkRenameWindow` と同じく独立したウインドウとして出す
+/// （`DialogWindowPresenter` 参照）。ウインドウのタイトルは提示側が組み立てる
+/// ため、ここでは見出しを描かない。
+struct BulkRenameDialog: View {
     @Environment(\.locale) private var locale
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.dialogDismiss) private var dismiss
+
+    /// ウインドウのタイトル。件数を含むため提示側と同じ組み立てをここに置き、
+    /// 文言が 2 か所へ散らないようにする。
+    static func windowTitle(count: Int, locale: Locale) -> String {
+        String(format: String(localized: "bulkRename.title", locale: locale), count)
+    }
 
     let names: [String]
     /// 同じフォルダにある「対象外」の項目の名前。衝突判定に使う。
@@ -62,10 +72,20 @@ struct BulkRenameSheet: View {
     private var hasAnyChange: Bool { changes.contains { $0.isChanged } }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Tokens.spacing.m) {
-            Text(String(format: String(localized: "bulkRename.title", locale: locale), names.count))
-                .font(.system(size: Tokens.fontSize.title2, weight: .semibold))
-
+        DialogScaffold(
+            width: 620,
+            confirm: DialogButton(title: String(localized: "bulkRename.rename", locale: locale)) {
+                // 先に閉じてから実行する（`NameInputDialog.commit()` と同じ順序）。
+                let planned = changes
+                dismiss()
+                onCommit(planned)
+            },
+            cancel: DialogButton(
+                title: String(localized: "common.cancel", locale: locale), role: .cancel
+            ) { dismiss() },
+            // [BR-09] 衝突が 1 件でもあれば実行させない。
+            confirmDisabled: hasConflict || !hasAnyChange
+        ) {
             Picker("bulkRename.mode", selection: $mode) {
                 ForEach(ModeSelection.allCases) { Text($0.titleKey).tag($0) }
             }
@@ -85,21 +105,7 @@ struct BulkRenameSheet: View {
                     .foregroundStyle(Tokens.Colors.dangerText)
                     .font(.system(size: Tokens.fontSize.caption))
             }
-
-            QooDialogFooter(
-                confirm: DialogButton(title: String(localized: "bulkRename.rename", locale: locale)) {
-                    onCommit(changes)
-                    dismiss()
-                },
-                cancel: DialogButton(title: String(localized: "common.cancel", locale: locale), role: .cancel) {
-                    dismiss()
-                },
-                // [BR-09] 衝突が 1 件でもあれば実行させない。
-                confirmDisabled: hasConflict || !hasAnyChange
-            )
         }
-        .padding(Tokens.spacing.l)
-        .frame(width: 620)
     }
 
     @ViewBuilder
@@ -200,9 +206,9 @@ struct BulkRenameSheet: View {
     }
 }
 
-/// 一括リネームの保留状態。`.sheet(item:)` に渡す。
-struct PendingBulkRename: Identifiable {
-    let id = UUID()
+/// 一括リネーム 1 回分の対象。対象の収集（兄弟一覧の読み取り）が非同期なので、
+/// 集め終えてからダイアログを出すまでの受け渡しに使う。
+struct PendingBulkRename {
     let folder: URL
     let names: [String]
     let existingNames: Set<String>

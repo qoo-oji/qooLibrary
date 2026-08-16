@@ -74,11 +74,11 @@ struct FolderContentView: View {
     /// （ウインドウ単位、タブをまたいで共有 [ST-22]）が保持する。
     @Binding var listStyle: ListStyle
     @Binding var iconSize: Double
-    /// 新規フォルダ作成ダイアログの状態 [FM-01]。ボタン自体はウインドウの
-    /// 実ツールバー（`MainWindowView`）に移したため、状態は上位で持ち上げ、
-    /// このビューはダイアログ本体（`.alert`）と実際の作成処理のみを担う。
-    @Binding var showingNewFolderPrompt: Bool
-    @Binding var newFolderName: String
+    /// ツールバーの「新規フォルダ」ボタン（`MainWindowView`）から届く合図
+    /// [FM-01]。増分されたらダイアログを出す。ダイアログを出す側をこのビューに
+    /// 置いているのは、作成先のフォルダと作成後の再読み込みを知っているのが
+    /// ここだけのため。
+    @Binding var newFolderRequests: Int
     /// パスバー・ステータスバーの表示 [1-16 表示メニュー、Finder の
     /// 「パスバーを隠す」「ステータスバーを隠す」相当]。**`@AppStorage` では
     /// なく素の `Bool` として受け取る** — 永続化と `UserDefaults` の読み書きは
@@ -604,11 +604,9 @@ struct FolderContentView: View {
             FolderSortComparator.persist(newValue)
         }
         .onChange(of: groupFoldersAtTop) { _, _ in publishQuickLookOrder() }
-        .alert("action.newFolder", isPresented: $showingNewFolderPrompt) {
-            TextField("folder.namePlaceholder", text: $newFolderName)
-            Button("common.create") { createNewFolder() }
-            Button("common.cancel", role: .cancel) {}
-        }
+        // ツールバーのボタンからの合図でダイアログを出す
+        // [`newFolderRequests` 参照]。
+        .onChange(of: newFolderRequests) { _, _ in presentNewFolderDialog() }
         // 「戻る」「1階層上へ」で親フォルダへ移動した直後のスクロール
         // [`WindowState.pendingRevealURL` 参照、ユーザー要望]。既存の
         // `pendingScrollTarget` 経路へそのまま橋渡しする。
@@ -862,10 +860,7 @@ struct FolderContentView: View {
 
         actions.open = { openSelection() }
         actions.quickLook = { quickLook.toggle() }
-        actions.newFolder = {
-            newFolderName = String(localized: "action.newFolder", locale: locale)
-            showingNewFolderPrompt = true
-        }
+        actions.newFolder = { presentNewFolderDialog() }
         actions.newFolderWithSelection = { newFolderWithSelection(selected) }
         actions.rename = {
             if selection.count > 1 { beginBulkRename(Array(selection)) } else { beginRenameFromShortcut() }
@@ -1506,8 +1501,7 @@ struct FolderContentView: View {
             }
             Divider()
             Button("action.newFolder", systemImage: "folder.badge.plus") {
-                newFolderName = String(localized: "action.newFolder", locale: locale)
-                showingNewFolderPrompt = true
+                presentNewFolderDialog()
             }
             Button("action.paste", systemImage: "document.on.clipboard") { pasteFromPasteboard() }
                 .disabled(!canPaste)
@@ -1964,9 +1958,26 @@ struct FolderContentView: View {
         operations.deletePermanently(urls) { reload() }
     }
 
-    private func createNewFolder() {
+    /// [FM-01] 新規フォルダ。Finder の `NewFolderWindow` と同じく独立した
+    /// ウインドウで名前を尋ねる（`DialogWindowPresenter` 参照）。
+    ///
+    /// **作成先は `folder` ではなく `currentFolder()` から読む** — このビューは
+    /// 値型なので、フォルダを続けて移動した直後は 1 世代古いインスタンスの
+    /// クロージャが呼ばれることがあり、`folder` だと移動前の場所に作ってしまう
+    /// [1-9 の ⌘↑ 以来、この経路で繰り返し踏んでいる罠]。
+    private func presentNewFolderDialog() {
         guard let folder = currentFolder() else { return }
-        operations.createFolder(named: newFolderName, in: folder) { reload() }
+        DialogWindowPresenter.shared.present(
+            title: String(localized: "action.newFolder", locale: locale)
+        ) { _ in
+            NameInputDialog(
+                placeholder: String(localized: "folder.namePlaceholder", locale: locale),
+                confirmTitle: String(localized: "common.create", locale: locale),
+                initialName: String(localized: "action.newFolder", locale: locale)
+            ) { name in
+                operations.createFolder(named: name, in: folder) { reload() }
+            }
+        }
     }
 
     // MARK: - 圧縮・展開 [9.4 節]

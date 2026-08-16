@@ -64,15 +64,15 @@ struct MainWindowView: View {
     /// `NavigationSplitView` 自身が持つ表示状態なので、こちらは永続化せず
     /// `@State` のみ（ウインドウを開き直せば既定に戻る）。
     @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
-    /// 新規フォルダ作成ダイアログの状態。ボタン自体はウインドウの実ツールバーに
-    /// あるが、`.alert` 本体は `FolderContentView` 側（`folder`/`CommandStack` を
-    /// 参照できる場所）に置いたままにしたいため、ここへ持ち上げてバインディング
-    /// で橋渡ししている [ユーザー要望: 戻る/進む/上の階層へ・表示切替・新規
-    /// フォルダ・右ペイン折りたたみをすべて実ツールバーへ統合]。
-    @State private var showingNewFolderPrompt = false
-    @State private var newFolderName = String(localized: "action.newFolder", locale: AppLanguage.effectiveLocale)
-    /// 「フォルダへ移動…」（⇧⌘G）[1-16 移動メニュー、`GoToFolderSheet`]。
-    @State private var showingGoToFolderSheet = false
+    /// ツールバーの「新規フォルダ」ボタンから中央ペインへ送る合図
+    /// [ユーザー要望: 戻る/進む/上の階層へ・表示切替・新規フォルダ・右ペイン
+    /// 折りたたみをすべて実ツールバーへ統合]。
+    ///
+    /// ダイアログ自体は、対象フォルダと作成後の再読み込みを知っている
+    /// `FolderContentView` が出す [`NameInputDialog`]。**増分するだけの合図**に
+    /// しているのは、`SessionState.reloadToken` と同じ理由 — 真偽値を上げ下げ
+    /// する形にすると「まだ下げていない」状態が残って次の要求が落ちる。
+    @State private var newFolderRequests = 0
     /// サイドバー（左ペイン）・インスペクタ（右ペイン）の幅 [UI-02 相当]。
     /// `NavigationSplitView`/`.inspector()` は `ideal:` を初期表示幅として
     /// 素直に尊重してくれる（`HSplitView` の `.frame(idealWidth:)` は無視される
@@ -163,7 +163,7 @@ struct MainWindowView: View {
             goForward: { windowState.goForward() },
             goToParent: { windowState.goToParent() },
             goHome: { windowState.goHome() },
-            beginGoToFolder: { showingGoToFolderSheet = true },
+            beginGoToFolder: { presentGoToFolderDialog() },
             navigate: { url, root in windowState.navigate(to: url, root: root) },
             // ファイルメニュー [1-16 メニュー抜け監査]。どちらも ⌘T/⌘F として
             // 配線済みだったがメニューバーからは辿れなかった。実体は下の
@@ -257,6 +257,22 @@ struct MainWindowView: View {
     private func openAsWindow(_ target: TabTarget) {
         WindowTabJoiner.shared.prepareToOpenAsWindow()
         openWindow(value: target)
+    }
+
+    /// 「フォルダへ移動…」（⇧⌘G）[1-16 移動メニュー]。Finder の `GotoWindow` と
+    /// 同じく独立したウインドウとして出す（`DialogWindowPresenter` 参照）。
+    private func presentGoToFolderDialog() {
+        DialogWindowPresenter.shared.present(
+            title: String(localized: "goToFolder.title", locale: locale)
+        ) { _ in
+            GoToFolderDialog { url in
+                // 入口は「ボリューム」扱いにする — 入力されたパスが結果的に
+                // 登録フォルダの中を指していても、ユーザーはツリーの登録
+                // フォルダ行から入ったわけではないため [`NavigationRoot` の
+                // 「URL から逆算しない」方針に従う]。
+                windowState.navigate(to: url, root: .volume)
+            }
+        }
     }
 
 
@@ -372,8 +388,7 @@ struct MainWindowView: View {
                     .labelsHidden()
 
                     Button {
-                        newFolderName = String(localized: "action.newFolder", locale: locale)
-                        showingNewFolderPrompt = true
+                        newFolderRequests += 1
                     } label: {
                         Image(systemName: "folder.badge.plus")
                     }
@@ -438,8 +453,7 @@ struct MainWindowView: View {
                             quickLook: quickLook,
                             listStyle: $windowState.listStyle,
                             iconSize: $windowState.iconSize,
-                            showingNewFolderPrompt: $showingNewFolderPrompt,
-                            newFolderName: $newFolderName,
+                            newFolderRequests: $newFolderRequests,
                             isPathBarVisible: isPathBarVisible,
                             isStatusBarVisible: isStatusBarVisible,
                             thumbnailHiddenReason: windowState.thumbnailHiddenReason, // [DS-01][DS-07]
@@ -578,16 +592,6 @@ struct MainWindowView: View {
             guard newValue.isEmpty, isSearchFieldExpanded else { return }
             guard !(NSApp.keyWindow?.firstResponder is NSText) else { return }
             collapseSearchField(clearingText: false)
-        }
-        .sheet(isPresented: $showingGoToFolderSheet) {
-            GoToFolderSheet { url in
-                // 入口は「ボリューム」扱いにする — 入力されたパスが結果的に
-                // 登録フォルダの中を指していても、ユーザーはツリーの登録
-                // フォルダ行から入ったわけではないため [`NavigationRoot` の
-                // 「URL から逆算しない」方針に従う]。
-                windowState.navigate(to: url, root: .volume)
-            }
-            .appLanguageOverride()
         }
         // マウスのサイドボタン・トラックパッドのスワイプでの戻る/進む
         // [ユーザー要望、13章 §13.6「将来検討」に記録していたものを実装]。

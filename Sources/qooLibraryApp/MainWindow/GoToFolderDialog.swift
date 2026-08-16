@@ -3,19 +3,19 @@ import SwiftUI
 
 /// Finder の「フォルダへ移動…」（⇧⌘G）相当 [1-16 移動メニュー]。
 ///
-/// パスを直接入力して移動する。`NSOpenPanel` ではなくアプリ内のシートにして
-/// いるのは、この操作の目的が「既に知っているパスへ一発で飛ぶ」ことであり、
-/// ファイル選択パネルを開くのは遠回りなため（Finder 自身も専用のシートを
-/// 使う）。
+/// パスを直接入力して移動する。`NSOpenPanel` ではなくアプリ内のダイアログに
+/// しているのは、この操作の目的が「既に知っているパスへ一発で飛ぶ」ことであり、
+/// ファイル選択パネルを開くのは遠回りなため。Finder も同じ判断で、`GotoWindow`
+/// という**独立したウインドウ**を持っている（`DialogWindowPresenter` 参照）。
 ///
-/// **アクセス権はこのシートでは扱わない** [設計判断]。サンドボックスの都合で
+/// **アクセス権はここでは扱わない** [設計判断]。サンドボックスの都合で
 /// 実際に開けるかどうかは既存の許可（環境設定「アクセス権」タブ／登録フォルダ）
 /// が決めるため、ここは「入力されたパスがフォルダとして存在し、読めるか」まで
-/// を判定し、読めない場合は理由を添えて入力欄に留める（シートを閉じてから
-/// エラーダイアログを出すと、打ち直しのために開き直す手間が増えるため）。
-struct GoToFolderSheet: View {
+/// を判定し、読めない場合は理由を添えて入力欄に留める（ダイアログを閉じてから
+/// エラーを出すと、打ち直しのために開き直す手間が増えるため）。
+struct GoToFolderDialog: View {
     @Environment(\.locale) private var locale
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.dialogDismiss) private var dismiss
 
     /// 検証を通ったフォルダだけが渡る。
     let onGo: (URL) -> Void
@@ -25,14 +25,19 @@ struct GoToFolderSheet: View {
     @FocusState private var isFieldFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Tokens.spacing.m) {
-            Text("goToFolder.title")
-                .font(.system(size: Tokens.fontSize.title2, weight: .semibold))
-
+        // Return での確定は `DialogScaffold` が引き受ける（フィールド個別の
+        // `.onSubmit` は不要）。
+        DialogScaffold(
+            width: 460,
+            confirm: DialogButton(title: String(localized: "goToFolder.go", locale: locale)) { go() },
+            cancel: DialogButton(
+                title: String(localized: "common.cancel", locale: locale), role: .cancel
+            ) { dismiss() },
+            confirmDisabled: resolvedInput == nil
+        ) {
             TextField("goToFolder.placeholder", text: $path)
                 .editableFieldChrome()
                 .focused($isFieldFocused)
-                .onSubmit(go)
                 .onChange(of: path) { _, _ in errorMessage = nil }
 
             if let errorMessage {
@@ -41,15 +46,7 @@ struct GoToFolderSheet: View {
                     .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
             }
-
-            QooDialogFooter(
-                confirm: DialogButton(title: String(localized: "goToFolder.go", locale: locale)) { go() },
-                cancel: DialogButton(title: String(localized: "common.cancel", locale: locale), role: .cancel) { dismiss() },
-                confirmDisabled: resolvedInput == nil
-            )
         }
-        .padding(Tokens.spacing.l)
-        .frame(width: 460)
         .onAppear { isFieldFocused = true }
     }
 
@@ -79,8 +76,9 @@ struct GoToFolderSheet: View {
             let outcome = await FileIO.perform { Self.inspect(url) }
             switch outcome {
             case .ok:
-                onGo(url)
+                // 先に閉じてから移動する（`NameInputDialog.commit()` と同じ順序）。
                 dismiss()
+                onGo(url)
             case .notFound:
                 errorMessage = String(localized: "goToFolder.notFound", locale: locale)
             case .notAFolder:

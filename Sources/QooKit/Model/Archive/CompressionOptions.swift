@@ -59,7 +59,7 @@ public enum ArchiveEncryptionMethod: String, Sendable, Codable, CaseIterable {
 /// 圧縮時の設定一式 [環境設定「圧縮／展開」タブ]。**パスワード文字列自体は
 /// 含まない** — `UserDefaults` に平文で既定パスワードを保存するのはセキュリティ
 /// 上望ましくないため、実際のパスワードは圧縮操作のたびにシート
-/// （`ArchivePasswordSheet`）で入力させる設計にしている。この型が持つのは
+/// （`ArchivePasswordDialog`）で入力させる設計にしている。この型が持つのは
 /// 「暗号化するかどうか、その方式」だけ。
 public struct CompressionOptions: Sendable, Equatable {
     public var format: CompressibleFormat

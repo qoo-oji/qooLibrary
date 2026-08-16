@@ -1,10 +1,14 @@
 import SwiftUI
 
-/// 圧縮時のパスワード設定・展開時のパスワード入力を兼ねる共通シート
+/// 圧縮時のパスワード設定・展開時のパスワード入力を兼ねる共通ダイアログ
 /// [環境設定「圧縮／展開」タブ]。**パスワード自体は `UserDefaults` に一切
 /// 保存しない**（`CompressionOptions` のコメント参照）— 圧縮・展開のたびに
-/// このシートで都度入力させる設計。
-enum ArchivePasswordSheetMode {
+/// ここで都度入力させる設計。
+///
+/// Finder はパスワード系だけはシート（`CompressionPasswordSheet` 等）だが、
+/// 入力ダイアログの見た目を揃える方を優先して独立したウインドウにしている
+/// ［ユーザー判断、`DialogWindowPresenter` 参照］。
+enum ArchivePasswordDialogMode {
     /// 圧縮時、新しいパスワードを設定する。入力ミス防止のため確認欄を出す。
     case setPassword
     /// 展開時、既存のアーカイブのパスワードを尋ねる。`retryErrorMessage` が
@@ -12,10 +16,10 @@ enum ArchivePasswordSheetMode {
     case unlock(retryErrorMessage: String?)
 }
 
-struct ArchivePasswordSheet: View {
+struct ArchivePasswordDialog: View {
     @Environment(\.locale) private var locale
-    @Environment(\.dismiss) private var dismiss
-    let mode: ArchivePasswordSheetMode
+    @Environment(\.dialogDismiss) private var dismiss
+    let mode: ArchivePasswordDialogMode
     let onSubmit: (String) -> Void
 
     @State private var password = ""
@@ -33,10 +37,19 @@ struct ArchivePasswordSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Tokens.spacing.m) {
-            Text(isSetMode ? "archivePassword.setTitle" : "archivePassword.unlockTitle")
-                .font(.system(size: Tokens.fontSize.title2, weight: .semibold))
-
+        DialogScaffold(
+            width: 320,
+            confirm: DialogButton(title: String(localized: "common.ok", locale: locale)) {
+                // 先に閉じてから返す（`NameInputDialog.commit()` と同じ順序）。
+                let value = password
+                dismiss()
+                onSubmit(value)
+            },
+            cancel: DialogButton(
+                title: String(localized: "common.cancel", locale: locale), role: .cancel
+            ) { dismiss() },
+            confirmDisabled: !canSubmit
+        ) {
             if case .unlock(let retryErrorMessage) = mode, let retryErrorMessage {
                 Text(retryErrorMessage)
                     .font(.system(size: Tokens.fontSize.caption))
@@ -55,18 +68,7 @@ struct ArchivePasswordSheet: View {
                         .foregroundStyle(.red)
                 }
             }
-
-            QooDialogFooter(
-                confirm: DialogButton(title: String(localized: "common.ok", locale: locale)) {
-                    onSubmit(password)
-                    dismiss()
-                },
-                cancel: DialogButton(title: String(localized: "common.cancel", locale: locale), role: .cancel) { dismiss() },
-                confirmDisabled: !canSubmit
-            )
         }
-        .padding(Tokens.spacing.l)
-        .frame(width: 320)
-        .task { isPasswordFieldFocused = true }
+        .onAppear { isPasswordFieldFocused = true }
     }
 }

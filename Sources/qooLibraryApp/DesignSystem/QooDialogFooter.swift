@@ -20,8 +20,9 @@ public struct QooDialogFooter: View {
     private let confirm: DialogButton
     private let cancel: DialogButton?
     private let extra: [DialogButton]
-    /// 入力が未確定の間は決定ボタンだけを無効化する（キャンセルは常に押せる）
-    /// [`ArchivePasswordSheet` が最初の利用箇所]。
+    /// 入力が未確定の間は決定ボタンだけを無効化する（キャンセルは常に押せる）。
+    /// **Return による確定にも効く** — `DialogScaffold` がここと同じ値を見て
+    /// `.onSubmit` を止める。
     private let confirmDisabled: Bool
 
     public init(confirm: DialogButton, cancel: DialogButton?, extra: [DialogButton] = [], confirmDisabled: Bool = false) {

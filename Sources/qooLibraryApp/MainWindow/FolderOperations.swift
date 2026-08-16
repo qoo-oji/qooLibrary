@@ -43,10 +43,6 @@ final class FolderOperations {
     private var progressHandle: OperationProgressCenter.Handle?
     /// `currentPauseToken` の実体。`endProgress()` で捨てる。
     private var pauseTokenForCurrentOperation: PauseToken?
-    /// 暗号化が有効なときに圧縮前のパスワード設定シートを出すための保留状態。
-    var pendingCompression: PendingCompression?
-    /// 単一アーカイブ展開でパスワードが必要だった場合の再試行状態。
-    var pendingExtractionPassword: PendingExtractionPassword?
     /// 進行中の転送の進み具合 [UI-09][A-04]。`busyMessage` と対で使い、
     /// 総量が分かっていれば確定進捗、分からなければ不定進捗になる。
     var progress: OperationProgress?
@@ -55,8 +51,6 @@ final class FolderOperations {
     var cancellableTask: Task<Void, Never>?
     /// 衝突の判断を待っている状態 [FM-11]。
     var pendingConflict: PendingConflict?
-    /// 一括リネームのシート [ユーザー要望、Finder の「名前を変更…」相当]。
-    var pendingBulkRename: PendingBulkRename?
     /// [FM-12]「以降すべてに適用」が選ばれたあとの一括判断。1 回の操作の間だけ
     /// 有効で、次の操作の開始時にリセットする。
     private var conflictBlanketDecision: ConflictPolicy?
@@ -364,11 +358,18 @@ final class FolderOperations {
             let siblings = await FileIO.perform {
                 (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
             }
-            pendingBulkRename = PendingBulkRename(
+            let request = PendingBulkRename(
                 folder: folder,
                 names: names,
                 existingNames: Set(siblings).subtracting(Set(names))
             )
+            DialogWindowPresenter.shared.present(
+                title: BulkRenameDialog.windowTitle(count: request.names.count, locale: locale)
+            ) { _ in
+                BulkRenameDialog(names: request.names, existingNames: request.existingNames) { changes in
+                    self.runBulkRename(request, changes: changes)
+                }
+            }
         }
     }
 
@@ -924,17 +925,22 @@ final class FolderOperations {
         ))
     }
 
-    /// 暗号化の有無でパスワードシートを挟むかどうかを振り分ける。
+    /// 暗号化の有無でパスワードの入力を挟むかどうかを振り分ける。
     private func beginCompression(_ request: PendingCompression) {
         guard request.options.encryption != .none else {
             runCompression(request, passphrase: nil)
             return
         }
-        pendingCompression = request
+        DialogWindowPresenter.shared.present(
+            title: String(localized: "archivePassword.setTitle", locale: locale)
+        ) { _ in
+            ArchivePasswordDialog(mode: .setPassword) { password in
+                self.runCompression(request, passphrase: password)
+            }
+        }
     }
 
-    /// パスワードシートの確定後もここへ戻ってくる（`.folderOperationsHost(_:)`
-    /// 参照）。
+    /// パスワードの入力後もここへ戻ってくる（`beginCompression` 参照）。
     func runCompression(_ request: PendingCompression, passphrase: String?) {
         let pauseToken = currentPauseToken
         let task = Task {
@@ -1036,10 +1042,18 @@ final class FolderOperations {
                 // 専用エラーを投げるため、両方を受ける）。
             } catch let error as ExtractError where urls.count == 1 && (error == .passwordProtected || error == .incorrectPassphrase) {
                 let retryMessage = error == .incorrectPassphrase ? String(localized: "error.incorrectPassphrase", locale: locale) : nil
-                pendingExtractionPassword = PendingExtractionPassword(
-                    archiveURL: urls[0], target: destination(urls[0]),
-                    retryErrorMessage: retryMessage, onSuccess: onSuccess
-                )
+                let archiveURL = urls[0]
+                let target = destination(archiveURL)
+                DialogWindowPresenter.shared.present(
+                    title: String(localized: "archivePassword.unlockTitle", locale: locale)
+                ) { _ in
+                    ArchivePasswordDialog(mode: .unlock(retryErrorMessage: retryMessage)) { password in
+                        self.extract(
+                            [archiveURL], destination: { _ in target },
+                            passphrase: password, onSuccess: onSuccess
+                        )
+                    }
+                }
             } catch {
                 guard !Task.isCancelled else { return }
                 // エラーを見せる**前に**進捗表示を片付ける（`run()` と同じ理由）。
@@ -1084,10 +1098,9 @@ final class FolderOperations {
 // MARK: - 保留中のダイアログ状態
 
 /// 圧縮の実行に必要な情報一式 [環境設定「圧縮／展開」タブ]。暗号化が有効な
-/// ときはこの値をいったん `FolderOperations.pendingCompression` に保持して
-/// パスワードシートを表示し、入力後に同じ値でそのまま実行する。
-struct PendingCompression: Identifiable {
-    let id = UUID()
+/// ときはこの値を保持したままパスワードの入力を挟み、入力後に同じ値で
+/// そのまま実行する（`FolderOperations.beginCompression` 参照）。
+struct PendingCompression {
     let items: [URL]
     let destinationName: String
     let destinationFolder: URL
@@ -1142,22 +1155,16 @@ final class PendingLockedItem: Identifiable {
     }
 }
 
-/// 単一アーカイブ展開でパスワードが必要だった場合の再試行状態
-/// [環境設定「圧縮／展開」タブ]。
-struct PendingExtractionPassword: Identifiable {
-    let id = UUID()
-    let archiveURL: URL
-    let target: URL
-    let retryErrorMessage: String?
-    let onSuccess: @MainActor () -> Void
-}
-
-// MARK: - 実行中表示・パスワードシートのホスト
+// MARK: - 判断を待つシートのホスト
 
 extension View {
-    /// `FolderOperations` の実行中表示（不定進捗オーバーレイ [UI-09]）と
-    /// パスワードシートをこのビューに載せる。`FolderOperations` を使うビューは
-    /// 必ず 1 回だけ適用する。
+    /// `FolderOperations` が**操作の途中で判断を仰ぐ**シートをこのビューに
+    /// 載せる。`FolderOperations` を使うビューは必ず 1 回だけ適用する。
+    ///
+    /// ここに残っているのは、いずれも**実行中の処理が答えを待っている**もの
+    /// （衝突・完全削除の確認・ロック済み項目）だけ。名前や圧縮パスワードの
+    /// **入力**ダイアログは独立したウインドウへ移した
+    /// （`DialogWindowPresenter` 参照）。
     func folderOperationsHost(_ operations: FolderOperations) -> some View {
         modifier(FolderOperationsHostModifier(operations: operations))
     }
@@ -1175,24 +1182,6 @@ private struct FolderOperationsHostModifier: ViewModifier {
             .sheet(item: $operations.pendingConflict) { pending in
                 ConflictResolutionSheet(pending: pending) {
                     operations.pendingConflict = nil
-                }
-            }
-            .sheet(item: $operations.pendingBulkRename) { pending in
-                BulkRenameSheet(names: pending.names, existingNames: pending.existingNames) { changes in
-                    operations.runBulkRename(pending, changes: changes)
-                }
-            }
-            .sheet(item: $operations.pendingCompression) { pending in
-                ArchivePasswordSheet(mode: .setPassword) { password in
-                    operations.runCompression(pending, passphrase: password)
-                }
-            }
-            .sheet(item: $operations.pendingExtractionPassword) { pending in
-                ArchivePasswordSheet(mode: .unlock(retryErrorMessage: pending.retryErrorMessage)) { password in
-                    operations.extract(
-                        [pending.archiveURL], destination: { _ in pending.target },
-                        passphrase: password, onSuccess: pending.onSuccess
-                    )
                 }
             }
             // 完全削除の確認とロック済み項目の判断は連続して遷移するため、
