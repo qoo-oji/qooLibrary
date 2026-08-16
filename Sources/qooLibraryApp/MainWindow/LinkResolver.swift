@@ -11,8 +11,12 @@ import Foundation
 ///
 /// ツリーの展開はリンクを辿らない [SL-05]（無限ループを防ぐため）ので、
 /// ここは呼ばれない。
+///
+/// ## 呼び出しはメインスレッドから行わない [NV6-02]
+/// `readlink(2)` とブックマーク解決はどちらも I/O で、リンク先が応答しない
+/// ネットワーク上にあれば戻ってこない。`FileIO.perform` の中から呼ぶこと。
 enum LinkResolver {
-    struct Resolved {
+    struct Resolved: Sendable {
         let url: URL
         let isDirectory: Bool
     }

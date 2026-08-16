@@ -155,11 +155,11 @@ struct FolderTreePane: View {
             // だけ。2-2 で `VolumeMonitor` が入っても、こちらは表示の追随として
             // そのまま残せる。
             .onChange(of: volumesWatch.generation) {
-                volumes = FolderTreeNode.mountedVolumes()
+                Task { await reloadVolumes() }
             }
             .task {
                 volumesWatch.watch(Self.volumesDirectory, scope: .shallow)
-                volumes = FolderTreeNode.mountedVolumes()
+                await reloadVolumes()
                 await reloadRegisteredFolders()
                 guard !skipsInitialAutoExpand else { return }
                 revealSelectionIfNeeded(scrollProxy: scrollProxy)
@@ -197,8 +197,10 @@ struct FolderTreePane: View {
             // ここではアプリ内の操作を拾う共通シグナルに乗せるに留める
             // ——Finder 側で取り出した場合などはまだ追随しない [既知の限界]。
             .onChange(of: SessionState.shared.reloadToken) { _, _ in
-                volumes = FolderTreeNode.mountedVolumes()
-                Task { await reloadRegisteredFolders() }
+                Task {
+                    await reloadVolumes()
+                    await reloadRegisteredFolders()
+                }
             }
         }
     }
@@ -517,6 +519,17 @@ struct FolderTreePane: View {
                 NotificationItem(category: .error, severity: .sheet, title: String(localized: "error.operationFailed", locale: locale), body: message)
             )
         }
+    }
+
+    /// ボリューム一覧を読み直す。
+    ///
+    /// **メインスレッドで読まない** [NV6-02]。マウント表の読み出し自体は速い
+    /// が、そのあと各ボリュームへ `volumeLocalizedName` などを尋ねるので、
+    /// 応答しないネットワーク共有が 1 つ混じっていると、そこで止まる。
+    /// ボリューム一覧はアプリ起動時とマウント／アンマウントのたびに読むため、
+    /// 止まるとツリー全体が描画されない。
+    private func reloadVolumes() async {
+        volumes = await FileIO.perform { FolderTreeNode.mountedVolumes() }
     }
 
     private func reloadRegisteredFolders() async {
@@ -932,13 +945,42 @@ private struct FolderTreeRow: View {
         let isLoaded: Bool
     }
 
+    /// 子フォルダを読み込む。
+    ///
+    /// **列挙はメインスレッドで行わない** [NV6-02]。ツリーの 1 行を開くだけで
+    /// `contentsOfDirectory` が走り、相手が応答しなければ SMB で 30 秒、
+    /// NFS の hard マウント（既定）なら**無限に**メインスレッドが止まる。
+    /// ツリーは 1 回の展開で複数行が同時に読み込みを始めるので、中央ペインの
+    /// 一覧より当たりやすい。
+    ///
+    /// - Note: 世代番号は要らない。読み込みを起こすのはこの行自身だけで、
+    ///   行が消えれば `@State` ごと消える。ただし**遅れて戻ってきた結果で
+    ///   `accessDenied` を上書きしない**よう、対象が変わっていないことは
+    ///   確かめる。
     private func loadChildren() {
-        do {
-            children = try FolderTreeNode.children(of: node)
-        } catch {
-            children = nil
-            accessDenied = true
+        let target = node
+        Task {
+            let outcome = await FileIO.perform { Self.readChildren(of: target) }
+            guard node.id == target.id else { return }
+            switch outcome {
+            case let .loaded(loaded):
+                children = loaded
+                accessDenied = false
+            case .denied:
+                children = nil
+                accessDenied = true
+            }
         }
+    }
+
+    private enum ChildrenOutcome: Sendable {
+        case loaded([FolderTreeNode])
+        case denied
+    }
+
+    /// **メインアクタの外で走る。** `FileIO.perform` の中からのみ呼ぶこと。
+    private nonisolated static func readChildren(of node: FolderTreeNode) -> ChildrenOutcome {
+        do { return .loaded(try FolderTreeNode.children(of: node)) } catch { return .denied }
     }
 }
 

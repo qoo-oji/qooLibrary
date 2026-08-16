@@ -1,3 +1,4 @@
+import QooInfrastructure
 import SwiftUI
 
 /// Finder の「フォルダへ移動…」（⇧⌘G）相当 [1-16 移動メニュー]。
@@ -66,26 +67,44 @@ struct GoToFolderSheet: View {
         return URL(fileURLWithPath: expanded, isDirectory: true).standardizedFileURL
     }
 
+    /// 入力されたパスを確かめて移動する。
+    ///
+    /// **確認はメインスレッドで行わない** [NV6-02]。ユーザーはネットワーク上の
+    /// パスを直接打てるので、応答しないサーバのパスを入れられると、ここが
+    /// そのままアプリの停止になる（この画面はまさにそういう入力を受け付ける
+    /// ための場所である）。
     private func go() {
         guard let url = resolvedInput else { return }
+        Task {
+            let outcome = await FileIO.perform { Self.inspect(url) }
+            switch outcome {
+            case .ok:
+                onGo(url)
+                dismiss()
+            case .notFound:
+                errorMessage = String(localized: "goToFolder.notFound", locale: locale)
+            case .notAFolder:
+                errorMessage = String(localized: "goToFolder.notAFolder", locale: locale)
+            case .noAccess:
+                errorMessage = String(localized: "goToFolder.noAccess", locale: locale)
+            }
+        }
+    }
+
+    private enum InputCheck: Sendable {
+        case ok, notFound, notAFolder, noAccess
+    }
+
+    /// **メインアクタの外で走る。** `FileIO.perform` の中からのみ呼ぶこと。
+    private nonisolated static func inspect(_ url: URL) -> InputCheck {
         let fileManager = FileManager.default
         var isDirectory: ObjCBool = false
-        guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
-            errorMessage = String(localized: "goToFolder.notFound", locale: locale)
-            return
-        }
-        guard isDirectory.boolValue else {
-            errorMessage = String(localized: "goToFolder.notAFolder", locale: locale)
-            return
-        }
+        guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) else { return .notFound }
+        guard isDirectory.boolValue else { return .notAFolder }
         // 存在していても読めないことがある（サンドボックスで未許可のボリューム
         // 等）。移動してから中央ペインでエラーになるより、この場で理由を出して
         // 打ち直せるほうが親切なため、ここで一度だけ実際に読んでみる。
-        guard (try? fileManager.contentsOfDirectory(atPath: url.path)) != nil else {
-            errorMessage = String(localized: "goToFolder.noAccess", locale: locale)
-            return
-        }
-        onGo(url)
-        dismiss()
+        guard (try? fileManager.contentsOfDirectory(atPath: url.path)) != nil else { return .noAccess }
+        return .ok
     }
 }

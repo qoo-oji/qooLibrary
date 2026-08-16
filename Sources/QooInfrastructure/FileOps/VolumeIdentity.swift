@@ -32,13 +32,16 @@ import Foundation
 /// サイズ）なので、別のファイルが同じ場所に同じ大きさ・同じ更新日時で
 /// 現れない限り衝突しない。**ネットワーク上では同一性そのものを当てに
 /// しない**という原則は変わらない。
-enum VolumeIdentity {
+public enum VolumeIdentity {
     /// `url` のあるボリュームの識別子。`volumeUUIDString` があればそれを、
     /// 無ければマウント元から導いた `net-<hash8>` を返す。
     ///
     /// どちらも取れなければ `nil`。**空文字を返してはならない** —
     /// それが上記の取り違えの原因だった。
-    static func identifier(for url: URL) -> String? {
+    ///
+    /// - Important: I/O を伴う（`resourceValues`／`statfs`）。メインスレッド
+    ///   からは呼ばず、`FileIO.perform` の中で使うこと [NV6-02]。
+    public static func identifier(for url: URL) -> String? {
         if let uuid = try? url.resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString {
             return uuid
         }

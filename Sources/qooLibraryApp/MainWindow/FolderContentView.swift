@@ -57,7 +57,10 @@ struct FolderContentView: View {
     /// 表示中のフォルダ自体が消えていたら、存在する直近の祖先へ移動して
     /// `true` を返す [`WindowState.relocateCurrentTabIfFolderVanished()` 参照]。
     /// `reload()` が読み込みに失敗したときだけ呼ぶ。
-    let relocateIfFolderVanished: () -> Bool
+    ///
+    /// **`async`** — 判定には `fileExists` が何度も要り、応答しない共有では
+    /// そこがそのままメインスレッドの停止になる [NV6-02]。
+    let relocateIfFolderVanished: () async -> Bool
     /// コンテキストメニューの「新規タブで開く」「新規ウインドウで開く」
     /// [MW-01/MW-04 の周辺、要件定義書には無いがユーザー要望で追加]。
     let onOpenInNewTab: (URL) -> Void
@@ -114,6 +117,11 @@ struct FolderContentView: View {
     /// ファイル数を超えていた（打鍵のたびに走査が作られるため）。
     /// 世代を照合して、古い走査からの結果は捨てる。
     @State private var searchGeneration = 0
+    /// 一覧の読み込みの世代 [NV6-02]。検索と同じ理由で要る——読み込みが
+    /// メインスレッドを離れたことで、速く連続してフォルダを移ると走査の
+    /// 順序が入れ替わり、**古いフォルダの中身が新しいフォルダの一覧として
+    /// 表示され得る**。
+    @State private var reloadGeneration = 0
     @State private var loadError: String?
     @State private var renamingEntry: FolderEntry?
     @State private var renameText = ""
@@ -1121,64 +1129,113 @@ struct FolderContentView: View {
         searchTruncated = truncated
     }
 
-    /// 実際の走査。**メインアクタ外で動く** `nonisolated` な async 関数。
-    /// 一致した項目を `onBatch` で小出しに返し、上限で打ち切ったら `true` を返す。
+    /// 実際の走査。一致した項目を `onBatch` で小出しに返し、上限で打ち切ったら
+    /// `true` を返す。
+    ///
+    /// **走査そのものは `FileIO` の専用スレッドで行う** [NV6-01][NV6-02]。
+    /// `nonisolated` にするだけではメインアクタを外れるだけで、走る先は
+    /// 協調スレッドプールのまま——再帰検索はネットワーク上でいちばん往復の
+    /// 多い操作なので、応答しない共有に当たるとプールのスレッドを 1 本
+    /// 占有し続ける（コア数ぶん溜まればアプリの `async` 処理が全部止まる）。
+    ///
+    /// ひと固まりぶん走査しては戻る、という形で往復する。**結果の順序を
+    /// 保つため**であり（1 回の `perform` の中からメインアクタへ小出しに
+    /// することはできない — 同期クロージャなので `await` できない）、
+    /// 往復は 64 件に 1 回なので費用は無視できる。
     private nonisolated static func enumerateMatches(
         in folder: URL,
         query: String,
         includingHiddenFiles: Bool,
         onBatch: @escaping @MainActor ([FolderEntry]) -> Void
     ) async -> Bool {
-        let keys: Set<URLResourceKey> = [
+        guard let scan = SearchScan(
+            folder: folder, query: query, includingHiddenFiles: includingHiddenFiles
+        ) else { return false }
+
+        while true {
+            let step = await FileIO.perform { scan.nextBatch() }
+            if !step.entries.isEmpty {
+                if Task.isCancelled { return false }
+                await MainActor.run { onBatch(step.entries) }
+            }
+            if step.finished { return step.truncated }
+            if Task.isCancelled { return false }
+        }
+    }
+
+    /// 再帰検索の走査状態。
+    ///
+    /// `NSDirectoryEnumerator` は `Sendable` ではないが、**この箱は
+    /// `FileIO.perform` の中からしか触られず、しかも 1 度に 1 回ずつ
+    /// （`await` で直列化されている）**ので競合しない。その前提を型で
+    /// 表せないため `@unchecked` にしている。
+    private final class SearchScan: @unchecked Sendable {
+        /// ひと固まりぶん進めた結果。
+        struct Step {
+            let entries: [FolderEntry]
+            /// 走査し終えた（もう呼ばなくてよい）。
+            let finished: Bool
+            /// 上限に達して打ち切った。
+            let truncated: Bool
+        }
+
+        private static let keys: Set<URLResourceKey> = [
             .isDirectoryKey, .fileSizeKey, .contentModificationDateKey,
             .creationDateKey, .addedToDirectoryDateKey, .isUserImmutableKey,
         ]
-        guard let enumerator = FileManager.default.enumerator(
-            at: folder,
-            includingPropertiesForKeys: Array(keys),
-            // 読めない場所（権限が無いサブフォルダ等）で止まらず先へ進む。
-            options: includingHiddenFiles ? [] : [.skipsHiddenFiles],
-            errorHandler: { _, _ in true }
-        ) else { return false }
 
-        var batch: [FolderEntry] = []
-        var total = 0
-        var truncated = false
+        private let folder: URL
+        private let query: String
+        private let enumerator: FileManager.DirectoryEnumerator
+        private var total = 0
 
-        // `NSDirectoryEnumerator` は async コンテキストで `for-in` できない
-        // （`makeIterator` が unavailable）ため `nextObject()` で回す。
-        while let url = enumerator.nextObject() as? URL {
-            if Task.isCancelled { return false }
-            guard NameFilter.matches(name: url.lastPathComponent, query: query) else { continue }
-            let values = try? url.resourceValues(forKeys: keys)
-            batch.append(FolderEntry(
-                url: url,
-                name: url.lastPathComponent,
-                isDirectory: values?.isDirectory ?? false,
-                fileSize: values?.fileSize.map(Int64.init),
-                modificationDate: values?.contentModificationDate,
-                creationDate: values?.creationDate,
-                addedDate: values?.addedToDirectoryDate,
-                isLocked: values?.isUserImmutable ?? false,
-                relativeLocation: relativeLocation(of: url, from: folder)
-            ))
-            total += 1
-            if total >= AppLimits.Search.maxResults {
-                truncated = true
-                break
-            }
-            if batch.count >= AppLimits.Search.resultBatchSize {
-                if Task.isCancelled { return false }
-                let ready = batch
-                batch = []
-                await MainActor.run { onBatch(ready) }
-            }
+        init?(folder: URL, query: String, includingHiddenFiles: Bool) {
+            guard let enumerator = FileManager.default.enumerator(
+                at: folder,
+                includingPropertiesForKeys: Array(Self.keys),
+                // 読めない場所（権限が無いサブフォルダ等）で止まらず先へ進む。
+                options: includingHiddenFiles ? [] : [.skipsHiddenFiles],
+                errorHandler: { _, _ in true }
+            ) else { return nil }
+            self.folder = folder
+            self.query = query
+            self.enumerator = enumerator
         }
-        if !batch.isEmpty, !Task.isCancelled {
-            let ready = batch
-            await MainActor.run { onBatch(ready) }
+
+        /// **ブロッキング。`FileIO.perform` の中からのみ呼ぶ。**
+        func nextBatch() -> Step {
+            var batch: [FolderEntry] = []
+            // `NSDirectoryEnumerator` は async コンテキストで `for-in` できない
+            // （`makeIterator` が unavailable）ため `nextObject()` で回す。
+            while let url = enumerator.nextObject() as? URL {
+                // **`Task.isCancelled` ではない** — 借りたスレッドには Task の
+                // 文脈が無く、常に `false` を返す [`Cancellation` 参照]。
+                if Cancellation.isRequested {
+                    return Step(entries: batch, finished: true, truncated: false)
+                }
+                guard NameFilter.matches(name: url.lastPathComponent, query: query) else { continue }
+                let values = try? url.resourceValues(forKeys: Self.keys)
+                batch.append(FolderEntry(
+                    url: url,
+                    name: url.lastPathComponent,
+                    isDirectory: values?.isDirectory ?? false,
+                    fileSize: values?.fileSize.map(Int64.init),
+                    modificationDate: values?.contentModificationDate,
+                    creationDate: values?.creationDate,
+                    addedDate: values?.addedToDirectoryDate,
+                    isLocked: values?.isUserImmutable ?? false,
+                    relativeLocation: FolderContentView.relativeLocation(of: url, from: folder)
+                ))
+                total += 1
+                if total >= AppLimits.Search.maxResults {
+                    return Step(entries: batch, finished: true, truncated: true)
+                }
+                if batch.count >= AppLimits.Search.resultBatchSize {
+                    return Step(entries: batch, finished: false, truncated: false)
+                }
+            }
+            return Step(entries: batch, finished: true, truncated: false)
         }
-        return truncated
     }
 
     /// 検索の起点 `root` から見た、`url` の**親フォルダ**の相対パス
@@ -1577,7 +1634,25 @@ struct FolderContentView: View {
         }
     }
 
+    /// 一覧を読み直す。
+    ///
+    /// **一覧の読み込みはメインスレッドで行わない** [NV6-02]。
+    /// `contentsOfDirectory` は応答しないサーバに当たると戻ってこず、SMB なら
+    /// 30 秒、NFS の hard マウント（既定）なら**無限に**メインスレッドが
+    /// 止まる（＝ビーチボール）。ネットワーク上のフォルダを開くという、
+    /// もっとも頻度の高い操作がそのままアプリの停止になっていた。
+    ///
+    /// そのため実際の走査は `FileIO.perform` の中で行い、**結果だけを
+    /// メインアクタへ戻して当てる**。呼び出し側の書き方は変えていない
+    /// （このメソッドは即座に返り、表示は 1 フレーム後に入れ替わる。
+    /// Finder も同じく非同期に読み込む）。
+    ///
+    /// - Note: **世代番号で古い結果を捨てる。** 非同期になったことで、速く
+    ///   連続してフォルダを移ると走査の順序が入れ替わり得る。再帰検索
+    ///   （`appliedSearchGeneration`）で既に使っているのと同じ手当て。
     private func reload() {
+        reloadGeneration &+= 1
+        let generation = reloadGeneration
         guard let folder else {
             entries = []
             loadError = nil
@@ -1585,17 +1660,43 @@ struct FolderContentView: View {
             tableIdentity = folder
             return
         }
+        let includeHidden = showHiddenFiles
+        Task {
+            let outcome = await FileIO.perform {
+                Self.readEntries(in: folder, includingHidden: includeHidden)
+            }
+            // 走査中に別のフォルダへ移った／もう一度読み直しが要求された。
+            guard generation == reloadGeneration else { return }
+            await apply(outcome, for: folder)
+        }
+    }
+
+    /// 一覧の読み込み結果。`FileIO` の境界をまたぐので `Sendable`。
+    private enum FolderReadOutcome: Sendable {
+        case loaded([FolderEntry])
+        case failed(String)
+    }
+
+    /// **実際の走査。メインアクタの外で走る。**
+    ///
+    /// `includingPropertiesForKeys` で先読みした値は URL にキャッシュされる
+    /// ので、一覧の読み込みは項目数ぶんの往復ではなく **1 往復**で済む
+    /// （1-16b の実測、8章 §8.11.7）。**先読みしていないキーを後から読むと
+    /// 項目ごとに往復が発生する**ので、ここの `keys` と下で読む値は必ず揃える。
+    private nonisolated static func readEntries(
+        in folder: URL, includingHidden: Bool
+    ) -> FolderReadOutcome {
+        let keys: Set<URLResourceKey> = [
+            .isDirectoryKey, .fileSizeKey, .contentModificationDateKey,
+            .creationDateKey, .addedToDirectoryDateKey, .isUserImmutableKey,
+        ]
         do {
-            let keys: Set<URLResourceKey> = [
-                .isDirectoryKey, .fileSizeKey, .contentModificationDateKey,
-                .creationDateKey, .addedToDirectoryDateKey, .isUserImmutableKey,
-            ]
             let urls = try FileManager.default.contentsOfDirectory(
                 at: folder,
                 includingPropertiesForKeys: Array(keys),
-                options: showHiddenFiles ? [] : [.skipsHiddenFiles]
+                options: includingHidden ? [] : [.skipsHiddenFiles]
             )
-            entries = urls.map { url in
+            return .loaded(urls.map { url in
                 let values = try? url.resourceValues(forKeys: keys)
                 return FolderEntry(
                     url: url,
@@ -1607,7 +1708,17 @@ struct FolderContentView: View {
                     addedDate: values?.addedToDirectoryDate,
                     isLocked: values?.isUserImmutable ?? false
                 )
-            }
+            })
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+    }
+
+    /// 読み込み結果を表示へ当てる。**ここはメインアクタ。**
+    private func apply(_ outcome: FolderReadOutcome, for folder: URL) async {
+        switch outcome {
+        case let .loaded(loaded):
+            entries = loaded
             loadError = nil
             // ゴミ箱・移動等で消えた項目を選択から取り除く [実機検証で発見:
             // ファイルをゴミ箱に入れても `selection` に URL が残ったままになり、
@@ -1617,16 +1728,16 @@ struct FolderContentView: View {
             // 情報表示にフォールバックする（既存の設計）。
             let currentURLs = Set(entries.map(\.url))
             selection.formIntersection(currentURLs)
-        } catch {
+        case let .failed(message):
             // 表示中のフォルダ自体が消えている場合（ツリーや別ウインドウから
             // ゴミ箱へ入れた・名前を変更した、アプリ外の Finder で削除した等）は、
             // エラー表示で行き止まりにせず存在する直近の祖先へ移動する
             // [`WindowState.relocateCurrentTabIfFolderVanished()` 参照]。移動すると
             // `folder` が変わり `.task(id: folder)` 経由でここが再実行されるため、
             // 続きの処理は次の呼び出しに任せて打ち切ってよい。
-            if relocateIfFolderVanished() { return }
+            if await relocateIfFolderVanished() { return }
             entries = []
-            loadError = error.localizedDescription
+            loadError = message
         }
         publishQuickLookOrder()
         recomputeAutoFitColumnWidths() // [ユーザー指摘の修正] 列幅を内容に合わせて再計測する。
@@ -1790,22 +1901,26 @@ struct FolderContentView: View {
     /// 既定アプリの順にフォールバックする（`AppAssociationStore.open(_:with:)`
     /// 参照）。以前は `NSWorkspace.shared.open(url)` を直に呼んでおり、
     /// 常にシステムの既定アプリで開いてしまっていた。
+    /// - Note: リンクの解決は `readlink`/ブックマーク解決を伴う I/O なので、
+    ///   **メインスレッドでは行わない** [NV6-02]。ネットワーク上のリンクを
+    ///   ダブルクリックしただけで固まらないようにするため。
     private func openEntries(_ targets: [FolderEntry]) {
-        if targets.count == 1, let only = targets.first {
+        let urls = targets.map(\.url)
+        Task {
             // [SL-02] リンクは**開くときだけ**リンク先へ追従する（表示上の
             // 追従のみ。一覧ではリンク自体を 1 項目として見せる [SL-01]）。
-            let resolved = LinkResolver.resolve(only.url)
-            if resolved.isDirectory {
-                onNavigate(resolved.url)
-            } else {
-                openWithAssociation(resolved.url)
+            let resolved = await FileIO.perform { urls.map { LinkResolver.resolve($0) } }
+            if resolved.count == 1, let only = resolved.first {
+                if only.isDirectory {
+                    onNavigate(only.url)
+                } else {
+                    openWithAssociation(only.url)
+                }
+                return
             }
-            return
-        }
-        for target in targets {
-            let resolved = LinkResolver.resolve(target.url)
-            guard !resolved.isDirectory else { continue }
-            openWithAssociation(resolved.url)
+            for target in resolved where !target.isDirectory {
+                openWithAssociation(target.url)
+            }
         }
     }
 

@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import QooInfrastructure
 
 /// 最近開いたフォルダ [1-16 移動メニュー、Finder の「最近使ったフォルダ」相当]。
 ///
@@ -33,18 +34,45 @@ public final class RecentFoldersStore {
         self.paths = defaults.stringArray(forKey: Self.storageKey) ?? []
     }
 
-    /// 実体が存在するものだけを、新しい順に返す。
+    /// メニューへ出す 1 件。表示名まで持つのは、`displayName(atPath:)` 自体が
+    /// I/O だから——メニューを組み立てる側で呼ぶと、そこがまた止まる。
+    public struct Entry: Identifiable, Hashable, Sendable {
+        public let url: URL
+        public let displayName: String
+        public var id: URL { url }
+    }
+
+    /// 実体が存在するものだけを、新しい順に。**メニューはこれを同期的に読む。**
     ///
-    /// 存在確認をここ（読み出し時）で行うのは、`record(_:)` の時点では存在して
+    /// 実体の確認（`fileExists`）は I/O なので、**読み出しのたびに行っては
+    /// いけない** [NV6-02]。「移動」メニューの submenu を開くたびに、履歴に
+    /// 入っている切断済みのネットワーク共有へ問い合わせることになり、
+    /// メニューが開かないままアプリが固まる。`RegisteredFolderIndex` と同じく、
+    /// **非同期に確かめた結果をここへ載せておく**。
+    public private(set) var existingFolders: [Entry] = []
+
+    /// 一覧を実体と突き合わせて更新する。起動時と、履歴が変わったときに呼ぶ。
+    ///
+    /// 存在確認を記録時ではなくここで行うのは、`record(_:)` の時点では存在して
     /// いたフォルダが後から消える（ゴミ箱・外部ボリュームのイジェクト・アプリ外
     /// での削除）ためで、`FolderTreePane` が登録フォルダの解決失敗を表示時に
     /// 判定しているのと同じ考え方。
-    public var existingFolders: [URL] {
+    public func refresh() async {
+        let snapshot = paths
+        existingFolders = await FileIO.perform { Self.resolve(snapshot) }
+    }
+
+    /// **メインアクタの外で走る。** `FileIO.perform` の中からのみ呼ぶこと。
+    private nonisolated static func resolve(_ paths: [String]) -> [Entry] {
         let fileManager = FileManager.default
         return paths.compactMap { path in
             var isDirectory: ObjCBool = false
-            guard fileManager.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue else { return nil }
-            return URL(fileURLWithPath: path, isDirectory: true)
+            guard fileManager.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue
+            else { return nil }
+            return Entry(
+                url: URL(fileURLWithPath: path, isDirectory: true),
+                displayName: fileManager.displayName(atPath: path)
+            )
         }
     }
 
@@ -62,11 +90,13 @@ public final class RecentFoldersStore {
         }
         paths = updated
         defaults.set(updated, forKey: Self.storageKey)
+        Task { await refresh() }
     }
 
     /// Finder の「メニューを消去」相当。
     public func clear() {
         paths = []
+        existingFolders = []
         defaults.removeObject(forKey: Self.storageKey)
     }
 }

@@ -111,6 +111,11 @@ struct QooLibraryApp: App {
         Task {
             await ReplaceBackupRecovery.runAtStartup()
         }
+        // 「移動」メニューの「最近使ったフォルダ」は同期的に読まれるので、
+        // 実体の確認は起動時に済ませておく [NV6-02]。
+        Task {
+            await RecentFoldersStore.shared.refresh()
+        }
         // 長時間処理の進捗は**別の小さなウインドウ**に出す［ユーザー要望］。
         // このコントローラがアプリ全体で 1 つの窓を出し入れする。
         OperationProgressWindowController.shared.start()
@@ -630,9 +635,9 @@ private struct GoMenuCommands: View {
                 Button("menu.go.noRecentFolders") {}
                     .disabled(true)
             } else {
-                ForEach(recents, id: \.self) { url in
-                    Button(FileManager.default.displayName(atPath: url.path)) {
-                        actions?.navigate(url, .volume)
+                ForEach(recents) { entry in
+                    Button(entry.displayName) {
+                        actions?.navigate(entry.url, .volume)
                     }
                     .disabled(actions == nil)
                 }

@@ -287,11 +287,29 @@ public final class WindowState {
     ///   それには変更前後を同一視するファイル ID の追跡（2-2 の
     ///   `FSEventsWatcher`/`IdentityResolver`）が要る。フェーズ1では
     ///   「親フォルダへ退避する」という安全側の単純な挙動に留める [設計判断]。
+    /// **判定に要る `fileExists` はまとめて 1 回、メインスレッドの外で行う**
+    /// [NV6-02]。表示中のフォルダ・その祖先・履歴に積まれた項目と、確かめる
+    /// 相手が多いうえ、ここへ来るのは「読み込みに失敗した」直後——つまり
+    /// 相手が応答しない可能性がいちばん高い場面である。1 件ずつメインスレッドで
+    /// 確かめると、そこがそのままビーチボールになる。
     @discardableResult
-    public func relocateIfFolderVanished() -> Bool {
+    public func relocateIfFolderVanished() async -> Bool {
         guard let folder else { return false }
-        let fileManager = FileManager.default
-        guard !fileManager.fileExists(atPath: folder.path) else { return false }
+        let candidates: [String] = [folder.standardizedFileURL.path]
+            + Self.ancestorPaths(of: folder)
+            + backHistory.map(\.url.standardizedFileURL.path)
+            + forwardHistory.map(\.url.standardizedFileURL.path)
+        let existing = await FileIO.perform { Self.existingPaths(among: candidates) }
+        return relocateIfFolderVanished(knownToExist: existing)
+    }
+
+    /// 実体の有無を調べ終えたうえでの判定と適用。**ここはメインアクタで、
+    /// I/O は 1 つも行わない**（`mountedVolumeURLs` はマウント表を読むだけで
+    /// ネットワークへは出ない）。
+    @discardableResult
+    func relocateIfFolderVanished(knownToExist existing: Set<String>) -> Bool {
+        guard let folder else { return false }
+        guard !existing.contains(folder.standardizedFileURL.path) else { return false }
         // **ボリュームが外れているだけなら退避しない** [RG3-06][NV-93]。
         //
         // 退避は「削除・改名で行き先を失った」ときの救済であって、
@@ -303,14 +321,26 @@ public final class WindowState {
         // ネットワークボリュームでは切断が例外ではなく通常状態なので
         // （8章 §8.11）、これは稀な事故ではなく日常的に踏まれる。
         guard !Self.isOnAnUnmountedVolume(folder) else { return false }
-        guard let target = Self.nearestExistingAncestor(of: folder) else { return false }
+        guard let target = Self.ancestorPaths(of: folder).last(where: { existing.contains($0) })
+            .map({ URL(fileURLWithPath: $0) })
+        else { return false }
         self.folder = target
         title = target.lastPathComponent
         selection = []
         searchText = "" // [1-16]
-        backHistory.removeAll { !fileManager.fileExists(atPath: $0.url.path) }
-        forwardHistory.removeAll { !fileManager.fileExists(atPath: $0.url.path) }
+        backHistory.removeAll { !existing.contains($0.url.standardizedFileURL.path) }
+        forwardHistory.removeAll { !existing.contains($0.url.standardizedFileURL.path) }
         return true
+    }
+
+    /// 渡されたパスのうち、実際に存在するもの。**この関数がこの経路で唯一
+    /// I/O を行う場所**で、`FileIO.perform` の中からのみ呼ぶ [NV6-02]。
+    nonisolated static func existingPaths(among paths: [String]) -> Set<String> {
+        var result: Set<String> = []
+        for path in paths where FileManager.default.fileExists(atPath: path) {
+            result.insert(path)
+        }
+        return result
     }
 
     /// `url` が、いま接続されていないボリューム上を指しているか [NV-93]。
@@ -339,23 +369,26 @@ public final class WindowState {
         return !mounted.contains { $0.standardizedFileURL.path == mountPoint }
     }
 
-    /// `url` の祖先のうち、実際に存在する最も深いもの（`url` 自身は除く）。
+    /// `url` の祖先のパス（`url` 自身は含まない）。浅い順。
     ///
     /// **`URL.deletingLastPathComponent()` を繰り返す実装にしない** — ルート
     /// `/` に対して呼ぶと `/` 自身ではなく `/..` を返すことがある（Apple の
     /// ドキュメントに明記された挙動で、本プロジェクトでは 1-8 のパスバーと
     /// `FolderTreePane.ancestorPaths` で 2 度、無限ループとして踏んでいる）。
     /// `PathBarView.pathComponents` と同じく `pathComponents` から積み上げる。
-    private static func nearestExistingAncestor(of url: URL) -> URL? {
+    ///
+    /// **実体の有無はここでは見ない** — I/O は `existingPaths(among:)` に
+    /// 集めてあり、そちらは `FileIO` の中で 1 回だけ走る [NV6-02]。
+    nonisolated static func ancestorPaths(of url: URL) -> [String] {
         let components = url.standardizedFileURL.pathComponents
-        guard let first = components.first else { return nil }
+        guard let first = components.first else { return [] }
         var current = URL(fileURLWithPath: first)
-        var ancestors = [current]
+        var ancestors = [current.path]
         for component in components.dropFirst() {
             current = current.appendingPathComponent(component)
-            ancestors.append(current)
+            ancestors.append(current.path)
         }
-        return ancestors.dropLast().last { FileManager.default.fileExists(atPath: $0.path) }
+        return ancestors.dropLast()
     }
 
     /// `leavingFolder` が `newFolder` の直下（親子関係）である場合だけ、

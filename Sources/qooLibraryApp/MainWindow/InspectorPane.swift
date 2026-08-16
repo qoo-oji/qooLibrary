@@ -125,7 +125,9 @@ private struct SingleItemInspector: View {
                 containedCounts = nil
                 loadedURL = url
             }
-            info = Self.loadInfo(for: url)
+            // **メインスレッドで `resourceValues` を呼ばない** [NV6-02]。
+            // 選択を動かすたびに走るうえ、相手が応答しなければそこで止まる。
+            info = await FileIO.perform { Self.loadInfo(for: url) }
             guard let info, info.isDirectory || info.isArchive else { return }
             // 打ち切られた場合は `nil` が返る。**途中まで数えた値を表示しない**
             // [レビューで発見]。`Task.detached` をやめてキャンセルが実際に
@@ -197,11 +199,17 @@ private struct SingleItemInspector: View {
     /// 古い走査が 5 万件を最後まで数え続けていた。`nonisolated` な async 関数を
     /// 直接 `await` すれば、メインアクタを外れつつキャンセルも伝わる
     /// （`FolderContentView.runSearch` と同じ形）。
+    /// - Note: **協調プールではなく専用のスレッド源で走らせる** [NV6-01]。
+    ///   `nonisolated` にしただけではメインアクタを外れるだけで、走る先は
+    ///   協調スレッドプールのまま。5 万件の走査が応答しない共有で止まると、
+    ///   その 1 本がプールのスレッドを 1 本占有し続ける（コア数ぶん溜まれば
+    ///   アプリの `async` 処理が全部止まる）。取り消しは `Cancellation` 経由で
+    ///   届く。
     nonisolated private static func computeContainedCounts(for url: URL, isArchive: Bool) async -> ContainedCounts? {
         if isArchive {
             return await computeArchiveCounts(url)
         }
-        return computeFolderCounts(url)
+        return await FileIO.perform { computeFolderCounts(url) }
     }
 
     /// 打ち切られたら `nil`。**途中まで数えた値を返さない** — 呼び出し側が
@@ -217,7 +225,10 @@ private struct SingleItemInspector: View {
             return ContainedCounts(fileCount: 0, folderCount: 0, totalSize: 0)
         }
         for case let itemURL as URL in enumerator {
-            if Task.isCancelled { return nil }
+            // **`Task.isCancelled` ではない** — `FileIO.perform` が借りた
+            // スレッドには Task の文脈が無く、常に `false` を返す
+            // [`Cancellation` のコメント参照]。
+            if Cancellation.isRequested { return nil }
             guard let values = try? itemURL.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey]) else { continue }
             if values.isDirectory == true {
                 folderCount += 1

@@ -399,7 +399,7 @@ struct MainWindowView: View {
                             canGoForward: windowState.canGoForward,
                             onGoToParent: { windowState.goToParent() },
                             canGoToParent: windowState.canGoToParent,
-                            relocateIfFolderVanished: { windowState.relocateIfFolderVanished() },
+                            relocateIfFolderVanished: { await windowState.relocateIfFolderVanished() },
                             // 現在のタブの `NavigationRoot` を新しいタブへ
                             // 引き継ぐ [フェーズ1完了前監査で記録した
                             // 「登録フォルダ配下のサブフォルダを新規タブで

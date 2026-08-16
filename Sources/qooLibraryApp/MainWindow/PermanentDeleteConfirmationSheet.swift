@@ -1,4 +1,5 @@
 import QooInfrastructure
+import QooKit
 import SwiftUI
 
 /// 完全削除の実行前確認 [FM-15][PD-02][UD-10]。**取り消せない操作なので、
@@ -216,8 +217,13 @@ struct PermanentDeletionPreflight {
     /// 使えない（`makeIterator` が unavailable）ため、同期関数に切り出す。
     /// `Task.isCancelled` は同期コードからでも呼び出し元タスクの状態を返すので、
     /// キャンセルの伝搬は保たれる。
+    ///
+    /// - Note: **協調プールではなく専用のスレッド源で走らせる** [NV6-01]。
+    ///   `nonisolated` にするだけではメインアクタを外れるだけで、走る先は
+    ///   協調スレッドプールのまま。削除対象がネットワーク上にあって応答が
+    ///   無いと、その 1 本がプールのスレッドを占有し続ける。
     nonisolated private static func measure(_ urls: [URL]) async -> PermanentDeletionPreflight {
-        scan(urls)
+        await FileIO.perform { scan(urls) }
     }
 
     nonisolated private static func scan(_ urls: [URL]) -> PermanentDeletionPreflight {
@@ -225,7 +231,10 @@ struct PermanentDeletionPreflight {
         let keys: Set<URLResourceKey> = [.isDirectoryKey, .fileSizeKey, .isUserImmutableKey, .isSymbolicLinkKey]
         let fm = FileManager.default
         for url in urls {
-            if Task.isCancelled { return result }
+            // **`Task.isCancelled` ではない** — `FileIO.perform` が借りた
+            // スレッドには Task の文脈が無く、常に `false` を返す
+            // [`Cancellation` のコメント参照]。
+            if Cancellation.isRequested { return result }
             guard let values = try? url.resourceValues(forKeys: keys) else { continue }
             // [PD-06] 実行時に確認が入る単位は「操作対象 1 件」であって配下の
             // 個々のロック項目ではない（`FileOperationService` 参照）。予告の
@@ -235,7 +244,7 @@ struct PermanentDeletionPreflight {
             if values.isSymbolicLink != true, values.isDirectory == true,
                let enumerator = fm.enumerator(at: url, includingPropertiesForKeys: Array(keys), options: []) {
                 for case let child as URL in enumerator {
-                    if Task.isCancelled { return result }
+                    if Cancellation.isRequested { return result }
                     guard let childValues = try? child.resourceValues(forKeys: keys) else { continue }
                     if childValues.isUserImmutable == true { containsLocked = true }
                     if childValues.isDirectory != true {

@@ -41,12 +41,36 @@ enum DropHandling {
             $0.deletingLastPathComponent().standardizedFileURL.path != destination.standardizedFileURL.path
         }
         guard !targets.isEmpty else { return }
+        // **修飾キーはこの瞬間に読む。** 判定を非同期にしたので、あとで読むと
+        // その頃にはキーが離されている。
         let optionHeld = NSEvent.modifierFlags.contains(.option)
+        Task {
+            // ボリュームの判定は `resourceValues`／`statfs` を伴う I/O なので
+            // メインスレッドで行わない [NV6-02]。
+            let sameVolume = await FileIO.perform {
+                Set(targets.filter { isSameVolume($0, destination) }.map(\.path))
+            }
+            await apply(
+                targets: targets, destination: destination, optionHeld: optionHeld,
+                sameVolumePaths: sameVolume, operations: operations,
+                onComplete: onComplete, onFailure: onFailure
+            )
+        }
+    }
 
+    private static func apply(
+        targets: [URL],
+        destination: URL,
+        optionHeld: Bool,
+        sameVolumePaths: Set<String>,
+        operations: FolderOperations,
+        onComplete: @escaping @MainActor () -> Void,
+        onFailure: @escaping @MainActor (String) -> Void
+    ) async {
         var copyTargets: [URL] = []
         var moveTargets: [URL] = []
         for url in targets {
-            let defaultIsCopy = !isSameVolume(url, destination)
+            let defaultIsCopy = !sameVolumePaths.contains(url.path)
             if optionHeld != defaultIsCopy {
                 copyTargets.append(url)
             } else {
@@ -81,13 +105,22 @@ enum DropHandling {
     /// ボリュームが判定できない場合は異なるボリューム扱い（既定コピー、安全側）にする。
     /// `VolumeEligibilityChecker` と同じ `.volumeUUIDStringKey` を使う（`.volumeURLKey`
     /// はサンドボックス配下のフォルダ一覧経路で解決に失敗することがあった）。
-    private static func isSameVolume(_ a: URL, _ b: URL) -> Bool {
+    ///
+    /// **`volumeUUIDString` を直接見ない** [NV3-01]。SMB では必ず `nil` になる
+    /// ため、**同じ共有の中でのドラッグが「別ボリューム」と判定され、Finder
+    /// なら移動になるところが黙ってコピーになっていた**（4GB のファイルなら、
+    /// サーバ側の改名 1 回で済むはずのものが全バイトの往復になる）。
+    /// `VolumeIdentity` はマウント元から代わりの識別子を導くので、同じ共有か
+    /// 別の共有かを正しく見分けられる。
+    ///
+    /// **`FileIO.perform` の中からのみ呼ぶこと** — I/O を伴う [NV6-02]。
+    private nonisolated static func isSameVolume(_ a: URL, _ b: URL) -> Bool {
         guard
-            let uuidA = try? a.resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString,
-            let uuidB = try? b.resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString
+            let idA = VolumeIdentity.identifier(for: a),
+            let idB = VolumeIdentity.identifier(for: b)
         else {
             return false
         }
-        return uuidA == uuidB
+        return idA == idB
     }
 }
