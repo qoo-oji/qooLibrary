@@ -2107,6 +2107,11 @@ iCloud・SMB の実測はいずれも事前許可を得て、最小限（数バ�
 
 **この作業で踏んだ検証手順の罠**: ①変異検証（関門を一時的に外してテストが落ちることの確認)の**復元に `git checkout -- <file>` を使い、未コミットだった修正本体まで巻き戻してしまった**（再適用して事なきを得た）。変異の復元には `git stash push -- <file>` かファイルの複製退避を使い、`git checkout` は使わないこと。②`xcodebuild ... | tail` の形はスキーム名の誤りでも exit 0 に見える。`set -o pipefail` を付け、`BUILD SUCCEEDED` の文字列まで確認すること（スキーム名は `qooLibrary` ではなく **`qooLibraryApp`**）。
 
+**［第二段の走査、同日］「見ていない範囲」のうちこの環境で完了できる 2 つを実施した。**
+
+- **パーサの入力頑健性**: `MatroskaDimensionReader` は問題なし（再帰なし・全ループで前進保証・VINT は最大 56 ビットで `Int` 変換のオーバーフローに到達しない・子の範囲は常に親でクランプ）。`EpubCoverResolver` で**キー重複クラッシュを発見・修正した** — `Dictionary(uniqueKeysWithValues:)` はキー重複で fatalError し、**同名エントリを 2 つ持つ zip（更新エントリの追記、現実にあり得る形）の EPUB サムネイル生成でアプリごと落ちていた**（変異検証で実際に `Fatal error: Duplicate values for key` を再現）。先勝ちの `uniquingKeysWith:` へ変更 — 後勝ちではない理由は、実際にバイト列を読む `readEntry` が先頭一致で返すため（テストが最初「後勝ち」を期待して落ち、実態に合わせた）。**`uniqueKeysWithValues:` は外部入力由来のキーに対して使ってはならない**（使用箇所は全走査してこの 1 箇所だけと確認済み）。あわせて spine ループに取り消し確認（`Cancellation.isRequested`）を追加 — 画像を含まない大量 spine の病的 EPUB がセルの画面外退場後も `FileIO` レーンを占有し続けないため。
+- **AttributeGraph ハング既知パターンの系統走査**: `@AppStorage` 全 30 件を列挙し、**`.commands`（メニュー）文脈で読む箇所はゼロ**（設計どおり）。ビュー内の条件使用（カラム表示切替・環境設定タブ・`startupFolderUIModeRaw`）は残るが、いずれも実機で長期安定しており、過去のハングは `.commands` との組み合わせでのみ発生した経緯と整合する。新規の危険パターンなし。
+
 作業を始める際は、対象領域の仕様書（下記 §2 の一覧）を該当箇所だけ `Read` してから着手する。仕様書は合計 18 ファイルあり、全部を毎回読み込む必要はない。要件定義書本体は `docs/Requirements/qooLibrary_要件定義書_v2.8.md` にある（約 2,900 行）。矛盾したときの優先順位は §1 参照。
 
 ## 1. アプリ概要

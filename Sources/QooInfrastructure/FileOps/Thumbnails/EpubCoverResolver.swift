@@ -32,7 +32,18 @@ public enum EpubCoverResolver {
         maxBytes: Int
     ) async -> Data? {
         guard let listing = try? await reader.listEntries(url) else { return nil }
-        let entriesByPath = Dictionary(uniqueKeysWithValues: listing.entries.map { ($0.pathname, $0) })
+        // **`uniqueKeysWithValues:` は使わない** [2026-08 全体点検] — あちらは
+        // キー重複で fatalError する。zip に同名エントリが複数あるのは現実に
+        // あり得る形（更新エントリの追記）で、そのファイルのサムネイル生成で
+        // アプリごと落ちていた。畳み方は**先勝ち** — 実際にバイト列を読む
+        // `readEntry` がアーカイブを先頭から走査して最初の一致を返すため、
+        // 辞書だけ後勝ちにしても読まれるのは先頭側で、記述と実態がずれる
+        // （後勝ちへ寄せるにはエントリの通し番号の配管が要り、カバー 1 枚の
+        // 解決には見合わない）。
+        let entriesByPath = Dictionary(
+            listing.entries.map { ($0.pathname, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
         let allPaths = Set(entriesByPath.keys)
 
         guard let containerData = await read(entriesByPath[containerPath], url: url, reader: reader, listing: listing, maxBytes: maxBytes),
@@ -46,6 +57,12 @@ public enum EpubCoverResolver {
         let opfDirectory = directory(of: opfPath)
 
         for idref in packageDocument.spineItemRefs {
+            // 画像を 1 枚も含まない大量の spine 項目を持つ病的な EPUB で、
+            // セルが画面外へ出た（`.task(id:)` が取り消された）後も延々と
+            // エントリを読み続けないため [2026-08 全体点検]。ここは実際の
+            // Task 上の async ループなので取り消しが届く（`Cancellation` は
+            // 範囲外なら `Task.isCancelled` を見る）。
+            if Cancellation.isRequested { return nil }
             guard let manifestItem = packageDocument.manifestItems[idref] else { continue }
             guard let imagePath = await resolveImagePath(
                 for: manifestItem, baseDirectory: opfDirectory, url: url, reader: reader,
