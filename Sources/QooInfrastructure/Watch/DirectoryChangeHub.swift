@@ -282,7 +282,7 @@ public final class DirectoryChangeHub {
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(AppLimits.Watch.remotePollInterval))
                     guard !Task.isCancelled, let self else { return }
-                    self.pollRemoteDirectories()
+                    await self.pollRemoteDirectories()
                 }
             }
         } else {
@@ -298,12 +298,34 @@ public final class DirectoryChangeHub {
     /// 更新日時は項目の増減・改名でしか動かない）。それでも一覧の見た目に
     /// 効くのは主に項目の増減なので、`stat` 1 回で済むこの方法を採る
     /// [設計判断]。完全な追随はアプリが前面に戻ったときの再同期に委ねる。
-    private func pollRemoteDirectories() {
+    /// **`stat` はメインスレッドで呼ばない** [NV6-02]。
+    ///
+    /// ここは「ネットワークボリュームに追随するため」に作った経路だが、
+    /// 実装当初は `@MainActor` のまま 2 秒ごとに `stat` を呼んでいた。
+    /// 相手が応答しなければ**メインスレッドがそのまま止まる**——SMB なら
+    /// 最大 30 秒、NFS の hard マウント（既定）なら無限。つまり
+    /// **ネットワーク対応のために作った経路が、いちばん確実にアプリを
+    /// 固める**構造だった（8章 §8.11.11 の再チェックで発見）。
+    ///
+    /// 計測（`FileIO.perform`）と、その結果を使った状態更新（メインアクタ）を
+    /// 分ける。計測中に登録が変わり得るので、**戻ってきた時点でまだ存在する
+    /// 登録にだけ**結果を適用する。
+    private func pollRemoteDirectories() async {
         guard isApplicationActive() else { return }
+        let targets = registrations
+            .filter { $0.value.isRemote && $0.value.scope == .shallow }
+            .mapValues { $0.watchRoot }
+        guard !targets.isEmpty else { return }
+
+        let stamps = await FileIO.perform {
+            targets.mapValues { Self.directoryStamp($0) }
+        }
+
         var affected: Set<UUID> = []
-        for (token, registration) in registrations where registration.isRemote && registration.scope == .shallow {
+        for (token, current) in stamps {
+            // 計測している間に解除された登録は捨てる。
+            guard let registration = registrations[token] else { continue }
             let previous = registration.lastRemoteStamp
-            let current = Self.directoryStamp(registration.watchRoot)
             guard previous != current else { continue }
             registrations[token]?.lastRemoteStamp = current
             // 初回は基準を取るだけで、変化したとは見なさない。
@@ -312,7 +334,9 @@ public final class DirectoryChangeHub {
         notify(affected)
     }
 
-    private static func directoryStamp(_ path: String) -> DirectoryStamp {
+    /// **`nonisolated`** — `FileIO.perform` のクロージャ（メインアクタの外）から
+    /// 呼ぶため。状態に触れない純粋な `stat` なので隔離は要らない。
+    private nonisolated static func directoryStamp(_ path: String) -> DirectoryStamp {
         var info = stat()
         guard stat(path, &info) == 0 else { return DirectoryStamp(exists: false, seconds: 0, nanoseconds: 0) }
         return DirectoryStamp(
@@ -322,6 +346,16 @@ public final class DirectoryChangeHub {
         )
     }
 
+    /// **`volumeIsLocal` は「ネットワークかどうか」を当てにできない**
+    /// （8章 §8.11.1）——File Provider（iCloud 等）は `true` を返し、
+    /// ネットワーク共有上のディスクイメージも `true` になる。ここではそれで
+    /// 構わない: **この判定は「ポーリングを足すか」だけを決めており**、
+    /// 取りこぼしても FSEvents とアプリ復帰時の再同期が残るため、
+    /// 誤ってポーリングしない側に倒しても壊れない。
+    ///
+    /// 判定自体もファイルシステムへの問い合わせなので、**メインスレッドでは
+    /// 呼ばない** [NV6-02]。関心の登録はツリーを展開すると行数分まとめて
+    /// 起きるため、1 回ずつ同期で尋ねると展開のたびに固まり得る。
     private static func isOnRemoteVolume(_ url: URL) -> Bool {
         // 取得できなければローカル扱い（ポーリングしない）。存在しないパスや
         // 権限の無い場所で毎回失敗しても実害が無い側に倒す。
