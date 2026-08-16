@@ -40,18 +40,65 @@ import Testing
 
     /// `generation` が増えるまで待つ。増えなければ `false`。
     private func waitForChange(_ watch: DirectoryObservation, from baseline: Int) async -> Bool {
+        await waitForChange(watch, from: baseline, within: Self.deadline)
+    }
+
+    private func waitForChange(
+        _ watch: DirectoryObservation, from baseline: Int, within limit: Duration
+    ) async -> Bool {
         let start = ContinuousClock.now
-        while ContinuousClock.now - start < Self.deadline {
+        while ContinuousClock.now - start < limit {
             if watch.generation != baseline { return true }
             try? await Task.sleep(for: .milliseconds(50))
         }
         return false
     }
 
-    /// ストリームの立ち上げ（`AppLimits.Watch.rootRebuildDebounce` の待ち合わせ
-    /// と FSEvents の登録）が終わるのを待つ。
-    private func waitForStreamStartup() async {
-        try? await Task.sleep(for: .milliseconds(500))
+    /// ストリームが**実際に生きている**ことを確かめてから戻る。
+    ///
+    /// **固定時間の sleep では足りない**［既存のフレークを直したもの］。
+    /// 以前はここが `500ms` の `Task.sleep` で、「これだけ待てば
+    /// `AppLimits.Watch.rootRebuildDebounce` と FSEvents の登録が終わって
+    /// いるだろう」という当て推量だった。並列実行で間に合わないと、
+    /// 直後の変更を**取りこぼしてから 10 秒待って落ちる**——
+    /// Release で 4 回に 1 回ほど落ちていた原因がこれ。
+    ///
+    /// 代わりに、外部プロセスでプローブを作り、**それが観測できて初めて**
+    /// 「登録は済んだ」と判断する。時間ではなく状態で待つので、
+    /// 遅い環境でも速い環境でも正しい。
+    ///
+    /// - Note: 片付けと、通知が静まるところまで見てから戻る。プローブの
+    ///   通知が呼び出し側の `baseline` より後ろに届くと、**本題と関係の
+    ///   ない変更で成功と誤判定する**ため。
+    private func waitUntilObserving(
+        _ watch: DirectoryObservation, probeIn folder: URL
+    ) async throws {
+        let probe = folder.appendingPathComponent("qoo-startup-probe")
+        let start = ContinuousClock.now
+        var live = false
+        while ContinuousClock.now - start < Self.deadline {
+            let beforeCreate = watch.generation
+            try runExternally("/usr/bin/touch", [probe.path])
+            if await waitForChange(watch, from: beforeCreate, within: .milliseconds(500)) {
+                live = true
+                break
+            }
+            // まだ登録が終わっていない。片付けて次の周回へ。
+            try? runExternally("/bin/rm", ["-f", probe.path])
+        }
+        guard live else {
+            Issue.record("FSEvents の登録が \(Self.deadline) 以内に終わらなかった")
+            return
+        }
+
+        try runExternally("/bin/rm", ["-f", probe.path])
+        // プローブぶんの通知が静まるまで待つ（`generation` が動かなくなるまで）。
+        var last = watch.generation
+        while ContinuousClock.now - start < Self.deadline {
+            try? await Task.sleep(for: .milliseconds(200))
+            if watch.generation == last { return }
+            last = watch.generation
+        }
     }
 
     @Test func externalCreationReachesTheObservation() async throws {
@@ -60,7 +107,7 @@ import Testing
         let hub = DirectoryChangeHub(isApplicationActive: { true })
         let watch = DirectoryObservation(hub: hub)
         watch.watch(folder, scope: .shallow)
-        await waitForStreamStartup()
+        try await waitUntilObserving(watch, probeIn: folder)
 
         let baseline = watch.generation
         try runExternally("/bin/mkdir", [folder.appendingPathComponent("created").path])
@@ -75,7 +122,7 @@ import Testing
         let hub = DirectoryChangeHub(isApplicationActive: { true })
         let watch = DirectoryObservation(hub: hub)
         watch.watch(folder, scope: .shallow)
-        await waitForStreamStartup()
+        try await waitUntilObserving(watch, probeIn: folder)
 
         let baseline = watch.generation
         try runExternally("/bin/mv", [
@@ -97,7 +144,7 @@ import Testing
         let hub = DirectoryChangeHub(isApplicationActive: { true })
         let watch = DirectoryObservation(hub: hub)
         watch.watch(folder, scope: .shallow)
-        await waitForStreamStartup()
+        try await waitUntilObserving(watch, probeIn: folder)
 
         let baseline = watch.generation
         try runExternally("/bin/rmdir", [folder.path])
@@ -113,7 +160,7 @@ import Testing
         let hub = DirectoryChangeHub(isApplicationActive: { true })
         let watch = DirectoryObservation(hub: hub)
         watch.watch(folder, scope: .deep)
-        await waitForStreamStartup()
+        try await waitUntilObserving(watch, probeIn: folder)
 
         let baseline = watch.generation
         try runExternally("/bin/mkdir", [nested.appendingPathComponent("created").path])
