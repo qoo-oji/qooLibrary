@@ -2528,6 +2528,24 @@ iCloud・SMB の実測はいずれも事前許可を得て、最小限（数バ�
 
 **検証**: `swift test`（549 件、全通過）、静的検査 4 件 OK、`xcodebuild`（BUILD SUCCEEDED）。踏んだ罠: `NotificationRouter` は `QooApplication` のため、`AssociationPreferencesTab` に `import QooApplication` の追加が必要だった（`swift build` は通るが `xcodebuild` で失敗する組み合わせ——**アプリ層を触ったら必ず `xcodebuild` まで回すこと**）。
 
+### モーダル・独立ウインドウの UI 磨き込みとクラッシュ修正（2026-08、ユーザー要望）
+
+メインウインドウ・環境設定以外のダイアログ／シート全種を 1 つずつ画面に表示してユーザーと確認しながら磨き込んだ。**全 UI（入力ダイアログ 6 呼び出し・シート 3 種・進捗ウインドウ）で実機確認済み。**
+
+- **`QooDialogFooter` の余白を撤去し、全ボタンを同幅化した。** フッター自身の `.padding(m)` は全使用箇所で外周の `.padding(l)` と二重になっており、「ボタンの下だけ広い」「ボタン右端が入力欄と揃わない」原因だった。同幅化は**フッター内の全ボタン**（`extra` の「スキップ」含む）が対象で、全ラベルの実測幅の max を各ラベルの `minWidth` にする（`DialogButtonMetrics.maxLabelWidth`、ロケール非依存）。**Esc（`.cancelAction`）は `role == .cancel` のボタンにだけ**結び付ける — 衝突シートの「両方とも残す」のようにキャンセル位置でもキャンセルでないボタンがあるため。既存の cancel ボタンに role 無指定のものがあれば Esc が欲しい側に `.cancel` を明示すること（`LockedItemDecisionSheet` で対応済み）。
+- **衝突シートのボタン列を `QooDialogFooter` へ統合した**（extra=スキップ／cancel 位置=両方とも残す（role 無し）／confirm=置き換える）。
+- **`FixedWidthPopUp`（`DesignSystem/FixedWidthPopUp.swift`、新規）**: SwiftUI のメニュー式 `Picker` は **`.frame` を与えてもボタンは内容幅のままで枠内の位置が変わるだけ**（実測。固定幅にできる Picker スタイルは存在しない、という既知の制限）。幅を揃えたいドロップダウンには `NSPopUpButton` の薄いラッパを使う。`addItem(withTitle:)` は**同名の既存項目を黙って消す**罠があるため、メニューへ `NSMenuItem` を直接足す。`titleAlignment` で表示値の右揃えにも対応。
+- **一括リネームダイアログを全面改修した**: モード切替セグメントの中央寄せ＋直下に区切り線／プレビューを `Table`（2 列、ヘッダの区切り線ドラッグで列幅調整、`alignment(.center)` でヘッダ中央・セルは明示 leading、ツールチップでフルネーム）に置換し「プレビュー」見出しは撤去／固定カラムレイアウト（左ラベル列・第 2 ラベル列とも右寄せ、ラベル列幅は**ロケールごとの実測 +4pt**——固定値だと en/ja のどちらかで切り詰められる）／開始番号・桁数・区切り文字の表示値は右揃え／「元のファイル名を…置き換える」チェックは**ユーザー要望で廃止し、空欄=元の名前という Finder のカスタムフォーマット動作へ復帰**（`customText: formatCustomText.isEmpty ? nil : ...`）。
+- **【最重要・クラッシュ修正】`presentAsModalWindow` + `sizingOptions = [.preferredContentSize]` は、ダイアログ内にポップアップ式 Picker があると即死する。** メニュー追跡の入れ子イベントループが表示サイクルを回し、保留中の制約駆動ウインドウリサイズ（`_changeWindowFrameFromConstraintsIfNecessary`）の最中に `NSHostingView` が safe area 無効化 → `setNeedsUpdateConstraints` を再要求して、AppKit のレイアウトパス超過検出が NSException を投げる（実機で 2 回発生、DiagnosticReports の同一スタックで特定。「Update Constraints in Window pass 超過」系の既知の例外クラス）。**修正: `sizingOptions = []`（ホスティングビューがウインドウへ制約を張らない）+ `viewDidLayout` から 1 サイクル遅らせて `fittingSize` へ `setFrame`（上端固定）**。初期サイズは提示前に `view.setFrameSize(view.fittingSize)` で与える（さもないとゼロサイズで開く）。修正後、ポップアップ開閉とモード切替直後のポップアップ（競合の再現操作）で無クラッシュを機械操作で確認済み。
+- **進捗ウインドウを `isFloatingPanel = false` にした**［ユーザー指摘: 衝突シートより進捗の窓が手前はおかしい］。フローティングレベルはシート・ダイアログ全部より上に来る。通常レベルなら Finder のコピーウインドウと同じく、ダイアログ類が自然に手前へ来る。ボタン幅も固定 56pt から実測 max へ。
+- 完全削除の確認シート・ロック項目シートの説明文を短縮（「1 件ずつ確認します」「ゴミ箱を経由せず」「この操作は取り消せません（ロックシート側のみ、直前の確認シートと重複）」を削除）［ユーザー指摘: 冗長・折り返し］。
+- **実機を自動操作で検証するときの落とし穴（既存の一覧への追加分）**:
+  14. **AX（System Events）の window position が実位置と大きくずれることがある**（1324 と報告し実際は 1553 だった）。ウインドウ位置は CGWindowList（`kCGWindowBounds`）を正とする。`screencapture -l` の影マージンは**非対称**（上 ≈41pt・横 ≈56pt・下はもっと広い）——上下位置の換算を対称と仮定するとクリックが 1 行ずれる。
+  15. **System Events の `keystroke` は特定のキーだけ黙って届かないことがある**（⌘A は通るのに ⌘V が 2 回連続で消えた、モーダルダイアログ内へは一切届かない）。確実なのはメニュー項目のクリックと、CGEvent の unicode 文字入力。
+  16. **非アクティブウインドウへの最初の CGEvent クリックはウインドウのアクティブ化に消費される**。activate + delay をクリックと同一コマンド内で行うこと。
+  17. **⌥ 代替のメニュー項目（「すぐに削除…」等）は、⌥ を押さなくても System Events から名前で直接 `click` できる。**
+  18. **シート連続遷移の取りこぼし（`didAppear` 見張りが安全側スキップで回収する既知の競合）は実機で実際に起きる** — ロック項目シートが 1 回目は現れず、再試行で表示された。見張りが働いた場合、操作は静かにスキップ扱いになる（データは失われない）。
+
 作業を始める際は、対象領域の仕様書（下記 §2 の一覧）を該当箇所だけ `Read` してから着手する。仕様書は合計 18 ファイルあり、全部を毎回読み込む必要はない。要件定義書本体は `docs/Requirements/qooLibrary_要件定義書_v2.8.md` にある（約 2,900 行）。矛盾したときの優先順位は §1 参照。
 
 ## 1. アプリ概要

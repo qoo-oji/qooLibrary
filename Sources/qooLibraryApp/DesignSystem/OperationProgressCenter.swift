@@ -154,7 +154,18 @@ struct OperationProgressWindowContent: View {
     /// 幅を変えない、キャンセルと同じ幅でよい］。文字数の違いでボタンが
     /// 伸び縮みすると、押そうとした位置がずれる。**固定幅ではなく下限**に
     /// してあるのは、英語やより長い訳語でも文字が切れないようにするため。
-    private static let buttonLabelWidth: CGFloat = 56
+    /// 下限は 3 つのラベルの実測幅の max — 以前は固定 56pt で、`.small` の
+    /// 「キャンセル」がわずかに超えて完全には揃っていなかった。
+    private var buttonLabelWidth: CGFloat {
+        DialogButtonMetrics.maxLabelWidth(
+            [
+                String(localized: "progress.pause", locale: locale),
+                String(localized: "progress.resume", locale: locale),
+                String(localized: "common.cancel", locale: locale),
+            ],
+            controlSize: .small
+        )
+    }
 
     /// 「12 件中 3 件目（残り 9 件） — 1.49 GB / 4.29 GB — 残り約 2 分」。
     /// 件数・バイト数は処理側が組み立てた `detail` をそのまま使い、
@@ -232,13 +243,13 @@ struct OperationProgressWindowContent: View {
                                 // 見た目（カプセル）は元の大きさのままになる
                                 // （実機で「再開」だけ細いままだった）。
                                 Text(operation.isPaused ? "progress.resume" : "progress.pause")
-                                    .frame(minWidth: Self.buttonLabelWidth)
+                                    .frame(minWidth: buttonLabelWidth)
                             }
                             .controlSize(.small)
                         }
                         if let cancel = operation.cancel {
                             Button(role: .cancel) { cancel() } label: {
-                                Text("common.cancel").frame(minWidth: Self.buttonLabelWidth)
+                                Text("common.cancel").frame(minWidth: buttonLabelWidth)
                             }
                             .controlSize(.small)
                         }

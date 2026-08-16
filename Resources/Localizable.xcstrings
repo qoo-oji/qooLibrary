@@ -1039,6 +1039,40 @@
         }
       }
     },
+    "bulkRename.column.new" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Name"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "変更後"
+          }
+        }
+      }
+    },
+    "bulkRename.column.original" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Current Name"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "変更前"
+          }
+        }
+      }
+    },
     "bulkRename.preview" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3680,6 +3714,7 @@
       }
     },
     "goToFolder.title" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4226,13 +4261,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "These items are deleted immediately without going to the Trash. This action cannot be undone."
+            "value" : "These items are deleted immediately. This action cannot be undone."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "これらの項目はゴミ箱を経由せず直ちに削除されます。この操作は取り消せません。"
+            "value" : "これらの項目は直ちに削除されます。この操作は取り消せません。"
           }
         }
       }
@@ -4259,13 +4294,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Deleting it will unlock the item first. This cannot be undone."
+            "value" : "Deleting it will unlock the item first."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "削除するにはロックを解除する必要があります。この操作は取り消せません。"
+            "value" : "削除するにはロックを解除する必要があります。"
           }
         }
       }
@@ -4276,13 +4311,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%lld of these items are locked or contain locked items. You will be asked about each one."
+            "value" : "%lld of these items are locked or contain locked items."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "うち %lld 件はロックされているか、ロックされた項目を含みます。1 件ずつ確認します。"
+            "value" : "うち %lld 件はロックされているか、ロックされた項目を含みます。"
           }
         }
       }

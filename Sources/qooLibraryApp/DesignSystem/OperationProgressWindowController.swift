@@ -56,7 +56,13 @@ final class OperationProgressWindowController {
         )
         panel.title = String(localized: "progress.windowTitle", locale: AppLanguage.effectiveLocale)
         panel.contentView = hosting
-        panel.isFloatingPanel = true
+        // **フローティングにしない**［ユーザー指摘: 衝突シートより進捗の窓が
+        // 手前に出るのはおかしい］。`isFloatingPanel = true` はフローティング
+        // レベル（通常ウインドウ・シート・入力ダイアログのすべてより上）に
+        // なるため、回答待ちのシートを覆ってしまう。通常レベルなら
+        // シート・ダイアログが自然に手前へ来る。Finder のコピーウインドウも
+        // 通常ウインドウで、他のウインドウの後ろに回る。
+        panel.isFloatingPanel = false
         panel.hidesOnDeactivate = false
         // **キーウインドウを奪わない。** 奪うと、コピー中に一覧の選択や
         // キーボード操作が中断される。

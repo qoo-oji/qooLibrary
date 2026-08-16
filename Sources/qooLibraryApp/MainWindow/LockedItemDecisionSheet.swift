@@ -47,7 +47,13 @@ struct LockedItemDecisionSheet: View {
                     request.resolve(.delete, applyToAll: applyToAll)
                     dismiss()
                 },
-                cancel: DialogButton(title: String(localized: "permanentDelete.skipItem", locale: locale)) {
+                // `role: .cancel` を明示する — `QooDialogFooter` は Esc
+                // （`.cancelAction`）をキャンセルの意味を持つボタンにだけ
+                // 結び付けるため、無指定だと Esc でスキップできなくなる。
+                cancel: DialogButton(
+                    title: String(localized: "permanentDelete.skipItem", locale: locale),
+                    role: .cancel
+                ) {
                     request.resolve(.skip, applyToAll: applyToAll)
                     dismiss()
                 }

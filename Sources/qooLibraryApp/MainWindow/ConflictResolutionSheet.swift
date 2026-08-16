@@ -68,13 +68,25 @@ struct ConflictResolutionSheet: View {
             // 衝突するかがまだ分かっていないため。
             Toggle("conflict.applyToAll", isOn: $applyToAll)
 
-            HStack {
-                Button("conflict.skip") { resolve(.skip) }
-                Spacer()
-                Button("conflict.keepBoth") { resolve(.keepBoth) }
-                Button("conflict.replace") { resolve(.replace) }
-                    .keyboardShortcut(.defaultAction)
-            }
+            // ボタン配置は `QooDialogFooter` に統一する [UI-04]（以前は自前の
+            // `HStack` で、隣接する「両方とも残す」「置き換える」の幅も
+            // 揃っていなかった）。「両方とも残す」はキャンセル位置に置くが
+            // role を付けない — Esc に結び付くのはキャンセルの意味を持つ
+            // ボタンだけで、Esc は従来どおり「シートを閉じる → スキップ扱い」
+            // （下の `.onDisappear`）のまま。
+            QooDialogFooter(
+                confirm: DialogButton(
+                    title: String(localized: "conflict.replace", locale: locale)
+                ) { resolve(.replace) },
+                cancel: DialogButton(
+                    title: String(localized: "conflict.keepBoth", locale: locale)
+                ) { resolve(.keepBoth) },
+                extra: [
+                    DialogButton(
+                        title: String(localized: "conflict.skip", locale: locale)
+                    ) { resolve(.skip) }
+                ]
+            )
         }
         .padding(Tokens.spacing.l)
         .frame(width: 520)
