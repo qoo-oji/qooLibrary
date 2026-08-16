@@ -25,7 +25,11 @@ public enum CoverImageSourceResolver {
     ///
     /// - Parameter maxEntryReadBytes: アーカイブ内 1 エントリの読み込み上限
     ///   [IM-02][EX-32]。Quick Look 用の読み込みにも同じ上限を適用する
-    ///   [IM-05][QL-10]。
+    ///   [IM-05][QL-10]。**素の画像ファイルを丸ごと読む場合も同じ上限で断る**
+    ///   [2026-08 全体点検 F1] — アーカイブ内・EPUB は守られているのに素の
+    ///   画像だけ無上限だと、誤った拡張子の巨大ファイル（動画を .jpg に
+    ///   した等）で全量が RAM へ載り、ネットワークボリュームでは頼んで
+    ///   いない全量ダウンロードにもなるため。
     public static func firstImageData(
         for url: URL,
         maxEntryReadBytes: Int = AppLimits.Thumbnail.defaultMaxEntryReadBytes
@@ -34,9 +38,9 @@ public enum CoverImageSourceResolver {
         case .folder:
             // **メインアクタでも協調プールでもないところで読む** [NV6-01]。
             // 相手はユーザーのライブラリ＝ネットワーク上にあり得る。
-            return await FileIO.perform { firstImageDataInFolder(url) }
+            return await FileIO.perform { firstImageDataInFolder(url, maxBytes: maxEntryReadBytes) }
         case .image:
-            return await FileIO.perform { try? Data(contentsOf: url) }
+            return await FileIO.perform { readImageFileWithinLimit(url, maxBytes: maxEntryReadBytes) }
         case .epub:
             // EPUB は zip コンテナだが「自然順で先頭の画像」ではなく spine
             // （読み順）の先頭ページを取る必要があるため、汎用アーカイブ向けの
@@ -107,7 +111,7 @@ public enum CoverImageSourceResolver {
         return Array(sorted.prefix(limit))
     }
 
-    private static func firstImageDataInFolder(_ folder: URL) -> Data? {
+    private static func firstImageDataInFolder(_ folder: URL, maxBytes: Int) -> Data? {
         guard let children = try? FileManager.default.contentsOfDirectory(
             at: folder, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]
         ) else { return nil }
@@ -116,7 +120,23 @@ public enum CoverImageSourceResolver {
             $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending
         }
         guard let firstImage = sorted.first else { return nil }
-        return try? Data(contentsOf: firstImage)
+        return readImageFileWithinLimit(firstImage, maxBytes: maxBytes)
+    }
+
+    /// 素の画像ファイルを丸ごと読む前の、大きさの関門 [IM-02 の適用範囲拡大、
+    /// 2026-08 全体点検 F1]。IM-01（ピクセル数上限）は読み込み**後**にしか
+    /// 効かないため、読む前にファイルサイズで断る。
+    ///
+    /// 大きさが取れない場合は上限内とみなして読む — `DefaultImageLoader.
+    /// isWithinPixelCountLimit` と同じ判断（stat すら通らないなら直後の
+    /// 読み取りも自然に失敗する）。
+    ///
+    /// - Note: **ブロッキング。`FileIO.perform` の中からのみ呼ぶ** [NV6-01]。
+    private static func readImageFileWithinLimit(_ url: URL, maxBytes: Int) -> Data? {
+        if let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize, size > maxBytes {
+            return nil
+        }
+        return try? Data(contentsOf: url)
     }
 
     private static func firstImageDataInArchive(_ url: URL, maxEntryReadBytes: Int) async throws -> Data? {

@@ -120,6 +120,32 @@ import Testing
         #expect(await CoverImageSourceResolver.firstImageData(for: textURL) == nil)
     }
 
+    /// [2026-08 全体点検 F1] 素の画像ファイルにも読み込み上限が効くこと。
+    /// アーカイブ内・EPUB は `maxEntryReadBytes` で守られているのに素の画像
+    /// だけ無上限だと、誤った拡張子の巨大ファイル（動画を .jpg にした等）で
+    /// 全量が RAM へ載る。関門（`readImageFileWithinLimit`）を外すと
+    /// この 2 件はどちらも「データが返ってきてしまう」形で落ちる。
+    @Test func refusesAPlainImageFileLargerThanTheReadLimit() async throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let imageURL = root.appendingPathComponent("huge.png")
+        let contents = TestImageFixture.makePNGData(width: 10, height: 10)
+        try contents.write(to: imageURL)
+
+        #expect(await CoverImageSourceResolver.firstImageData(for: imageURL, maxEntryReadBytes: 10) == nil)
+        // 上限内なら従来どおり返る（境界: ちょうど上限のときは許す）。
+        #expect(await CoverImageSourceResolver.firstImageData(for: imageURL, maxEntryReadBytes: contents.count) == contents)
+    }
+
+    @Test func refusesTheFolderFirstImageLargerThanTheReadLimit() async throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try TestImageFixture.makePNGData(width: 10, height: 10)
+            .write(to: root.appendingPathComponent("page1.png"))
+
+        #expect(await CoverImageSourceResolver.firstImageData(for: root, maxEntryReadBytes: 10) == nil)
+    }
+
     @Test func returnsNilWhenNothingCanBeResolved() async throws {
         let root = try makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }

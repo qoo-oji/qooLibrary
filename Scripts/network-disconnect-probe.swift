@@ -10,6 +10,7 @@
 // ファイル I/O は無い [NV6-03]）、返らなかったものは報告だけしてプロセス終了に
 // 任せる。
 
+import AppKit
 import CoreServices
 import Foundation
 
@@ -18,6 +19,7 @@ let share = CommandLine.arguments.count > 2 ? CommandLine.arguments[2] : "/Volum
 let stateDir = NSTemporaryDirectory() + "qoo-disconnect-probe"
 let bookmarkFile = stateDir + "/bookmark.dat"
 let probeFileRecord = stateDir + "/probe-file.txt"
+let mmapFileRecord = stateDir + "/probe-mmap-file.txt"
 /// 1 件でも返らないものがあったときに、いつまで待つか。SMB の
 /// `max_resp_timeout` 既定が 30 秒なので、それを見届けられる長さにする。
 let watchdogSeconds = 45
@@ -41,6 +43,11 @@ case "prepare":
     let file = dir.appendingPathComponent("probe.bin")
     try? Data(repeating: 0x51, count: 4096).write(to: file)
     try? file.path.write(toFile: probeFileRecord, atomically: true, encoding: .utf8)
+    // mmap フォルト計測用（項目 12）。書いた直後はページがキャッシュに居るため、
+    // bash 側が遮断後に `purge` してからフォルトさせる。
+    let mmapFile = dir.appendingPathComponent("probe-mmap.bin")
+    try? Data(repeating: 0x51, count: 8 * 1024 * 1024).write(to: mmapFile)
+    try? mmapFile.path.write(toFile: mmapFileRecord, atomically: true, encoding: .utf8)
     if let data = try? URL(fileURLWithPath: share).bookmarkData(
         options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
     {
@@ -62,6 +69,28 @@ case "cleanup":
         print("  プローブフォルダ: \(FileManager.default.fileExists(atPath: dir.path) ? "★残っている" : "削除しました")")
     }
     try? FileManager.default.removeItem(atPath: stateDir)
+    exit(0)
+
+case "mmapfault":
+    // 子プロセスとして走る（SIGBUS で死んでも親の計測結果を巻き添えにしない）。
+    // 第 2 引数はファイルパス。切断中の共有上のファイルを mmap し、全ページを
+    // フォルトさせる。ローカル APFS の外部切り詰めは SIGBUS ではなくゼロ埋めに
+    // なることを実測済み（2026-08 全体点検 F3）。ここで知りたいのは
+    // 「フォルトがネットワーク I/O エラーになったとき」の挙動。
+    let path = share
+    let fd = open(path, O_RDONLY)
+    guard fd >= 0 else { print("open 失敗 \(posixName(errno))"); exit(2) }
+    var st = stat()
+    fstat(fd, &st)
+    let size = Int(st.st_size)
+    guard size > 0, let base = mmap(nil, size, PROT_READ, MAP_PRIVATE, fd, 0), base != MAP_FAILED else {
+        print("mmap 失敗 \(posixName(errno))"); exit(2)
+    }
+    close(fd)
+    let bytes = base.assumingMemoryBound(to: UInt8.self)
+    var sum = 0
+    for off in stride(from: 0, to: size, by: 4096) { sum += Int(bytes[off]) }
+    print("全ページ読めた sum=\(sum)（0x51 で書いたので、ゼロ埋めなら sum=0）")
     exit(0)
 
 default:
@@ -186,6 +215,41 @@ measure("11 新しいファイルを書く") {
     let fd = open(p, O_WRONLY | O_CREAT | O_EXCL, 0o644)
     if fd < 0 { return "作成失敗 \(posixName(errno))" }
     close(fd); unlink(p); return "書けた"
+}
+measure("13 NSWorkspace.icon(forFile:)") {
+    // `FileIconProvider` が `body` から同期的に呼ぶ。「Launch Services への
+    // 問い合わせのみでファイル内容の読み取りを伴わない」は文献ベースの主張で、
+    // 切断中にブロックしないかは未実測（2026-08 全体点検）。ブロックするなら
+    // アイコン解決も `DisplayNameCache` と同じ非同期差し替え形へ変える必要がある。
+    let icon = NSWorkspace.shared.icon(forFile: probeFile)
+    return "返った（\(Int(icon.size.width))x\(Int(icon.size.height))）"
+}
+measure("12 mmap ページのフォルト（F3: SIGBUS か）") {
+    // `CGPDFDocument(url:)` は後備ファイルを mmap する（lsof の txt 種別で
+    // 実測確認済み）。切断中のフォルトが SIGBUS ならプロセスごと死ぬので、
+    // 子プロセスで受けて終了状態から判定する。
+    guard let mmapProbeFile = try? String(contentsOfFile: mmapFileRecord, encoding: .utf8) else {
+        return "★準備なし"
+    }
+    let child = Process()
+    child.executableURL = URL(fileURLWithPath: CommandLine.arguments[0])
+    child.arguments = ["mmapfault", mmapProbeFile]
+    let out = Pipe()
+    child.standardOutput = out
+    do { try child.run() } catch { return "★子プロセスを起動できず" }
+    let deadline = Date().addingTimeInterval(40)
+    while child.isRunning && Date() < deadline { Thread.sleep(forTimeInterval: 0.2) }
+    if child.isRunning {
+        child.terminate()
+        return "★40 秒返らず（フォルトでハング）— mmap 経路は期限もキャンセルも効かない"
+    }
+    let text = String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    if child.terminationReason == .uncaughtSignal {
+        return "★シグナルで死亡 signal=\(child.terminationStatus)（10=SIGBUS 11=SIGSEGV）"
+            + " — CGPDFDocument をネットワーク上の PDF に直接使ってはならない"
+    }
+    return "子プロセス生存 exit=\(child.terminationStatus) \(text)"
 }
 
 let waited = group.wait(timeout: .now() + .seconds(watchdogSeconds))

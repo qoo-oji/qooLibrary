@@ -143,6 +143,17 @@ public struct UnrarBackend: ArchiveReading {
     ///   無ければ戻ってこない。協調スレッドプールの上で走らせると、コア数ぶん
     ///   溜まった時点でアプリの `async` 処理が全部止まる。
     private func readEntryBlocking(_ url: URL, entry: ArchiveEntry, encoding: String.Encoding, maxBytes: Int) throws -> Data {
+        // **展開する前に宣言サイズで断る** [IM-02][2026-08 全体点検 F2]。
+        // `qoo_unrar_extract_one` は上限を受け取れない一括 API のため、
+        // 事後チェックだけだと巨大エントリの全量が一時ファイル（＝起動
+        // ボリューム）へ書き出されてから捨てられる——上限 512MB のつもりが
+        // 数十 GB のエントリで起動ボリュームを埋め得る。宣言値は信用しない
+        // 方針 [EX-20] なので、これは事後の実測チェックの**代わり**ではなく
+        // **前段**（宣言値が正直な普通のアーカイブで無駄な書き出しを避ける）。
+        // 小さく偽った宣言値は従来どおり展開後の実測チェックが捕まえる。
+        if entry.uncompressedSize > Int64(maxBytes) {
+            throw ExtractError.entryReadLimitExceeded(limit: maxBytes)
+        }
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: tempDir) }
         let tempFile = tempDir.appendingPathComponent("entry")

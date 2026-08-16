@@ -144,9 +144,13 @@ struct MainWindowView: View {
 
     /// ウインドウタイトル [ユーザー要望]。タブが無い/フォルダが無い場合のみ
     /// アプリ名にフォールバックする。
+    ///
+    /// `displayName(atPath:)` を直接呼ばない [NV6-02] — ここは `body` から
+    /// 評価されるため、応答しない共有で描画のたびにメインスレッドが止まる
+    /// （`DisplayNameCache` のコメント参照）。
     private var currentFolderTitle: String {
         guard let folder = windowState.folder else { return "qooLibrary" }
-        return FileManager.default.displayName(atPath: folder.path)
+        return DisplayNameCache.shared.name(for: folder)
     }
 
     /// 「移動」メニューへ公開するナビゲーション操作 [1-16]。
@@ -616,7 +620,8 @@ struct MainWindowView: View {
             let (url, root) = await StartupFolderPreference.resolve()
             windowState.folder = url
             windowState.navigationRoot = root
-            windowState.title = FileManager.default.displayName(atPath: url.path)
+            // メインスレッドで FS を待たない [NV6-02]。
+            windowState.title = await FileIO.perform { FileManager.default.displayName(atPath: url.path) }
         }
     }
 }

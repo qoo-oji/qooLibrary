@@ -2085,6 +2085,28 @@ iCloud・SMB の実測はいずれも事前許可を得て、最小限（数バ�
 **I/O の重いテストは `.serialized` にする。** ディスクイメージを作る suite を
 並列に回すと、FSEvents の到達を待つ既存の検証（猶予 10 秒）が間に合わなくなる。
 
+### 全ファイル操作の致命的問題の総点検（2026-08。クラッシュ／ハング／リーク／消失）
+
+ユーザー指示（「あらゆるファイル操作で致命的問題が起き得ないか、体系的・構造的・網羅的に、時間無制限で」）による横断監査。**§6.1 の手順どおり、修正の前に次元表を提示してレビューを受けた**（軸: 障害様式 × 発生機構 × 出どころ × 現状）。列挙のための外部検索で**新しい障害分類が 1 つ**出た: **mmap された後備ファイルの外部破壊 → SIGBUS（捕捉不能クラッシュ）**。
+
+**走査で確認できた健全性**（対処済み記録と実装の食い違いなし）: `try!`/`as!` ゼロ、JSON ストア全件 `.atomic` 書き込み、パス走査ループの危険形残存ゼロ、シート待ち `CheckedContinuation` 2 種とも見張り付き、`FolderOperations`/シート/検索/ツリー/一覧の FS 呼び出しは `FileIO` 経由、fire-and-forget `Task {}` 64 件に無限ループ・無期限保持なし、Undo の URL ベースリプレイは全経路が `FileOperationService` 経由（暗黙上書きなし・`.keepBoth`・Trash 行き）のため**外部変更後のリプレイでも最悪「別物を退避」に留まり恒久消失は構造的に起きない**。
+
+**直したもの（3 件、いずれも変異または実測で検証済み）**:
+
+1. **[F1・メモリ枯渇クラッシュ] 素の画像ファイルの読み込みに上限が無かった。** アーカイブ内エントリ・EPUB は `maxEntryReadBytes`（512MB）で守られているのに、素の画像（`.image` 分岐と `firstImageDataInFolder`）だけ `Data(contentsOf:)` で無上限に全量を RAM へ読んでいた——誤った拡張子の巨大ファイルで枯渇し、ネットワークでは頼んでいない全量ダウンロードになる。`CoverImageSourceResolver.readImageFileWithinLimit`（読む前に `fileSize` で断る。取れなければ読む — `DefaultImageLoader` と同じ判断）。回帰テスト 2 件は**関門を外すと落ちることまで確認済み**。
+2. **[F2・起動ボリューム圧迫] `UnrarBackend.readEntry` が上限チェック前にエントリ全量を一時ファイルへ展開していた。** `qoo_unrar_extract_one` は上限を受け取れない一括 API のため、宣言サイズでの事前拒否を前段に足した（宣言値は信用しない方針 [EX-20] なので事後の実測チェックは残したまま）。
+3. **[NV6-02 の漏れ・切断中のメインスレッドハング] ウインドウタイトル（`MainWindowView.currentFolderTitle`）とパスバー（成分ごと）が `body` 評価中にメインスレッドで `displayName(atPath:)`（FS へ行く）を呼んでいた。** NV6-02 の 4 箇所修正の**後に足された経路**で、「『済』と書いてあっても経路を足したら都度確かめる」の再実例。`DisplayNameCache`（新規、`@MainActor @Observable`）が ①キャッシュ ②無ければ `lastPathComponent` を即返し `FileIO` で本物を引いてから差し替える。起動時フォルダの `windowState.title` も `FileIO` 経由に変更。`GeneralPreferencesTab` の 1 箇所（`NSOpenPanel` で選んだ直後の 1 回きり、到達可能性がパネル操作で保証される）は意図的に残した。
+
+**実測して確定させたこと（F3・mmap SIGBUS）**: ①`CGPDFDocument(url:)` は後備ファイルを**実際に mmap する**（`lsof` の `txt` 種別で確認）②**ローカル APFS では mmap 領域の外部切り詰めは SIGBUS にならずゼロ埋めで読める**（素の mmap・CGPDFDocument の両方で確認。「truncate すれば SIGBUS」という文献の一般論はこの macOS のローカル APFS には当てはまらなかった）→ ローカルの破壊は「デコード失敗 → 既定アイコン」で穏当に済む。**残る未確定はネットワーク切断中のフォルト（I/O エラー起因）だけ**で、`Scripts/network-disconnect-probe.sh` に**項目 12（mmap フォルト、子プロセスで SIGBUS を受ける）と項目 13（`NSWorkspace.icon(forFile:)` がブロックするか — `FileIconProvider` は `body` から同期的に呼ぶため）を追加した**。次の遮断計測で NV-94 等とまとめて確定する（8章 §8.11.13 に行を追加済み）。遮断後に `purge` を挟む（書いたばかりのページがキャッシュに居るとフォルトがネットワークへ行かず偽の「読めた」になる）。
+
+**対処せず記録に留めたもの**: `setLocked` の部分失敗時の受領書破棄（既知・フェーズ2の `BatchNotificationSession` とまとめて）、ストア `save()` 失敗の握りつぶし（既知・低優先）、continuation 2 箇所（`CloudSyncLocation`＝5 秒期限付き・`AppAssociationStore`＝完了ハンドラ橋渡し）は精査の結果問題なし。
+
+**見ていない範囲（この監査に含まれない）**: EBML/OPF パーサの入力深さ制限、SwiftUI 再描画系（AttributeGraph）の系統的走査、既知の未検証 3 件（NV8-03／NV-94＝遮断計測待ち／NV-101）、テストコード・Scripts・Spikes。
+
+**検証**: `swift test`（544 件、全通過）、静的検査 4 件（fileops-isolation / layer-dependencies / cancellation-usage / localization-keys、すべて OK）、`xcodegen generate && xcodebuild`（Debug、BUILD SUCCEEDED）、遮断プローブの Swift はコンパイル確認済み。
+
+**この作業で踏んだ検証手順の罠**: ①変異検証（関門を一時的に外してテストが落ちることの確認)の**復元に `git checkout -- <file>` を使い、未コミットだった修正本体まで巻き戻してしまった**（再適用して事なきを得た）。変異の復元には `git stash push -- <file>` かファイルの複製退避を使い、`git checkout` は使わないこと。②`xcodebuild ... | tail` の形はスキーム名の誤りでも exit 0 に見える。`set -o pipefail` を付け、`BUILD SUCCEEDED` の文字列まで確認すること（スキーム名は `qooLibrary` ではなく **`qooLibraryApp`**）。
+
 作業を始める際は、対象領域の仕様書（下記 §2 の一覧）を該当箇所だけ `Read` してから着手する。仕様書は合計 18 ファイルあり、全部を毎回読み込む必要はない。要件定義書本体は `docs/Requirements/qooLibrary_要件定義書_v2.8.md` にある（約 2,900 行）。矛盾したときの優先順位は §1 参照。
 
 ## 1. アプリ概要

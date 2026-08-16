@@ -2369,7 +2369,10 @@ struct PathBarView: View {
                             .frame(width: 14, height: 14)
                         // Finder 準拠のローカライズされた表示名(ルートはボリューム名になる)
                         // [`FileIconProvider` と同じ設計判断: 追加の entitlement 不要]。
-                        Text(FileManager.default.displayName(atPath: url.path))
+                        // `displayName(atPath:)` を直接呼ばない [NV6-02] — `body` からの
+                        // 評価で、しかもパス成分の数だけ呼ばれるため、応答しない共有では
+                        // 描画のたびにその本数ぶんメインスレッドが止まる。
+                        Text(DisplayNameCache.shared.name(for: url))
                             .font(.system(size: Tokens.fontSize.caption))
                             .fontWeight(url == components.last ? .semibold : .regular)
                             .lineLimit(1)
