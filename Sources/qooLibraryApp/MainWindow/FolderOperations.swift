@@ -424,13 +424,21 @@ final class FolderOperations {
     /// 「ゴミ箱に入れたのに取り消せない」という食い違いも同時に消える。
     func moveToTrash(_ urls: [URL], onSuccess: @escaping @MainActor () -> Void = {}) {
         guard !urls.isEmpty else { return }
-        guard TrashAvailability.hasTrash(forAll: urls) else {
-            pendingDeletionStep = .confirm(PendingPermanentDeletion(
-                urls: urls, becauseNoTrash: true, onSuccess: onSuccess
-            ))
-            return
+        Task {
+            // ゴミ箱の有無の問い合わせは I/O なのでメインスレッドで行わない
+            // [NV6-02]。接続中は 0.01 秒だが、**無応答の共有では約 30 秒
+            // ブロックする**（遮断計測 §8.11.16 の実測 29,987 ms。以前は
+            // ここで同期に呼んでおり、NAS が応答しなくなった直後の削除で
+            // メインスレッドが固まる穴だった）。
+            let hasTrash = await FileIO.perform { TrashAvailability.hasTrash(forAll: urls) }
+            guard hasTrash else {
+                pendingDeletionStep = .confirm(PendingPermanentDeletion(
+                    urls: urls, becauseNoTrash: true, onSuccess: onSuccess
+                ))
+                return
+            }
+            run(TrashCommand(items: urls), failure: "error.trashFailed", onSuccess: onSuccess)
         }
-        run(TrashCommand(items: urls), failure: "error.trashFailed", onSuccess: onSuccess)
     }
 
     // MARK: - 完全削除 [FM-14〜FM-18、8章 §8.5]
