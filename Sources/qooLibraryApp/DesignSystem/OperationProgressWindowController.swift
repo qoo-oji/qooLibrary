@@ -47,15 +47,30 @@ final class OperationProgressWindowController {
 
     private func showIfNeeded() {
         guard panel == nil else { return }
-        let hosting = NSHostingView(rootView: OperationProgressWindowContent().appLanguageOverride())
+        let hosting = DeferredFitHostingView(rootView: OperationProgressWindowContent().appLanguageOverride())
+        // **ホスティングビューの制約でウインドウを駆動させない** [クラッシュ
+        // 修正の水平展開、`DialogWindowPresenter` のコメント参照]。既定の
+        // sizingOptions（intrinsic 制約）は中身の高さが変わるたびに表示サイクルの
+        // 中でパネルをリサイズする（実測: 480×160 で作ったパネルが 138pt や
+        // 100pt に勝手に縮んでいた）。コピー中にユーザーがメニューを開いている
+        // 瞬間（入れ子イベントループ）に行の増減・詳細行の出現が重なると、
+        // 入力ダイアログで実際に起きたのと同じ「レイアウトパス超過」例外で
+        // 即死し得る。追従は `DeferredFitHostingView` がレイアウト確定後に
+        // 1 サイクル遅らせて行う。
+        hosting.sizingOptions = []
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 160),
+            // 初期サイズは実測で与える（制約による自動サイズはもう無いため）。
+            contentRect: NSRect(origin: .zero, size: hosting.fittingSize),
             styleMask: [.titled, .utilityWindow, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
         panel.title = String(localized: "progress.windowTitle", locale: AppLanguage.effectiveLocale)
         panel.contentView = hosting
+        hosting.onDeferredLayout = { [weak panel, weak hosting] in
+            guard let panel, let hosting else { return }
+            Self.fit(panel, to: hosting.fittingSize)
+        }
         // **フローティングにしない**［ユーザー指摘: 衝突シートより進捗の窓が
         // 手前に出るのはおかしい］。`isFloatingPanel = true` はフローティング
         // レベル（通常ウインドウ・シート・入力ダイアログのすべてより上）に
@@ -75,5 +90,40 @@ final class OperationProgressWindowController {
         panel.center()
         panel.orderFront(nil)
         self.panel = panel
+    }
+
+    /// 中身の実寸へパネルを合わせる（上端固定）。`DialogHostingController.
+    /// fitWindowToContent` と同じ規約: 一致していれば何もしない（`setFrame`
+    /// 自身が再レイアウトを起こすため、この打ち切りが無いと自己増殖する）。
+    private static func fit(_ panel: NSPanel, to target: NSSize) {
+        guard target.width > 1, target.height > 1 else { return }
+        let content = panel.contentRect(forFrameRect: panel.frame)
+        guard abs(content.width - target.width) > 0.5
+            || abs(content.height - target.height) > 0.5 else { return }
+        var newContent = content
+        newContent.origin.y += content.height - target.height
+        newContent.size = target
+        panel.setFrame(panel.frameRect(forContentRect: newContent), display: true)
+    }
+}
+
+/// レイアウトのたびに、**表示サイクルの外で** 1 回だけ通知するホスティング
+/// ビュー。ウインドウ追従をレイアウトパスの中で行わないための橋渡し
+/// （`DialogHostingController.viewDidLayout` と同じパターンの NSView 版）。
+private final class DeferredFitHostingView<Content: View>: NSHostingView<Content> {
+    var onDeferredLayout: (@MainActor () -> Void)?
+    private var isNotifyScheduled = false
+
+    override func layout() {
+        super.layout()
+        guard !isNotifyScheduled else { return }
+        isNotifyScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.isNotifyScheduled = false
+                self.onDeferredLayout?()
+            }
+        }
     }
 }
