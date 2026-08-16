@@ -50,4 +50,23 @@ struct NameFilterTests {
     @Test func nonMatchingQueryIsRejected() {
         #expect(!NameFilter.matches(name: sample, query: "rar"))
     }
+    /// **ネットワーク上の一覧は NFD で返る**（1-16b の実測。macOS の
+    /// Foundation API がファイル名を NFD で返す事情と同じ）。入力は普通 NFC
+    /// なので、**正規化の違いで検索が外れないこと**を固定する [NV-97]。
+    ///
+    /// `range(of:options:)` は正準等価を吸収するので追加の正規化は要らない
+    /// ——「要らない」ことが将来の変更で崩れないよう、ここで押さえておく。
+    @Test func matchesAcrossUnicodeNormalizationForms() {
+        let nfc = "バグベア 第01巻.cbz"
+        let nfd = nfc.decomposedStringWithCanonicalMapping
+        #expect(Array(nfc.utf8) != Array(nfd.utf8), "前提が崩れている（同じバイト列になっている）")
+
+        for name in [nfc, nfd] {
+            #expect(NameFilter.matches(name: name, query: "バグベア"))
+            #expect(NameFilter.matches(name: name, query: "バグベア".decomposedStringWithCanonicalMapping))
+            // 幅の違いも従来どおり吸収する（日本語入力のまま打った場合）。
+            #expect(NameFilter.matches(name: name, query: "ﾊﾞｸﾞﾍﾞｱ"))
+        }
+    }
+
 }

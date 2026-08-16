@@ -43,10 +43,23 @@ import Testing
     /// この文字として保存される）。逆に `/` だけは成分の区切りなので入らない。
     private static let awkward = "\(library)/【C99】作品名 → 続編、その2「完全版」 (1:2).cbz"
 
+    // MARK: ネットワーク上の標本 [NV-99]
+    //
+    // ネットワークではパスにサーバ名・共有名・**ユーザー名**が混じる。
+    // マウントポイント（`/Volumes/<共有名>`）は通常のパスと同じ形だが、
+    // `//user@host/share` の形（`statfs` の `f_mntfromname`、Foundation の
+    // エラー文言）が説明文へ混じることがある。
+    private static let share = "/Volumes/秘密の書庫"
+    private static let networkFile = "\(share)/成年コミック/(成年コミック) [98765架空社] サンプルプレビュー.cbz"
+    private static let mountSource = "//KosukeNishimura@TS-664._smb._tcp.local/秘密の書庫"
+
     /// 匿名化後のログに現れてはいけない断片。
     private static let secrets = [
         "PRO-G40", "My Sample", "成年コミック", "98765架空社", "サンプルプレビュー",
         "C99", "完全版", "続編", "マイライブラリ", "作品名",
+        // ネットワーク由来 [NV-99]。**サーバ名・共有名・ユーザー名**も
+        // ユーザーを指す情報なので、パス成分と同じく残してはならない。
+        "秘密の書庫", "KosukeNishimura", "TS-664",
     ]
 
     /// 実在する計装の書式（`Sources/` の各 `Log.*` 呼び出しに対応）。
@@ -87,6 +100,13 @@ import Testing
             // Image
             "サムネイルを生成できません（archive）: \(Log.path(file))",
             "サムネイルのキャッシュ保存に失敗: \(Log.path(awkward)) — 失敗",
+            // ネットワーク [NV-99]
+            "copy: \(Log.path(networkFile)) → \(Log.path(folder))",
+            "move 完了: 12/12 件 → \(Log.path(share))",
+            "登録フォルダのアクセスを開始: \(Log.path(share))",
+            "ゴミ箱を持たない場所と判定: \(Log.path(networkFile)) — 失敗しました",
+            // マウント元はパスではないが、失敗の説明文に混じり得る。
+            "マウント元: \(Log.redactable(mountSource))",
         ]
     }
 
@@ -96,6 +116,19 @@ import Testing
             for secret in Self.secrets {
                 #expect(!anonymized.contains(secret), "「\(secret)」が残っています → \(anonymized)")
             }
+        }
+    }
+
+    /// **この suite が空振りでないことの担保。**
+    ///
+    /// 標本の中にユーザー由来の断片が実際に含まれていなければ、
+    /// `noRealLogFormatLeaksAUserSuppliedName` は何も検査していないのと
+    /// 同じになる（1-16b で、そうと気づかずに空振りのテストを 1 つ書いた）。
+    /// 匿名化する**前**の行には、すべての秘密が現れていなければならない。
+    @Test func everySecretActuallyAppearsInTheSamples() {
+        let raw = Self.lines().joined(separator: "\n")
+        for secret in Self.secrets {
+            #expect(raw.contains(secret), "「\(secret)」を含む標本が無い＝この秘密は検査されていない")
         }
     }
 
