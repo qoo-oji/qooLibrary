@@ -56,7 +56,7 @@ fi
 MNT_FROM="$(mount | awk -v s="$SHARE" '$0 ~ " on " s " " {print $1}')"
 HOST="$(echo "$MNT_FROM" | sed -E 's|^//||; s|^[^@]*@||; s|/.*$||')"
 if [ -z "$HOST" ]; then
-  echo "$SHARE のマウント元を判定できません（mount の出力: $MNT_FROM）" >&2
+  echo "$SHARE のマウント元を判定できません（mount の出力: ${MNT_FROM}）" >&2
   exit 1
 fi
 # Bonjour で見つけた共有は `TS-664._smb._tcp.local` のような**サービス名**で
@@ -74,14 +74,14 @@ if [ -z "$NAS_IP" ]; then
   echo "$HOST の IP を解決できません" >&2
   exit 1
 fi
-echo "対象: $SHARE  （マウント元 $MNT_FROM → $HOST_RESOLVABLE → $NAS_IP）"
+echo "対象: $SHARE  （マウント元 ${MNT_FROM} → ${HOST_RESOLVABLE} → ${NAS_IP}）"
 
 restore() {
   echo ""
   echo "=== 後始末 ==="
   pfctl -a "$ANCHOR" -F rules >/dev/null 2>&1 && echo "  遮断ルールを削除しました"
   if [ -n "$PF_TOKEN" ]; then
-    pfctl -X "$PF_TOKEN" >/dev/null 2>&1 && echo "  pf の参照を返しました（トークン $PF_TOKEN）"
+    pfctl -X "$PF_TOKEN" >/dev/null 2>&1 && echo "  pf の参照を返しました（トークン ${PF_TOKEN}）"
   fi
   if ping -c 2 -t 3 "$NAS_IP" >/dev/null 2>&1; then
     echo "  疎通確認: $NAS_IP に到達できます ✅"

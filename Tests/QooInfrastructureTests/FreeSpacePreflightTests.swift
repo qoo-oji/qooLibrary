@@ -110,9 +110,48 @@ struct TinyVolume {
         return TinyVolume(mountPoint: mountPoint, imagePath: image)
     }
 
+    /// **外れたことを確かめるまで試し直し、それでも駄目なら黙らない。**
+    ///
+    /// 以前は 1 回 `detach` を投げて結果を捨てていたため、外し損ねても
+    /// 誰も気づけなかった。実際にこの開発機で**ボリューム 4 本
+    /// （バッキングイメージ約 1 GB）が並列実行のあとに残っていた**——
+    /// あとから素の `hdiutil detach` を投げると即座に成功したので、
+    /// 「原理的に外せない」のではなく**その瞬間だけ busy だった**もの。
+    ///
+    /// これは `NetworkVolumeIntegrationTests.Workspace.deinit` が
+    /// 「後片付けも試し直す」形にしてあるのと同じ理由で、同じ轍である。
+    /// 残ったボリュームはマウント表に居座り、`MountTable` を読む検証や
+    /// 実測の前提を静かに汚す。
     func destroy() {
-        _ = Self.run("/usr/bin/hdiutil", ["detach", "-quiet", "-force", mountPoint.path])
-        try? FileManager.default.removeItem(at: imagePath)
+        let fileManager = FileManager.default
+        for attempt in 0..<5 {
+            guard Self.isMounted(mountPoint) else { break }
+            if attempt > 0 { Thread.sleep(forTimeInterval: 0.2) }
+            _ = Self.run("/usr/bin/hdiutil", ["detach", "-quiet", "-force", mountPoint.path])
+        }
+        if Self.isMounted(mountPoint) {
+            // **握りつぶさない。** 見えない後始末の失敗は、次に測る人の
+            // 前提を狂わせる（CLAUDE.md §6.1「自分の後片付けが先に踏むことがある」）。
+            FileHandle.standardError.write(
+                Data("[TinyVolume] 外せませんでした（手動で detach してください）: \(mountPoint.path)\n".utf8)
+            )
+        }
+        try? fileManager.removeItem(at: imagePath)
+        if fileManager.fileExists(atPath: imagePath.path) {
+            FileHandle.standardError.write(
+                Data("[TinyVolume] イメージを消せませんでした: \(imagePath.path)\n".utf8)
+            )
+        }
+    }
+
+    /// マウント表と突き合わせるだけ。**実体は見ない** — 外れた直後の
+    /// `/Volumes/<名前>` は空のフォルダとして残ることがあり、
+    /// `fileExists` では「まだ付いている」と誤判定する。
+    private static func isMounted(_ mountPoint: URL) -> Bool {
+        let mounted = FileManager.default.mountedVolumeURLs(
+            includingResourceValuesForKeys: nil, options: []
+        ) ?? []
+        return mounted.contains { $0.standardizedFileURL.path == mountPoint.standardizedFileURL.path }
     }
 
     /// **イメージは残したまま外す。** 「ボリュームが接続されていない」状態を

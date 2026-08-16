@@ -210,9 +210,9 @@ import Testing
                 // FSEvents に渡した箱も解放されたということ。
                 _ = spy
             }
-            stream.setRoots([folder.path])
+            await stream.setRoots([folder.path])
             try await Task.sleep(for: .milliseconds(300))
-            stream.setRoots([]) // ストリームを破棄する
+            await stream.setRoots([]) // ストリームを破棄する
         }
 
         // FSEvents は自分のキューで破棄するため、解放は非同期に起きる。
@@ -222,5 +222,86 @@ import Testing
             try await Task.sleep(for: .milliseconds(50))
         }
         #expect(released.isSet)
+    }
+}
+
+/// **ネットワークボリューム用のポーリングを、必要なときだけ動かすこと**
+/// [NV6-02、8章 §8.11.16]。
+///
+/// 判定そのものは `MountTable` に委ねているので、ここでは
+/// **合成したマウント表**を渡して両方向を固定する——実際の共有を
+/// 用意しなくても、ローカルだけの環境で回帰を捕まえられる。
+@MainActor
+@Suite struct RemotePollingDecisionTests {
+    private func makeHub() -> DirectoryChangeHub {
+        DirectoryChangeHub(isApplicationActive: { true })
+    }
+
+    private func makeDirectory() -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qoo-poll-test-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    /// 起動ボリューム上だけを見ているなら、ポーリングは要らない。
+    ///
+    /// **一度ここを落とした。** 「`.shallow` の関心があれば動かす」と書いた
+    /// ところ、`FolderTreePane` と `FolderContentView` が常に登録しているため
+    /// **前面にいる間ずっと 2 秒ごとに空回りする**状態になっていた。
+    @Test func localOnlyRegistrationsDoNotNeedPolling() {
+        let hub = makeHub()
+        let folder = makeDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let watch = DirectoryObservation(hub: hub)
+        watch.watch(folder, scope: .shallow)
+
+        // `#expect` にテーブルそのものを渡さない（落ちたときマウント 97 件が
+        // 丸ごと出力され、肝心の 1 行が読めなくなる）。
+        let needsPolling = hub.needsRemotePolling(using: MountTable.current())
+        #expect(!needsPolling)
+    }
+
+    /// 同じ登録でも、その場所がリモートならポーリングが要る。
+    /// **これが無いと「常に false」の実装でも上のテストが通ってしまう。**
+    @Test func aRegistrationOnARemoteVolumeNeedsPolling() {
+        let hub = makeHub()
+        let folder = makeDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let watch = DirectoryObservation(hub: hub)
+        watch.watch(folder, scope: .shallow)
+
+        // 一時ディレクトリを載せている起動ボリュームを「リモート」に見立てる。
+        let pretendRemote = MountTable(entries: [
+            .init(mountPoint: "/", fileSystemType: "smbfs", isLocal: false)
+        ])
+        let needsPolling = hub.needsRemotePolling(using: pretendRemote)
+        #expect(needsPolling)
+    }
+
+    /// 一覧として見ていない（`.deep`）関心はポーリングの対象外。
+    /// ディレクトリ自身の更新日時では配下の変更を拾えないため。
+    @Test func deepRegistrationsAreNotPolled() {
+        let hub = makeHub()
+        let folder = makeDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let watch = DirectoryObservation(hub: hub)
+        watch.watch(folder, scope: .deep)
+
+        let pretendRemote = MountTable(entries: [
+            .init(mountPoint: "/", fileSystemType: "smbfs", isLocal: false)
+        ])
+        let needsPolling = hub.needsRemotePolling(using: pretendRemote)
+        #expect(!needsPolling)
+    }
+
+    /// 関心が無ければ当然要らない。
+    @Test func noRegistrationsMeansNoPolling() {
+        let hub = makeHub()
+        let pretendRemote = MountTable(entries: [
+            .init(mountPoint: "/", fileSystemType: "smbfs", isLocal: false)
+        ])
+        let needsPolling = hub.needsRemotePolling(using: pretendRemote)
+        #expect(!needsPolling)
     }
 }

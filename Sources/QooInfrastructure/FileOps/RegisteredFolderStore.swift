@@ -195,10 +195,20 @@ public actor RegisteredFolderStore {
 
     /// 解決済みの URL。ボリューム未接続等でオフラインの場合は `nil` [SB-05]。
     ///
-    /// **副作用に注意**: 現在の実装は `.withoutMounting` を付けずに解決する
-    /// ため、未接続のディスクイメージ等が再マウントされることがある
-    /// （§8.7.1 BM-5、1-17 で対処予定）。一覧の件数を数えるだけの用途では
-    /// `activeAccessCount()` を使うこと。
+    /// **マウントは起こさない** [RG3-01][NV-91]。``BookmarkResolving/resolve(_:)``
+    /// が `.withoutMounting` を既定にしているため、未接続のボリュームは
+    /// 再マウントされずそのまま `nil` になる。
+    ///
+    /// - Note: ここには以前「`.withoutMounting` を付けずに解決するので
+    ///   再マウントされることがある（1-17 で対処予定）」と書いてあったが、
+    ///   **その対処は NV-91 で済んでおり、記述だけが取り残されていた**。
+    ///   本プロジェクトが繰り返し踏んでいる「コメントと実装の食い違い」で、
+    ///   しかも今回は**実装のほうが安全側**という向きだったため、
+    ///   読んだ人が無用な回避策を足しかねない形になっていた。
+    ///
+    /// - Important: 解決自体はブロックし得る。相手が**マウント済みなのに
+    ///   応答しない**共有では、`.withoutMounting` を付けても対象を確かめる
+    ///   ために出ていく。件数を数えるだけなら `activeAccessCount()` を使うこと。
     public func resolvedURL(for folder: RegisteredFolder) -> URL? {
         guard case .resolved(let url, _) = bookmarks.resolve(folder.bookmarkData) else { return nil }
         return url

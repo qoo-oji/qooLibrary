@@ -110,16 +110,22 @@ public final class DirectoryChangeHub {
             return
         }
         removeFromIndex(token)
+        // **ここで「ネットワークか」を尋ねてはいけない** [NV6-02]。以前は
+        // `resourceValues([.volumeIsLocalKey])` をこの位置で同期に呼んでいたが、
+        // それは**そのボリューム自身への問い合わせ**なので、相手が応答しない
+        // ときにメインスレッドが止まる——SMB で最大 30 秒、NFS なら無限。
+        // しかも登録はツリーを 1 段展開するだけで行数分まとめて起きる。
+        //
+        // 判定は ``pollRemoteDirectories()`` へ移した。あちらは 2 秒に 1 回、
+        // 既にメインアクタの外で走っており、マウント表 1 枚で全件を分類できる。
         registrations[token] = Registration(
             keys: keys,
             watchRoot: keys.last ?? url.path,
             scope: scope,
-            observation: observation,
-            isRemote: Self.isOnRemoteVolume(url)
+            observation: observation
         )
         addToIndex(token)
         scheduleRootRebuild()
-        updateRemotePolling()
     }
 
     func unregister(_ token: UUID) {
@@ -127,7 +133,6 @@ public final class DirectoryChangeHub {
         removeFromIndex(token)
         registrations[token] = nil
         scheduleRootRebuild()
-        updateRemotePolling()
     }
 
     // MARK: - 自分が加えた変更 [FO-01 の choke point から呼ばれる]
@@ -212,19 +217,31 @@ public final class DirectoryChangeHub {
     /// 関心が増減するたびにストリームを作り直すのではなく、短く待ち合わせて
     /// 1 回にまとめる（フォルダツリーを一気に展開すると関心が数十件まとめて
     /// 増えるため）。
+    /// **ポーリングの要否もここで決める。** 関心が増減するたびに直に判定すると、
+    /// ツリーを 1 段展開しただけでマウント表を数十回読み直すことになる
+    /// （1 回 0.13 ms でも、行数分まとめて起きるので無駄が目立つ）。
+    /// ルート集合の組み直しと同じ待ち合わせに相乗りさせれば 1 回で済む。
     private func scheduleRootRebuild() {
         rootRebuildTask?.cancel()
         rootRebuildTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(AppLimits.Watch.rootRebuildDebounce))
             guard !Task.isCancelled, let self else { return }
-            self.rebuildRoots()
+            // ポーリングの判断を先に済ませる。ストリームの組み直しは
+            // 到達できない共有があると 30 秒待たされ得るので、そちらに
+            // 引きずられて「リモートを見張り始める」のが遅れないようにする。
+            self.updateRemotePolling()
+            await self.rebuildRoots()
         }
     }
 
-    private func rebuildRoots() {
+    /// **`async` なのは `FSEventStreamCreate` がブロックし得るため** [NV-94]。
+    /// 到達できない共有を含むと 30 秒返らないことが遮断計測で分かっている
+    /// （``FileSystemEventStream/setRoots(_:)`` 参照）。ここはメインアクタなので、
+    /// 待ちを `FileIO` へ逃がさないと**共有が落ちた瞬間にアプリが固まる**。
+    private func rebuildRoots() async {
         let roots = Self.pruneDescendants(Set(registrations.values.map(\.watchRoot)))
         guard !roots.isEmpty else {
-            stream?.setRoots([])
+            await stream?.setRoots([])
             return
         }
         if stream == nil {
@@ -234,7 +251,7 @@ public final class DirectoryChangeHub {
                 Task { @MainActor in self?.handle(changes) }
             }
         }
-        stream?.setRoots(roots)
+        await stream?.setRoots(roots)
     }
 
     private func handle(_ changes: [FileSystemChange]) {
@@ -274,8 +291,31 @@ public final class DirectoryChangeHub {
 
     /// リモートボリューム上の関心が 1 つでもあればポーリングを動かし、
     /// 無くなれば止める。
+    ///
+    /// **判定は ``MountTable`` で行う** [NV6-02]。以前ここは
+    /// `resourceValues([.volumeIsLocalKey])` を使っており、**そのボリューム
+    /// 自身への問い合わせ**だったので、相手が応答しないとメインスレッドが
+    /// 止まった。マウント表はカーネルが持っている写しを読むだけなので
+    /// ファイルシステムへは出ていかず、メインアクタから呼んでよい。
+    ///
+    /// - Note: **「ローカルだけなら止まっている」ことが要る。** 素朴に
+    ///   「`.shallow` の関心があれば動かす」にすると、`FolderTreePane` と
+    ///   `FolderContentView` が常に登録しているので**前面にいる間ずっと
+    ///   2 秒ごとに空回りする**（一度そう書いてレビューで指摘された）。
+    ///   ついでに「既定の `isApplicationActive` を評価するのは実際に
+    ///   ポーリングが動くときだけ」という前提も壊れる。
+    /// ポーリングが要るか。**判断だけを切り出してある** — こうしておくと、
+    /// 実際のネットワークボリュームを用意しなくても
+    /// 「ローカルだけなら動かさない／リモートがあれば動かす」の両方向を
+    /// テストで固定できる（合成した ``MountTable`` を渡す）。
+    func needsRemotePolling(using mounts: MountTable) -> Bool {
+        registrations.values.contains {
+            $0.scope == .shallow && mounts.isRemote(path: $0.watchRoot)
+        }
+    }
+
     private func updateRemotePolling() {
-        let needsPolling = registrations.values.contains { $0.isRemote && $0.scope == .shallow }
+        let needsPolling = needsRemotePolling(using: MountTable.current())
         if needsPolling {
             guard remotePollTask == nil else { return }
             remotePollTask = Task { [weak self] in
@@ -312,13 +352,22 @@ public final class DirectoryChangeHub {
     /// 登録にだけ**結果を適用する。
     private func pollRemoteDirectories() async {
         guard isApplicationActive() else { return }
-        let targets = registrations
-            .filter { $0.value.isRemote && $0.value.scope == .shallow }
+        let shallow = registrations
+            .filter { $0.value.scope == .shallow }
             .mapValues { $0.watchRoot }
-        guard !targets.isEmpty else { return }
+        guard !shallow.isEmpty else { return }
 
+        // **リモートかどうかの分類もここで行う** [NV6-02]。マウント表 1 枚
+        // （[実測] 0.13 ms、ファイルシステムには触れない）で全件を分類し、
+        // リモートだったものにだけ `stat` を発行する。登録のたびに
+        // ボリュームへ尋ねていた以前の形と違い、**メインアクタでは
+        // 一切問い合わせが起きない**うえ、答えが古くならない
+        // （ボリュームの着脱に自然に追随する）。
         let stamps = await FileIO.perform {
-            targets.mapValues { Self.directoryStamp($0) }
+            let mounts = MountTable.current()
+            return shallow.compactMapValues { root in
+                mounts.isRemote(path: root) ? Self.directoryStamp(root) : nil
+            }
         }
 
         var affected: Set<UUID> = []
@@ -344,22 +393,6 @@ public final class DirectoryChangeHub {
             seconds: Int64(info.st_mtimespec.tv_sec),
             nanoseconds: Int64(info.st_mtimespec.tv_nsec)
         )
-    }
-
-    /// **`volumeIsLocal` は「ネットワークかどうか」を当てにできない**
-    /// （8章 §8.11.1）——File Provider（iCloud 等）は `true` を返し、
-    /// ネットワーク共有上のディスクイメージも `true` になる。ここではそれで
-    /// 構わない: **この判定は「ポーリングを足すか」だけを決めており**、
-    /// 取りこぼしても FSEvents とアプリ復帰時の再同期が残るため、
-    /// 誤ってポーリングしない側に倒しても壊れない。
-    ///
-    /// 判定自体もファイルシステムへの問い合わせなので、**メインスレッドでは
-    /// 呼ばない** [NV6-02]。関心の登録はツリーを展開すると行数分まとめて
-    /// 起きるため、1 回ずつ同期で尋ねると展開のたびに固まり得る。
-    private static func isOnRemoteVolume(_ url: URL) -> Bool {
-        // 取得できなければローカル扱い（ポーリングしない）。存在しないパスや
-        // 権限の無い場所で毎回失敗しても実害が無い側に倒す。
-        (try? url.resourceValues(forKeys: [.volumeIsLocalKey]))?.volumeIsLocal == false
     }
 
     // MARK: - 索引
@@ -430,7 +463,11 @@ public final class DirectoryChangeHub {
         let watchRoot: String
         let scope: DirectoryWatchScope
         weak var observation: DirectoryObservation?
-        let isRemote: Bool
+        /// リモートボリューム上のフォルダについて、前回見たときの更新日時。
+        /// **「リモートかどうか」はここに持たない** — 登録時に尋ねると
+        /// メインアクタでボリュームへ問い合わせることになるため
+        /// （``pollRemoteDirectories()`` を参照）。ローカルの登録では
+        /// 最後まで `nil` のままになる。
         var lastRemoteStamp: DirectoryStamp?
 
         func contains(_ path: String) -> Bool {

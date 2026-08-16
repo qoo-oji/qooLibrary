@@ -286,7 +286,7 @@ private struct ThumbnailImage: View {
                 // を優先］。以前は直下に画像があるフォルダだけカバーが全面に
                 // 出てファイルと区別が付かなかった。
                 FolderCoverIcon(
-                    folderIcon: FileIconProvider.shared.icon(for: entry.url),
+                    folderIcon: FileIconProvider.shared.icon(for: entry.url, isDirectory: entry.isDirectory),
                     covers: folderCovers,
                     size: size
                 )
@@ -298,7 +298,7 @@ private struct ThumbnailImage: View {
                 // サムネイル生成中・生成不可（大半のファイルはここに留まる）は
                 // Finder と同じアイコンを表示する [ユーザー要望: SF Symbol の
                 // 代用アイコンでは視認性が良くない]。
-                Image(nsImage: FileIconProvider.shared.icon(for: entry.url))
+                Image(nsImage: FileIconProvider.shared.icon(for: entry.url, isDirectory: entry.isDirectory))
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .padding(size * 0.12)

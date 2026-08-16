@@ -89,32 +89,78 @@ final class FileSystemEventStream {
     /// ときに `sinceWhen` として渡し、停止から再開までの空白を埋める。
     private var lastEventID = FSEventStreamEventId(kFSEventStreamEventIdSinceNow)
 
+    /// 生成を待っている間に集合が変わったかを見分けるための世代番号。
+    /// ``setRoots(_:)`` の注記を参照。
+    private var generation = 0
+
     init(onChanges: @escaping @Sendable ([FileSystemChange]) -> Void) {
         self.onChanges = onChanges
     }
 
     deinit {
-        if let stream { Self.tearDown(stream) }
+        // **待たない。** 破棄も相手が居なければ待たされ得るので、
+        // 解放だけを別の実行先へ投げる（``tearDownWithoutWaiting`` 参照）。
+        if let stream { Self.tearDownWithoutWaiting(stream) }
     }
 
     /// 監視するルート集合を差し替える。同じ集合なら何もしない。
     /// 空を渡すと監視を止める。
-    func setRoots(_ newRoots: [String]) {
+    ///
+    /// **`async` なのは `FSEventStreamCreate` がブロックし得るため** [NV-94]。
+    /// 遮断計測で、**到達できない共有上のパスを含めると 30 秒返らない**
+    /// ことが分かった（しかも最後は「成功」する）。ここはメインアクタなので、
+    /// そのまま呼ぶと**共有が落ちた瞬間にアプリが 30 秒固まる**——しかも
+    /// 監視ルートの組み直しは、フォルダを移動するたびに起きる。
+    func setRoots(_ newRoots: [String]) async {
         guard newRoots != roots else { return }
         stopStream()
         roots = newRoots
         guard !newRoots.isEmpty else { return }
-        startStream()
+
+        // 生成を待っている間に集合がまた変わり得る。**戻ってきたときに
+        // 自分がまだ最新かを確かめ、そうでなければ捨てる** — さもないと
+        // 30 秒前の古い集合を監視するストリームを据えてしまう。
+        generation &+= 1
+        let mine = generation
+        let handle = onChanges
+        let queue = deliveryQueue
+        let requested = newRoots
+        let sinceWhen = lastEventID
+
+        let created = await FileIO.perform {
+            Self.makeStream(roots: requested, sinceWhen: sinceWhen, queue: queue, onChanges: handle)
+        }
+
+        guard generation == mine else {
+            if let created { Self.tearDownWithoutWaiting(created.ref) }
+            return
+        }
+        guard let created else { return } // 失敗は致命的ではない（下記）
+        stream = created.ref
+        Log.watch.debug("ファイル監視を開始: \(requested.count) ルート")
     }
 
     // MARK: - 内部
 
     private func stopStream() {
         guard let stream else { return }
-        // **停止する前に**読む（無効化後は取得できない）。
+        // **停止する前に**読む（無効化後は取得できない）。これは構造体の
+        // フィールドを読むだけでブロックしない。
         lastEventID = FSEventStreamGetLatestEventId(stream)
-        Self.tearDown(stream)
         self.stream = nil
+        // 破棄も相手が居ないと待たされ得るので、**待たずに投げる**。
+        // 参照は既に手放してあるので、ほかから触られることはない。
+        Self.tearDownWithoutWaiting(stream)
+    }
+
+    /// 破棄を別の実行先へ投げ、完了を待たない。
+    ///
+    /// `FSEventStreamRef` は `FSEventStreamCreate` が返した +1 の所有権で、
+    /// `tearDown` がそれを解放する。渡した時点でこちらは参照を捨てているので、
+    /// 二重に触ることはない。
+    private nonisolated static func tearDownWithoutWaiting(_ stream: FSEventStreamRef) {
+        let box = StreamBox(stream)
+        FileIOExecutor.makeLane().async { tearDown(box.ref) }
     }
 
     private nonisolated static func tearDown(_ stream: FSEventStreamRef) {
@@ -123,7 +169,18 @@ final class FileSystemEventStream {
         FSEventStreamRelease(stream)
     }
 
-    private func startStream() {
+    /// ストリームを 1 本作って開始する。**メインアクタの外で走る**
+    /// （``FileIO/perform(_:)`` の中からのみ呼ぶこと）。
+    ///
+    /// `self` に一切触れないので `nonisolated static` にしてある——
+    /// ここで状態を読み書きすると、待っている間に変わった値を使うことになる。
+    /// 必要な材料はすべて引数で受け取る。
+    private nonisolated static func makeStream(
+        roots: [String],
+        sinceWhen: FSEventStreamEventId,
+        queue: DispatchQueue,
+        onChanges: @escaping @Sendable ([FileSystemChange]) -> Void
+    ) -> StreamBox? {
         // コールバックには `self` ではなく専用の箱を渡し、context の
         // retain/release に生存管理を任せる。`self` を渡すと
         // 「self → stream → self」の循環になり、`deinit` が呼ばれなくなる。
@@ -134,6 +191,8 @@ final class FileSystemEventStream {
         // 作り直すたび（＝フォルダを移動するたび、ツリーを開くたび）に箱が
         // 1 つずつ漏れる [レビューで発見]。
         let box = CallbackBox(onChanges)
+        // 以降 `roots`／`lastEventID` ではなく引数を使う（この関数は
+        // どのアクタにも属さないので、状態を覗きにいってはならない）。
         var context = FSEventStreamContext(
             version: 0,
             info: Unmanaged.passUnretained(box).toOpaque(),
@@ -153,7 +212,7 @@ final class FileSystemEventStream {
 
         guard let created = FSEventStreamCreate(
             kCFAllocatorDefault, fsEventsCallback, &context,
-            roots as CFArray, lastEventID, AppLimits.Watch.coalescingLatency, flags
+            roots as CFArray, sinceWhen, AppLimits.Watch.coalescingLatency, flags
         ) else {
             // 生成に失敗しても致命的ではない（アプリ復帰時の再同期と
             // ローカル変更の通知は生きている）。次に集合が変わったときに
@@ -161,18 +220,28 @@ final class FileSystemEventStream {
             // 生成に失敗した場合、FSEvents は `retain` を呼んでいないので
             // ここで解放してはならない（`box` がスコープを抜けて消える）。
             Log.watch.warning("FSEventStreamCreate に失敗しました（監視ルート \(roots.count) 件）")
-            return
+            return nil
         }
-        stream = created
-        FSEventStreamSetDispatchQueue(created, deliveryQueue)
+        FSEventStreamSetDispatchQueue(created, queue)
         guard FSEventStreamStart(created) else {
             Log.watch.warning("FSEventStreamStart に失敗しました（監視ルート \(roots.count) 件）")
-            stopStream()
-            return
+            // ここで捨てる。呼び出し側は `nil` を受け取るだけで、
+            // 半端に生きたストリームを持たされない。
+            tearDown(created)
+            return nil
         }
-        Log.watch.debug("ファイル監視を開始: \(roots.count) ルート")
+        return StreamBox(created)
     }
 
+}
+
+/// `FSEventStreamRef` を実行文脈の境界を越えて運ぶための箱。
+///
+/// 中身は不透明ポインタで、渡した側は必ず参照を手放してから渡す
+/// （受け取った側だけが触る）ので、共有された可変状態にはならない。
+private struct StreamBox: @unchecked Sendable {
+    let ref: FSEventStreamRef
+    init(_ ref: FSEventStreamRef) { self.ref = ref }
 }
 
 // MARK: - C へ渡すコールバック

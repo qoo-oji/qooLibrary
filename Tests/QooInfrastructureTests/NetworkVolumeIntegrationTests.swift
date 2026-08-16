@@ -47,10 +47,12 @@ import Testing
         /// 相手の共有に溜まっていく**。実際に 4 つ残して気づいた——製品側の
         /// 不具合を、まず自分の後始末が踏んだ形になった。
         deinit {
-            let fm = FileManager.default
-            for _ in 0..<10 where fm.fileExists(atPath: root.path) {
-                try? fm.removeItem(at: root)
-                if fm.fileExists(atPath: root.path) { Thread.sleep(forTimeInterval: 0.1) }
+            // **`fileExists` で成否を判定しない。** SMB は dirent を最大 30 秒
+            // キャッシュするので、削除に失敗していても古い `false` が返り、
+            // 「消した」つもりで相手の共有に残る（実際に踏んだ）。
+            if let error = removeThrowawayDirectory(at: root) {
+                FileHandle.standardError.write(Data(
+                    "[NetworkVolumeIntegrationTests] 使い捨てフォルダを消せませんでした: \(root.path) — \(error)\n".utf8))
             }
         }
 

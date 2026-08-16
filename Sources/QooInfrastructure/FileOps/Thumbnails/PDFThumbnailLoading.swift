@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import QooKit
 
 /// PDF ファイルのサムネイル生成 [ユーザー要望: qooLibrary は qooViewer の
 /// フロントエンドとして設計されており、qooViewer が対応するファイル形式
@@ -45,8 +46,42 @@ public struct CoreGraphicsPDFThumbnailLoader: PDFThumbnailLoading {
         }
     }
 
+    /// PDF を開く。**ネットワーク上のものは mmap しない** [F3、8章 §8.11.16]。
+    ///
+    /// `CGPDFDocument(url:)` は後備ファイルを mmap する（`lsof` の `txt` 種別で
+    /// [実測]）。遮断計測で、**写像済みのページを切断中にフォルトさせると
+    /// `SIGBUS` でプロセスごと死ぬ**ことが確定した。`SIGBUS` は Swift の
+    /// `try` では捕まえられないので、**アプリが即死する**——サムネイル 1 枚の
+    /// ために失うものとして許容できない。
+    ///
+    /// ローカルはこれまでどおり mmap で開く（速く、メモリも食わない）。
+    /// ネットワークのときだけ、いったん読み切ってから開く: `Data(contentsOf:)`
+    /// は既定で mmap しない（[実測] `lsof` に現れない）ので、読み終えた
+    /// 時点で切断されても、あとはメモリ上の話になる。
+    ///
+    /// - Note: 丸ごとメモリに載せるので上限を設ける（超過は生成をスキップ、
+    ///   IM-01 と同じ判断）。**より賢い手は `CGDataProviderDirectCallbacks` で
+    ///   `pread` 越しのランダムアクセスにすることで、mmap も全読みも避けられる**
+    ///   ——必要になったらそちらへ。
+    static func openDocument(at url: URL) -> CGPDFDocument? {
+        MountTable.current().isRemote(url) ? openInMemory(url) : CGPDFDocument(url as CFURL)
+    }
+
+    /// mmap を経由せずに開く。**ネットワーク上の PDF 用**だが、
+    /// ローカルのファイルに対しても同じ結果を返す（テストはそれを使う）。
+    static func openInMemory(_ url: URL) -> CGPDFDocument? {
+        let limit = AppLimits.Thumbnail.defaultMaxEntryReadBytes
+        if let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize, size > limit {
+            return nil
+        }
+        guard let data = try? Data(contentsOf: url),
+              let provider = CGDataProvider(data: data as CFData)
+        else { return nil }
+        return CGPDFDocument(provider)
+    }
+
     private static func renderFirstPage(of url: URL, maxPixelSize: Int) -> CGImage? {
-        guard let document = CGPDFDocument(url as CFURL), let page = document.page(at: 1) else { return nil }
+        guard let document = openDocument(at: url), let page = document.page(at: 1) else { return nil }
         guard isImageBasedPage(page) else { return nil }
         let mediaBox = page.getBoxRect(.mediaBox)
         guard mediaBox.width > 0, mediaBox.height > 0 else { return nil }

@@ -124,3 +124,69 @@ import Testing
         #expect(thumbnail == nil)
     }
 }
+
+/// **mmap を経由しない開き方** [F3、8章 §8.11.16]。
+///
+/// `CGPDFDocument(url:)` は後備ファイルを mmap するため、**ネットワーク上の
+/// PDF では切断中のページフォルトが `SIGBUS` になり、プロセスごと死ぬ**
+/// （遮断計測で確定）。ネットワークのときだけ読み切ってから開く経路へ
+/// 切り替えるので、その経路が**同じ結果を返すこと**を固定する。
+///
+/// 切り替えの判断自体（`MountTable.isRemote`）は `MountTableTests` の担当。
+/// ここでは「読み切って開いても壊れない」ことだけを見る。
+@Suite struct PDFInMemoryOpenTests {
+
+    private func makeTempDir() throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qoo-pdf-mem-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    /// ページ全面に実画像を描いた 1 ページの PDF。**小さすぎるとインライン
+    /// 画像として書き出され XObject にならない**ので、ページ相当の大きさにする
+    /// （既存のテストが同じ理由でそうしている）。
+    private func makeImageBasedPDF(at url: URL, width: CGFloat, height: CGFloat) {
+        var box = CGRect(x: 0, y: 0, width: width, height: height)
+        guard let context = CGContext(url as CFURL, mediaBox: &box, nil) else { return }
+        context.beginPDFPage(nil)
+        let image = TestImageFixture.makeCGImage(width: Int(width), height: Int(height))
+        context.draw(image, in: box)
+        context.endPDFPage()
+        context.closePDF()
+    }
+
+    @Test func openingInMemoryYieldsTheSameDocumentAsMapping() throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let pdf = dir.appendingPathComponent("cover.pdf")
+        makeImageBasedPDF(at: pdf, width: 300, height: 400)
+
+        let mapped = try #require(CGPDFDocument(pdf as CFURL), "前提: mmap 経由では開ける")
+        let inMemory = try #require(
+            CoreGraphicsPDFThumbnailLoader.openInMemory(pdf),
+            "読み切ってから開く経路で開けていない（ネットワーク上の PDF が全滅する）"
+        )
+        #expect(inMemory.numberOfPages == mapped.numberOfPages)
+
+        let mappedBox = try #require(mapped.page(at: 1)).getBoxRect(.mediaBox)
+        let memoryBox = try #require(inMemory.page(at: 1)).getBoxRect(.mediaBox)
+        #expect(memoryBox == mappedBox, "同じページなのに mediaBox が違う")
+    }
+
+    /// PDF でないものを渡しても落ちない。
+    @Test func openingInMemoryReturnsNilForNonPDF() throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let notPDF = dir.appendingPathComponent("cover.pdf")
+        try Data("これは PDF ではない".utf8).write(to: notPDF)
+        #expect(CoreGraphicsPDFThumbnailLoader.openInMemory(notPDF) == nil)
+    }
+
+    /// 存在しないファイルでも落ちない。
+    @Test func openingInMemoryReturnsNilForMissingFile() throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        #expect(CoreGraphicsPDFThumbnailLoader.openInMemory(dir.appendingPathComponent("no.pdf")) == nil)
+    }
+}

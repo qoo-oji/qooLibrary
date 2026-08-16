@@ -314,8 +314,15 @@ public final class CreateFolderCommand: Command {
     }
 
     public func undo() async throws -> UndoResult {
-        let contents = (try? FileManager.default.contentsOfDirectory(atPath: url.path)) ?? []
-        guard contents.isEmpty else {
+        // **メインアクタで一覧を読んではいけない** [NV6-02]。`Command` は
+        // `@MainActor` なので、ここで直に読むと ⌘Z を押した瞬間にメイン
+        // スレッドがその一覧の完了を待つ——応答しない共有では SMB で最大
+        // 30 秒、NFS の hard マウント（既定）なら無限に。
+        let target = url
+        let isEmpty = await FileIO.perform {
+            ((try? FileManager.default.contentsOfDirectory(atPath: target.path)) ?? []).isEmpty
+        }
+        guard isEmpty else {
             return .impossible(reason: "フォルダの中身が空ではありません")
         }
         do {

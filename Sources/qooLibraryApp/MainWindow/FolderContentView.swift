@@ -299,7 +299,7 @@ struct FolderContentView: View {
                             // 先頭位置がずれる）。Finder と同じアイコン [ユーザー要望、
                             // `FileIconProvider` 参照]。
                             HStack(spacing: Tokens.spacing.xs) {
-                                Image(nsImage: FileIconProvider.shared.icon(for: entry.url))
+                                Image(nsImage: FileIconProvider.shared.icon(for: entry.url, isDirectory: entry.isDirectory))
                                     .resizable()
                                     .frame(width: 16, height: 16)
                                 if renamingEntry?.url == entry.url {

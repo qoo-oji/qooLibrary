@@ -44,26 +44,60 @@ enum StartupFolderPreference {
             guard let idString = defaults.string(forKey: registeredFolderIDKey), let id = UUID(uuidString: idString) else {
                 return (FileManager.default.homeDirectoryForCurrentUser, .volume)
             }
-            for folderKind in [RegisteredFolderKind.library, .temporary] {
-                let folders = await RegisteredFolderStore.shared.folders(kind: folderKind)
-                guard let folder = folders.first(where: { $0.id == id }),
-                      let url = await RegisteredFolderStore.shared.resolvedURL(for: folder)
-                else { continue }
-                return (url, .registeredFolder(id: id, rootURL: url))
+            // **こちらにも上限が要る** [NV-91]。`RegisteredFolderStore` は
+            // `actor` で、その中のブックマーク解決は `FileIO` を経由して
+            // いない（8章 §8.11.17 の NV6-05、未対処）。応答しない共有では
+            // ここで待ち続け、**起動直後のウインドウが出てこない**。
+            //
+            // 待つのをやめても actor 自体の詰まりは解けない [NV6-03] が、
+            // **起動だけは先へ進める**。ホームで開いてしまうほうが、
+            // 何も出ないよりはるかにましである。
+            let found = try? await FileIO.withDeadline(.seconds(5)) {
+                for folderKind in [RegisteredFolderKind.library, .temporary] {
+                    let folders = await RegisteredFolderStore.shared.folders(kind: folderKind)
+                    guard let folder = folders.first(where: { $0.id == id }),
+                          let url = await RegisteredFolderStore.shared.resolvedURL(for: folder)
+                    else { continue }
+                    return url
+                }
+                return URL?.none
             }
-            return (FileManager.default.homeDirectoryForCurrentUser, .volume)
+            guard let url = found ?? nil else {
+                return (FileManager.default.homeDirectoryForCurrentUser, .volume)
+            }
+            return (url, .registeredFolder(id: id, rootURL: url))
 
         case .volumeFolder:
             guard let data = defaults.data(forKey: volumeBookmarkKey) else {
                 return (FileManager.default.homeDirectoryForCurrentUser, .volume)
             }
-            guard case .resolved(let url, _) = SecurityScopedBookmarkResolver().resolve(data) else {
+            // **メインアクタで解決してはいけない** [NV6-02]。`.withoutMounting`
+            // を付けてもブックマークの解決は対象を確かめるためにファイル
+            // システムへ出るので、相手が**マウント済みなのに応答しない**
+            // 共有だと、ここでメインスレッドが止まる——つまり
+            // **起動直後のウインドウが出てこない**。
+            //
+            // 上限も付ける [NV-91]。起動は人が待っている場面なので、
+            // 応答しない相手のために待ち続けるより、既定（ホーム）で
+            // 開いてしまうほうがはるかにましである。
+            let resolved: URL? = try? await FileIO.perform(waitingAtMost: .seconds(5)) {
+                guard case .resolved(let url, _) = SecurityScopedBookmarkResolver().resolve(data) else {
+                    return URL?.none
+                }
+                return url
+            }
+            guard let resolved = resolved ?? nil else {
                 return (FileManager.default.homeDirectoryForCurrentUser, .volume)
             }
+            // **アクセスの開始は上限の外側で行う。** 中でやると、期限切れで
+            // 結果を捨てたあとにもクロージャは走り続けるので、**誰も保持して
+            // いない URL のセキュリティスコープが開きっぱなしになる**
+            // （レビューで指摘された）。ここなら「使う URL」と 1 対 1 で対応する。
+            //
             // 登録フォルダと同じ方針: 個々の読み取りのたびに start/stop せず、
             // アプリ終了までアクセスを開始したままにする [1-2 のパターン]。
-            _ = url.startAccessingSecurityScopedResource()
-            return (url, .volume)
+            _ = resolved.startAccessingSecurityScopedResource()
+            return (resolved, .volume)
         }
     }
 }

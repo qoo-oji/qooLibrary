@@ -352,21 +352,26 @@ public final class WindowState {
     /// 「認証ダイアログ」を意味する。
     ///
     /// `/Volumes/…` 配下でなければ（＝起動ボリューム上なら）常に `false`。
-    /// 判定できないときは `false` に倒す——退避しない側へ倒すと「消えた
-    /// フォルダに留まり続ける」ので、こちらは従来どおり退避させる。
+    /// **判定できないときは `true`（外れている扱い）に倒す** ——
+    /// 退避させないほうが害が小さいため。誤って `false` に倒すと、
+    /// 繋がっているのに履歴ごと捨ててしまう [SB-05]。
+    ///
+    /// - Important: ここには以前「判定できないときは `false` に倒す」と
+    ///   書いてあったが、委譲先の実際の向きは逆である。**同じ変更で
+    ///   `RegisteredFolderStore` の食い違いを直しておきながら、
+    ///   こちらに新しい食い違いを作っていた**（レビューで指摘された）。
+    ///   これを信じて `MountTable` 側を「直す」と NV-93 が再発する。
+    ///
+    /// 判定そのものは ``MountTable`` が持つ [NV-93]。ここで自前に書き直さない
+    /// ——同じ「マウント表と突き合わせる」処理がアプリ層とインフラ層に
+    /// 二重にあると、片方だけ直したときに静かにずれる。
+    ///
+    /// 共通化して得たもの: ①入れ子のマウント（`/Volumes/.timemachine/<UUID>/…`
+    /// のように入口が `/Volumes/<名前>` より深い形）を正しく扱えるようになった
+    /// ②`getmntinfo(MNT_NOWAIT)` になり、どのファイルシステムにも
+    /// 問い合わせないことが型の側で保証される ③テストが付いた。
     static func isOnAnUnmountedVolume(_ url: URL) -> Bool {
-        let path = url.standardizedFileURL.path
-        guard path.hasPrefix("/Volumes/") else { return false }
-        // `/Volumes/<name>` を取り出す。
-        let components = url.standardizedFileURL.pathComponents
-        guard components.count >= 3 else { return false }
-        let mountPoint = "/Volumes/" + components[2]
-        // マウント一覧に無ければ「外れている」。`fileExists` で見ないのは、
-        // `/Volumes/<name>` は外れると同時に消えるとは限らないため。
-        let mounted = FileManager.default.mountedVolumeURLs(
-            includingResourceValuesForKeys: nil, options: []
-        ) ?? []
-        return !mounted.contains { $0.standardizedFileURL.path == mountPoint }
+        MountTable.current().isOnAnUnmountedVolume(url)
     }
 
     /// `url` の祖先のパス（`url` 自身は含まない）。浅い順。
