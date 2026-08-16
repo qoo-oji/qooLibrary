@@ -57,8 +57,16 @@ jobs:
         run: Scripts/build-libarchive.sh
       - name: Build UnRAR
         run: Scripts/build-unrar.sh
+      # **CI では直列実行にする（--no-parallel）。** GitHub の macOS ランナーは
+      # 3〜4 コアしかなく、並列実行だと時間・並行性に敏感なスイート
+      # （FileIOTests〈意図的に協調プールへ負荷をかける〉・
+      # DirectoryWatchIntegrationTests〈FSEvents の到達を待つ〉・
+      # ReplaceBackupJournalTests〈コピーの最中を観測する〉）が互いに
+      # 枯渇させ合って落ちる（2026-08、6 時間ハング解消後の初回の完走で
+      # 4 系統が同時刻に失敗して発覚）。並列実行が炙り出す類の不具合は、
+      # 開発機（10 コア）でのローカル実行が引き続き並列なのでそちらで拾う。
       - name: swift test
-        run: swift test
+        run: swift test --no-parallel
 
   # qooLibraryApp: 実際の Xcode アプリターゲット [1-1]。project.yml から
   # XcodeGen で生成する（.xcodeproj 自体は git-ignore、Package.swift の
