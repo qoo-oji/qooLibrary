@@ -64,7 +64,10 @@ struct IconGridView<MenuContent: View>: View {
     let onOpenEntry: (FolderEntry) -> Void
     let onSingleClick: (FolderEntry) -> Void
     let onReload: () -> Void
-    let onDropFailure: (String) -> Void
+    /// `DropIntoFolderModifier.onFailure` と同じ型注釈にする——素の
+    /// `(String) -> Void` のままだと、渡すたびに「non-Sendable function value を
+    /// `@MainActor @Sendable` へ変換」という警告が出る。
+    let onDropFailure: @MainActor @Sendable (String) -> Void
     /// 空きスペースの右クリック（`urls` が空集合）も同じクロージャで扱う
     /// （`FolderContentView.contextMenuContent(for:)` が既に空集合の場合の
     /// 「新規フォルダ」「ペースト」を用意しているため、ここで別途持つ必要が無い）。
@@ -210,7 +213,7 @@ struct IconGridView<MenuContent: View>: View {
         let onOpenEntry: (FolderEntry) -> Void
         let onSingleClick: (FolderEntry) -> Void
         let onReload: () -> Void
-        let onDropFailure: (String) -> Void
+        let onDropFailure: @MainActor @Sendable (String) -> Void
         /// アイコン表示は1セル＝1エントリのため `Table` のような列分割の
         /// 問題は無いが、`DropIntoFolderModifier` の API を統一するため
         /// セルごとに専用の `@State` を経由したバインディングを渡す

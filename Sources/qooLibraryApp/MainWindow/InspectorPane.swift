@@ -157,7 +157,13 @@ private struct SingleItemInspector: View {
         let isDirectory: Bool
     }
 
-    private static func loadInfo(for url: URL) -> FileDetailInfo? {
+    /// **`nonisolated` は必須。** `resourceValues` は I/O を伴うため呼び出し元は
+    /// `FileIO.perform` の中から呼ぶ [NV6-02] が、`View` は `@MainActor` なので
+    /// static メソッドも既定では MainActor 隔離のまま——外さないと FileIO の
+    /// スレッド上で隔離検査の表明が破れ `dispatch_assert_queue_fail` →
+    /// `EXC_BREAKPOINT` で落ちる（`VolumeEjectAction.ejectableVolume` と同じ罠、
+    /// 実機で発生）。
+    nonisolated private static func loadInfo(for url: URL) -> FileDetailInfo? {
         guard let values = try? url.resourceValues(forKeys: [
             .isDirectoryKey, .fileSizeKey, .creationDateKey, .contentModificationDateKey,
         ]) else { return nil }
@@ -176,7 +182,9 @@ private struct SingleItemInspector: View {
     /// `FolderContentView.FolderEntry.kindDescription` と同じロジック。
     /// 専用の共有ヘルパーに切り出すほどの規模ではないため、意図的にここでも
     /// 同じ数行を持つ（`ThumbnailService.identity(of:)` と同じ理由）。
-    private static func kindDescription(for url: URL, isDirectory: Bool) -> String {
+    /// `loadInfo`（nonisolated、FileIO のスレッド上で走る）から呼ばれるため
+    /// こちらも nonisolated。
+    nonisolated private static func kindDescription(for url: URL, isDirectory: Bool) -> String {
         let locale = AppLanguage.effectiveLocale
         if isDirectory { return String(localized: "kind.folder", locale: locale) }
         let ext = url.pathExtension

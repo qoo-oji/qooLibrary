@@ -77,7 +77,17 @@ enum VolumeEjectAction {
     /// 乗っているボリューム**を対象にする。`.volumeURLKey` はサンドボックス配下の
     /// 経路で解決に失敗することがある（1-6 の D&D で実際に踏んだ）ため、
     /// マウント中のボリューム一覧から前方一致で引き当てる。
-    static func ejectableVolume(containing url: URL?) -> URL? {
+    ///
+    /// **`nonisolated` は必須。** ボリューム列挙は I/O を伴うため唯一の
+    /// 呼び出し元（`MainWindowView.refreshEjectState`）は `FileIO.perform` の
+    /// 中から呼ぶ [NV6-02] が、この型は `@MainActor` なので、外さないと
+    /// FileIO のスレッド上で隔離検査の表明が破れ `dispatch_assert_queue_fail`
+    /// → `EXC_BREAKPOINT` で**起動直後に即死する**（実機で発生。QuickLook の
+    /// `previewItemURL` で踏んだのと同じ罠——コールバックが常にメインスレッド
+    /// で来るとは限らない、の変種）。コンパイラは「call to main
+    /// actor-isolated ... in a synchronous nonisolated context」という**警告**
+    /// でしか教えてくれないため、この警告を無視しないこと。
+    nonisolated static func ejectableVolume(containing url: URL?) -> URL? {
         guard let url else { return nil }
         let path = url.standardizedFileURL.path
         return VolumeEjector.ejectableVolumes()

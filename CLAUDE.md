@@ -1670,6 +1670,29 @@ Task の文脈が無いため。移した瞬間に、一時停止の待ち・コ
   据え置き方針と同じ）、`makeBookmark`（NSOpenPanel 直後の到達可能な URL に
   しか呼ばれない）。
 
+#### 起動直後の即死を修正 — FileIO の閉包から @MainActor メソッドを呼んではならない（2026-08）
+
+6a4fe47／a6f0207 が NV6-02 対応で FS アクセスを `FileIO.perform` へ移した際、
+閉包の中から **`@MainActor` 隔離のままの static**（`VolumeEjectAction.ejectableVolume`・
+`InspectorPane.loadInfo`。後者は `View` が `@MainActor` なので static も隔離される）を
+呼んでいた。デバッグビルドでは隔離検査の表明が破れ `dispatch_assert_queue_fail` →
+`EXC_BREAKPOINT` で**起動直後に即死**する（Xcode 配下では例外で停止するため
+「ウインドウが出ない＝ハング」に見える。ユーザー報告で発覚）。両メソッド
+（と `loadInfo` が呼ぶ `kindDescription`）を `nonisolated` 化して解消。あわせて
+`IconGridView.onDropFailure` の型注釈を `DropIntoFolderModifier` 側と揃え、
+Sendable 変換警告も消した。
+
+- **教訓 1: 「call to main actor-isolated … in a synchronous nonisolated context」
+  という警告は、実行時の確定クラッシュの予告。エラーとして扱い、ビルドログの
+  警告を放置しない**（今回の 3 件の警告のうち 2 件がそのままクラッシュ箇所だった）。
+- **教訓 2: アプリ層を触ったら `xcodebuild` の成功だけでなく起動まで確かめる。**
+  前セッションはテストとプローブで検証を終えており、実機起動を一度もして
+  いなかったため、コミット済みの main 相当ブランチが起動不能のまま残っていた。
+- QuickLook の `previewItemURL`（1-14）で踏んだ「コールバックが常にメイン
+  スレッドで来るとは限らない」の変種——今回は自分で書いた `FileIO.perform` の
+  閉包という「明らかにメインスレッドでない場所」でも、呼び先の隔離を
+  見落とせば同じ結果になる。
+
 #### 引き継ぎ — 次に何をするか
 
 **まず `08_インフラ_ファイル操作.md` §8.11.14（実装状況）を読むこと。**
