@@ -354,14 +354,22 @@ final class FolderOperations {
             return
         }
         let names = urls.map(\.lastPathComponent)
-        // 衝突判定は**実際のフォルダの中身**と突き合わせる（表示中の一覧では
-        // なく）。対象自身は除く — 自分とぶつかっていると誤判定しないため。
-        let siblings = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
-        pendingBulkRename = PendingBulkRename(
-            folder: folder,
-            names: names,
-            existingNames: Set(siblings).subtracting(Set(names))
-        )
+        Task {
+            // 衝突判定は**実際のフォルダの中身**と突き合わせる（表示中の一覧では
+            // なく）。対象自身は除く — 自分とぶつかっていると誤判定しないため。
+            //
+            // **一覧の読み取りは `FileIO` 経由でなければならない** [NV6-02]。
+            // この型は `@MainActor` なので、ここで直に読むと**メインスレッドが
+            // 止まる**——応答しない共有では SMB で 30 秒、NFS なら無限に。
+            let siblings = await FileIO.perform {
+                (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+            }
+            pendingBulkRename = PendingBulkRename(
+                folder: folder,
+                names: names,
+                existingNames: Set(siblings).subtracting(Set(names))
+            )
+        }
     }
 
     func runBulkRename(_ request: PendingBulkRename, changes: [BulkRename.Change]) {
@@ -611,19 +619,27 @@ final class FolderOperations {
     ) {
         guard !urls.isEmpty else { return }
         let baseName = String(localized: "action.newFolderWithSelection.baseName", locale: locale)
-        var candidate = parent.appendingPathComponent(baseName)
-        var suffix = 2
-        while FileManager.default.fileExists(atPath: candidate.path) {
-            candidate = parent.appendingPathComponent("\(baseName) \(suffix)")
-            suffix += 1
+        let displayName = String(localized: "action.newFolderWithSelection", locale: locale)
+        Task {
+            // **空き名探しは 1 回ごとにボリュームへの問い合わせ**になる。
+            // `@MainActor` のここで回すとメインスレッドが止まるので、
+            // ループごと `FileIO` へ渡す [NV6-02]。
+            let created = await FileIO.perform {
+                var candidate = parent.appendingPathComponent(baseName)
+                var suffix = 2
+                while FileManager.default.fileExists(atPath: candidate.path) {
+                    candidate = parent.appendingPathComponent("\(baseName) \(suffix)")
+                    suffix += 1
+                }
+                return candidate
+            }
+            let children: [any Command] = [
+                CreateFolderCommand(url: created),
+                MoveFilesCommand(items: urls, destination: created),
+            ]
+            let command = Self.singleOrComposite(children, displayName: displayName)
+            run(command, failure: "error.newFolderWithSelectionFailed") { onSuccess(created) }
         }
-        let created = candidate
-        let children: [any Command] = [
-            CreateFolderCommand(url: created),
-            MoveFilesCommand(items: urls, destination: created),
-        ]
-        let command = Self.singleOrComposite(children, displayName: String(localized: "action.newFolderWithSelection", locale: locale))
-        run(command, failure: "error.newFolderWithSelectionFailed") { onSuccess(created) }
     }
 
     // MARK: - ペーストボード
@@ -975,24 +991,33 @@ final class FolderOperations {
             : String(format: String(localized: "folder.extractingCount", locale: locale), urls.count)
         let limits = extractLimits
         let pauseToken = currentPauseToken
-        var children: [any Command] = []
-        for url in urls {
-            let target = destination(url)
-            if !FileManager.default.fileExists(atPath: target.path) {
-                children.append(CreateFolderCommand(url: target))
-            }
-            let entryPassphrase = urls.count == 1 ? passphrase : nil
-            children.append(ExtractCommand(
-                archiveURL: url, destination: target, limits: limits,
-                passphrase: entryPassphrase, progress: progressReporter, pauseToken: pauseToken
-            ))
-        }
+        // 展開先の算出はパス演算だけなので、ここ（`@MainActor`）で済ませてよい。
+        // **存在確認はボリュームへの問い合わせ**なので、まとめてタスクの中で行う。
+        let targets = urls.map(destination)
         let name = urls.count == 1
             ? String(format: String(localized: "folder.extractCommandName", locale: locale), urls[0].lastPathComponent)
             : String(format: String(localized: "folder.extractCommandNameCount", locale: locale), urls.count)
-        guard let command = Self.singleOrComposite(children, displayName: name) else { return }
+        let entryPassphrase = urls.count == 1 ? passphrase : nil
+        let reporter = progressReporter
         let task = Task {
             defer { endProgress() }
+            // **`@MainActor` のまま `fileExists` を回してはいけない** [NV6-02]。
+            // アーカイブの数だけ問い合わせが走り、応答しない共有では
+            // メインスレッドがそのぶん止まる。1 回にまとめて `FileIO` へ渡す。
+            let existing = await FileIO.perform {
+                Set(targets.filter { FileManager.default.fileExists(atPath: $0.path) }.map(\.path))
+            }
+            var children: [any Command] = []
+            for (url, target) in zip(urls, targets) {
+                if !existing.contains(target.path) {
+                    children.append(CreateFolderCommand(url: target))
+                }
+                children.append(ExtractCommand(
+                    archiveURL: url, destination: target, limits: limits,
+                    passphrase: entryPassphrase, progress: reporter, pauseToken: pauseToken
+                ))
+            }
+            guard let command = Self.singleOrComposite(children, displayName: name) else { return }
             do {
                 _ = try await CommandStack.shared.run(command)
                 onSuccess()

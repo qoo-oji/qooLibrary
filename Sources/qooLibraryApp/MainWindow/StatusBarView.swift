@@ -154,6 +154,10 @@ struct StatusBarView<Trailing: View>: View {
     /// 同じ値を見せることで、「表示上は足りるのに断られた」も防げる。
     private static func availableCapacity(of folder: URL?) async -> Int64? {
         guard let folder else { return nil }
-        return await Task.detached { VolumeCapacity.available(at: folder) }.value
+        // **`Task.detached` では駄目** [NV6-01][NV6-02]。空き容量の問い合わせは
+        // ボリュームへの syscall なので、応答しない共有を表示していると
+        // ここでブロックする。detached も協調プールを使うため逃げ場にならない。
+        // これはフォルダを移動するたびに走る、ごく普通の経路である。
+        return await FileIO.perform { VolumeCapacity.available(at: folder) }
     }
 }

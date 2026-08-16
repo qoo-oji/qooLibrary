@@ -24,45 +24,124 @@ import Foundation
 /// SMB なら 30 秒で解放される（一時的な劣化）が、**NFS ではスレッドが
 /// 永久に失われる**。協調プールでこれを起こしてはならない。
 ///
-/// ## なぜ `DispatchQueue` なのか
-/// **libdispatch は協調プールと設計思想が逆**で、スレッドがブロックすると
-/// 必要に応じて新しいスレッドを起こす（QoS ごとに 64 本程度が上限）。
-/// ここではその性質がちょうど欲しいものになる——**塞がったスレッドは
-/// 犠牲にして、後続の仕事は別のスレッドで進める。**
+/// ## なぜ「直列キュー」なのか【実測で設計を変えた・最重要】
 ///
-/// 同時実行数を絞りすぎないのは意図的で、実際の並行度は呼び出し側が
+/// **以前はここが 1 本の `.concurrent` queue だった。それでは足りない。**
+///
+/// libdispatch が「スレッドがブロックされたら新しいスレッドを起こす」のは
+/// **overcommit なキューに限られる**。`.concurrent` 属性で作った private queue も
+/// `DispatchQueue.global()` も **non-overcommit** で、幅は実行可能な CPU 数に
+/// 縛られる。したがって**協調プールが塞がっていると、そこへ回した仕事は
+/// 1 件も走り出せない**——ちょうど助けが要る場面で助けが来ない。
+///
+/// 独立プロセスでの実測（論理コア 10、協調プールを `.userInitiated` の
+/// ブロッキング 10 本で塞いだ状態で、4 件のブロッキング I/O を始められるか）。
+/// 再現は `Scripts/thread-starvation-probe.swift`:
+///
+/// | 実行先 | 結果 |
+/// |---|---|
+/// | private **concurrent** queue（旧実装）| **0/4。10 秒待っても始まらない** |
+/// | `DispatchQueue.global()` へ target した concurrent | **0/4** |
+/// | private **serial** queue を並べる（現行）| **4/4 が 0 ms で開始** |
+/// | `Thread` を直接起こす | 4/4 が 0 ms で開始 |
+///
+/// serial queue は 1 本ずつが overcommit として扱われるため、並べれば
+/// 「必ずスレッドを貰える並行実行」になる。80 本まで（枯渇状態でも）
+/// すべてが 1 ms 以内に走り出すことを実測で確認している。
+///
+/// ## どの QoS が危ないか【実測】
+/// 枯渇は **QoS の高いほうから低いほうへしか流れない**（塞ぐ QoS = 行、
+/// 試す QoS = 列。✅ が「始められる」）:
+///
+/// | 塞ぐ \ 試す | userInitiated | default | utility |
+/// |---|---|---|---|
+/// | **userInitiated** | ★★ | ★★ | ★★ |
+/// | default | ✅ | ★★ | ★★ |
+/// | utility | ✅ | ✅ | ★★ |
+/// | background | ✅ | ✅ | ✅ |
+///
+/// つまりレーンを `.userInitiated` に置いてあることには防御の意味もある——
+/// `.utility` で走るサムネイル生成（`ThumbnailService`／`PDFThumbnailLoading`）が
+/// 詰まっても、ファイル操作は巻き添えにならない。
+///
+/// **危ないのは `.userInitiated` 以上でブロックする経路**で、具体的には
+/// SwiftUI の `.task` から生えた `Task`（優先度を引き継ぐ）が同期の
+/// ファイル I/O をする場合である。だからこそ NV6-02 で、アプリ層の
+/// 一覧・ツリー・走査をすべて ``FileIO`` 経由へ移してある。
+///
+/// 閾値はちょうど論理コア数（実測: 8 本なら無事・10 本で全滅）。
+/// **4 コア機なら 4 本で起きる。**
+///
+/// ## なぜ「投入ごとに 1 本」なのか【一度間違えて直した】
+/// 直列キューを**決まった本数だけ用意してラウンドロビンで配る**実装を
+/// 先に書いたが、これは**デッドロックする**。同じキューに 2 件載ると
+/// 後の 1 件は前の 1 件を待つので、**互いの開始を待ち合う複数の I/O**
+/// （「全部が走り出したら解放する」形）が同じキューに当たった瞬間に
+/// 全体が止まる。
+///
+/// 本数を増やしても解決しない——割り当ては投入の**通し番号**で決まるため、
+/// 自分の 2 件の投入の間に他所から本数ぶんの投入が挟まれば衝突する。
+/// テストスイートを並列で回しただけで実際に踏んだ。
+///
+/// **投入ごとに新しい直列キューを作れば、共有が無いので衝突自体が消える。**
+/// 直列キュー 1 本は overcommit として扱われるので、CPU が埋まっていても
+/// 必ずスレッドを貰える。費用は [実測] **1 件あたり約 1 マイクロ秒**
+/// （使い回しの concurrent queue に対して +0.9µs）で、ファイル I/O の
+/// 桁（ローカルでもマイクロ秒、ネットワークならミリ秒）に対して無視できる。
+///
+/// 同時実行数を絞らないのは意図的で、実際の並行度は呼び出し側が
 /// 既に制限している（`ThumbnailService` のスロット [PF-11]、
-/// コマンドが 1 つずつ実行されること）。ここで更に絞ると、
+/// コマンドが 1 つずつ実行されること）。ここで絞ると、
 /// **1 件のハングが全体を止める**という直したかった性質が戻ってくる。
 ///
-/// ## `TaskExecutor` 適合について
-/// `withTaskExecutorPreference(_:)` で async の呼び出し木ごと載せられるよう
-/// 適合している。ただし**既定の使い方は ``FileIO/perform(_:)``** で、
-/// そちらは継続で明示的に飛び移るため、
+/// ## `TaskExecutor` には適合させない【一度適合させて外した】
+/// `withTaskExecutorPreference(_:)`（SE-0417）で async の呼び出し木ごと
+/// 載せられるよう適合させていたが、**外した**。誰も使っていなかった一方で、
+/// 使うと壊れる形にしかならないため:
+///
+/// - `TaskExecutor` が受け取る `ExecutorJob` は**タスクの再開 1 回ぶん**で、
+///   1 回の呼び出し木でも `await` の数だけ届く。ここへ「投入ごとに 1 本」を
+///   当てはめると、**再開のたびに overcommit なキューとスレッドが増える**。
+/// - かといって 1 本の concurrent queue を使い回すと non-overcommit に戻り、
+///   **この型が消したかった枯渇がそのまま復活する。**
+///
+/// つまりこの型の目的（ブロッキング 1 件に必ずスレッドを 1 本）と、
+/// タスク実行器の粒度（再開ごと）が噛み合わない。**使い方は
+/// ``FileIO/perform(_:)`` ただ 1 つ**で、そちらは継続で明示的に飛び移るので
 /// 「`Task {}` や `Task.detached` は preference を継承しない」という
-/// SE-0417 の細かい規則に依存しない。
-public final class FileIOExecutor: TaskExecutor, @unchecked Sendable {
+/// SE-0417 の細かい規則にも依存しない。
+public final class FileIOExecutor: @unchecked Sendable {
     public static let shared = FileIOExecutor()
 
-    /// `.userInitiated` — ユーザーの操作に直結する仕事（一覧を出す、ファイルを
-    /// 運ぶ）が大半なので、既定より 1 段高くする。`.userInteractive` にはしない
-    /// （そちらは描画のための優先度で、I/O が奪うべきではない）。
-    let queue = DispatchQueue(
-        label: "com.qoolibrary.fileio",
-        qos: .userInitiated,
-        attributes: .concurrent
-    )
+    /// 期限（``FileIO/withDeadline(_:_:)``）の発火専用。
+    ///
+    /// **I/O と混ぜてはならない。** 期限は「I/O が返らないこと」を見張る
+    /// ためのものなので、見張り役が I/O と同じ列に並ぶと、見張りたい当の
+    /// 相手に待たされる。ここに載るのは継続を 1 回再開するだけの処理で、
+    /// ブロックしないため 1 本を使い回してよい。
+    let timerQueue = DispatchQueue(label: "com.qoolibrary.fileio.deadline", qos: .userInitiated)
 
     private init() {}
 
-    public func enqueue(_ job: consuming ExecutorJob) {
-        let job = UnownedJob(job)
-        queue.async { [self] in
-            job.runSynchronously(on: asUnownedTaskExecutor())
-        }
+    /// ブロッキングな仕事を、そのためだけの実行先へ渡す。
+    ///
+    /// - Important: ここへ渡す `work` は**ブロックしてよい**。それがこの型の
+    ///   存在理由である。逆に、ブロックしない小さな処理をここへ流す必要は無い。
+    func submit(_ work: @escaping @Sendable () -> Void) {
+        Self.makeLane().async(execute: work)
     }
 
-    public func asUnownedTaskExecutor() -> UnownedTaskExecutor {
-        UnownedTaskExecutor(ordinary: self)
+    /// 1 件ぶんの実行先を作る。
+    ///
+    /// **直列であること**（overcommit を得るため）と、**使い回さないこと**
+    /// （head-of-line blocking を作らないため）の両方が要る。どちらを
+    /// 崩しても壊れ方が違うだけで壊れる——前者は枯渇時に走り出せなくなり、
+    /// 後者は互いを待ち合う I/O でデッドロックする。
+    ///
+    /// `.userInitiated` — ユーザーの操作に直結する仕事（一覧を出す、ファイルを
+    /// 運ぶ）が大半なので、既定より 1 段高くする。`.userInteractive` にはしない
+    /// （そちらは描画のための優先度で、I/O が奪うべきではない）。
+    static func makeLane() -> DispatchQueue {
+        DispatchQueue(label: "com.qoolibrary.fileio", qos: .userInitiated)
     }
 }

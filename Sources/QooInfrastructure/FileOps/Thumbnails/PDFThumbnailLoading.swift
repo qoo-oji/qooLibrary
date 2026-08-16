@@ -37,10 +37,12 @@ public struct CoreGraphicsPDFThumbnailLoader: PDFThumbnailLoading {
     public init() {}
 
     public func makeThumbnail(for url: URL, maxPixelSize: Int) async -> CGImage? {
-        let task = Task.detached(priority: .utility) { () -> CGImage? in
+        // **`Task.detached` では駄目** [NV6-01]。`CGPDFDocument(url:)` は
+        // ファイルを実際に読むので、ネットワーク上の PDF ではここでブロックする。
+        // detached も協調プールを使うため、逃げ場にならない。
+        await FileIO.perform {
             Self.renderFirstPage(of: url, maxPixelSize: maxPixelSize)
         }
-        return await task.value
     }
 
     private static func renderFirstPage(of url: URL, maxPixelSize: Int) -> CGImage? {

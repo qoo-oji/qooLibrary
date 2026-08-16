@@ -54,7 +54,7 @@ public enum FileIO {
         let flag = Cancellation.Flag()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                FileIOExecutor.shared.queue.async {
+                FileIOExecutor.shared.submit {
                     continuation.resume(with: Result { try Cancellation.withScope(flag) { try body() } })
                 }
             }
@@ -72,7 +72,7 @@ public enum FileIO {
         let flag = Cancellation.Flag()
         return await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
-                FileIOExecutor.shared.queue.async {
+                FileIOExecutor.shared.submit {
                     continuation.resume(returning: Cancellation.withScope(flag) { body() })
                 }
             }
@@ -102,26 +102,57 @@ public enum FileIO {
     /// 任意の async 処理に上限時間を付ける。``perform(waitingAtMost:_:)`` の
     /// 中身であり、`NSWorkspace.recycle` のように**完了ハンドラが呼ばれない
     /// かもしれない** API を待つ場面でも使う [NV4-04]。
+    ///
+    /// - Note: **期限を `Task.sleep` で計ってはいけない**［実測で書き直した］。
+    ///   `Task.sleep` は協調プールの上で目を覚ますので、**協調プールが
+    ///   塞がっていると発火しない**——期限が要るのはまさにその場面である。
+    ///   独立プロセスでの実測（協調プールを論理コア数ぶんのブロッキングで
+    ///   塞ぎ、300 ms の期限を計る）:
+    ///
+    ///   | 計り方 | 結果 |
+    ///   |---|---|
+    ///   | `Task.sleep` | **5 秒待っても発火せず** |
+    ///   | `DispatchQueue.asyncAfter`（global＝non-overcommit）| **5 秒待っても発火せず** |
+    ///   | `DispatchSource` タイマー（serial queue）| **304 ms で発火** ✅ |
+    ///
+    ///   この穴は `FileIOTests` の期限テストが「単独なら 0.32 秒・全体テストと
+    ///   並列だと 4.5 秒」という形で既に捕まえていた。フレークに見えるが、
+    ///   原因は製品側にあった。
     public static func withDeadline<T: Sendable>(
         _ limit: Duration,
         _ operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
         let box = SingleResume<T>()
+        let timer = DispatchSource.makeTimerSource(queue: FileIOExecutor.shared.timerQueue)
         return try await withCheckedThrowingContinuation { continuation in
             box.arm(continuation)
             let work = Task {
+                // 先に終わったならタイマーは用済み。`cancel()` がハンドラを
+                // 解放し、ハンドラがタイマー自身を捕らえている循環も切れる。
+                defer { timer.cancel() }
                 do { box.resume(.success(try await operation())) }
                 catch { box.resume(.failure(error)) }
             }
-            Task {
-                try? await Task.sleep(for: limit)
-                let seconds = Double(limit.components.seconds)
-                guard box.resume(.failure(FileOperationError.timedOut(seconds: seconds))) else { return }
+            timer.schedule(deadline: .now() + limit.inSeconds)
+            timer.setEventHandler {
+                timer.cancel()
+                let failure = FileOperationError.timedOut(seconds: limit.inSeconds)
+                guard box.resume(.failure(failure)) else { return }
                 // 待つのはやめたが、**中断できる処理なら中断は伝える**。
                 // 走っている syscall は止まらない [NV6-03] ものの、区切りを
                 // 持つ処理（`FileIO.perform` に載った走査など）はここで降りる。
                 work.cancel()
             }
+            // **`resume()` へ必ず到達すること。ここに早期 return を挟まない。**
+            // `DispatchSource` は一度も `resume()` されないまま解放されると
+            // `SIGTRAP` で落ちる（[実測] 「cancel だけして解放」「何もせず解放」
+            // はどちらも落ち、「resume してから cancel」は落ちない）。
+            //
+            // 逆に、`work` が即座に終わって `defer` の `cancel()` が
+            // ここを追い越すのは**問題ない**（[実測] cancel → resume → 解放は
+            // 500 回繰り返しても落ちない）。順序ではなく、
+            // **`resume()` に必ず到達すること**だけが効いている。
+            timer.resume()
         }
     }
 
@@ -146,5 +177,17 @@ public enum FileIO {
             pending?.resume(with: result)
             return pending != nil
         }
+    }
+}
+
+extension Duration {
+    /// 秒数（小数を含む）。
+    ///
+    /// **`components.seconds` を直に使ってはいけない。** あれは整数部だけなので、
+    /// 1 秒未満の期限が**すべて 0 になる**（`.milliseconds(300)` が「0 秒で
+    /// 上限超過」と表示されていた）。
+    var inSeconds: Double {
+        let (seconds, attoseconds) = components
+        return Double(seconds) + Double(attoseconds) / 1e18
     }
 }

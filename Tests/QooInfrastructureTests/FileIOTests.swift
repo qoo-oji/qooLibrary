@@ -119,6 +119,22 @@ import Testing
         #expect(elapsed < 3, "上限を過ぎても待ち続けた（\(elapsed) 秒）")
     }
 
+    /// 期限つきの実行を繰り返しても、タイマーの後片付けで落ちないこと。
+    ///
+    /// - Note: **これは「順序の退行」を捕まえるテストではない。** 一度は
+    ///   そのつもりで書いたが、変異（`resume()` を本体の後ろへ動かす）を
+    ///   当てても通ってしまい、**空振りだと分かった** — 順序ではなく
+    ///   「`resume()` に到達すること」だけが効いているため（実測）。
+    ///   早期 return を挟む退行は静的には捕まえられないので、
+    ///   `withDeadline` のコメントで釘を刺してある。ここに残しているのは
+    ///   期限つき経路をひととおり通す安価な煙探知器としての価値だけ。
+    @Test func repeatedDeadlinesTearDownCleanly() async throws {
+        for _ in 0..<200 {
+            let value = try await FileIO.perform(waitingAtMost: .seconds(30)) { 42 }
+            #expect(value == 42)
+        }
+    }
+
     /// 本体が投げたエラーはそのまま伝わる（握り潰さない）。
     @Test func errorsPropagate() async {
         await #expect(throws: FileIOTestFailure.self) {
@@ -231,8 +247,108 @@ actor ActorReleaseProbe {
 
 struct FileIOTestFailure: Error, Equatable {}
 
-/// **`Thread.isMainThread` は非同期コンテキストから使えない**
-/// （`NS_SWIFT_UNAVAILABLE_FROM_ASYNC`）。`#expect` の中で書くとコンパイル
+/// **実行先が「必ずスレッドを貰える」形であること** [NV6-01]。
+///
+/// ## なぜ構造を見張るのか
+/// 本当に確かめたい性質は「協調プールが枯渇していても仕事を始められる」だが、
+/// **それを直接テストにはできない** — 協調プールはプロセスに 1 つしか無く、
+/// 実際に枯渇させると他の suite を道連れにする（`FileIOTests` の主眼の
+/// 注記と同じ理由）。
+///
+/// そこで、実測で分かった**因果の手前側**を固定する。独立プロセスでの実測
+/// （論理コア 10、協調プールを `.userInitiated` のブロッキング 10 本で
+/// 塞いだ状態。枯渇は QoS の高いほうから低いほうへしか流れないので、
+/// **塞ぐ側の QoS を下げると再現しない**）:
+///
+/// | 実行先 | 4 件のブロッキングを始められるか |
+/// |---|---|
+/// | private **concurrent** queue | **0/4。10 秒待っても始まらない** |
+/// | `DispatchQueue.global()` へ target した concurrent | **0/4** |
+/// | private **serial** queue の束 | **4/4 が 0 ms で開始** |
+///
+/// 差は overcommit かどうかで、**直列であることがその条件**である。
+/// したがって「レーンが直列であること」を見張れば、
+/// 枯渇を再現しなくても退行を捕まえられる。
+///
+/// 実測そのものをやり直したいときは `Scripts/thread-starvation-probe.swift`。
+@Suite struct FileIOExecutorShapeTests {
+    /// 実行先が直列であること。**`.concurrent` に変えると落ちる。**
+    ///
+    /// 同じ実行先へ 2 件投げ、重ならないことで直列を確かめる。
+    @Test func aLaneIsSerialSoItIsGuaranteedAThread() async {
+        let lane = FileIOExecutor.makeLane()
+        let overlapping = Counter()
+        let sawOverlap = Counter()
+        let done = DispatchSemaphore(value: 0)
+
+        for _ in 0..<8 {
+            lane.async {
+                if overlapping.increment() > 1 { _ = sawOverlap.increment() }
+                Thread.sleep(forTimeInterval: 0.01)
+                _ = overlapping.decrement()
+                done.signal()
+            }
+        }
+        let finished = await waitOffThePool { waitRepeatedly(done, times: 8, timeout: 5) }
+        #expect(finished, "実行先の処理が終わらない")
+        #expect(sawOverlap.value == 0, "実行先が直列でない（concurrent になっている）")
+    }
+
+    /// **実行先を使い回さないこと。この suite でいちばん重要。**
+    ///
+    /// 決まった本数を配り回す実装（ラウンドロビン）を一度書いて、
+    /// **実際にデッドロックさせた**。「全員が走り出すまで誰も終わらない」
+    /// 形の I/O が同じ実行先に当たると、後の 1 件が永久に始まらない。
+    /// 本数を増やしても、投入の通し番号で割り当てる限り、自分の 2 件の間に
+    /// 他所から本数ぶん挟まれば衝突する（テストを並列で回して踏んだ）。
+    ///
+    /// ここでは**互いの開始を待ち合う**形にして、共有があれば必ず止まるようにする。
+    @Test func concurrentSubmissionsNeverShareALane() async {
+        let want = 24
+        let started = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        for _ in 0..<want {
+            FileIOExecutor.shared.submit { started.signal(); release.wait() }
+        }
+        // 共有していれば最初の 1 件が待ちきれずに落ちるので、上限は短くてよい。
+        let allStarted = await waitOffThePool { waitRepeatedly(started, times: want, timeout: 5) }
+        // 先に必ず解放する。落ちる場合でもスレッドを残さないため。
+        for _ in 0..<want { release.signal() }
+        #expect(allStarted, "\(want) 件が同時に走り出せない＝実行先を共有している")
+    }
+
+    /// 期限の見張り役が、見張る相手と同じ実行先に並んでいないこと。
+    ///
+    /// 同じところに載せると、**塞がった I/O の後ろで期限が待たされる**——
+    /// 期限が要る場面でだけ効かなくなる。
+    @Test func theDeadlineTimerHasItsOwnQueue() {
+        #expect(FileIOExecutor.shared.timerQueue.label != FileIOExecutor.makeLane().label)
+    }
+
+    /// **被験体を使わずに待つ。**
+    ///
+    /// この suite の他のテストは `FileIO.perform` の中で待つ（協調プールを
+    /// 塞がないため）が、**構造テストではそれをしてはいけない** — `FileIO` が
+    /// まさに壊れている場合、観測者自身が走り出せず、
+    /// **「失敗」ではなく「ハング」になる**（変異を当てて実際に踏んだ）。
+    /// 独立した使い捨てのキューで待てば、協調プールも塞がず、
+    /// 壊れていれば上限時間できちんと落ちる。
+    private func waitOffThePool(_ body: @escaping @Sendable () -> Bool) async -> Bool {
+        await withCheckedContinuation { continuation in
+            DispatchQueue(label: "test.waiter").async { continuation.resume(returning: body()) }
+        }
+    }
+
+    private final class Counter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var n = 0
+        @discardableResult func increment() -> Int { lock.lock(); n += 1; defer { lock.unlock() }; return n }
+        @discardableResult func decrement() -> Int { lock.lock(); n -= 1; defer { lock.unlock() }; return n }
+        var value: Int { lock.lock(); defer { lock.unlock() }; return n }
+    }
+}
+
+/// メインスレッドかどうかは、Swift の `Thread.isMainThread` が並行文脈で
 /// エラーになるため、C の `pthread_main_np()` で直接確かめる。
 func isRunningOnMainThread() -> Bool { pthread_main_np() != 0 }
 

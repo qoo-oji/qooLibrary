@@ -90,9 +90,12 @@ public enum VolumeEjector {
         let name = displayName(of: url)
         Log.fileOps.info("ボリュームを取り出します: \(Log.path(url))")
         do {
-            try await Task.detached {
+            // **`Task.detached` では駄目** [NV6-01]。応答しない共有を取り出すのは
+            // まさにここが詰まる場面で、detached も協調プールを使うため、
+            // アプリ全体の async 処理を巻き添えにする。
+            try await FileIO.perform {
                 try NSWorkspace.shared.unmountAndEjectDevice(at: url)
-            }.value
+            }
         } catch {
             Log.fileOps.error("ボリュームの取り出しに失敗しました: \(Log.path(url)) — \(error.localizedDescription)")
             throw VolumeEjectionError(volumeName: name, underlying: error)

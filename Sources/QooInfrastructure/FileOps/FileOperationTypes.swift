@@ -355,7 +355,10 @@ extension FileOperationError: UserPresentableError {
         case .trashUnavailable:
             return "ネットワーク上の共有や一部のボリュームは、ゴミ箱を持ちません。"
         case let .timedOut(seconds):
-            return "\(Int(seconds)) 秒待っても応答がありませんでした。"
+            // 1 秒未満を `Int` に落とすと「0 秒待っても応答がありません」に
+            // なってしまうため、そこだけ小数で見せる。
+            let shown = seconds < 1 ? String(format: "%.1f", seconds) : String(Int(seconds))
+            return "\(shown) 秒待っても応答がありませんでした。"
                 + "ネットワーク上の場所では、サーバの応答が返らないことがあります。"
         case let .invalidName(_, reason):
             return reason.errorDescription ?? ""
