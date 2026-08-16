@@ -470,14 +470,35 @@ struct FolderTreePane: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         Task {
             do {
-                _ = try await RegisteredFolderStore.shared.register(url: url, kind: kind, displayName: nil)
+                let result = try await RegisteredFolderStore.shared.register(
+                    url: url, kind: kind, displayName: nil
+                )
                 await reloadRegisteredFolders()
+                // **登録は通ったが知らせるべきこと** [FS-06][NV-87]。
+                // 以前はここまで届く口が無く、生成された警告がそのまま
+                // 捨てられていた。判断は要らないので一時通知にとどめる [ER-02]。
+                if !result.warnings.isEmpty {
+                    await NotificationRouter.shared.present(NotificationItem(
+                        category: .warning, severity: .transient,
+                        title: String(localized: "folderTree.registeredWithWarningTitle", locale: locale),
+                        body: result.warnings.map(Self.description(for:))
+                            .joined(separator: "\n")
+                    ))
+                }
             } catch {
                 await NotificationRouter.shared.present(NotificationItem(
                     category: .error, severity: .sheet,
                     title: String(localized: "folderTree.registrationFailedTitle", locale: locale), body: Self.errorMessage(for: error)
                 ))
             }
+        }
+    }
+
+    /// 登録時の警告 [FS-06] をユーザー向けの文にする。
+    private static func description(for warning: VolumeWarning) -> String {
+        switch warning {
+        case .networkVolumeFSEventsUnreliable:
+            return String(localized: "folderTree.warning.networkVolume")
         }
     }
 
@@ -775,7 +796,8 @@ private struct FolderTreeRow: View {
                     .foregroundStyle(isSelected ? Color(nsColor: .alternateSelectedControlTextColor) : Color.secondary)
             }
             .buttonStyle(.plain)
-            .help("action.eject")
+            // ネットワークは「接続解除」[NV-96、Finder に合わせる]。
+            .help(node.isNetworkVolume ? "action.disconnect" : "action.eject")
         }
     }
 

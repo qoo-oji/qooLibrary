@@ -22,7 +22,7 @@ import Testing
         try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
         let store = makeStore(storageURL: root.appendingPathComponent("state.json"))
 
-        let registered = try await store.register(url: target, kind: .library, displayName: nil)
+        let registered = try await store.register(url: target, kind: .library, displayName: nil).folder
 
         #expect(registered.displayName == "Library1")
         let libraries = await store.folders(kind: .library)
@@ -38,7 +38,7 @@ import Testing
         try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
         let store = makeStore(storageURL: root.appendingPathComponent("state.json"))
 
-        let registered = try await store.register(url: target, kind: .temporary, displayName: "取り込み用")
+        let registered = try await store.register(url: target, kind: .temporary, displayName: "取り込み用").folder
 
         #expect(registered.displayName == "取り込み用")
     }
@@ -80,7 +80,7 @@ import Testing
         let target = root.appendingPathComponent("ToRemove", isDirectory: true)
         try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
         let store = makeStore(storageURL: root.appendingPathComponent("state.json"))
-        let registered = try await store.register(url: target, kind: .library, displayName: nil)
+        let registered = try await store.register(url: target, kind: .library, displayName: nil).folder
 
         try await store.unregister(registered.id)
 
@@ -97,7 +97,7 @@ import Testing
         try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
         let store = makeStore(storageURL: root.appendingPathComponent("state.json"))
 
-        let registered = try await store.register(url: target, kind: .library, displayName: nil)
+        let registered = try await store.register(url: target, kind: .library, displayName: nil).folder
 
         #expect(registered.hidesThumbnails == false)
     }
@@ -109,7 +109,7 @@ import Testing
         try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
         let storageURL = root.appendingPathComponent("state.json")
         let store = makeStore(storageURL: storageURL)
-        let registered = try await store.register(url: target, kind: .library, displayName: nil)
+        let registered = try await store.register(url: target, kind: .library, displayName: nil).folder
 
         try await store.setThumbnailsAlwaysHidden(true, for: registered.id)
         #expect(await store.folders(kind: .library).first?.hidesThumbnails == true)
@@ -160,7 +160,7 @@ import Testing
         let target = root.appendingPathComponent("Original", isDirectory: true)
         try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
         let store = makeStore(storageURL: root.appendingPathComponent("state.json"))
-        let registered = try await store.register(url: target, kind: .library, displayName: nil)
+        let registered = try await store.register(url: target, kind: .library, displayName: nil).folder
 
         try await store.rename(registered.id, to: "新しい名前")
 
@@ -232,7 +232,7 @@ import Testing
         let target = root.appendingPathComponent("Lib", isDirectory: true)
         try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
         let store = makeStore(storageURL: root.appendingPathComponent("state.json"))
-        let registered = try await store.register(url: target, kind: .library, displayName: nil)
+        let registered = try await store.register(url: target, kind: .library, displayName: nil).folder
 
         let doomed = await store.registrationsInvalidated(byDeleting: [target])
 
@@ -247,7 +247,7 @@ import Testing
         let nested = parent.appendingPathComponent("Lib", isDirectory: true)
         try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
         let store = makeStore(storageURL: root.appendingPathComponent("state.json"))
-        let registered = try await store.register(url: nested, kind: .library, displayName: nil)
+        let registered = try await store.register(url: nested, kind: .library, displayName: nil).folder
 
         let doomed = await store.registrationsInvalidated(byDeleting: [parent])
 
@@ -279,8 +279,8 @@ import Testing
         try FileManager.default.createDirectory(at: a, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: b, withIntermediateDirectories: true)
         let store = makeStore(storageURL: root.appendingPathComponent("state.json"))
-        let first = try await store.register(url: a, kind: .library, displayName: nil)
-        let second = try await store.register(url: b, kind: .library, displayName: nil)
+        let first = try await store.register(url: a, kind: .library, displayName: nil).folder
+        let second = try await store.register(url: b, kind: .library, displayName: nil).folder
 
         await store.unregisterAll(ids: [first.id])
 
@@ -288,6 +288,42 @@ import Testing
         #expect(remaining.map(\.id) == [second.id])
     }
 
+    /// **登録は通るが知らせるべきこと**を、呼び出し側へ渡すこと [NV-87][FS-06]。
+    ///
+    /// `VolumeEligibilityChecker` はネットワークボリュームに対して
+    /// `.networkVolumeFSEventsUnreliable` を生成していたのに、`register` が
+    /// `case .eligible: break` で捨てており、**UI へ届く口がそもそも無かった**
+    /// （コメントには「提示は呼び出し側の責務」と書いてあった）。
+    @Test func registrationReportsVolumeWarningsToTheCaller() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let target = root.appendingPathComponent("共有", isDirectory: true)
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+
+        let store = RegisteredFolderStore(
+            storageURL: root.appendingPathComponent("store.json"),
+            volumeChecker: WarningVolumeChecker()
+        )
+        let result = try await store.register(url: target, kind: .library, displayName: nil)
+
+        #expect(result.warnings == [.networkVolumeFSEventsUnreliable], "警告が捨てられている")
+        // 警告があっても登録自体は通る（拒否ではない）。
+        #expect(await store.folders(kind: .library).count == 1)
+    }
+}
+
+/// 登録は通すが警告を返すフェイク（ネットワークボリュームの模擬）。
+private struct WarningVolumeChecker: VolumeEligibilityChecking {
+    func capability(of url: URL) throws -> VolumeCapability {
+        VolumeCapability(
+            volumeUUID: "fake", fileSystemName: "smbfs", supportsPersistentIDs: true,
+            isNetworkVolume: true, isReadOnly: false
+        )
+    }
+
+    func evaluate(_ url: URL) async throws -> VolumeEligibility {
+        .eligible(warnings: [.networkVolumeFSEventsUnreliable])
+    }
 }
 
 private struct RejectingVolumeChecker: VolumeEligibilityChecking {

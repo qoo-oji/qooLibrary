@@ -204,17 +204,33 @@ public actor RegisteredFolderStore {
         return url
     }
 
+    /// 登録の結果。**警告も一緒に返す** [NV-87]。
+    ///
+    /// 以前はここで `case .eligible: break` として捨てていた（コメントには
+    /// 「提示は呼び出し側の責務」と書いてありながら、呼び出し側へ渡す口が
+    /// 無かった）。`VolumeCapability.isReadOnly` が「計算されていたのに誰も
+    /// 読んでいなかった」のと同じ形の抜け。
+    public struct RegistrationResult: Sendable {
+        public let folder: RegisteredFolder
+        /// ネットワークボリュームである等、**登録は通るが知らせるべきこと**
+        /// [FS-06]。空なら何も出さない。
+        public let warnings: [VolumeWarning]
+    }
+
     @discardableResult
-    public func register(url: URL, kind: RegisteredFolderKind, displayName: String?) async throws -> RegisteredFolder {
+    public func register(
+        url: URL, kind: RegisteredFolderKind, displayName: String?
+    ) async throws -> RegistrationResult {
         ensureLoaded()
         let resolvedURL = url.resolvingSymlinksInPath() // [SL-07]
         try checkNotNested(resolvedURL)
 
+        var warnings: [VolumeWarning] = []
         switch try await volumeChecker.evaluate(resolvedURL) { // [RG-08][FS-01〜FS-05]
         case .rejected(let reason):
             throw RegisteredFolderError.unsupportedFileSystem(reason)
-        case .eligible:
-            break // ネットワークボリューム等の警告 [FS-06] の提示は呼び出し側（UI）の責務
+        case .eligible(let volumeWarnings):
+            warnings = volumeWarnings // [FS-06] 提示は呼び出し側（UI）が行う
         }
 
         let bookmarkData = try bookmarks.makeBookmark(for: resolvedURL) // [RG-07]
@@ -224,7 +240,10 @@ public actor RegisteredFolderStore {
         folders.append(folder)
         activateAccessIfPossible(folder)
         try save()
-        return folder
+        if !warnings.isEmpty {
+            Log.fileOps.info("登録しました（警告 \(warnings.count) 件）: \(Log.path(resolvedURL))")
+        }
+        return RegistrationResult(folder: folder, warnings: warnings)
     }
 
     /// [RG-06 の簡易版] フェーズ1にはラベルドメインが無いため「削除するか

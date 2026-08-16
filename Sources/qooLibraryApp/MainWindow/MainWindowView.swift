@@ -54,6 +54,9 @@ struct MainWindowView: View {
     /// Observation が無限に再評価してハングする既知の不具合があるため
     /// （CLAUDE.md「タブバー表示トグル」参照）、そのパターンを踏まない。
     @State private var isPathBarVisible: Bool
+    /// File メニューの「取り出す」の判定の控え [NV6-02]。詳細は
+    /// `EjectMenuState` のコメント参照。
+    @State private var ejectState = EjectMenuState()
     @State private var isStatusBarVisible: Bool
     private static let isPathBarVisibleKey = "qoo.mainWindow.isPathBarVisible"
     private static let isStatusBarVisibleKey = "qoo.mainWindow.isStatusBarVisible"
@@ -186,19 +189,41 @@ struct MainWindowView: View {
             },
             // 取り出す [1-16]。Finder と同じく「今表示しているものが乗っている
             // ボリューム」が対象。
-            canEject: ejectTargetVolume != nil,
-            canEjectAll: !VolumeEjector.ejectableVolumes().isEmpty,
+            canEject: ejectState.target != nil,
+            isEjectTargetNetworkVolume: ejectState.targetIsNetwork,
+            canEjectAll: ejectState.hasAny,
             eject: {
-                guard let volume = ejectTargetVolume else { return }
+                guard let volume = ejectState.target else { return }
                 Task { await VolumeEjectAction.eject(volume) }
             },
             ejectAll: { Task { await VolumeEjectAction.ejectAll() } }
         )
     }
 
-    /// File メニューの「取り出す」の対象。
-    private var ejectTargetVolume: URL? {
-        VolumeEjectAction.ejectableVolume(containing: windowState.folder)
+    /// File メニューの「取り出す」に必要な判定の控え。
+    ///
+    /// **毎回その場で調べてはいけない** [NV6-02]。`currentWindowMenuActions` は
+    /// `body` が評価されるたびに組み立てられるので、そこでボリュームを列挙して
+    /// `resourceValues` を読むと、**アイコンサイズのスライダーを動かしている間
+    /// ずっとマウント中の全ボリュームへ問い合わせる**ことになる。ネットワーク
+    /// 共有が 1 つ混じっていればそのたびに往復が走る。
+    struct EjectMenuState: Equatable {
+        var target: URL?
+        var targetIsNetwork = false
+        var hasAny = false
+    }
+
+    /// 現在地とマウント状態が変わったときだけ調べ直す。
+    private func refreshEjectState() async {
+        let folder = windowState.folder
+        ejectState = await FileIO.perform {
+            let target = VolumeEjectAction.ejectableVolume(containing: folder)
+            return EjectMenuState(
+                target: target,
+                targetIsNetwork: target.map { VolumeEjector.isNetworkVolume($0) } ?? false,
+                hasAny: !VolumeEjector.ejectableVolumes().isEmpty
+            )
+        }
     }
 
     /// アイコンサイズを 1 段階動かす [IV-04]。中央ペインのスライダーと同じ
@@ -532,6 +557,12 @@ struct MainWindowView: View {
         // `windowState`（ウインドウ単位）が持つため、`FolderContentView` では
         // なくここから公開する。
         .focusedSceneValue(\.windowMenuActions, currentWindowMenuActions)
+        // 「取り出す」の判定は現在地とマウント状態でしか変わらないので、
+        // その 2 つが動いたときだけ調べ直す [NV6-02]。
+        .task(id: windowState.folder) { await refreshEjectState() }
+        .onChange(of: SessionState.shared.reloadToken) {
+            Task { await refreshEjectState() }
+        }
         // フォルダを移動すると `WindowState.navigate` が絞り込みを解除する。
         // その結果として空になったときは、検索欄も畳んでボタンへ戻す
         // （入力中＝フォーカスがある間は畳まない）。

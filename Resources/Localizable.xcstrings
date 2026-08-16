@@ -258,6 +258,23 @@
         }
       }
     },
+    "action.disconnect": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disconnect"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接続解除"
+          }
+        }
+      }
+    },
     "action.eject": {
       "localizations": {
         "en": {
@@ -3202,6 +3219,23 @@
         }
       }
     },
+    "folderTree.registeredWithWarningTitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Folder registered"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "フォルダを登録しました"
+          }
+        }
+      }
+    },
     "folderTree.registrationFailedTitle": {
       "localizations": {
         "en": {
@@ -3342,6 +3376,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "ボリューム"
+          }
+        }
+      }
+    },
+    "folderTree.warning.networkVolume": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This is a network volume. Changes made on other computers may take up to a minute to appear, and the folder becomes unavailable while the connection is down."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ネットワークボリュームです。ほかのコンピュータで加えた変更が表示に反映されるまで最大 1 分ほどかかることがあり、接続が切れている間は利用できません。"
           }
         }
       }

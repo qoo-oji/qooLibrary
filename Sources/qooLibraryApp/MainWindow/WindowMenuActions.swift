@@ -66,6 +66,9 @@ struct WindowMenuActions {
 
     /// 現在表示中のフォルダが乗っているボリュームが取り出せるか。
     var canEject = false
+    /// その相手がネットワーク越しか [NV-96]。**呼び名だけを変える**ために持つ
+    /// ——Finder は SMB 等を「取り出す」ではなく「接続解除」と呼ぶ。
+    var isEjectTargetNetworkVolume = false
     /// 取り出せるボリュームが 1 本でもマウントされているか
     /// （「すべてを取り出す」用。現在地とは無関係）。
     var canEjectAll = false

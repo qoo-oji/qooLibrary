@@ -22,6 +22,9 @@ public struct FolderTreeNode: Identifiable, Sendable, Hashable {
     /// **一覧を作るときにまとめて読む**（メニューを組み立てるたびに
     /// `resourceValues` を呼ばない）。
     public var isEjectableVolume: Bool = false
+    /// ネットワーク越しのボリュームか [NV-96]。取り出す操作の**呼び名**を
+    /// 「接続解除」に変えるためだけに使う（Finder に合わせる）。
+    public var isNetworkVolume: Bool = false
 
     public enum Kind: Sendable, Hashable {
         case volume, temporary, library, plainFolder
@@ -30,7 +33,8 @@ public struct FolderTreeNode: Identifiable, Sendable, Hashable {
     public init(
         url: URL, displayName: String? = nil, kind: Kind,
         isOnline: Bool = true, isSymlink: Bool = false, isLocked: Bool = false,
-        isEjectableVolume: Bool = false
+        isEjectableVolume: Bool = false,
+        isNetworkVolume: Bool = false
     ) {
         self.id = url.standardizedFileURL.path
         self.url = url
@@ -40,6 +44,7 @@ public struct FolderTreeNode: Identifiable, Sendable, Hashable {
         self.isSymlink = isSymlink
         self.isLocked = isLocked
         self.isEjectableVolume = isEjectableVolume
+        self.isNetworkVolume = isNetworkVolume
     }
 
     /// 子ノードを列挙する。実 FileManager 呼び出しを伴う（読み取りのみ、
@@ -90,7 +95,8 @@ public struct FolderTreeNode: Identifiable, Sendable, Hashable {
                 url: url,
                 displayName: name,
                 kind: .volume,
-                isEjectableVolume: VolumeEjector.isEjectable(url) // [1-16]
+                isEjectableVolume: VolumeEjector.isEjectable(url), // [1-16]
+                isNetworkVolume: VolumeEjector.isNetworkVolume(url) // [NV-96]
             )
         }
         .sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }

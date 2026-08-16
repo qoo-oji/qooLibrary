@@ -194,7 +194,13 @@ struct FolderTreeContextMenu: View {
             // という既存の使い分けに従う（`FileMenuCommands` 冒頭のコメント参照）。
             if context.role == .volumeRoot, context.node.isEjectableVolume {
                 Divider()
-                Button("action.eject", systemImage: "eject") {
+                // **ネットワークは「接続解除」** [NV-96]。ディスクを物理的に
+                // 抜くのとサーバとの接続を切るのは別の行為で、Finder も
+                // 呼び名を分けている。
+                Button(
+                    context.node.isNetworkVolume ? "action.disconnect" : "action.eject",
+                    systemImage: context.node.isNetworkVolume ? "eject" : "eject"
+                ) {
                     Task { await VolumeEjectAction.eject(context.url) }
                 }
             }

@@ -355,7 +355,10 @@ private struct FileMenuCommands: View {
         // 取り出す [1-16]。Finder と同じく ⌥ で「すべてを取り出す」に
         // 入れ替わる。既定キー ⌘E も Finder 標準（`ejectAll` 側は Finder 自身も
         // キーを割り当てていないため無し）。
-        Button("action.eject", systemImage: "eject") { window?.eject() }
+        Button(
+            window?.isEjectTargetNetworkVolume == true ? "action.disconnect" : "action.eject",
+            systemImage: "eject"
+        ) { window?.eject() }
             .disabled(window?.canEject != true)
             .fixedKeyboardShortcut(.eject)
             .modifierKeyAlternate(.option) {

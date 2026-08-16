@@ -55,6 +55,23 @@ public enum VolumeEjector {
         return values.volumeIsInternal != true
     }
 
+    /// ネットワーク越しにマウントされているか [NV-96]。
+    ///
+    /// **取り出せるかどうかではなく、何と呼ぶかを決めるために使う。** SMB や
+    /// NFS も上の判定では「取り出せる」に該当し、実際に切断もできるが、
+    /// **Finder はこれを「取り出す」ではなく「接続解除」と呼ぶ**。ディスクを
+    /// 物理的に抜くのとサーバとの接続を切るのは、ユーザーにとって別の行為
+    /// なので、呼び名を分ける。
+    ///
+    /// - Note: `volumeIsLocal` は「ネットワークかどうか」の判定としては
+    ///   当てにならない（File Provider は `true` を返す。8章 §8.11.1）。
+    ///   ただしここが答えたいのは**呼び名**であり、外すと「接続解除」と
+    ///   出るべきところが「取り出す」になるだけで実害が無い。判定を誤って
+    ///   困るような分岐には使わないこと。
+    public static func isNetworkVolume(_ url: URL) -> Bool {
+        (try? url.resourceValues(forKeys: [.volumeIsLocalKey]))?.volumeIsLocal == false
+    }
+
     /// マウント中の取り出し可能なボリューム一覧（「すべてを取り出す」用）。
     public static func ejectableVolumes() -> [URL] {
         let urls = FileManager.default.mountedVolumeURLs(
