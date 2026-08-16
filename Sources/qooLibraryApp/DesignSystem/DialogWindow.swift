@@ -145,11 +145,28 @@ final class DialogWindowPresenter {
                 // 表示言語の上書きをここで配り直す [1-12 ローカライズ方針]。
                 .appLanguageOverride()
         )
-        // 中身の高さが変わったらウインドウも追従させる [実測で確認]。
-        // 一括リネームはモードを切り替えると操作部の高さが変わり、
-        // パスワードや「フォルダへ移動」はエラー文が出入りするため、
-        // 固定サイズだと中身が欠ける。
-        controller.sizingOptions = [.preferredContentSize]
+        // 中身の高さが変わったらウインドウも追従させる。ただし
+        // **`sizingOptions = [.preferredContentSize]` は使わない** [クラッシュ修正]。
+        // あれはウインドウのフレームを SwiftUI コンテンツの制約で（表示サイクルの
+        // 中で同期的に）駆動する。ポップアップ式の Picker（一括リネームの
+        // 「桁数」「区切り文字」）を開くとメニュー追跡の入れ子イベントループが
+        // 表示サイクルを回し、保留中のウインドウリサイズ
+        // （`_changeWindowFrameFromConstraintsIfNecessary`）の最中に
+        // `NSHostingView` が safe area 無効化 → `setNeedsUpdateConstraints` を
+        // 再要求して、AppKit のレイアウトパス超過検出が NSException を投げて
+        // 即死した（実機で 2 回発生、DiagnosticReports の同一スタックで確認。
+        // 「Update Constraints in Window pass 超過」系の既知の例外クラス）。
+        // 空にするとホスティングビューがウインドウへ制約を張らなくなり、
+        // この経路そのものが消える。追従は `DialogHostingController` が
+        // レイアウト確定後に 1 サイクル遅らせて行う（`PaneWindows` 等と同じ
+        // 「AppKit 自身の処理が落ち着くのを待つ」既存パターン）。
+        controller.sizingOptions = []
+        // 初期サイズは提示前に実測で与える（`presentAsModalWindow` は
+        // ビューの現在のフレームでウインドウを作るため、与えないと
+        // ゼロサイズで開いてしまう）。
+        let fit = controller.view.fittingSize
+        controller.view.setFrameSize(fit)
+        controller.preferredContentSize = fit
         controller.title = title
         // 保険。アプリ側を経由せず AppKit の都合で閉じられた場合に、
         // 「提示中」のまま固まって以後どのダイアログも出せなくなるのを防ぐ。
@@ -195,6 +212,42 @@ final class DialogWindowPresenter {
 /// Finder に合わせてウインドウのボタンを隠す。
 private final class DialogHostingController<Content: View>: NSHostingController<Content> {
     var onDismissed: (@MainActor () -> Void)?
+
+    /// 中身の実寸が変わったらウインドウを追従させる（一括リネームのモード
+    /// 切替・エラー文の出入り）。**表示サイクルの中では行わない** — 提示側の
+    /// コメント参照。`viewDidLayout` は中身が変わるたびに呼ばれるので、
+    /// そこから 1 サイクル遅らせて実寸へ合わせる。
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        guard !isFitScheduled else { return }
+        isFitScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.isFitScheduled = false
+                self.fitWindowToContent()
+            }
+        }
+    }
+
+    private var isFitScheduled = false
+
+    private func fitWindowToContent() {
+        guard let window = view.window else { return }
+        let target = view.fittingSize
+        guard target.width > 1, target.height > 1 else { return }
+        let content = window.contentRect(forFrameRect: window.frame)
+        // 一致していれば何もしない（`setFrame` 自身が再レイアウトを起こす
+        // ため、この打ち切りが無いと追従が自己増殖する）。
+        guard abs(content.width - target.width) > 0.5
+            || abs(content.height - target.height) > 0.5 else { return }
+        var newContent = content
+        // 画面上の上端（タイトルバー）を固定して下へ伸縮させる。
+        // `setContentSize` は原点（左下）固定なので使わない。
+        newContent.origin.y += content.height - target.height
+        newContent.size = target
+        window.setFrame(window.frameRect(forContentRect: newContent), display: true)
+    }
 
     override func viewDidAppear() {
         super.viewDidAppear()
