@@ -61,6 +61,14 @@ public final class RegisteredFolderIndex {
         async let temporaries = RegisteredFolderStore.shared.folders(kind: .temporary)
         library = await Self.entries(for: libraries)
         temporary = await Self.entries(for: temporaries)
+        // 登録フォルダの増減・表示名変更・DS-04 の切替・アクセス権やボリューム
+        // の変化（`SessionState.reloadToken` 経由）は、すべてこの refresh() に
+        // 集約されている（更新経路 1 本、型のコメント参照）。バックグラウンドの
+        // 動画サムネイル生成 [9.6 節] も「対象が変わった」合図としてここで
+        // 掃引をやり直す — 起動時の最初の掃引も `qooLibraryApp.init()` の
+        // refresh() 呼び出しがそのまま兼ねる。restart() 側に短い待ち合わせが
+        // あるため、連続で呼ばれても掃引は 1 回にまとまる。
+        BackgroundThumbnailWarmer.shared.restart()
     }
 
     private static func entries(for folders: [RegisteredFolder]) async -> [Entry] {

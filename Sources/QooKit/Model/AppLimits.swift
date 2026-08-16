@@ -99,6 +99,22 @@ public enum AppLimits {
         /// ため、増やすときは可視セル数 × この値が `defaultMaxConcurrent` の
         /// キューにどれだけ積まれるかを意識すること。
         public static let defaultFolderCoverCount: Int = 3
+        /// バックグラウンド動画サムネイル生成（`BackgroundThumbnailWarmer`、
+        /// 9.6 節）[ユーザー要望、要件定義書には無い] が生成に使う辺の上限
+        /// ピクセル数。**UI が要求し得る最大以上にすること** — キャッシュの鍵
+        /// [TH-08] は要求サイズを含まないため、ここで小さく作ると単体表示が
+        /// その粗いキャッシュを掴んでしまう。現状の最大はアイコンサイズ上限
+        /// 256（`DesignTokens.json`）の Retina 2 倍 = 512（インスペクタは 320）。
+        public static let defaultWarmedThumbnailPixelSize: Int = 512
+        /// 同じ拡張子が 1 度も成功しないまま、この回数失敗したら「この形式は
+        /// 生成できない」と見なしてそのセッションでは以降スキップする。
+        /// 1 回にしないのは、たまたま先頭のファイルが壊れていただけで形式
+        /// 全体を諦めないため。1 度でも成功した形式は以降スキップしない
+        /// （失敗はファイル個別の問題と分かるため）。
+        public static let warmerFormatFailureThreshold: Int = 3
+        /// 掃引のやり直しの合図（登録フォルダの増減・アクセス権の変化等）を
+        /// 待ち合わせて 1 回にまとめる時間（秒）。
+        public static let warmerRestartDebounceSeconds: Double = 2
     }
 
     /// Quick Look [9.7 節、QL-01〜QL-10]。

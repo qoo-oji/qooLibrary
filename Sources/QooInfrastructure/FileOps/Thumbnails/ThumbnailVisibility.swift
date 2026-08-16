@@ -51,6 +51,15 @@ public final class ThumbnailVisibility {
     /// [`WindowState.thumbnailHiddenReason`]。
     public private(set) var isGloballyHidden: Bool
 
+    /// 全体トグルの変化を外へ知らせる口（現状の唯一の利用者はバックグラウンドの
+    /// 動画サムネイル生成 [`BackgroundThumbnailWarmer`]。非表示で掃引を止め、
+    /// 表示に戻したら再開する）。アプリ起動時に `qooLibraryApp` が設定する。
+    ///
+    /// **この型が `BackgroundThumbnailWarmer.shared` を直接呼ばないのは、
+    /// テストが独立インスタンスを作って `setGloballyHidden` を呼んだときに、
+    /// 実物の掃引を巻き込まないため**（配線されていなければ何も起きない）。
+    @ObservationIgnored public var onGlobalVisibilityChanged: ((Bool) -> Void)?
+
     /// テストでは独立した `UserDefaults` を注入できる（`RegisteredFolderStore`
     /// 等が `storageURL` を注入できるのと同じ理由。プロセス共有の
     /// `UserDefaults.standard` を書き換えるテストは並行実行で干渉する）。
@@ -63,6 +72,7 @@ public final class ThumbnailVisibility {
         guard hidden != isGloballyHidden else { return }
         isGloballyHidden = hidden
         defaults.set(hidden, forKey: Self.globallyHiddenKey)
+        onGlobalVisibilityChanged?(hidden)
     }
 
     /// メニューバー・キーバインド（既定 `⌃⌘I`）・ステータスバーのボタンから

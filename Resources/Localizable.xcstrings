@@ -4902,6 +4902,38 @@
         }
       }
     },
+    "preferences.cache.backgroundVideoWarming" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatically generate video thumbnails in the background"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "動画サムネイルをバックグラウンドで自動生成"
+          }
+        }
+      }
+    },
+    "preferences.cache.backgroundVideoWarmingFooter" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "While the app is running, thumbnails for videos in registered library and temporary folders (including subfolders) are generated ahead of time. Formats that cannot be generated are skipped for the session and retried on the next launch, so installing a compatible extension takes effect automatically. Videos on network volumes are not included."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アプリの起動中に、ライブラリ／テンポラリフォルダ内（サブフォルダを含む）の動画サムネイルをあらかじめ生成します。生成できない形式はそのセッションではスキップされ、次回起動時に再試行されます（対応する拡張機能をインストールすれば自動的に有効になります）。ネットワークボリューム上の動画は対象外です。"
+          }
+        }
+      }
+    },
     "preferences.cache.clearNow" : {
       "extractionState" : "stale",
       "localizations" : {

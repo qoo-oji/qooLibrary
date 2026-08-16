@@ -119,6 +119,17 @@ struct QooLibraryApp: App {
         // 長時間処理の進捗は**別の小さなウインドウ**に出す［ユーザー要望］。
         // このコントローラがアプリ全体で 1 つの窓を出し入れする。
         OperationProgressWindowController.shared.start()
+        // サムネイルの全体トグル [DS-01] とバックグラウンド動画サムネイル生成
+        // [ユーザー要望、9.6 節] の接続。非表示にしたら掃引を止め、表示に
+        // 戻したら再開する。起動時の最初の掃引は、上の Task の
+        // `RegisteredFolderIndex.refresh()` が `restart()` を呼ぶことで始まる。
+        ThumbnailVisibility.shared.onGlobalVisibilityChanged = { hidden in
+            if hidden {
+                BackgroundThumbnailWarmer.shared.stop()
+            } else {
+                BackgroundThumbnailWarmer.shared.restart()
+            }
+        }
     }
 
     var body: some Scene {
