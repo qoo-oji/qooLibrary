@@ -1642,6 +1642,34 @@ Task の文脈が無いため。移した瞬間に、一時停止の待ち・コ
 集計）は意図的に据え置いた。NV6-01/02 が守りたいのは**待ち時間が青天井に
 なり得る**（＝ネットワーク）I/O であって、マイクロ秒で終わるものではない。
 
+#### ストアのブックマーク解決を FileIO 経由・上限時間付きにした（NV6-05、2026-08）
+
+§8.11.17 の積み残しを単独の変更として実施した（NV6-06 どおり、この回で
+`swift test` を Debug/Release とも全通過・577 件。静的検査 4 件 OK・
+`xcodebuild` 成功）。詳細は仕様書 §8.11.17 が正。実装の骨だけ残す:
+
+- **`BookmarkResolving` の extension**（`resolve(_:waitingAtMost:)`／
+  `resolveMany(_:waitingAtMost:)`）に集約し、`RegisteredFolderStore`／
+  `VolumeAccessStore` 内の解決を全部そこへ寄せた。上限は
+  `AppLimits.FileOperations.bookmarkResolutionTimeoutSeconds`（5 秒）、超過は
+  `OfflineReason.unresponsive`（新設）として扱う。一括経路（起動時の全件解決・
+  入れ子チェック・完全削除の照合・重複許可のチェック）は**並行**解決 —
+  逐次だとサーバ不在時の起動待ちが「件数 × 上限」になるため。
+- **`ensureLoaded()` の async 化は「メモ化した `Task`」で行う。** 解決の await
+  中に actor 再入があるため、`Bool` フラグのままだと 2 番目の呼び出しが
+  読み込み完了前の空の一覧を見てしまう。公開メソッドはすべて async に
+  なったが、呼び出し側は元々 actor 越しの `await` だったため 1 箇所も
+  変更していない。
+- **並行性のテストを 1 度書き損じた**: 「全件が揃ったか」を累積の到着数で
+  数えるバリアは、逐次実装でも最後の 1 件が「全件到着済み」を見て通って
+  しまう（空振り）。**同時滞在数の最大値**で観測する形に直し、逐次化の変異で
+  落ちることを確認した（`BookmarkResolutionDeadlineTests`）。「時間ではなく
+  状態で判定する」教訓の具体例としてバリアのコメントに残してある。
+- **意図的に残したもの**: ストア内の JSON 読み書き・
+  `startAccessingSecurityScopedResource`（ローカル限定・有界、NV6-02 の
+  据え置き方針と同じ）、`makeBookmark`（NSOpenPanel 直後の到達可能な URL に
+  しか呼ばれない）。
+
 #### 引き継ぎ — 次に何をするか
 
 **まず `08_インフラ_ファイル操作.md` §8.11.14（実装状況）を読むこと。**

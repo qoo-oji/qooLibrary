@@ -1,4 +1,5 @@
 import Foundation
+import QooKit
 
 public struct GrantedVolumeAccess: Codable, Sendable, Identifiable, Equatable {
     public let id: UUID
@@ -32,9 +33,17 @@ public actor VolumeAccessStore {
     /// `startAccessingSecurityScopedResource` が `stop` で対応づけられないまま
     /// 残ってしまう [フェーズ1完了時のリソースリーク監査で追加]。
     private var activeAccessCounts: [URL: Int] = [:]
-    private var didLoad = false
+    /// 初回読み込みのメモ化 [NV6-05]。`RegisteredFolderStore.loadTask` と同じ
+    /// 理由——解決の await 中の actor 再入で二重読み込み・空読みをしないため。
+    private var loadTask: Task<Void, Never>?
+    /// ブックマーク解決 1 回あたりの上限時間 [NV6-05]。テストでは短縮できる。
+    private let resolutionDeadline: Duration
 
-    public init(storageURL: URL? = nil, bookmarks: BookmarkResolving = SecurityScopedBookmarkResolver()) {
+    public init(
+        storageURL: URL? = nil,
+        bookmarks: BookmarkResolving = SecurityScopedBookmarkResolver(),
+        resolutionDeadline: Duration = .seconds(AppLimits.FileOperations.bookmarkResolutionTimeoutSeconds)
+    ) {
         if let storageURL {
             self.storageURL = storageURL
         } else {
@@ -43,28 +52,33 @@ public actor VolumeAccessStore {
             self.storageURL = appSupport.appendingPathComponent("qooLibrary/volumeAccess.json")
         }
         self.bookmarks = bookmarks
+        self.resolutionDeadline = resolutionDeadline
     }
 
     /// 起動時に一度だけ呼ぶ。`RegisteredFolderStore.loadAndActivateAll()` と
     /// 同じく、登録されている間はアプリ終了までスコープを保持し続ける。
-    public func loadAndActivateAll() {
-        ensureLoaded()
+    public func loadAndActivateAll() async {
+        await ensureLoaded()
     }
 
-    public func grantedAccess() -> [GrantedVolumeAccess] {
-        ensureLoaded()
+    public func grantedAccess() async -> [GrantedVolumeAccess] {
+        await ensureLoaded()
         return grants.sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
     }
 
     /// 解決済みの URL。ボリューム未接続等でオフラインの場合は `nil`。
-    public func resolvedURL(for grant: GrantedVolumeAccess) -> URL? {
-        guard case .resolved(let url, _) = bookmarks.resolve(grant.bookmarkData) else { return nil }
+    ///
+    /// 解決は `FileIO` 経由・上限時間付き [NV6-05]。上限を超えた解決は
+    /// 「応答なし」（＝ `nil`）として扱う。
+    public func resolvedURL(for grant: GrantedVolumeAccess) async -> URL? {
+        let resolution = await bookmarks.resolve(grant.bookmarkData, waitingAtMost: resolutionDeadline)
+        guard case .resolved(let url, _) = resolution else { return nil }
         return url
     }
 
     @discardableResult
-    public func grantAccess(to url: URL, displayName: String?) throws -> GrantedVolumeAccess {
-        ensureLoaded()
+    public func grantAccess(to url: URL, displayName: String?) async throws -> GrantedVolumeAccess {
+        await ensureLoaded()
         let requestedURL = url.resolvingSymlinksInPath()
         // 同じ場所への許可が既にあれば重複して追加しない
         // [フェーズ1完了時の監査で追加: 同じフォルダを2回許可すると、
@@ -74,8 +88,21 @@ public actor VolumeAccessStore {
         // （`RegisteredFolderStore.checkNotNested` と同じ理由 — ブックマーク
         // 解決後の `URL` は末尾スラッシュ等の表現差で素の `==` では一致しない
         // ことがある）。
+        //
+        // 解決の await 中の actor 再入により、同時に走る `grantAccess` 同士では
+        // 「チェック後・追加前」に相手の追加が割り込む余地がある。許可は
+        // 環境設定のパネル経由で 1 件ずつしか起きず、万一重複しても
+        // `activeAccessCounts` が参照カウントで守っている（リークには戻らない）
+        // ため、ここでは防がない [NV6-05 の async 化に伴う注記]。
         let requestedPath = requestedURL.standardizedFileURL.path
-        if let existing = grants.first(where: { resolvedURL(for: $0)?.standardizedFileURL.path == requestedPath }) {
+        let snapshot = grants
+        let resolutions = await bookmarks.resolveMany(
+            snapshot.map { (id: $0.id, data: $0.bookmarkData) }, waitingAtMost: resolutionDeadline
+        )
+        if let existing = snapshot.first(where: { grant in
+            guard case .resolved(let grantURL, _)? = resolutions[grant.id] else { return false }
+            return grantURL.standardizedFileURL.path == requestedPath
+        }) {
             return existing
         }
         let bookmarkData = try bookmarks.makeBookmark(for: requestedURL)
@@ -84,15 +111,15 @@ public actor VolumeAccessStore {
             bookmarkData: bookmarkData
         )
         grants.append(grant)
-        activateAccessIfPossible(grant)
+        await activateAccessIfPossible(grant)
         try save()
         return grant
     }
 
-    public func revokeAccess(_ id: UUID) throws {
-        ensureLoaded()
+    public func revokeAccess(_ id: UUID) async throws {
+        await ensureLoaded()
         guard let grant = grants.first(where: { $0.id == id }) else { return }
-        if let url = resolvedURL(for: grant), let count = activeAccessCounts[url] {
+        if let url = await resolvedURL(for: grant), let count = activeAccessCounts[url] {
             if count <= 1 {
                 url.stopAccessingSecurityScopedResource()
                 activeAccessCounts.removeValue(forKey: url)
@@ -104,18 +131,33 @@ public actor VolumeAccessStore {
         try save()
     }
 
-    private func ensureLoaded() {
-        guard !didLoad else { return }
-        didLoad = true
+    private func ensureLoaded() async {
+        if loadTask == nil {
+            loadTask = Task { await performInitialLoad() }
+        }
+        await loadTask?.value
+    }
+
+    private func performInitialLoad() async {
         load()
+        // 全許可を**並行に**解決する [NV6-05]（`RegisteredFolderStore` と同じ
+        // 理由——逐次だとサーバ不在時の起動待ちが「件数 × 上限時間」になる）。
+        let resolutions = await bookmarks.resolveMany(
+            grants.map { (id: $0.id, data: $0.bookmarkData) }, waitingAtMost: resolutionDeadline
+        )
         for grant in grants {
-            activateAccessIfPossible(grant)
+            activateAccess(grant, resolution: resolutions[grant.id] ?? .offline(reason: .invalidBookmark))
         }
         Log.sandbox.info("ボリューム許可を読み込みました: \(grants.count) 件 / アクセス開始 \(activeAccessCounts.count) 件")
     }
 
-    private func activateAccessIfPossible(_ grant: GrantedVolumeAccess) {
-        guard let url = resolvedURL(for: grant) else {
+    private func activateAccessIfPossible(_ grant: GrantedVolumeAccess) async {
+        let resolution = await bookmarks.resolve(grant.bookmarkData, waitingAtMost: resolutionDeadline)
+        activateAccess(grant, resolution: resolution)
+    }
+
+    private func activateAccess(_ grant: GrantedVolumeAccess, resolution: BookmarkResolution) {
+        guard case .resolved(let url, _) = resolution else {
             // 「アクセス権がありません」表示の原因がここに出る。許可したはずの
             // ボリュームが未接続・削除されているのか、ブックマークが無効に
             // なったのかを切り分けられるようにしておく [SB-05]。

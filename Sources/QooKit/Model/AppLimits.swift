@@ -40,6 +40,19 @@ public enum AppLimits {
         /// 短くすると「考えていたら勝手に打ち切られた」になる。
         public static let trashTimeoutSeconds: Double = 120
 
+        /// Security-Scoped Bookmark の解決を待つ上限（秒）[NV-91][NV6-05]。
+        ///
+        /// 解決は `.withoutMounting` を付けても、**マウント済みなのに応答しない**
+        /// 共有へは対象を確かめるために出て行ってブロックする（SMB は既定 30 秒、
+        /// NFS の hard マウントなら無限）。ストアは `FileIO` 経由で解決しつつ
+        /// この上限で**待つのをやめ**、超えた解決は「応答なし」
+        /// （`OfflineReason.unresponsive`）として扱う。走っている解決自体は
+        /// 止まらない [NV6-03]。
+        ///
+        /// 正常な共有の解決は ms 単位なので 5 秒は十分な余裕
+        /// （`CloudSyncLocation`・起動時フォルダ解決の既存の上限と同じ値）。
+        public static let bookmarkResolutionTimeoutSeconds: Double = 5
+
         /// 削除が**一過性の**失敗をしたときに試し直す回数 [1-16b の実測]。
         ///
         /// SMB では、中身のあるフォルダを消すと **5 回に 1 回ほど 1 回目が

@@ -139,14 +139,20 @@ public actor RegisteredFolderStore {
     /// `stopAccessingSecurityScopedResource()` を呼べないまま
     /// エントリだけが残り続ける [完全削除 FM-14 実装時のレビューで発見]。
     private var activeAccessURLs: [UUID: URL] = [:]
-    private var didLoad = false
+    /// 初回読み込みのメモ化 [NV6-05]。`ensureLoaded()` が await を含むように
+    /// なったため、actor 再入で二重に読み込まないよう「読み込み中」を単なる
+    /// `Bool` ではなく await できる `Task` として持つ。
+    private var loadTask: Task<Void, Never>?
+    /// ブックマーク解決 1 回あたりの上限時間 [NV6-05]。テストでは短縮できる。
+    private let resolutionDeadline: Duration
 
     /// テストでは独立したストレージ・依存を注入できる（`SecureExtractor`/
     /// `ArchiveCompressor` の `stagingRoot` 注入と同じ設計判断）。
     public init(
         storageURL: URL? = nil,
         bookmarks: BookmarkResolving = SecurityScopedBookmarkResolver(),
-        volumeChecker: VolumeEligibilityChecking = VolumeEligibilityChecker()
+        volumeChecker: VolumeEligibilityChecking = VolumeEligibilityChecker(),
+        resolutionDeadline: Duration = .seconds(AppLimits.FileOperations.bookmarkResolutionTimeoutSeconds)
     ) {
         if let storageURL {
             self.storageURL = storageURL
@@ -157,6 +163,7 @@ public actor RegisteredFolderStore {
         }
         self.bookmarks = bookmarks
         self.volumeChecker = volumeChecker
+        self.resolutionDeadline = resolutionDeadline
     }
 
     /// 起動時に一度だけ呼ぶ。保存済みの登録フォルダを読み込み、それぞれの
@@ -169,12 +176,12 @@ public actor RegisteredFolderStore {
     /// これにより `FolderTreeNode.children(of:)`/`FolderContentView.reload()`
     /// など、すでに実装済みの素の `FileManager` 呼び出し（読み取り専用、FileOps
     /// 隔離検査の対象外）を一切変更せずに登録フォルダにも対応できる。
-    public func loadAndActivateAll() {
-        ensureLoaded()
+    public func loadAndActivateAll() async {
+        await ensureLoaded()
     }
 
-    public func folders(kind: RegisteredFolderKind) -> [RegisteredFolder] {
-        ensureLoaded()
+    public func folders(kind: RegisteredFolderKind) async -> [RegisteredFolder] {
+        await ensureLoaded()
         return folders
             .filter { $0.kind == kind }
             .sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
@@ -188,8 +195,8 @@ public actor RegisteredFolderStore {
     /// — `resolvedURL(for:)` を全件に対して回すと、`.withoutMounting` を
     /// 付けていない解決がイジェクト済みのボリュームを**再マウントしてしまう**
     /// （実測済み、`08_インフラ_ファイル操作.md` §8.7.1 BM-5）。
-    public func activeAccessCount() -> Int {
-        ensureLoaded()
+    public func activeAccessCount() async -> Int {
+        await ensureLoaded()
         return activeAccessURLs.count
     }
 
@@ -206,11 +213,14 @@ public actor RegisteredFolderStore {
     ///   しかも今回は**実装のほうが安全側**という向きだったため、
     ///   読んだ人が無用な回避策を足しかねない形になっていた。
     ///
-    /// - Important: 解決自体はブロックし得る。相手が**マウント済みなのに
-    ///   応答しない**共有では、`.withoutMounting` を付けても対象を確かめる
-    ///   ために出ていく。件数を数えるだけなら `activeAccessCount()` を使うこと。
-    public func resolvedURL(for folder: RegisteredFolder) -> URL? {
-        guard case .resolved(let url, _) = bookmarks.resolve(folder.bookmarkData) else { return nil }
+    /// - Important: 相手が**マウント済みなのに応答しない**共有では解決が
+    ///   ブロックし得るため、`FileIO` 経由で協調プールの外へ逃がしたうえ、
+    ///   上限時間で待つのをやめる [NV6-05]。上限を超えた解決は「応答なし」
+    ///   （＝ `nil`）として扱う。件数を数えるだけなら `activeAccessCount()` を
+    ///   使うこと。
+    public func resolvedURL(for folder: RegisteredFolder) async -> URL? {
+        let resolution = await bookmarks.resolve(folder.bookmarkData, waitingAtMost: resolutionDeadline)
+        guard case .resolved(let url, _) = resolution else { return nil }
         return url
     }
 
@@ -231,9 +241,14 @@ public actor RegisteredFolderStore {
     public func register(
         url: URL, kind: RegisteredFolderKind, displayName: String?
     ) async throws -> RegistrationResult {
-        ensureLoaded()
+        await ensureLoaded()
         let resolvedURL = url.resolvingSymlinksInPath() // [SL-07]
-        try checkNotNested(resolvedURL)
+        // この先の各 await 中は actor 再入が起こり得るため、同時に走る
+        // `register` 同士では「チェック後・追加前」に相手の追加が割り込む
+        // 余地がある。登録は UI のパネル経由で 1 件ずつしか起きず、この競合は
+        // `volumeChecker.evaluate` の await があった従来から同型で許容している
+        // ため、ここでは防がない [NV6-05 の async 化に伴う注記]。
+        try await checkNotNested(resolvedURL)
 
         var warnings: [RegistrationWarning] = []
         switch try await volumeChecker.evaluate(resolvedURL) { // [RG-08][FS-01〜FS-05]
@@ -259,7 +274,7 @@ public actor RegisteredFolderStore {
             kind: kind, displayName: displayName ?? resolvedURL.lastPathComponent, bookmarkData: bookmarkData
         )
         folders.append(folder)
-        activateAccessIfPossible(folder)
+        await activateAccessIfPossible(folder)
         try save()
         if !warnings.isEmpty {
             Log.fileOps.info("登録しました（警告 \(warnings.count) 件）: \(Log.path(resolvedURL))")
@@ -269,8 +284,8 @@ public actor RegisteredFolderStore {
 
     /// [RG-06 の簡易版] フェーズ1にはラベルドメインが無いため「削除するか
     /// 保持するか」の選択肢自体が意味を持たない。登録レコードを削除するのみ。
-    public func unregister(_ id: UUID) throws {
-        ensureLoaded()
+    public func unregister(_ id: UUID) async throws {
+        await ensureLoaded()
         guard let folder = folders.first(where: { $0.id == id }) else { return }
         // 実体が既に消えていてもスコープを確実に閉じられるよう、ブックマークの
         // 再解決ではなく登録 ID から引く（`activeAccessURLs` のコメント参照）。
@@ -292,11 +307,17 @@ public actor RegisteredFolderStore {
     /// 比較は `URL` 同士の `==` ではなくパス文字列で行う — 末尾スラッシュの
     /// 有無やシンボリックリンクの解決状態で表現が揺れるため
     /// [`SessionState.cutURLs` で実際に踏んだ問題と同じ理由]。
-    public func registrationsInvalidated(byDeleting urls: [URL]) -> [InvalidatedRegistration] {
-        ensureLoaded()
+    public func registrationsInvalidated(byDeleting urls: [URL]) async -> [InvalidatedRegistration] {
+        await ensureLoaded()
         let deletedPaths = urls.map { $0.resolvingSymlinksInPath().standardizedFileURL.path }
-        return folders.compactMap { folder in
-            guard let folderURL = resolvedURL(for: folder) else { return nil }
+        // 解決の await 中に actor 再入で `folders` が変わっても一貫した結果を
+        // 返せるよう、スナップショットに対して照合する [NV6-05]。
+        let snapshot = folders
+        let resolutions = await bookmarks.resolveMany(
+            snapshot.map { (id: $0.id, data: $0.bookmarkData) }, waitingAtMost: resolutionDeadline
+        )
+        return snapshot.compactMap { folder in
+            guard case .resolved(let folderURL, _)? = resolutions[folder.id] else { return nil }
             let folderPath = folderURL.resolvingSymlinksInPath().standardizedFileURL.path
             let isDoomed = deletedPaths.contains { deleted in
                 folderPath == deleted || folderPath.hasPrefix(deleted + "/")
@@ -315,15 +336,15 @@ public actor RegisteredFolderStore {
     /// どの登録が該当したのかを判定できなくなる。逆に解除を削除より先に
     /// 行うとアクセススコープが閉じて削除自体が権限エラーになるため、
     /// 「先に調べ、後で解除する」というこの順序でなければならない。
-    public func unregisterAll(ids: [UUID]) {
+    public func unregisterAll(ids: [UUID]) async {
         for id in ids {
-            try? unregister(id)
+            try? await unregister(id)
         }
     }
 
     /// [RG-05] 実フォルダ名とは別の表示名に変更する。
-    public func rename(_ id: UUID, to displayName: String) throws {
-        ensureLoaded()
+    public func rename(_ id: UUID, to displayName: String) async throws {
+        await ensureLoaded()
         guard let index = folders.firstIndex(where: { $0.id == id }) else { return }
         folders[index].displayName = displayName
         try save()
@@ -331,8 +352,8 @@ public actor RegisteredFolderStore {
 
     /// この登録フォルダの配下でサムネイルを常に非表示にするか [DS-04]。
     /// 未登録の ID を渡した場合は何もしない（`rename` と同じ方針）。
-    public func setThumbnailsAlwaysHidden(_ hidden: Bool, for id: UUID) throws {
-        ensureLoaded()
+    public func setThumbnailsAlwaysHidden(_ hidden: Bool, for id: UUID) async throws {
+        await ensureLoaded()
         guard let index = folders.firstIndex(where: { $0.id == id }) else { return }
         folders[index].thumbnailsAlwaysHidden = hidden
         try save()
@@ -342,20 +363,40 @@ public actor RegisteredFolderStore {
     /// アクセスを開始する。呼び出し元（アプリ起動時の明示呼び出しと、
     /// `FolderTreePane` 側の初回表示）のどちらが先に到達しても安全なように、
     /// すべての公開メソッドの先頭でこれを呼ぶ。
-    private func ensureLoaded() {
-        guard !didLoad else { return }
-        didLoad = true
+    ///
+    /// ブックマーク解決の await 中は actor 再入が起こるため、「読み込み中」を
+    /// `Task` としてメモ化し、後から到達した呼び出しは同じ `Task` を待つ
+    /// [NV6-05]。単なる `Bool` フラグだと、2 番目の呼び出しが読み込み完了前の
+    /// 空の `folders` を見てしまう。
+    private func ensureLoaded() async {
+        if loadTask == nil {
+            loadTask = Task { await performInitialLoad() }
+        }
+        await loadTask?.value
+    }
+
+    private func performInitialLoad() async {
         load()
+        // 全登録を**並行に**解決する [NV6-05]。逐次だと、サーバ不在時の
+        // 起動待ちが「登録件数 × 上限時間」になってしまう。
+        let resolutions = await bookmarks.resolveMany(
+            folders.map { (id: $0.id, data: $0.bookmarkData) }, waitingAtMost: resolutionDeadline
+        )
         for folder in folders {
-            activateAccessIfPossible(folder)
+            activateAccess(folder, resolution: resolutions[folder.id] ?? .offline(reason: .invalidBookmark))
         }
         Log.sandbox.info(
             "登録フォルダを読み込みました: ライブラリ \(folders.count { $0.kind == .library }) 件 / テンポラリ \(folders.count { $0.kind == .temporary }) 件 / アクセス開始 \(activeAccessURLs.count) 件"
         )
     }
 
-    private func activateAccessIfPossible(_ folder: RegisteredFolder) {
-        guard let url = resolvedURL(for: folder) else {
+    private func activateAccessIfPossible(_ folder: RegisteredFolder) async {
+        let resolution = await bookmarks.resolve(folder.bookmarkData, waitingAtMost: resolutionDeadline)
+        activateAccess(folder, resolution: resolution)
+    }
+
+    private func activateAccess(_ folder: RegisteredFolder, resolution: BookmarkResolution) {
+        guard case .resolved(let url, _) = resolution else {
             // 実体を失った登録は「アクセス権がありません」とは別の縮退状態
             // （ボリューム未接続／ゴミ箱／完全削除）[SB-05][1-17]。UI では
             // グレーアウト行として現れるだけなので、原因追跡のためログには
@@ -377,10 +418,14 @@ public actor RegisteredFolderStore {
 
     /// [RG-03][RG-04] 既存の登録フォルダ（ライブラリ・テンポラリ双方）との
     /// 祖先・子孫関係、および同一フォルダの二重登録を禁止する。
-    private func checkNotNested(_ candidate: URL) throws {
+    private func checkNotNested(_ candidate: URL) async throws {
         let candidatePath = candidate.standardizedFileURL.path
-        for existing in folders {
-            guard let existingURL = resolvedURL(for: existing) else { continue }
+        let snapshot = folders
+        let resolutions = await bookmarks.resolveMany(
+            snapshot.map { (id: $0.id, data: $0.bookmarkData) }, waitingAtMost: resolutionDeadline
+        )
+        for resolution in resolutions.values {
+            guard case .resolved(let existingURL, _) = resolution else { continue }
             let existingPath = existingURL.standardizedFileURL.path
             if candidatePath == existingPath
                 || candidatePath.hasPrefix(existingPath + "/")
