@@ -2112,6 +2112,22 @@ iCloud・SMB の実測はいずれも事前許可を得て、最小限（数バ�
 - **パーサの入力頑健性**: `MatroskaDimensionReader` は問題なし（再帰なし・全ループで前進保証・VINT は最大 56 ビットで `Int` 変換のオーバーフローに到達しない・子の範囲は常に親でクランプ）。`EpubCoverResolver` で**キー重複クラッシュを発見・修正した** — `Dictionary(uniqueKeysWithValues:)` はキー重複で fatalError し、**同名エントリを 2 つ持つ zip（更新エントリの追記、現実にあり得る形）の EPUB サムネイル生成でアプリごと落ちていた**（変異検証で実際に `Fatal error: Duplicate values for key` を再現）。先勝ちの `uniquingKeysWith:` へ変更 — 後勝ちではない理由は、実際にバイト列を読む `readEntry` が先頭一致で返すため（テストが最初「後勝ち」を期待して落ち、実態に合わせた）。**`uniqueKeysWithValues:` は外部入力由来のキーに対して使ってはならない**（使用箇所は全走査してこの 1 箇所だけと確認済み）。あわせて spine ループに取り消し確認（`Cancellation.isRequested`）を追加 — 画像を含まない大量 spine の病的 EPUB がセルの画面外退場後も `FileIO` レーンを占有し続けないため。
 - **AttributeGraph ハング既知パターンの系統走査**: `@AppStorage` 全 30 件を列挙し、**`.commands`（メニュー）文脈で読む箇所はゼロ**（設計どおり）。ビュー内の条件使用（カラム表示切替・環境設定タブ・`startupFolderUIModeRaw`）は残るが、いずれも実機で長期安定しており、過去のハングは `.commands` との組み合わせでのみ発生した経緯と整合する。新規の危険パターンなし。
 
+### 既知の不具合の一掃（2026-08、横断監査の直後にユーザー指示で実施）
+
+「既知の不具合を優先度に関係なくすべて修正」という指示による、記録済み不具合バックログの全数処理。**対象は「不具合として記録されたもの」であり、設計判断で据え置いたもの・ロードマップに割り当て済みの機能実装（1-17、EN-01/02、VD-01〜06、`BatchNotificationSession`、`Command.displayName` のローカライズ等）は含めない。**
+
+**直したもの（5 件）**:
+
+1. **`trash()` の部分成功破棄**（フェーズ1完了前監査からの既知）。`NSWorkspace.recycle` はエラーと同時に「移せた分」の対応表を返すが、以前はエラー時に丸ごと捨てていた——実際にはゴミ箱へ移動したのに Undo にも操作履歴にも残らない。continuation を「投げずに結果ごと受け取る」形に変え、**`PartialTrashFailure`**（新設、`PartialTransferFailure` の Trash 版。`recycle` は失敗項目を特定しないため `failedItem` を持たない）で受領書を運ぶ。`TrashCommand` が引き取って `.partial` を返す。**この経路は実 Trash に触れるため自動テスト対象外**（従来方針どおり）で、型レベルの整合とレビューで担保。
+2. **`setLocked()` の部分成功破棄**（同上）。`transfer` と同じ規則（0 件成功なら素の失敗、1 件以上なら `PartialTransferFailure`）に統一。**`SetLockedCommand` は受領書を保持し、Undo は `items` 全体ではなく実際に変えられた分だけを対象にする**よう修正（以前は部分失敗後の Undo が「変えていない項目のロック状態」まで反転させ得た）。回帰テスト 3 件、**すべて修正を外すと落ちることを変異検証済み**。
+3. **`CommandStack.undo()` が `.partial` を redo スタックへ積む**（同上）。部分的にしか戻っていない状態の Redo は `execute()` の再実行で「移動元が既に存在しない」エラーになるため、**部分取り消しの後は Redo を提供しない**（操作履歴には残る）。回帰テスト・変異検証あり。
+4. **ストア `save()` 失敗の握りつぶし**（同上）。`try?` で握りつぶしていた 6 箇所（`FolderTreePane` の表示名変更・登録解除、`AssociationPreferencesTab` の setPrimary/addExtension/removeExtension、`AccessPreferencesTab` の revokeAccess）を `NotificationRouter.presentError` へ配線 [ER-01]。失敗時は楽観更新した UI を読み直しで実際の保存内容へ同期する。
+5. **`FileOperationError.sourceNotFound`（どこからも投げられない死んだケース）を削除**（総点検で記録済み）。
+
+**確認の結果「既に解消済み」と判定したもの**: `RenameCommand`/`CreateAliasCommand` の衝突時フォールバック文言（エラー文言の総点検 [ER-03] で `conflictResolutionRequired` が三要素文言化済み）、`transfer()` の部分成功破棄（P1-2 の `PartialTransferFailure` で解消済み）、登録フォルダ配下の「新規タブ/ウインドウで開く」の `NavigationRoot` 消失（`openTab(for:root:)`＋`TabTarget` で解消済み）、`InspectorPane` の `Task.detached`（1-16b で解消済み）。
+
+**検証**: `swift test`（549 件、全通過）、静的検査 4 件 OK、`xcodebuild`（BUILD SUCCEEDED）。踏んだ罠: `NotificationRouter` は `QooApplication` のため、`AssociationPreferencesTab` に `import QooApplication` の追加が必要だった（`swift build` は通るが `xcodebuild` で失敗する組み合わせ——**アプリ層を触ったら必ず `xcodebuild` まで回すこと**）。
+
 作業を始める際は、対象領域の仕様書（下記 §2 の一覧）を該当箇所だけ `Read` してから着手する。仕様書は合計 18 ファイルあり、全部を毎回読み込む必要はない。要件定義書本体は `docs/Requirements/qooLibrary_要件定義書_v2.8.md` にある（約 2,900 行）。矛盾したときの優先順位は §1 参照。
 
 ## 1. アプリ概要

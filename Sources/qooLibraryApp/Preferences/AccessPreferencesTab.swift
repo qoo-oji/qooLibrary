@@ -82,7 +82,14 @@ struct AccessPreferencesTab: View {
 
     private func revoke(_ grant: GrantedVolumeAccess) {
         Task {
-            try? await VolumeAccessStore.shared.revokeAccess(grant.id)
+            do {
+                try await VolumeAccessStore.shared.revokeAccess(grant.id)
+            } catch {
+                // 保存失敗を握りつぶさない [ER-01、2026-08 既知の不具合の一掃]。
+                await NotificationRouter.shared.presentError(
+                    error, whatHappened: String(localized: "error.operationFailed", locale: locale)
+                )
+            }
             await reload()
             // [実機検証で発見・修正したバグ] 取り消しても既に読み込み済みの
             // フォルダツリーの行はキャッシュされたままだったため、明示的に

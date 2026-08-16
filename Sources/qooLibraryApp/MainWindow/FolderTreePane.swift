@@ -434,7 +434,16 @@ struct FolderTreePane: View {
         case .renameDisplayName(let folder): // [RG-05]
             guard !name.isEmpty else { return }
             Task {
-                try? await RegisteredFolderStore.shared.rename(folder.id, to: name)
+                do {
+                    try await RegisteredFolderStore.shared.rename(folder.id, to: name)
+                } catch {
+                    // 保存失敗を握りつぶさない [ER-01、2026-08 既知の不具合の
+                    // 一掃] — 以前は `try?` で、次回起動時に変更が消えていても
+                    // 気づく手段が無かった。
+                    await NotificationRouter.shared.presentError(
+                        error, whatHappened: String(localized: "error.operationFailed", locale: locale)
+                    )
+                }
                 await reloadRegisteredFolders()
             }
         case .renameFolder(let url): // [FM-05]
@@ -537,7 +546,14 @@ struct FolderTreePane: View {
 
     private func unregisterFolder(_ folder: RegisteredFolder) {
         Task {
-            try? await RegisteredFolderStore.shared.unregister(folder.id)
+            do {
+                try await RegisteredFolderStore.shared.unregister(folder.id)
+            } catch {
+                // 保存失敗を握りつぶさない [ER-01、2026-08 既知の不具合の一掃]。
+                await NotificationRouter.shared.presentError(
+                    error, whatHappened: String(localized: "error.operationFailed", locale: locale)
+                )
+            }
             await reloadRegisteredFolders()
         }
     }

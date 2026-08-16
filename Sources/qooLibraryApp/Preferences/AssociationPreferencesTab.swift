@@ -1,4 +1,5 @@
 import AppKit
+import QooApplication
 import QooInfrastructure
 import QooKit
 import SwiftUI
@@ -123,7 +124,16 @@ struct AssociationPreferencesTab: View {
             set: { newValue in
                 primaryByExtension[ext] = newValue
                 Task {
-                    try? await service.setPrimary(newValue, for: ext)
+                    do {
+                        try await service.setPrimary(newValue, for: ext)
+                    } catch {
+                        // 保存失敗を握りつぶさない [ER-01、2026-08 既知の不具合の
+                        // 一掃]。楽観更新した表示は実際の保存内容へ読み直して戻す。
+                        await NotificationRouter.shared.presentError(
+                            error, whatHappened: String(localized: "error.operationFailed", locale: locale)
+                        )
+                        await refreshPrimary(for: ext)
+                    }
                 }
             }
         )
@@ -153,8 +163,16 @@ struct AssociationPreferencesTab: View {
         extensions.sort()
         candidatesByExtension[ext] = service.candidates(for: ext)
         Task {
-            try? await service.addExtension(ext)
-            await refreshPrimary(for: ext)
+            do {
+                try await service.addExtension(ext)
+                await refreshPrimary(for: ext)
+            } catch {
+                // 保存失敗を握りつぶさない [ER-01、2026-08 既知の不具合の一掃]。
+                await NotificationRouter.shared.presentError(
+                    error, whatHappened: String(localized: "error.operationFailed", locale: locale)
+                )
+                await reload()
+            }
         }
     }
 
@@ -164,7 +182,15 @@ struct AssociationPreferencesTab: View {
         primaryByExtension.removeValue(forKey: ext)
         unlistedPrimaryByExtension.removeValue(forKey: ext)
         Task {
-            try? await service.removeExtension(ext)
+            do {
+                try await service.removeExtension(ext)
+            } catch {
+                // 保存失敗を握りつぶさない [ER-01、2026-08 既知の不具合の一掃]。
+                await NotificationRouter.shared.presentError(
+                    error, whatHappened: String(localized: "error.operationFailed", locale: locale)
+                )
+                await reload()
+            }
         }
     }
 

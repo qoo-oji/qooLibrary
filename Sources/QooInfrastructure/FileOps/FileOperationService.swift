@@ -396,24 +396,39 @@ public actor FileOperationService {
         // 載せない（載せる意味も無い — 待っているスレッドが無いため）。
         // 代わりに ``FileIO/withDeadline(_:_:)`` で**待つのをやめられる**
         // ようにしてある [NV4-04]。
-        let mapping: [URL: URL]
+        // **エラーでも「移せた分」の対応表を捨てない** [ER-13][ER-16、
+        // 2026-08 既知の不具合の一掃]。`recycle` は一部成功・一部失敗を
+        // ドキュメント上許容しており、以前はエラーが非 nil なら対応表ごと
+        // 破棄していた——実際にはゴミ箱へ移動したのに Undo にも操作履歴にも
+        // 残らない。そのため continuation では投げず、結果を丸ごと受け取る。
+        let outcome: (mapping: [URL: URL], failure: (any Error)?)
         do {
-            mapping = try await FileIO.withDeadline(.seconds(AppLimits.FileOperations.trashTimeoutSeconds)) {
-                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[URL: URL], Error>) in
+            outcome = try await FileIO.withDeadline(.seconds(AppLimits.FileOperations.trashTimeoutSeconds)) {
+                await withCheckedContinuation { (continuation: CheckedContinuation<([URL: URL], (any Error)?), Never>) in
                     NSWorkspace.shared.recycle(items) { urls, error in
-                        if let error {
-                            continuation.resume(throwing: error)
-                        } else {
-                            continuation.resume(returning: urls)
-                        }
+                        continuation.resume(returning: (urls, error))
                     }
                 }
             }
         } catch {
+            // 期限切れ [NV4-04]。完了ハンドラ自体が返っていないので、
+            // 移せた分の情報は存在しない。素の失敗として投げるしかない。
             Log.fileOps.error("trash に失敗: \(items.map(\.path).joined(separator: ", ")) — \(error.localizedDescription)")
             throw error
         }
+        let mapping = outcome.mapping
         trashedURLs = Array(mapping.values)
+        if let failure = outcome.failure {
+            let partialReceipts = items.compactMap { original -> TrashReceipt? in
+                guard let trashed = mapping[original], let id = identities[original] else { return nil }
+                return TrashReceipt(originalURL: original, trashURL: trashed, identity: id)
+            }
+            Log.fileOps.error(
+                "trash が \(partialReceipts.count)/\(items.count) 件成功後に失敗 — \(failure.localizedDescription)"
+            )
+            if partialReceipts.isEmpty { throw failure }
+            throw PartialTrashFailure(receipts: partialReceipts, underlying: failure)
+        }
         Log.fileOps.info("trash 完了: \(mapping.count)/\(items.count) 件")
         for (original, trashed) in mapping {
             Log.fileOps.debug("trash: \(Log.path(original)) → \(Log.path(trashed))")
@@ -685,7 +700,12 @@ public actor FileOperationService {
                     Log.fileOps.error(
                         "setLocked(\(locked)) が \(receipts.count) 件成功後に失敗: \(item.path) — \(error.localizedDescription)"
                     )
-                    throw error
+                    // 変えた分の受領書を捨てない [ER-13][ER-16、2026-08 既知の
+                    // 不具合の一掃] — 捨てると部分的にロック状態が変わったのに
+                    // Undo にも操作履歴にも残らない（`transfer` と同じ扱い）。
+                    // 1 件も変えていなければ素の失敗として投げる。
+                    if receipts.isEmpty { throw error }
+                    throw PartialTransferFailure(receipts: receipts, failedItem: item, underlying: error)
                 }
                 let id = try? Self.identity(of: item)
                 receipts.append(OpReceipt(before: id, after: id, fromURL: item, toURL: item, kind: .setLocked))

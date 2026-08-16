@@ -102,6 +102,31 @@ import Testing
         #expect(stack.operationHistory.map(\.action) == [.executed, .undone, .redone])
     }
 
+    /// [2026-08 既知の不具合の一掃] 部分的にしか元へ戻らなかった Undo を
+    /// Redo できてはならない。以前は `.partial` でも redoStack へ積んでおり、
+    /// Redo すると `execute()` が元の `items` で再実行され「移動元が既に
+    /// 存在しない」といったエラーになった（フェーズ1完了前監査で記録した
+    /// 既知の課題）。
+    @Test func partialUndoDoesNotOfferRedo() async throws {
+        let stack = CommandStack()
+        let command = FakeCommand(displayName: "部分的な操作")
+        command.undoResult = .partial(succeeded: 1, failed: [FailedItem(item: "b.txt", reason: "テスト用の失敗")])
+
+        try await stack.run(command)
+        let outcome = await stack.undo()
+
+        guard case .partial = outcome else {
+            Issue.record("expected .partial, got \(outcome)")
+            return
+        }
+        #expect(!stack.canRedo)
+        if case .nothingToDo = await stack.redo() {
+            // 期待どおり
+        } else {
+            Issue.record("部分取り消しの後に Redo できてはならない")
+        }
+    }
+
     /// 非 Undoable なコマンド（`isUndoable == false`）はスタックへ積まれない
     /// が、実行と操作履歴の記録は行われる。
     @Test func nonUndoableCommandIsNotPushedToStack() async throws {

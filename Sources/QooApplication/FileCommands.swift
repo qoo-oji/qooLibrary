@@ -175,7 +175,19 @@ public final class TrashCommand: Command {
     public let completionSound: SystemSoundEffect? = .moveToTrash
 
     public func execute() async throws -> CommandResult {
-        receipts = try await fileOps.trash(items)
+        do {
+            receipts = try await fileOps.trash(items)
+        } catch let partial as PartialTrashFailure {
+            // **移せた分は必ず引き取る** [ER-13][ER-16]。これを捨てると
+            // 実際にはゴミ箱へ移動したのに Undo にも操作履歴にも残らない
+            // （2026-08 既知の不具合の一掃）。
+            receipts = partial.receipts
+            let trashed = Set(partial.receipts.map(\.originalURL))
+            let failed = items
+                .filter { !trashed.contains($0) }
+                .map { FailedItem(item: $0.lastPathComponent, reason: partial.underlying.localizedDescription) }
+            return .partial(succeeded: receipts.count, failed: failed)
+        }
         return receipts.count == items.count ? .success : .partial(succeeded: receipts.count, failed: [])
     }
 
@@ -371,16 +383,37 @@ public final class SetLockedCommand: Command {
 
     public var logDescription: String { Self.logDescription("setLocked(\(locked))", items) }
     public let isUndoable = true
+    private var receipts: [OpReceipt] = []
 
     public func execute() async throws -> CommandResult {
-        _ = try await fileOps.setLocked(items, locked: locked)
+        do {
+            receipts = try await fileOps.setLocked(items, locked: locked)
+        } catch let partial as PartialTransferFailure {
+            // 変えた分は必ず引き取る [ER-13][ER-16] — 捨てると部分的に
+            // ロック状態が変わったのに Undo で戻せない（2026-08 既知の
+            // 不具合の一掃）。
+            receipts = partial.receipts
+            return partial.commandResult(total: items.count)
+        }
         return .success
     }
 
     public func undo() async throws -> UndoResult {
+        // 対象は `items` 全体ではなく**実際に変えられた分**だけ [UD-07]。
+        // 全体に適用すると、execute が部分失敗していた場合に「変えていない
+        // 項目のロック状態」まで反転させてしまう。
+        guard !receipts.isEmpty else { return .impossible(reason: "元に戻す対象がありません") }
         do {
-            _ = try await fileOps.setLocked(items, locked: !locked)
+            _ = try await fileOps.setLocked(receipts.map(\.toURL), locked: !locked)
             return .complete
+        } catch let partial as PartialTransferFailure {
+            return .partial(
+                succeeded: partial.receipts.count,
+                failed: [FailedItem(
+                    item: partial.failedItem.lastPathComponent,
+                    reason: partial.underlying.localizedDescription
+                )]
+            )
         } catch {
             return .impossible(reason: error.localizedDescription)
         }

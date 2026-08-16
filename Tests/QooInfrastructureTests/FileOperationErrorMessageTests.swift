@@ -72,7 +72,6 @@ import Testing
 
     @Test func everyCaseHasItsOwnDescription() {
         let cases: [FileOperationError] = [
-            .sourceNotFound(URL(fileURLWithPath: "/tmp/missing.txt")),
             .conflictResolutionRequired(
                 source: URL(fileURLWithPath: "/tmp/a.txt"),
                 destination: URL(fileURLWithPath: "/tmp/b.txt")

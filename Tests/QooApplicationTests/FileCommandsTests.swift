@@ -64,6 +64,36 @@ import Testing
         #expect(FileManager.default.fileExists(atPath: original.path))
     }
 
+    /// [2026-08 既知の不具合の一掃] 一括の途中で失敗しても、変えられた分の
+    /// 受領書を保持して `.partial` を返し、Undo は**実際に変えられた分だけ**を
+    /// 対象にすること。以前は受領書を捨てており（`_ = try await`）、Undo は
+    /// `items` 全体へ適用されていた。
+    @Test func setLockedCommandKeepsPartialReceiptsAndUndoesOnlyThem() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let good = root.appendingPathComponent("good.txt")
+        try Data("x".utf8).write(to: good)
+        let missing = root.appendingPathComponent("missing.txt")
+
+        let command = SetLockedCommand(items: [good, missing], locked: true)
+        let result = try await command.execute()
+        guard case .partial(let succeeded, let failed) = result else {
+            Issue.record("expected .partial, got \(result)")
+            return
+        }
+        #expect(succeeded == 1)
+        #expect(!failed.isEmpty)
+        #expect(try good.resourceValues(forKeys: [.isUserImmutableKey]).isUserImmutable == true)
+
+        // Undo は受領書のある 1 件だけを対象にするので、missing に触れず完了する。
+        let undoResult = try await command.undo()
+        guard case .complete = undoResult else {
+            Issue.record("expected .complete, got \(undoResult)")
+            return
+        }
+        #expect(try good.resourceValues(forKeys: [.isUserImmutableKey]).isUserImmutable == false)
+    }
+
     @Test func setLockedCommandExecuteAndUndoTogglesLockState() async throws {
         let root = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: root) }

@@ -73,7 +73,6 @@ import Testing
 
     @Test func everyFileOperationErrorExplainsItself() {
         let cases: [(String, FileOperationError, Bool)] = [
-            ("sourceNotFound", .sourceNotFound(src), true),
             ("conflictResolutionRequired", .conflictResolutionRequired(source: src, destination: dst), true),
             // 自由文の受け皿。呼び出し側がすでに完結した文を入れている。
             ("operationFailed", .operationFailed("「新規フォルダ」という名前の項目はすでに存在します。"), false),

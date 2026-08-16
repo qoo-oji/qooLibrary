@@ -278,6 +278,47 @@ import Testing
         try mutable.setResourceValues(values)
     }
 
+    /// [ER-13][ER-16、2026-08 既知の不具合の一掃] 一括の setLocked が途中で
+    /// 失敗しても、そこまでに変えた分の受領書を `PartialTransferFailure` が
+    /// 運ぶこと。以前は素の throw で受領書ごと破棄され、部分的にロック状態が
+    /// 変わったのに Undo にも操作履歴にも残らなかった。
+    @Test func setLockedCarriesReceiptsWhenItFailsPartWayThrough() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let first = root.appendingPathComponent("first.txt")
+        try write("a", to: first)
+        defer { try? setLocked(first, false) }
+        let missing = root.appendingPathComponent("missing.txt")
+
+        do {
+            _ = try await service.setLocked([first, missing], locked: true)
+            Issue.record("存在しない項目を含むので失敗するはず")
+        } catch let partial as PartialTransferFailure {
+            #expect(partial.receipts.count == 1)
+            #expect(partial.receipts.first?.toURL == first)
+            #expect(partial.failedItem == missing)
+        }
+        // 1 件目は実際にロックされたまま（受領書と実体が一致する）。
+        #expect(try first.resourceValues(forKeys: [.isUserImmutableKey]).isUserImmutable == true)
+    }
+
+    /// 1 件も変えていなければ、部分失敗の入れ物ではなく素の失敗として投げる
+    /// （`transfer` と同じ規則）。
+    @Test func setLockedThrowsThePlainErrorWhenNothingSucceeded() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let missing = root.appendingPathComponent("missing.txt")
+
+        do {
+            _ = try await service.setLocked([missing], locked: true)
+            Issue.record("存在しない項目なので失敗するはず")
+        } catch is PartialTransferFailure {
+            Issue.record("0 件成功なので部分失敗ではなく素の失敗のはず")
+        } catch {
+            // 期待どおり
+        }
+    }
+
     // MARK: - 衝突処理 [FM-11〜FM-13]
 
     @Test func conflictSkipLeavesDestinationUntouched() async throws {

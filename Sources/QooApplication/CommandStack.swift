@@ -113,7 +113,12 @@ public final class CommandStack {
                 return .complete(operationName: command.displayName)
             case .partial(let succeeded, let failed):
                 record(command, action: .undonePartially(succeeded: succeeded, failedCount: failed.count))
-                redoStack.append(command)
+                // **redo スタックへ積まない** [2026-08 既知の不具合の一掃]。
+                // 部分的にしか元へ戻っていない状態で Redo すると、`execute()` が
+                // 元の `items` で再実行され「移動元が既に存在しない」といった
+                // エラーになる（フェーズ1完了前監査で記録した既知の課題）。
+                // 部分取り消しの後は Undo/Redo のどちらの再試行も正しく再現
+                // できないため、操作履歴に記録を残してスタックからは外す。
                 return .partial(operationName: command.displayName, succeeded: succeeded, failed: failed)
             case .impossible(let reason):
                 record(command, action: .undoFailed(reason: reason))

@@ -125,6 +125,52 @@ extension PartialTransferFailure: LocalizedError {
     }
 }
 
+/// `trash` の途中失敗で、既にゴミ箱へ移せた分の受領書を運ぶ
+/// [ER-13][ER-16、2026-08 既知の不具合の一掃]。`NSWorkspace.recycle` は
+/// エラーと同時に「移せた分」の対応表を返すことがあり、以前はエラー時に
+/// これを丸ごと捨てていた——実際にはゴミ箱へ移動したのに Undo にも
+/// 操作履歴にも残らない（フェーズ1完了前監査からの既知の課題）。
+///
+/// `PartialTransferFailure` の Trash 版。`failedItem` を持たないのは、
+/// `recycle` が「どの項目で失敗したか」を返さないため。
+public struct PartialTrashFailure: Error {
+    /// そこまでにゴミ箱へ移せた分。**捨ててはならない。**
+    public let receipts: [TrashReceipt]
+    /// 本来の失敗理由。ユーザーへの提示にはこちらを使う。
+    public let underlying: any Error
+
+    public init(receipts: [TrashReceipt], underlying: any Error) {
+        self.receipts = receipts
+        self.underlying = underlying
+    }
+}
+
+/// 三要素は `underlying` へ委譲する（`PartialTransferFailure` と同じ理由:
+/// 入れ物が説明を横取りしない [ER-03]）。
+extension PartialTrashFailure: UserPresentableError {
+    private var presentable: (any UserPresentableError)? { underlying as? any UserPresentableError }
+
+    public var whatHappened: String {
+        presentable?.whatHappened ?? underlying.localizedDescription
+    }
+
+    public var whyItHappened: String { presentable?.whyItHappened ?? "" }
+    public var recoverySuggestions: [RecoveryAction] { presentable?.recoverySuggestions ?? [] }
+    public var recoveryHint: String? { presentable?.recoveryHint }
+    public var severity: NotificationSeverity { presentable?.severity ?? .sheet }
+
+    public var technicalDetail: String? {
+        let progress = "\(receipts.count) 件までゴミ箱へ移動済み"
+        return [presentable?.technicalDetail, progress].compactMap { $0 }.joined(separator: "\n")
+    }
+}
+
+extension PartialTrashFailure: LocalizedError {
+    public var errorDescription: String? {
+        [whatHappened, whyItHappened, recoveryHint ?? ""].filter { !$0.isEmpty }.joined(separator: " ")
+    }
+}
+
 public struct OpReceipt: Sendable {
     public let before: FileIdentity?
     public let after: FileIdentity?
@@ -205,7 +251,6 @@ public struct DeletionFailure: Sendable, Equatable {
 }
 
 public enum FileOperationError: Error, Sendable, Equatable {
-    case sourceNotFound(URL)
     /// `.ask` が指定されたが `conflictResolver` が渡されなかった、または解決手段が
     /// 再度 `.ask` を返した（無限ループ防止のため 1 回のみ許容する）。
     case conflictResolutionRequired(source: URL, destination: URL)
@@ -290,8 +335,6 @@ extension FileOperationError: UserPresentableError {
     /// タイトルとして持っている。ここは「どの項目がどうなったか」に徹する。
     public var whatHappened: String {
         switch self {
-        case let .sourceNotFound(url):
-            return "「\(url.lastPathComponent)」が見つかりませんでした。"
         case let .conflictResolutionRequired(_, destination):
             return "「\(destination.lastPathComponent)」がすでに存在します。"
         case let .operationFailed(message):
@@ -333,8 +376,6 @@ extension FileOperationError: UserPresentableError {
     public var whyItHappened: String {
         let formatter = ByteCountFormatter()
         switch self {
-        case .sourceNotFound:
-            return "ほかのアプリで移動・削除された可能性があります。"
         case .conflictResolutionRequired:
             return "置き換えるか別名で残すかを決められなかったため、処理を続けられませんでした。"
         case .operationFailed:
@@ -401,8 +442,6 @@ extension FileOperationError: UserPresentableError {
 
     private static func suggestion(for error: FileOperationError) -> String? {
         switch error {
-        case .sourceNotFound:
-            return "一覧を最新にしてから、もう一度お試しください。"
         case .conflictResolutionRequired:
             return "もう一度実行して、置き換えるか別名にするかを選んでください。"
         case .operationFailed:
