@@ -105,6 +105,12 @@ struct QooLibraryApp: App {
         // [ER-01] エラー・通知の提示はこのコントローラ1箇所からのみ行う
         // （`NotificationRouterPresenterController` のコメント参照）。
         NotificationRouterPresenterController.shared.start()
+        // 「置き換える」の途中で落ちた／切断された場合に残った退避を元へ戻す
+        // [NV-92]。**提示を始めたあとに呼ぶ** — 戻せなかったことをユーザーへ
+        // 伝える必要があり、それより前に走らせると通知の行き先が無い。
+        Task {
+            await ReplaceBackupRecovery.runAtStartup()
+        }
         // 長時間処理の進捗は**別の小さなウインドウ**に出す［ユーザー要望］。
         // このコントローラがアプリ全体で 1 つの窓を出し入れする。
         OperationProgressWindowController.shared.start()

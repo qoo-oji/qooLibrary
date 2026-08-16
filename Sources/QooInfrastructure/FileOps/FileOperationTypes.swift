@@ -254,6 +254,14 @@ public enum FileOperationError: Error, Sendable, Equatable {
     /// 上限は OS が `volumeMaximumFileSizeKey` で答えるため、**書き始める
     /// 前に**確実に判定できる（実測: 超過は `EFBIG` で拒否される）。
     case fileTooLargeForDestination(item: URL, size: Int64, limit: Int64, destination: URL)
+    /// **「置き換える」の退避を元へ戻せなかった** [NV-92]。ユーザーの元ファイルは
+    /// `backup` の名前（先頭がドット）のまま残っており、**Finder にも本アプリにも
+    /// 見えない＝消えたように見える**。
+    ///
+    /// 起きた原因（`underlyingDescription`）より**この事実の方が伝えるべき**なので、
+    /// 原因は中に包んで技術詳細へ回す。次回起動時に
+    /// `ReplaceBackupJournal.recoverAll()` がもう一度戻そうとする。
+    case replaceBackupOrphaned(backup: URL, target: URL, underlyingDescription: String?)
 }
 
 /// **`UserPresentableError` に準拠させる理由** [ER-03]。
@@ -315,6 +323,8 @@ extension FileOperationError: UserPresentableError {
         case let .pathTooLong(item, destination, _, _):
             return "「\(item.lastPathComponent)」を「\(destination.lastPathComponent)」へ置くと、"
                 + "パスが長くなりすぎます。"
+        case let .replaceBackupOrphaned(_, target, _):
+            return "「\(target.lastPathComponent)」を置き換えられず、元の項目も元の場所へ戻せませんでした。"
         }
     }
 
@@ -362,6 +372,9 @@ extension FileOperationError: UserPresentableError {
                 + "上限は \(formatter.string(fromByteCount: limit)) です。"
         case let .pathTooLong(_, _, resultingBytes, limitBytes):
             return "\(resultingBytes) バイトになりますが、上限は \(limitBytes) バイトです。"
+        case let .replaceBackupOrphaned(backup, _, _):
+            return "元の項目は「\(backup.lastPathComponent)」という名前で同じフォルダに退避されたままです。"
+                + "名前が「.」で始まるため、そのままでは表示されません。"
         }
     }
 
@@ -425,6 +438,8 @@ extension FileOperationError: UserPresentableError {
                 : "分割するか、より大きなファイルを扱える場所を選んでください。"
         case .pathTooLong:
             return "階層の浅い場所を選ぶか、途中のフォルダ名を短くしてください。"
+        case .replaceBackupOrphaned:
+            return "接続を確認してから qooLibrary を再起動すると、元の場所へ戻すことを自動的にやり直します。"
         }
     }
 
@@ -437,6 +452,9 @@ extension FileOperationError: UserPresentableError {
             return source.path
         case let .pathTooLong(item, destination, _, _):
             return "\(item.path)\n→ \(destination.path)"
+        case let .replaceBackupOrphaned(backup, target, underlying):
+            return ([backup.path, "→ \(target.path)"] + (underlying.map { [$0] } ?? []))
+                .joined(separator: "\n")
         default:
             return nil
         }

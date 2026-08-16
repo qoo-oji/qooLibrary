@@ -4035,6 +4035,22 @@
         }
       }
     },
+    "permanentDelete.noTrashOnVolume": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This location has no Trash, so these items will be deleted immediately."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この場所にはゴミ箱がないため、項目はすぐに削除されます。"
+          }
+        }
+      }
+    },
     "permanentDelete.registeredWarning": {
       "localizations": {
         "en": {
@@ -5981,6 +5997,74 @@
         }
       }
     },
+    "replaceBackup.orphaned.body": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$d item(s) from an interrupted replace operation are still stored under a hidden name. Reconnect the volume and restart qooLibrary to try again.\n\n%2$@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "中断された「置き換える」の項目 %1$d 件が、隠し名のまま残っています。ボリュームへ接続し直して qooLibrary を再起動すると、もう一度戻すことを試みます。\n\n%2$@"
+          }
+        }
+      }
+    },
+    "replaceBackup.orphaned.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Some items could not be put back"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "元の場所へ戻せなかった項目があります"
+          }
+        }
+      }
+    },
+    "replaceBackup.restored.body": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$d item(s) were left behind when a replace operation was interrupted. They have been put back:\n\n%2$@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「置き換える」が中断されたため取り残されていた %1$d 件を、元の場所へ戻しました。\n\n%2$@"
+          }
+        }
+      }
+    },
+    "replaceBackup.restored.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recovered items from an interrupted replace"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "中断された「置き換える」から項目を復元しました"
+          }
+        }
+      }
+    },
     "sort.ascending": {
       "localizations": {
         "en": {
@@ -6377,22 +6461,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "サムネイルを表示"
-          }
-        }
-      }
-    },
-    "permanentDelete.noTrashOnVolume": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "This location has no Trash, so these items will be deleted immediately."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "この場所にはゴミ箱がないため、項目はすぐに削除されます。"
           }
         }
       }

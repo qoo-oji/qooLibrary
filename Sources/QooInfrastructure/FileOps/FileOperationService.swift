@@ -1003,14 +1003,25 @@ public actor FileOperationService {
             // `withReplaceBackupCleanup` が退避先から元の場所へ戻すため、
             // 書き込み失敗時に新旧どちらのファイルも失われる事態を避けられる。
             // 退避ファイルは成功・失敗いずれの場合も後始末されるため通常は
-            // 痕跡を残さないが、退避直後にアプリがクラッシュする等の極めて
-            // まれなタイミングでは `.qoo-replace-backup-*` が残る可能性がある
-            // （§3.12 の例外扱い、`SecureExtractor` の残存ステージングと同種の
-            // リスクとして許容する — 中身は元ファイルそのものなので、万一残っても
-            // 手動で拡張子を戻せば復元できる）。
+            // 痕跡を残さない。**それでも残り得る**のは、退避してから書き終える
+            // までの間に落ちた場合（`.replace` で 4GB を SMB へ書くなら、この窓は
+            // 分単位で開いたままになる）と、切断中で戻すこと自体ができない場合。
+            // 残るのは**ユーザーの元ファイルそのもの**で、しかも先頭がドットの
+            // 名前なので Finder にも本アプリにも見えない＝「消えた」ように見える。
+            //
+            // そのため**作る前に記録し**、次回起動で戻せるようにする [NV-92]。
+            // 記録が先でなければ意味が無い（作った後に落ちたら見失う）。
             let backup = destination.deletingLastPathComponent()
                 .appendingPathComponent(".qoo-replace-backup-\(UUID().uuidString)")
-            try FileManager.default.moveItem(at: destination, to: backup) // [FM-13]
+            ReplaceBackupJournal.shared.record(backup: backup, target: destination)
+            do {
+                try FileManager.default.moveItem(at: destination, to: backup) // [FM-13]
+            } catch {
+                // 退避を作れなかったのだから記録も要らない（残すと、存在しない
+                // 退避を次回起動で探すことになる）。
+                ReplaceBackupJournal.shared.forget(backup: backup)
+                throw error
+            }
             return .decided(ResolvedDestination(target: destination, backupOfReplaced: backup))
         case .keepBoth:
             return .decided(ResolvedDestination(target: nextAvailableName(for: destination), backupOfReplaced: nil)) // [CF-01]
@@ -1036,7 +1047,14 @@ public actor FileOperationService {
         do {
             let result = try operation()
             guard succeeded(result) else {
-                restoreReplacedItem(resolved)
+                // 中断。戻せなければ**成功として返してはならない** — 呼び出し側は
+                // 「中断しただけで元の状態」と受け取るが、実際にはユーザーの
+                // ファイルが見えない名前のまま残っている [NV-92]。
+                if !restoreReplacedItem(resolved), let backup = resolved.backupOfReplaced {
+                    throw FileOperationError.replaceBackupOrphaned(
+                        backup: backup, target: resolved.target, underlyingDescription: nil
+                    )
+                }
                 return result
             }
             if let backup = resolved.backupOfReplaced {
@@ -1050,7 +1068,15 @@ public actor FileOperationService {
             }
             return result
         } catch {
-            restoreReplacedItem(resolved)
+            // 失敗した理由よりも、**ユーザーのファイルが見えない名前のまま
+            // 残っていること**の方が伝えるべき事実なので、そちらを表に出して
+            // 元の失敗は中に包む [NV-92]。
+            if !restoreReplacedItem(resolved), let backup = resolved.backupOfReplaced {
+                throw FileOperationError.replaceBackupOrphaned(
+                    backup: backup, target: resolved.target,
+                    underlyingDescription: error.localizedDescription
+                )
+            }
             throw error
         }
     }
@@ -1083,10 +1109,28 @@ public actor FileOperationService {
     }
 
     /// 書き込みが完了しなかったときに、退避しておいた元の項目を戻す。
-    private nonisolated static func restoreReplacedItem(_ resolved: ResolvedDestination) {
-        guard let backup = resolved.backupOfReplaced else { return }
+    /// - Returns: 元へ戻せたか。**戻せなかった場合、ユーザーの元ファイルは
+    ///   `.qoo-replace-backup-<UUID>` の名前のまま残っている**（先頭がドット
+    ///   なので、そのままでは Finder にも本アプリにも見えない）。呼び出し側は
+    ///   これを黙って捨ててはならない [NV-92]。
+    @discardableResult
+    private nonisolated static func restoreReplacedItem(_ resolved: ResolvedDestination) -> Bool {
+        guard let backup = resolved.backupOfReplaced else { return true }
         try? FileManager.default.removeItem(at: resolved.target) // 中途半端な書き込み結果があれば破棄
-        try? FileManager.default.moveItem(at: backup, to: resolved.target)
+        do {
+            try FileManager.default.moveItem(at: backup, to: resolved.target)
+            ReplaceBackupJournal.shared.forget(backup: backup)
+            return true
+        } catch {
+            // **黙って諦めない** [ER-04]。記録は残したままにする——次回起動の
+            // 復旧がもう一度試す（相手がネットワークなら、次は繋がっている
+            // かもしれない）。
+            Log.fileOps.error(
+                "置き換えで退避した元の項目を戻せませんでした: \(Log.path(backup)) → \(Log.path(resolved.target))"
+                    + " — \(error.localizedDescription)"
+            )
+            return false
+        }
     }
 
     /// 置き換えられた元の項目をゴミ箱へ送る。送れなければ最後の手段として削除する
@@ -1096,12 +1140,20 @@ public actor FileOperationService {
         // 埋まる（`DiagnosticLog` がログの出力先を振り替えるのと同じ理由）。
         guard !RuntimeEnvironment.isRunningTests else {
             try? FileManager.default.removeItem(at: backup)
+            ReplaceBackupJournal.shared.forget(backup: backup)
             return
         }
         var resulting: NSURL?
-        if (try? FileManager.default.trashItem(at: backup, resultingItemURL: &resulting)) != nil { return }
+        if (try? FileManager.default.trashItem(at: backup, resultingItemURL: &resulting)) != nil {
+            ReplaceBackupJournal.shared.forget(backup: backup)
+            return
+        }
         Log.fileOps.warning("置き換えた項目をゴミ箱へ送れませんでした: \(Log.path(backup))")
-        try? FileManager.default.removeItem(at: backup)
+        // 消せた場合だけ記録を落とす。**消せなければ残す** — その場合は
+        // 退避が居座っているので、次回起動の復旧に拾わせる [NV-92]。
+        if (try? FileManager.default.removeItem(at: backup)) != nil {
+            ReplaceBackupJournal.shared.forget(backup: backup)
+        }
     }
 
     /// Finder に倣い `name 2.ext` `name 3.ext` の形式で連番を付与する [CF-01]。

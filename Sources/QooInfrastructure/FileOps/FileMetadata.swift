@@ -53,7 +53,14 @@ enum FileMetadata {
     /// 「どのファイルの、どの内容か」。キャッシュの鍵に使う
     /// [`FileContentStamp` のコメント参照]。
     static func stamp(of url: URL) throws -> FileContentStamp {
-        let volumeUUID = try url.resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString ?? ""
+        // **`?? ""` にしてはならない** [NV3-01]。SMB では `volumeUUIDString` が
+        // 必ず nil になるため、空文字で埋めると**マウント中のネットワーク共有
+        // すべてが同じボリュームに見え**、別のファイルどうしが同じ
+        // `FileIdentity` になる（結果として別の作品の表紙が表示される）。
+        // 取れなければマウント元から導く（`VolumeIdentity`）。
+        guard let volumeUUID = VolumeIdentity.identifier(for: url) else {
+            throw CocoaError(.fileReadUnknown)
+        }
         var info = stat()
         guard stat(url.path, &info) == 0 else {
             throw CocoaError(.fileReadUnknown)
