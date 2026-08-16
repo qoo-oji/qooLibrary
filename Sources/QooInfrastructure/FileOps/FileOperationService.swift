@@ -1090,8 +1090,16 @@ public actor FileOperationService {
     ///
     /// 一時的な失敗（`EBUSY` など、直前まで書いていた相手なら起こり得る）に
     /// 備えて一度だけ待って試し直し、それでも駄目なら**ログには必ず残す**
-    /// [ER-04: 無言で握りつぶさない]。これで消えない場合があるかどうかは
-    /// 実測できていないが、消え残ったことに気づく手段が無い状態は避ける。
+    /// [ER-04: 無言で握りつぶさない]。
+    ///
+    /// - Note: **待つのを増やしても直らない** [NV90-01][NV90-04]。当初は
+    ///   「SMB では削除直後のフォルダ削除が一時的に失敗する」と考えて回数と
+    ///   間隔の見直しを予定していたが、1-16b で測り直したところ**時間とは
+    ///   無関係**だった（8章 §8.11.14）。SMB は Windows 由来の
+    ///   delete-on-close 意味論を持ち、**消した子のハンドルを誰かが開いた
+    ///   ままだと親が `ENOTEMPTY` になり、5 秒待っても解けず、閉じた瞬間に
+    ///   解ける**（ローカルの APFS では起きない）。1 回だけ残しているのは、
+    ///   外部プロセスが偶然その瞬間だけ掴んでいた場合に効くことがあるため。
     private static func removePartialWrite(at url: URL) {
         let fm = FileManager.default
         for attempt in 0..<2 {
@@ -1103,6 +1111,7 @@ public actor FileOperationService {
                 if attempt == 0 { Thread.sleep(forTimeInterval: 0.05); continue }
                 Log.fileOps.warning(
                     "中断後の書きかけを片付けられませんでした: \(Log.path(url)) — \(error.localizedDescription)"
+                        + "（このフォルダ内のファイルを開いているアプリがあると、こうなることがあります）"
                 )
             }
         }

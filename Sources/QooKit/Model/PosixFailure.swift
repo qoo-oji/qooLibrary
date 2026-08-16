@@ -76,7 +76,12 @@ public enum PosixFailure {
         case EIO:
             return "入出力エラーが起きました。ディスクが壊れているか、接続が外れた可能性があります。"
         case ENOTEMPTY:
-            return "フォルダの中身が空ではありません。"
+            // **「空ではありません」と言い切らない** [NV90-03]。SMB は
+            // Windows 由来の delete-on-close 意味論を持ち、**消したファイルの
+            // ハンドルを誰かが開いたままだと、空になっていてもこれを返す**
+            // （1-16b の実測。ローカルの APFS では起きない）。空にしたのに
+            // 消せない状況で「空にしてください」と案内すると嘘になる。
+            return "フォルダを空にできませんでした。中のファイルを開いているアプリがあるかもしれません。"
         case EINVAL:
             // フォルダを自身の中へ移そうとした場合などがここに来る。事前検査
             // （`FileOperationError.destinationInsideSource`）で先に弾いている
@@ -140,7 +145,7 @@ public enum PosixFailure {
         case EIO:
             return "接続を確認し、ディスクユーティリティでボリュームを検査してください。"
         case ENOTEMPTY:
-            return "中身を空にしてから、もう一度お試しください。"
+            return "このフォルダの中のファイルを開いているアプリがあれば閉じてから、もう一度お試しください。"
         case ELOOP, EXDEV, ENOTDIR, EISDIR, EINVAL:
             return nil // 状況依存で、一般に示せる次の手が無い
 

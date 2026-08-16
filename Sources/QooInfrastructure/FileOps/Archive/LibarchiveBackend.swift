@@ -158,6 +158,19 @@ public struct LibarchiveBackend: ArchiveReading {
                 throw ExtractError.writeFailed(reason: PosixFailure.reason(errno) + (PosixFailure.recovery(errno).map { " " + $0 } ?? ""))
             }
             let handle = try FileHandle(forWritingTo: validated.targetURL)
+            // 後始末を `defer` に一本化する。以前は throw のたびに
+            // `try? handle.close()` を並べており、このループは中断・上限超過・
+            // 書き込み失敗と抜け道が 6 つあって読みづらかった。
+            //
+            // - Note: **資源リークの修正ではない。** `FileHandle` は解放時に
+            //   fd を閉じる（`throw` で抜けた場合も含めて実測で確認済み）ので、
+            //   以前の書き方でも漏れてはいなかった。閉じる時点を明示にして、
+            //   後から `throw` を足したときに考えなくて済むようにするためのもの。
+            //
+            // 正常終了時だけは `try` で閉じて**失敗を伝える** — 書き込みの
+            // 最終フラッシュはここで失敗し得る（空き容量が尽きた場合など）。
+            var closed = false
+            defer { if !closed { try? handle.close() } }
 
             let bufferSize = 256 * 1024
             var buffer = [UInt8](repeating: 0, count: bufferSize)
@@ -166,7 +179,6 @@ public struct LibarchiveBackend: ArchiveReading {
                     archive_read_data(reader, ptr.baseAddress, bufferSize)
                 }
                 if bytesRead < 0 {
-                    try? handle.close()
                     let message = Self.errorMessage(reader)
                     throw Self.passphraseError(from: message, suppliedPassphrase: options.passphrase != nil)
                         ?? ExtractError.backendFailure(message)
@@ -177,12 +189,10 @@ public struct LibarchiveBackend: ArchiveReading {
                 // 判定する [EX-20]。
                 totalWritten += Int64(bytesRead)
                 if totalWritten > options.limits.maxUncompressedBytes {
-                    try? handle.close()
                     throw ExtractError.expansionLimitExceeded(limit: options.limits.maxUncompressedBytes)
                 }
                 let ratio = Double(totalWritten) / compressedSizeDenominator
                 if ratio > options.limits.ratioAbort {
-                    try? handle.close()
                     throw ExtractError.compressionRatioExceeded(limit: options.limits.ratioAbort)
                 }
 
@@ -197,7 +207,6 @@ public struct LibarchiveBackend: ArchiveReading {
                 do {
                     try handle.write(contentsOf: Data(bytes: buffer, count: bytesRead))
                 } catch {
-                    try? handle.close()
                     throw Self.writeFailure(error)
                 }
                 // 巨大な 1 エントリでもバーが動くよう、バイト単位でも報告する
@@ -209,19 +218,18 @@ public struct LibarchiveBackend: ArchiveReading {
                 ))
 
                 if Cancellation.isRequested {
-                    try? handle.close()
                     throw ExtractError.cancelled
                 }
                 // 巨大な 1 エントリの途中でも止まれるようにする。
                 if let token = options.pauseToken, token.isPaused {
                     token.waitWhilePaused()
                     if Cancellation.isRequested {
-                        try? handle.close()
-                        throw ExtractError.cancelled
+                            throw ExtractError.cancelled
                     }
                 }
             }
             try handle.close()
+            closed = true
             extractedCount += 1
             options.progress?.report(OperationProgress(
                 completedBytes: totalWritten,
