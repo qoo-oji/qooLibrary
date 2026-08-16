@@ -141,22 +141,141 @@ public actor FileOperationService {
     ///   ここから元を書き換えれば「処理中の書き換え」を決定的に再現できる
     ///   （進捗の報告は 100ms 間引きのため、速いコピーでは完了後にしか出ず
     ///   再現に使えないことを実測で確認した）。
+    /// **運んでいる最中に、元ファイルが実際に書き換えられたか。**
+    ///
+    /// ## なぜ要るのか（実測で再現）
+    /// 他のアプリが書き込み中のファイル（ダウンロード中、書き出し中の動画）を
+    /// コピーすると、`copyfile` は**その時点の姿を写して成功を返す**。実測では
+    /// 72.3MB を写したあと元は 84.9MB まで伸びた。移動はこのあと元を消すので、
+    /// **書き足された 12.6MB は永久に失われる**。`flock` は掛かっておらず、
+    /// 排他では検出できない。
+    ///
+    /// ## 更新日時だけの差で判定してはならない [1-16b の実測]
+    /// **SMB は、書き込み直後にクライアント側の暫定的な更新日時を返し、
+    /// 数百ミリ秒後にサーバの正式な値へ差し替える。** 実測（QNAP/Samba）:
+    ///
+    /// | 元ファイルを作ってからコピーするまで | 前後の更新日時 |
+    /// |---|---|
+    /// | 0 ms | **変化（+9.9ms）** |
+    /// | 100 ms | **変化（+116ms）** |
+    /// | 500 ms 以上 | 同じ |
+    ///
+    /// 落ち着いたあとは、読んでもコピーしても変わらない。`fsync` しても
+    /// 変わる（＝書き込みの永続性ではなく**属性キャッシュの整合**の問題）。
+    /// ローカル（APFS）では一度も起きない。
+    ///
+    /// 以前はここで即座に失敗させていたため、**NAS 上に作ったばかりのファイルを
+    /// 続けて移動・コピーすると「処理中に元が変わりました」と拒否されていた**
+    /// （展開してすぐ移動する、といった連続操作で踏む）。
+    ///
+    /// ## だから「大きさ」と「内容」で決める
+    /// | 変化 | 判定 | 理由 |
+    /// |---|---|---|
+    /// | 大きさ・実体（inode）が変わった | **書き換えられた** | 書き足し・差し替えの確実な印 |
+    /// | 更新日時だけが変わった | **内容で決める**（`MoveVerification`）| 上記の偽陽性がここに来る |
+    /// | まったく同じ | 内容で決める | FAT は更新日時が 2 秒精度で、同じに見えてしまう |
+    ///
+    /// つまり**判定の最終根拠は常に内容**であり、更新日時は「内容まで確かめる
+    /// 価値があるか」を決めるだけになった。捨てた検出力は「大きさが同じまま
+    /// 中身が入れ替わり、しかも抜き取った 3 箇所がすべて一致する」場合だけで、
+    /// 「NAS 上のふつうの移動が失敗する」という確実な害と引き換えにするだけの
+    /// 価値は無いと判断した。
+    ///
+    /// - Note: 内容の突き合わせは**更新日時に差があるときだけ**走る。
+    ///   ふつうの経路では `stat` 2 回ぶんしか増えない。
+    /// - Note: `internal`（`private` ではない）にしてあるのは、この規則を
+    ///   テストから直接確かめるため（`moveItem` と同じ理由）。分岐が 4 つあり、
+    ///   そのうち 2 つは**コピーの最中に元を書き換える**という時間依存の
+    ///   段取りでしか再現できない。規則そのものを直に呼べれば、空振りしない
+    ///   テストを確実に書ける［CLAUDE.md §6.1 の「検査を外したら本当に
+    ///   落ちるか」を確かめられる形にしておく］。
+    static func sourceWasModified(
+        before: FileContentStamp?, source: URL, destination: URL
+    ) -> Bool {
+        // 元が既に無い（移動の完了後）なら比べようがない。断らない側に倒す。
+        guard let before, let after = try? FileMetadata.stamp(of: source) else { return false }
+        if before.size != after.size || before.identity != after.identity {
+            Log.fileOps.error(
+                "運んでいる間に元が変わりました（大きさ \(before.size) → \(after.size)）: \(Log.path(source))"
+            )
+            return true
+        }
+        if before != after {
+            Log.fileOps.debug("更新日時だけが変わったため内容で確かめます: \(Log.path(source))")
+        }
+        return !MoveVerification.looksIdentical(source: source, destination: destination)
+    }
+
+    /// **宛先が既にあるなら失敗する改名。** 成功なら `0`、失敗ならその `errno`。
+    ///
+    /// ## なぜ素の `rename(2)` ではないのか [レビューで発見]
+    /// `rename(2)` は宛先を**黙って上書きする**ため、`FileManager.moveItem` が
+    /// 持っていた「既にあるなら失敗する」安全弁を失っていた（コピー側は
+    /// `COPYFILE_EXCL` を保っているのに移動側だけ穴が空く非対称な状態だった）。
+    /// 衝突は事前に解決してある約束なので、これは取りこぼしたときに健康な
+    /// ファイルを書き潰さないための最後の砦である。
+    ///
+    /// ## なぜ縮退経路が要るのか [1-16b の実測]
+    /// **`renamex_np` は SMB では使えない。** 実測（QNAP/Samba、`/Volumes` 上の
+    /// 使い捨てフォルダ）:
+    ///
+    /// | 呼び出し | SMB | ローカル(APFS) |
+    /// |---|---|---|
+    /// | `rename(2)` | 成功 | 成功 |
+    /// | `renamex_np(…, 0)` | 成功 | 成功 |
+    /// | **`renamex_np(…, RENAME_EXCL)`（宛先なし）** | **ENOTSUP(45)** | 成功 |
+    /// | `renamex_np(…, RENAME_EXCL)`（**宛先あり**）| EEXIST(17) | EEXIST(17) |
+    ///
+    /// **最後の 2 行が食い違うのが罠だった。** smbfs は「宛先の有無」を先に
+    /// 見るので、**衝突している場合だけ**は `EEXIST` を返して正しく見える。
+    /// 8章 §8.11.2 が `RENAME_EXCL の実効 ○ ○ ○ [普遍]` と記録していたのは
+    /// **衝突する場合しか試していなかったため**で、ふつうの（宛先が無い）移動は
+    /// 一律 `ENOTSUP` で失敗していた——つまり**共有の中でファイルを移動する
+    /// 操作がすべて壊れていた**（D&D・カット＆ペースト・「ここに項目を移動」）。
+    ///
+    /// 教訓は CLAUDE.md §6.1 のもの、すなわち「興味のあるケースだけ測って
+    /// 一般化するな」。能力の有無は**その API を実際に呼んで `ENOTSUP` が
+    /// 返るかで判断する**（ボリューム種別で分岐しない）[NV-80]。
+    ///
+    /// ## 縮退したときに何を失うか
+    /// アトミック性だけを失う。`lstat` と `rename(2)` の間に他者が同じ名前を
+    /// 作れば上書きし得るが、その窓はマイクロ秒規模で、本アプリは多クライアント
+    /// 同時編集を前提にしないと宣言している [NV-61]。**「移動そのものができない」
+    /// より、この窓を受け入れるほうが害が小さい**（誤って断らない原則）。
+    private static func exclusiveRename(from source: URL, to target: URL) -> Int32 {
+        // `Darwin.` を明示するのは、素の名前がこの型自身の
+        // `rename(_:to:options:)` に解決されてしまうため。
+        if Darwin.renamex_np(source.path, target.path, UInt32(RENAME_EXCL)) == 0 { return 0 }
+        let code = errno
+        guard code == ENOTSUP || code == EOPNOTSUPP else { return code }
+        return renameCheckingDestinationFirst(from: source, to: target)
+    }
+
+    /// ``exclusiveRename(from:to:)`` の縮退経路。**自分で衝突を見てから改名する。**
+    ///
+    /// 素の `rename(2)` は宛先を黙って上書きする（実測: APFS・UDF とも上書きし、
+    /// 宛先の中身が置き換わった）。ここで先に `lstat` するのが、非対応の
+    /// ボリュームで健康なファイルを守る唯一の手立てになる。
+    ///
+    /// - Note: `internal`（`private` ではない）にしてあるのは、**この経路だけを
+    ///   切り離して確かめるため**。`exclusiveRename` 越しには到達できない —
+    ///   非対応のボリューム（SMB・UDF）は「宛先がある場合」に限って
+    ///   `EEXIST` を返すので、衝突を試すと縮退経路へ入る前に弾かれてしまう
+    ///   （最初に書いたテストはこれで**空振り**していた。変異検査で発覚）。
+    static func renameCheckingDestinationFirst(from source: URL, to target: URL) -> Int32 {
+        var existing = stat()
+        if lstat(target.path, &existing) == 0 { return EEXIST }
+        errno = 0
+        if Darwin.rename(source.path, target.path) == 0 { return 0 }
+        return errno
+    }
+
     static func moveItem(
         from source: URL, to target: URL, pauseToken: PauseToken? = nil,
         onBytesCopied: @escaping (Int64) -> Void
     ) throws -> FileCopyEngine.Outcome {
-        // **`renamex_np` + `RENAME_EXCL` を使う** [レビューで発見]。素の
-        // `rename(2)` は宛先を**黙って上書きする**ため、`FileManager.moveItem`
-        // が持っていた「既にあるなら失敗する」安全弁を失っていた（コピー側は
-        // `COPYFILE_EXCL` を保っているのに移動側だけ穴が空いている、という
-        // 非対称な状態だった）。衝突は事前に解決してある約束なので、ここは
-        // 取りこぼしたときに健康なファイルを書き潰さないための最後の砦。
-        // `Darwin.` を明示するのは、素の名前がこの型自身の
-        // `rename(_:to:options:)` に解決されてしまうため。
-        if Darwin.renamex_np(source.path, target.path, UInt32(RENAME_EXCL)) == 0 {
-            return .completed(bytes: 0)
-        }
-        let renameErrno = errno
+        let renameErrno = Self.exclusiveRename(from: source, to: target)
+        if renameErrno == 0 { return .completed(bytes: 0) }
         guard renameErrno == EXDEV else {
             // **`copyFailed` に寄せる** [ER-03]。以前はここだけ `strerror` の
             // 英語（「Read-only file system」等）を素で埋め込んでおり、
@@ -168,35 +287,16 @@ public actor FileOperationService {
             )
         }
         // **運ぶ前後で元ファイルが変わっていないことを確かめてから消す**
-        //［監査で発見、実測で再現］。
-        //
-        // 他のアプリが書き込み中のファイル（ダウンロード中、書き出し中の動画
-        // など）をコピーすると、`copyfile` は**その時点の姿を写して成功を
-        // 返す**。実測では 72.3MB を写したあと元は 84.9MB まで伸びた。
-        // 移動はこのあと元を消すので、**書き足された 12.6MB は永久に失われる**。
-        // `flock` は掛かっていないことも実測済みで、排他では検出できない。
-        //
-        // 変わっていたら**元を消さない**。写した内容は最新ではないので、
-        // 中途半端なコピーの方を片付けて失敗として返す。
+        //［監査で発見、実測で再現］。変わっていたら**元を消さない** — 写した
+        // 内容は最新ではないので、中途半端なコピーの方を片付けて失敗を返す。
+        // 判定の規則そのものは ``sourceWasModified(before:source:destination:)``
+        // にある（更新日時だけの差では断らない理由もそこに書いてある）。
         let before = try? FileMetadata.stamp(of: source)
         let outcome = try FileCopyEngine.copy(
             from: source, to: target, pauseToken: pauseToken, onBytesCopied: onBytesCopied
         )
         guard case .completed = outcome else { return outcome }
-        if let before, let after = try? FileMetadata.stamp(of: source), before != after {
-            try? FileManager.default.removeItem(at: target)
-            throw FileOperationError.sourceChangedDuringOperation(source)
-        }
-        // **更新日時に依存しない確認を重ねる**［ユーザー指摘: NAS の OS は
-        // 千差万別で、手元の 1 台で確かめられたことを一般化できない］。
-        //
-        // 上の検査は更新日時とサイズを見るが、その精度は書き込み先次第で、
-        // FAT は 2 秒（実測でナノ秒が常に 0）。1 秒精度のサーバなら、
-        // 「同じ大きさのまま中身が入れ替わる」書き込み（プリアロケートした
-        // 領域へ書く torrent など）を取り逃がす。**取り逃がした先にあるのは
-        // 元ファイルの削除＝データ喪失**なので、内容そのものを抜き取りで
-        // 突き合わせてから消す（`MoveVerification`）。
-        guard MoveVerification.looksIdentical(source: source, destination: target) else {
+        guard !Self.sourceWasModified(before: before, source: source, destination: target) else {
             Log.fileOps.error("移動の検証に失敗したため元を残します: \(Log.path(source))")
             try? FileManager.default.removeItem(at: target)
             throw FileOperationError.sourceChangedDuringOperation(source)
@@ -405,7 +505,7 @@ public actor FileOperationService {
         let unlocked = unlockingFirst ? unlockRecursively(item) : []
         let before = try? identity(of: item)
         do {
-            try FileManager.default.removeItem(at: item) // [FM-14]
+            try removeAbsorbingTransientFailure(at: item) // [FM-14]
             return .removed(before: before)
         } catch {
             // 削除できなかった以上、外したロックは元に戻す。さもないと
@@ -414,6 +514,70 @@ public actor FileOperationService {
             relock(unlocked)
             return .failed(reason: error.localizedDescription)
         }
+    }
+
+    /// **一過性の削除失敗だけを吸収して消す。** それ以外はそのまま投げる。
+    ///
+    /// ## なぜ要るのか [1-16b の実測]
+    /// SMB では、中身のあるフォルダを `FileManager.removeItem` で消すと
+    /// **5 回に 1 回ほど 1 回目が失敗する**（実 NAS で 30 回中 6 回）。返るのは
+    /// `EPERM` で、Foundation はこれを
+    /// **「アクセス権がないため削除できませんでした」**と説明する——
+    /// 権限は何も問題ないので、ユーザーには意味の分からない嘘になる。
+    /// ローカル（APFS）では一度も起きない。
+    ///
+    /// ## 「待っても直らない」失敗とは別物である
+    /// §8.11.12（NV-90）は「待って再試行する設計にしない」と定めているが、
+    /// **あれは `ENOTEMPTY` の話**である。両者は原因も挙動も違う:
+    ///
+    /// | 失敗様式 | errno | 原因 | 待って直るか |
+    /// |---|---|---|---|
+    /// | NV-90 | `ENOTEMPTY` | **外部**が消した子のハンドルを開いたまま | **直らない**（5 秒待っても。閉じた瞬間に解ける）|
+    /// | これ | `EPERM` | 自分で消した子がサーバ側で片付くまでの隙間 | **必ず直る**（実測 6/6。うち 4 件は 100ms 以内）|
+    ///
+    /// だから **`ENOTEMPTY` は再試行の対象にしない**。あれを繰り返しても
+    /// 待ち時間が伸びるだけで、しかも `PosixFailure` は「開いているアプリが
+    /// あるかもしれない」という正しい案内を用意してある [NV90-03]。
+    private nonisolated static func removeAbsorbingTransientFailure(at item: URL) throws {
+        var attempt = 0
+        while true {
+            do {
+                try FileManager.default.removeItem(at: item)
+                return
+            } catch {
+                // 既に無いなら目的は達している（リンク切れのシンボリックリンクも
+                // 「ある」と数える `itemExists` を使う）。
+                guard itemExists(at: item) else { return }
+                attempt += 1
+                guard attempt <= AppLimits.FileOperations.transientRemovalRetries,
+                      isTransientRemovalFailure(error),
+                      !Cancellation.isRequested
+                else { throw error }
+                Log.fileOps.debug(
+                    "削除の一過性の失敗を試し直します（\(attempt) 回目）: \(Log.path(item))"
+                )
+                Thread.sleep(forTimeInterval: AppLimits.FileOperations.transientRemovalRetryDelay)
+            }
+        }
+    }
+
+    /// その削除失敗が「もう一度試せば直る種類」か。
+    ///
+    /// 判定は **`errno` で行い、ボリューム種別では分岐しない** [NV-80]。
+    /// `ENOTEMPTY` を含めてはならない（上記の表を参照）。
+    nonisolated static func isTransientRemovalFailure(_ error: any Error) -> Bool {
+        let nsError = error as NSError
+        let posix: Int?
+        if nsError.domain == NSPOSIXErrorDomain {
+            posix = nsError.code
+        } else if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError,
+                  underlying.domain == NSPOSIXErrorDomain {
+            posix = underlying.code
+        } else {
+            posix = nil
+        }
+        guard let posix else { return false }
+        return posix == Int(EPERM) || posix == Int(EBUSY)
     }
 
     /// シンボリックリンク自体の存在も「ある」と判定する。
@@ -902,10 +1066,14 @@ public actor FileOperationService {
         // 中途半端なコピーを残すと、ユーザーは完全な控えを取ったと
         // 思い込む（そのあと元を消せばデータを失う）。
         // 元が残っている場合だけ比べる（移動では既に消えている）。
+        //
+        // **以前はここで更新日時の差だけを見ていた。** それだと SMB 上に
+        // 作ったばかりのファイルのコピーが偽陽性で失敗する（1-16b の実測、
+        // ``sourceWasModified(before:source:destination:)`` 参照）。あわせて、
+        // コピー経路には内容の突き合わせが無く「更新日時が同じまま中身が
+        // 変わる」場合を取り逃がしていた——共通の規則へ寄せて両方直している。
         if case .completed = outcome,
-           let stampBefore,
-           let stampAfter = try? FileMetadata.stamp(of: item),
-           stampBefore != stampAfter {
+           Self.sourceWasModified(before: stampBefore, source: item, destination: resolved.target) {
             try? FileManager.default.removeItem(at: resolved.target)
             throw FileOperationError.sourceChangedDuringOperation(item)
         }
@@ -1088,32 +1256,24 @@ public actor FileOperationService {
     /// 運び終えていない項目は受領書を返さない＝ Undo にも履歴にも載らないので、
     /// ユーザーには片付ける手立てが無い。
     ///
-    /// 一時的な失敗（`EBUSY` など、直前まで書いていた相手なら起こり得る）に
-    /// 備えて一度だけ待って試し直し、それでも駄目なら**ログには必ず残す**
-    /// [ER-04: 無言で握りつぶさない]。
+    /// 一過性の失敗は ``removeAbsorbingTransientFailure(at:)`` が吸収する。
+    /// それでも駄目なら**ログには必ず残す** [ER-04: 無言で握りつぶさない]。
     ///
-    /// - Note: **待つのを増やしても直らない** [NV90-01][NV90-04]。当初は
-    ///   「SMB では削除直後のフォルダ削除が一時的に失敗する」と考えて回数と
-    ///   間隔の見直しを予定していたが、1-16b で測り直したところ**時間とは
-    ///   無関係**だった（8章 §8.11.12）。SMB は Windows 由来の
-    ///   delete-on-close 意味論を持ち、**消した子のハンドルを誰かが開いた
-    ///   ままだと親が `ENOTEMPTY` になり、5 秒待っても解けず、閉じた瞬間に
-    ///   解ける**（ローカルの APFS では起きない）。1 回だけ残しているのは、
-    ///   外部プロセスが偶然その瞬間だけ掴んでいた場合に効くことがあるため。
+    /// - Note: 失敗の様式によって「待てば直る／直らない」が分かれる。
+    ///   自分で消した子が片付くまでの隙間（`EPERM`）は待てば必ず直るが、
+    ///   **外部が消した子のハンドルを開いたままの場合（`ENOTEMPTY`）は
+    ///   待っても直らない** [NV90-01]——だから下の警告文は「開いている
+    ///   アプリがあるかもしれない」と伝える。詳しくは 8章 §8.11.12 と
+    ///   ``removeAbsorbingTransientFailure(at:)`` の表を参照。
     private static func removePartialWrite(at url: URL) {
-        let fm = FileManager.default
-        for attempt in 0..<2 {
-            do {
-                try fm.removeItem(at: url)
-                return
-            } catch {
-                guard fm.fileExists(atPath: url.path) else { return } // 既に無い＝目的は達成
-                if attempt == 0 { Thread.sleep(forTimeInterval: 0.05); continue }
-                Log.fileOps.warning(
-                    "中断後の書きかけを片付けられませんでした: \(Log.path(url)) — \(error.localizedDescription)"
-                        + "（このフォルダ内のファイルを開いているアプリがあると、こうなることがあります）"
-                )
-            }
+        do {
+            try removeAbsorbingTransientFailure(at: url)
+        } catch {
+            guard itemExists(at: url) else { return } // 既に無い＝目的は達成
+            Log.fileOps.warning(
+                "中断後の書きかけを片付けられませんでした: \(Log.path(url)) — \(error.localizedDescription)"
+                    + "（このフォルダ内のファイルを開いているアプリがあると、こうなることがあります）"
+            )
         }
     }
 

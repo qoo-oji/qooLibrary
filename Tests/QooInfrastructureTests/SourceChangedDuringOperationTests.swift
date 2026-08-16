@@ -210,4 +210,94 @@ import Testing
         let copied = volume.mountPoint.appendingPathComponent(source.lastPathComponent)
         #expect((try? copied.resourceValues(forKeys: [.fileSizeKey]))?.fileSize == 20_000_000)
     }
+
+    // MARK: - 更新日時だけが動いた場合 [1-16b の実測]
+
+    /// **更新日時だけが変わっても、内容が同じなら断らないこと。**
+    ///
+    /// SMB は書き込み直後にクライアント側の暫定的な更新日時を返し、数百ミリ秒
+    /// 後にサーバの正式な値へ差し替える（実測: 作成 0ms 後のコピーで +9.9ms、
+    /// 100ms 後で +116ms、500ms 以降は安定）。以前はこの差だけで失敗させて
+    /// いたため、**NAS 上に作ったばかりのファイルを続けて移動・コピーすると
+    /// 拒否されていた**（展開してすぐ移動する、といった連続操作で踏む）。
+    ///
+    /// ここでは `utimensat` で更新日時だけを動かして同じ状況を作る。
+    @Test func aTimestampOnlyChangeDoesNotBlockTheOperation() async throws {
+        let root = try sandbox()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("settling.bin")
+        let destination = root.appendingPathComponent("settling-copy.bin")
+        try Data(repeating: 0x51, count: 128 * 1024).write(to: source)
+        try FileManager.default.copyItem(at: source, to: destination)
+
+        let before = try FileMetadata.stamp(of: source)
+        Self.bumpModificationTime(of: source, bySeconds: 3)
+        let after = try FileMetadata.stamp(of: source)
+        try #require(before != after, "更新日時を動かせていない（この検証は空振り）")
+        try #require(before.size == after.size, "大きさまで変わってしまっている")
+
+        #expect(
+            !FileOperationService.sourceWasModified(
+                before: before, source: source, destination: destination
+            ),
+            "更新日時だけの差で「書き換えられた」と判定している"
+        )
+    }
+
+    /// **逆方向の固定** — 更新日時が動いていて、しかも**中身が違う**なら、
+    /// これは本物の書き換えなので断ること。前のテストが「常に false を返す」
+    /// 実装でも通ってしまわないよう、対で置いておく。
+    @Test func aTimestampChangeWithDifferentContentIsStillRefused() throws {
+        let root = try sandbox()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("rewritten.bin")
+        let destination = root.appendingPathComponent("stale-copy.bin")
+        try Data(repeating: 0x51, count: 128 * 1024).write(to: source)
+        // 写した控えは**古い内容**（大きさは同じ）。
+        try Data(repeating: 0x41, count: 128 * 1024).write(to: destination)
+
+        let before = try FileMetadata.stamp(of: source)
+        Self.bumpModificationTime(of: source, bySeconds: 3)
+
+        #expect(
+            FileOperationService.sourceWasModified(
+                before: before, source: source, destination: destination
+            ),
+            "中身が違うのに通してしまっている（元を消せばデータを失う）"
+        )
+    }
+
+    /// **大きさが変わっていれば、内容を読むまでもなく書き換えである。**
+    @Test func aSizeChangeIsRefusedWithoutReadingTheContent() throws {
+        let root = try sandbox()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("growing.bin")
+        let destination = root.appendingPathComponent("partial-copy.bin")
+        try Data(repeating: 0x51, count: 1024).write(to: source)
+        try FileManager.default.copyItem(at: source, to: destination)
+
+        let before = try FileMetadata.stamp(of: source)
+        try Data(repeating: 0x51, count: 4096).write(to: source) // 書き足された
+
+        #expect(
+            FileOperationService.sourceWasModified(
+                before: before, source: source, destination: destination
+            )
+        )
+    }
+
+    /// 更新日時だけを動かす。`utimes` はマイクロ秒までしか扱えず**ナノ秒が
+    /// 0 になる**ため、既存の検査に別の理由で引っかかってしまう。ナノ秒まで
+    /// 保てる `utimensat` を使う［過去に `utimes` で空振りしたことがある］。
+    private static func bumpModificationTime(of url: URL, bySeconds seconds: Int) {
+        var info = stat()
+        guard stat(url.path, &info) == 0 else { return }
+        var times = [
+            timespec(tv_sec: info.st_atimespec.tv_sec, tv_nsec: info.st_atimespec.tv_nsec),
+            timespec(tv_sec: info.st_mtimespec.tv_sec + seconds, tv_nsec: info.st_mtimespec.tv_nsec),
+        ]
+        _ = times.withUnsafeMutableBufferPointer {
+            utimensat(AT_FDCWD, url.path, $0.baseAddress, 0)
+        }
+    }
 }
