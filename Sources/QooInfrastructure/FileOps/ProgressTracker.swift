@@ -35,6 +35,8 @@ final class ProgressTracker: @unchecked Sendable {
     private let reporter: ProgressReporter?
     private var progress: OperationProgress
     private var lastReportedAt: ContinuousClock.Instant?
+    /// 今の項目で、バイトの報告を 1 度でも送ったか（leading edge の判定）。
+    private var sentFirstBytesOfItem = false
 
     /// 実際に書き込まれるバイト数の見積もり。**空き容量の事前検査はこれを使う**
     /// [ER-03]。クローンで済む場合と、数えている途中で中断された場合は `nil`
@@ -82,14 +84,25 @@ final class ProgressTracker: @unchecked Sendable {
         self.progress = OperationProgress(totalBytes: totalBytes, totalItems: items.count)
     }
 
-    func begin() { mutate(force: true) { _ in } }
+    func begin() { mutate(force: true, beginsItem: true) { _ in } }
 
     func startItem(_ item: URL) {
-        mutate(force: true) { $0.currentItemName = item.lastPathComponent }
+        mutate(force: true, beginsItem: true) { $0.currentItemName = item.lastPathComponent }
     }
 
     /// **別スレッドから呼ばれる。** `copyfile` の status コールバックは
     /// `FileIO.perform` が走らせているディスパッチスレッドの上にいる。
+    ///
+    /// **項目の最初のバイトは間引かない（leading edge）。** `startItem` が
+    /// `lastReportedAt` を更新するため、素朴な間引きだと項目開始から
+    /// `updateInterval` 以内のバイト報告はすべて捨てられる——速いディスクでは
+    /// **1 項目のコピー全体がその窓に収まり、「コピーの最中」の報告が 1 度も
+    /// 出ない**。CI（ページキャッシュに乗ったスパースイメージ）で実際に起き、
+    /// 「最中を観測する」テスト（`PauseIntegrationTests`／
+    /// `ReplaceBackupJournalTests`）が、最初に届く `completedBytes > 0` の報告
+    /// ＝完了報告を「最中」と取り違えて落ちた。最初の 1 回を即時に送れば
+    /// 「最初の報告の時点で残りは高々全体−1 チャンク」が速度によらず成立し、
+    /// 進捗バーも即座に動き始める。
     func addBytes(_ bytes: Int64) {
         mutate(force: false) { $0.completedBytes += bytes }
     }
@@ -101,19 +114,25 @@ final class ProgressTracker: @unchecked Sendable {
     /// 更新と報告を 1 つのロックの下で行う。**報告する値をロックの中で
     /// 確定させてから外で渡す**——`reporter` の実装が何をするか分からないので、
     /// ロックを持ったまま呼ばない（呼び出し先がまたロックを取ると詰まる）。
-    private func mutate(force: Bool, _ change: (inout OperationProgress) -> Void) {
+    private func mutate(force: Bool, beginsItem: Bool = false, _ change: (inout OperationProgress) -> Void) {
         lock.lock()
         change(&progress)
+        if beginsItem { sentFirstBytesOfItem = false }
         let now = ContinuousClock.now
         let shouldReport: Bool
         if force {
             shouldReport = true
+        } else if !sentFirstBytesOfItem {
+            shouldReport = true // 項目の最初のバイトは即時に送る（`addBytes` のコメント参照）
         } else if let last = lastReportedAt, now - last < Self.updateInterval {
             shouldReport = false
         } else {
             shouldReport = true
         }
-        if shouldReport { lastReportedAt = now }
+        if shouldReport {
+            lastReportedAt = now
+            if !force { sentFirstBytesOfItem = true }
+        }
         let snapshot = progress
         lock.unlock()
 
