@@ -26,7 +26,7 @@ import QooKit
 /// 両立する。
 ///
 /// ## 中断
-/// `Task.isCancelled` をコールバックから読む。`copyfile` は呼び出し元の
+/// `Cancellation.isRequested` をコールバックから読む。`copyfile` は呼び出し元の
 /// スレッドで同期的に走るので、タスクの文脈がそのまま生きている。
 /// UI 側は進捗シートの「キャンセル」でタスクを取り消すだけでよい。
 enum FileCopyEngine {
@@ -127,7 +127,7 @@ enum FileCopyEngine {
         let context = Unmanaged<CallbackContext>.fromOpaque(contextPointer).takeUnretainedValue()
 
         // 中断はどの段階でも受け付ける（大きな 1 ファイルの途中でも止まれる）。
-        if Task.isCancelled {
+        if Cancellation.isRequested {
             context.didCancel = true
             return COPYFILE_QUIT
         }
@@ -138,7 +138,7 @@ enum FileCopyEngine {
         // 抜けた直後に取り消しをもう一度見る。
         if let token = context.pauseToken, token.isPaused {
             token.waitWhilePaused()
-            if Task.isCancelled {
+            if Cancellation.isRequested {
                 context.didCancel = true
                 return COPYFILE_QUIT
             }

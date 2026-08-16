@@ -16,7 +16,13 @@ import Foundation
 /// ## 一時停止中でもキャンセルできること（この型の要）
 /// 素朴に「再開されるまで眠る」実装にすると、**一時停止した処理を止められなく
 /// なる**（キャンセルボタンを押しても、待っている側が目を覚まさない）。
-/// そのため短い間隔で目を覚まし、`Task.isCancelled` を見て抜ける。
+/// そのため短い間隔で目を覚まし、``Cancellation/isRequested`` を見て抜ける。
+///
+/// - Important: **`Task.isCancelled` を直接見てはいけない。** この待ちは
+///   `FileIO.perform` が借りたディスパッチスレッドの上で走ることがあり、
+///   そこには Task の文脈が無いので `Task.isCancelled` は常に `false` を
+///   返す。実際にそれで**一時停止した処理を二度と止められなくなり、
+///   テストが永久にハングした**（`Cancellation` のコメント参照）。
 public final class PauseToken: @unchecked Sendable {
     /// 目を覚まして取り消しを確認する間隔。人間の操作に対する反応としては
     /// 十分速く、待っている間の負荷は無視できる。
@@ -55,11 +61,11 @@ public final class PauseToken: @unchecked Sendable {
     }
 
     /// 一時停止中のあいだ待つ。取り消されたら即座に戻る（呼び出し側が
-    /// いつもどおり `Task.isCancelled` を見て後始末できるようにするため、
+    /// いつもどおり取り消しを見て後始末できるようにするため、
     /// ここでは何も投げない）。
     public func waitWhilePaused() {
         condition.lock()
-        while paused, !Task.isCancelled {
+        while paused, !Cancellation.isRequested {
             condition.wait(until: Date().addingTimeInterval(Self.wakeInterval))
         }
         condition.unlock()

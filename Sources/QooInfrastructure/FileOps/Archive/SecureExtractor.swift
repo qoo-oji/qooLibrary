@@ -118,7 +118,7 @@ public actor SecureExtractor {
         )
 
         let result = try await backend.extract(archiveURL, to: staging, options: extractOptions)
-        if Task.isCancelled { throw ExtractError.cancelled } // [EX-24]
+        if Cancellation.isRequested { throw ExtractError.cancelled } // [EX-24]
 
         // 弾いたエントリ（パストラバーサル・絶対パス・シンボリックリンク等）は
         // ユーザーには件数しか見えないため、**何をなぜ弾いたか**をログに残す
@@ -158,7 +158,7 @@ public actor SecureExtractor {
         // 残り、しかも成功として扱われていた。ここで作ったものは
         // `.keepBoth` で必ず新規に作った項目なので、消しても既存のファイルを
         // 巻き込まない。完全削除ではなくゴミ箱へ送る（取り違えても戻せる）。
-        if Task.isCancelled {
+        if Cancellation.isRequested {
             let created = receipts.map(\.toURL)
             if !created.isEmpty {
                 Log.archive.info("展開を中断したため、出しかけた \(created.count) 件を片付けます")

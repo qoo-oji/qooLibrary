@@ -1,4 +1,5 @@
 import Foundation
+import QooKit
 
 /// **ブロッキングなファイル I/O を実行する、ただ 1 つの窓口** [NV6-01〜03]。
 ///
@@ -24,19 +25,43 @@ import Foundation
 /// が行うのは**「待つのをやめる」ことだけ**で、走っている I/O は止まらない
 /// [NV6-03]。塞がったスレッドは戻ってこない前提で設計すること——それでも
 /// 「アプリが二度と動かない」よりはるかに良い。
+///
+/// ## 取り消しは `Cancellation` 経由でしか見えない【重要】
+/// **借りたスレッドには Task の文脈が無いので、`body` の中の
+/// `Task.isCancelled` は常に `false` を返す。** そこにあった取り消し判定は
+/// エラーも警告も出さずに死ぬ（実測で `PauseToken` が永久にハングした）。
+///
+/// ``perform(_:)`` は呼び出し元タスクの取り消しを ``QooKit/Cancellation/Flag``
+/// へ橋渡しし、`body` をその範囲の中で走らせる。**`body` の中とその先では
+/// `Task.isCancelled` ではなく `Cancellation.isRequested` を読むこと**
+/// （`QooInfrastructure/FileOps/` 配下では静的検査が強制する）。
 public enum FileIO {
     /// 同期のブロッキング処理を、協調プールとメインスレッドの外で実行する。
     ///
     /// - Important: `body` の中で `await` はできない（同期クロージャ）。
     ///   これは制約ではなく**意図**で、「ここは 1 かたまりのブロッキング
     ///   処理である」という境界を型で示している。
+    /// - Important: `body` の中で取り消しを見るときは
+    ///   `Cancellation.isRequested` を使う（`Task.isCancelled` は効かない）。
+    ///
+    /// 取り消されても**待つのをやめるのではなく、旗を立てて `body` に伝える**
+    /// だけである。`body` は最後まで走り、その結果がそのまま返る——中断できる
+    /// 処理なら `body` 自身が早く戻る。「待つのをやめたい」場合は
+    /// ``perform(waitingAtMost:_:)`` を使う。
     public static func perform<T: Sendable>(
         _ body: @escaping @Sendable () throws -> T
     ) async throws -> T {
-        try await withCheckedThrowingContinuation { continuation in
-            FileIOExecutor.shared.queue.async {
-                continuation.resume(with: Result { try body() })
+        let flag = Cancellation.Flag()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                FileIOExecutor.shared.queue.async {
+                    continuation.resume(with: Result { try Cancellation.withScope(flag) { try body() } })
+                }
             }
+        } onCancel: {
+            // 既に取り消されている状態で入った場合もここが呼ばれる（Swift の
+            // 保証）ので、`body` が走り出す前に旗が立つ経路も塞がっている。
+            flag.request()
         }
     }
 
@@ -44,10 +69,15 @@ public enum FileIO {
     public static func perform<T: Sendable>(
         _ body: @escaping @Sendable () -> T
     ) async -> T {
-        await withCheckedContinuation { continuation in
-            FileIOExecutor.shared.queue.async {
-                continuation.resume(returning: body())
+        let flag = Cancellation.Flag()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                FileIOExecutor.shared.queue.async {
+                    continuation.resume(returning: Cancellation.withScope(flag) { body() })
+                }
             }
+        } onCancel: {
+            flag.request()
         }
     }
 
@@ -79,14 +109,18 @@ public enum FileIO {
         let box = SingleResume<T>()
         return try await withCheckedThrowingContinuation { continuation in
             box.arm(continuation)
-            Task {
+            let work = Task {
                 do { box.resume(.success(try await operation())) }
                 catch { box.resume(.failure(error)) }
             }
             Task {
                 try? await Task.sleep(for: limit)
                 let seconds = Double(limit.components.seconds)
-                box.resume(.failure(FileOperationError.timedOut(seconds: seconds)))
+                guard box.resume(.failure(FileOperationError.timedOut(seconds: seconds))) else { return }
+                // 待つのはやめたが、**中断できる処理なら中断は伝える**。
+                // 走っている syscall は止まらない [NV6-03] ものの、区切りを
+                // 持つ処理（`FileIO.perform` に載った走査など）はここで降りる。
+                work.cancel()
             }
         }
     }
@@ -102,12 +136,15 @@ public enum FileIO {
             self.continuation = continuation
         }
 
-        func resume(_ result: Result<T, Error>) {
+        /// - Returns: この呼び出しが実際に応答したか（＝先着だったか）。
+        @discardableResult
+        func resume(_ result: Result<T, Error>) -> Bool {
             lock.lock()
             let pending = continuation
             continuation = nil
             lock.unlock()
             pending?.resume(with: result)
+            return pending != nil
         }
     }
 }

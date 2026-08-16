@@ -130,7 +130,7 @@ public actor ThumbnailService {
         // される。スロット待ちの間にキャンセルされたリクエストが、順番が
         // 回ってきた後もそのまま重いデコード処理へ進んでしまわないよう、
         // スロット取得直後にここで打ち切る。
-        if Task.isCancelled { return nil }
+        if Cancellation.isRequested { return nil }
 
         let generated: CGImage?
         switch PreviewableFileKind.of(url) {
@@ -175,7 +175,7 @@ public actor ThumbnailService {
     /// **逐次で回す**（`withTaskGroup` で並行にしない）[設計判断]。並行にすると
     /// 1 フォルダで `limit` 個のスロットを一度に占め、可視セルが数十ある画面で
     /// キューが偏る。逐次なら「見えているフォルダから順に埋まっていく」挙動に
-    /// なり、スクロールで画面外へ出れば `Task.isCancelled` 経由で即座に降りる。
+    /// なり、スクロールで画面外へ出れば `Cancellation.isRequested` 経由で即座に降りる。
     ///
     /// 生成できなかった子は黙って飛ばす（呼び出し側は返ってきた枚数だけ描く）。
     /// 1 枚も取れなければ空配列——呼び出し側は既定のフォルダアイコンへ
@@ -190,7 +190,7 @@ public actor ThumbnailService {
         let children = CoverImageSourceResolver.coverSourceChildren(for: folder, limit: limit)
         var images: [CGImage] = []
         for child in children {
-            if Task.isCancelled { break }
+            if Cancellation.isRequested { break }
             if let image = await thumbnail(for: child, maxPixelSize: maxPixelSize) {
                 images.append(image)
             }

@@ -44,6 +44,8 @@ jobs:
         run: swift Scripts/check-json-completeness.swift
       - name: Localization keys defined [ER-03]
         run: swift Scripts/check-localization-keys.swift
+      - name: Cancellation works off the cooperative pool [NV6-01]
+        run: swift Scripts/check-cancellation-usage.swift
 
   # QooKitTests。カバレッジ 80% 未満で失敗させる方針だが、テスト対象コードが
   # まだ存在しないフェーズ 0 の時点では実行のみ確認する [MT-01]。

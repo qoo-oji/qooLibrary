@@ -90,9 +90,9 @@ public struct LibarchiveBackend: ArchiveReading {
         var entryCount = 0
 
         while true {
-            if Task.isCancelled { throw ExtractError.cancelled }
+            if Cancellation.isRequested { throw ExtractError.cancelled }
             options.pauseToken?.waitWhilePaused()
-            if Task.isCancelled { throw ExtractError.cancelled }
+            if Cancellation.isRequested { throw ExtractError.cancelled }
 
             var entryPtr: OpaquePointer?
             let rc = archive_read_next_header(reader, &entryPtr)
@@ -208,14 +208,14 @@ public struct LibarchiveBackend: ArchiveReading {
                     currentItemName: validated.targetURL.lastPathComponent
                 ))
 
-                if Task.isCancelled {
+                if Cancellation.isRequested {
                     try? handle.close()
                     throw ExtractError.cancelled
                 }
                 // 巨大な 1 エントリの途中でも止まれるようにする。
                 if let token = options.pauseToken, token.isPaused {
                     token.waitWhilePaused()
-                    if Task.isCancelled {
+                    if Cancellation.isRequested {
                         try? handle.close()
                         throw ExtractError.cancelled
                     }
@@ -358,9 +358,9 @@ public struct LibarchiveBackend: ArchiveReading {
         // 中断・一時停止は項目の境界で受ける [EX-24 と同じ方針]。作りかけの
         // アーカイブはステージングにしか無く、`ArchiveCompressor` の `defer` が
         // 丸ごと捨てるので、途中で止めても半端な成果物は最終位置に残らない。
-        if Task.isCancelled { throw ExtractError.cancelled }
+        if Cancellation.isRequested { throw ExtractError.cancelled }
         pauseToken?.waitWhilePaused()
-        if Task.isCancelled { throw ExtractError.cancelled }
+        if Cancellation.isRequested { throw ExtractError.cancelled }
 
         let fm = FileManager.default
         var isDirectory: ObjCBool = false

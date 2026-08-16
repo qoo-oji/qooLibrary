@@ -1,4 +1,5 @@
 import Foundation
+import QooKit
 import Testing
 
 @testable import QooInfrastructure
@@ -130,6 +131,83 @@ import Testing
         let ranOnMain = await FileIO.perform { isRunningOnMainThread() }
         #expect(!ranOnMain)
     }
+
+    // MARK: - 取り消しが借りたスレッドまで届くこと [NV6-01][NV6-03]
+
+    /// **`Task.isCancelled` はここでは効かない**、という事実の記録。
+    ///
+    /// これがこの一連の仕組みの存在理由そのものなので、性質として固定する。
+    /// もし将来 `perform` の実装が変わって Task の文脈が保たれるように
+    /// なったなら、このテストが落ちて気づける（そのときは `Cancellation`
+    /// ごと不要になる）。
+    @Test func taskCancellationIsInvisibleOnTheBorrowedThread() async {
+        let task = Task {
+            await FileIO.perform { () -> Bool in
+                // 呼び出し元は下で必ず取り消されるが、ここには Task の
+                // 文脈が無いので `Task.isCancelled` は false のまま。
+                waitUntil(timeout: 1) { Task.isCancelled }
+            }
+        }
+        task.cancel()
+        #expect(await task.value == false, "借りたスレッドで Task.isCancelled が効いてしまっている")
+    }
+
+    /// **`Cancellation.isRequested` なら届く。**
+    ///
+    /// これが無いと、`PauseToken` の待ちも `FileCopyEngine` のキャンセルも
+    /// `ProgressTracker` の走査の打ち切りも、すべて静かに効かなくなる
+    /// （実測でテストが永久にハングした）。
+    @Test func cancellationReachesTheBorrowedThread() async {
+        let entered = DispatchSemaphore(value: 0)
+        let task = Task {
+            await FileIO.perform { () -> Bool in
+                entered.signal()
+                return waitUntil(timeout: 5) { Cancellation.isRequested }
+            }
+        }
+        // 本体が走り出してから取り消す（走り出す前だと下のテストと同じ経路になる）。
+        _ = await FileIO.perform { entered.wait(timeout: .now() + 5) == .success }
+        task.cancel()
+        #expect(await task.value, "取り消しが借りたスレッドへ届かなかった")
+    }
+
+    /// 走り出す**前**に取り消されていた場合も届く。
+    /// `withTaskCancellationHandler` は既に取り消された状態で入ると
+    /// `onCancel` を即座に呼ぶ、という Swift の保証に依存している。
+    @Test func cancellationBeforeTheWorkStartsIsAlsoVisible() async {
+        let task = Task {
+            // 走り出す前に確実に取り消されているよう、少し待ってから入る。
+            try? await Task.sleep(for: .milliseconds(50))
+            return await FileIO.perform { Cancellation.isRequested }
+        }
+        task.cancel()
+        #expect(await task.value, "開始前の取り消しが伝わらなかった")
+    }
+
+    /// 範囲の外では `Task.isCancelled` に委ねる。
+    /// これがあるので、呼ばれる側は**どちらの世界にいるかを知らずに済む**。
+    @Test func outsideAScopeItFallsBackToTheTask() async {
+        #expect(!Cancellation.isRequested)
+        let task = Task { () -> Bool in
+            waitUntil(timeout: 1) { Cancellation.isRequested }
+        }
+        task.cancel()
+        #expect(await task.value, "範囲の外で Task.isCancelled へ委ねていない")
+    }
+
+    /// 入れ子にしても、外側の範囲が壊れない。
+    @Test func nestedScopesRestoreTheOuterFlag() async {
+        let outer = Cancellation.Flag()
+        outer.request()
+        let observed = await FileIO.perform { () -> (inner: Bool, afterInner: Bool) in
+            Cancellation.withScope(outer) {
+                let inner = Cancellation.withScope(Cancellation.Flag()) { Cancellation.isRequested }
+                return (inner, Cancellation.isRequested)
+            }
+        }
+        #expect(observed.inner == false, "内側の範囲が外側の旗を見てしまっている")
+        #expect(observed.afterInner, "内側を抜けたあと外側の旗へ戻っていない")
+    }
 }
 
 // MARK: - テスト用の補助型
@@ -166,4 +244,17 @@ func waitRepeatedly(_ semaphore: DispatchSemaphore, times: Int, timeout: TimeInt
         return false
     }
     return true
+}
+
+/// `condition` が成り立つまで短い間隔で見張る。**同期の関数**なので
+/// `FileIO.perform` の中（＝ Task の文脈が無い場所）からも使える。
+///
+/// - Returns: 上限までに成り立ったか。
+func waitUntil(timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
+    let deadline = Date().addingTimeInterval(timeout)
+    while Date() < deadline {
+        if condition() { return true }
+        Thread.sleep(forTimeInterval: 0.01)
+    }
+    return condition()
 }

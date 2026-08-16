@@ -21,7 +21,7 @@ import QooUnrarBridge
 /// `qoo_unrar_extract_all` は**1 エントリ書き出すたびにコールバックを呼ぶ**
 /// ので、そこで進み具合を報告し、待ち、止められる［当初「一括 API なので
 /// 何もできない」と記録していたが誤りだった。宣言を読み直して判明］。
-/// コールバックは呼び出し元のスレッドで走るため、`Task.isCancelled` も
+/// コールバックは呼び出し元のスレッドで走るため、`Cancellation.isRequested` も
 /// `PauseToken` もそのまま使える（`copyfile` の status コールバックと同じ形）。
 ///
 /// **粒度は 1 エントリ**。`RARProcessFileW` は 1 エントリを書き終えるまで
@@ -83,13 +83,13 @@ public struct UnrarBackend: ArchiveReading {
             )
         }
 
-        if Task.isCancelled { throw ExtractError.cancelled }
+        if Cancellation.isRequested { throw ExtractError.cancelled }
         let box = CallbackBox()
         box.collectsEntries = false
         box.progress = options.progress
         box.pauseToken = options.pauseToken
         try Self.extractAll(url, to: staging, box: box)
-        if Task.isCancelled { throw ExtractError.cancelled }
+        if Cancellation.isRequested { throw ExtractError.cancelled }
 
         // 実バイト数によるリアルタイム中断ができないため、展開後に検証する
         // （上記コメント参照）。
@@ -191,7 +191,7 @@ public struct UnrarBackend: ArchiveReading {
         ))
         // 一時停止はここで待つ。待っている間もキャンセルは効く。
         box.pauseToken?.waitWhilePaused()
-        return Task.isCancelled ? 1 : 0
+        return Cancellation.isRequested ? 1 : 0
     }
 
     private static func list(_ url: URL) throws -> [ArchiveEntry] {

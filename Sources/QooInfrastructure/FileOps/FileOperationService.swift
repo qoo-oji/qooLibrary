@@ -12,6 +12,41 @@ import QooKit
 /// の `Command` 群、1-11 で実装）がそれを使って Undo を組み立てる、という設計
 /// [FS2-01] はそのまま踏襲している。エラーの提示自体は呼び出し側が
 /// `NotificationRouter`（1-12b で実装）経由で行う。
+///
+/// # ブロッキング I/O は必ず ``FileIO/perform(_:)-swift.type.method`` の中で行う [NV6-01]
+///
+/// **この型の `async` メソッドの本体で `FileManager`・`stat`・`copyfile` を
+/// 直に呼んではならない。** それらは応答しないサーバに当たると戻ってこず、
+/// `actor` のメソッドは協調スレッドプールの上で走るため、コア数ぶん塞ぐと
+/// **アプリの `async` 処理が全部止まる**（1-16b の実測、8章 §8.11.6）。
+/// SMB なら 30 秒で解放されるが、NFS の hard マウント（既定）では
+/// スレッドが永久に失われる。
+///
+/// したがって各メソッドは次の形をとる:
+///
+/// ```
+/// public func something(...) async throws -> Result {
+///     defer { announce(...) }                    // 通知は actor 上
+///     return try await FileIO.perform {          // ← ここから先がブロッキング
+///         ... FileManager / stat / copyfile ...
+///     }
+/// }
+/// ```
+///
+/// ## 副次的な効果 — `actor` も手放される
+/// `FileIO.perform` は呼び出し元を**必ず中断させる**ので、I/O のあいだ
+/// この `actor` は解放される。この型は**保持する状態を 1 つも持たない**ため
+/// 手放しても正しさを損なわず、**1 件のハングが他のファイル操作を巻き添えに
+/// しなくなる**。代償として同時に走る操作が交錯し得るが、`RENAME_EXCL` /
+/// `COPYFILE_EXCL` が「取りこぼした衝突で健康なファイルを黙って書き潰す」
+/// ことを構造的に防いでいるので、最悪でも `EEXIST` のエラーで済む
+/// （外部プロセスが同じ名前を作る可能性は元々あり、そちらと同じ扱い）。
+///
+/// ## 境界を見分ける目印
+/// `FileIO.perform` に渡すクロージャは `@Sendable` なので、その中から
+/// 呼べるのは `static` か `nonisolated` の要素だけ。**この型の
+/// `nonisolated` / `static` なメンバは「ブロッキング側」**、
+/// 素の（isolated な）メソッドは「オーケストレーション側」と読める。
 public actor FileOperationService {
     /// アプリ全体で単一のインスタンスを使う想定（`CommandStack.shared`/`LockManager.shared`
     /// と同じ方針 [11章 §11.2, §11.3]）。テストでは `init()` で独立インスタンスを作れる。
@@ -49,29 +84,31 @@ public actor FileOperationService {
     @discardableResult
     public func createDirectory(at url: URL, options: OpOptions = .init()) async throws -> OpReceipt {
         defer { announce([url]) }
-        // `withIntermediateDirectories: true` は対象がすでに存在していても
-        // エラーを投げない（Foundation の標準動作）。「新規フォルダ」は
-        // Finder と同じく既存の同名項目との衝突をエラーとして扱うべきのため、
-        // 事前に明示チェックする [実機検証で発見: 同名フォルダを重複作成しても
-        // 何も起きなかった]。
         // 名前の妥当性は URL を組み立てる前に呼び出し側でも見ているが、
         // ここでも徹底する（`FileOperationService` を直に使う経路が増えても
         // 「`/` を含む名前で入れ子のフォルダが 2 つできる」事故が起きないよう
-        // にするため。実測で再現済み）。
+        // にするため。実測で再現済み）。I/O を伴わないのでこの位置でよい。
         _ = try Self.validated(url.lastPathComponent)
-        let parent = url.deletingLastPathComponent()
-        guard FileManager.default.fileExists(atPath: parent.path) else {
-            throw FileOperationError.operationFailed(
-                "「\(parent.lastPathComponent)」が見つからないため、この中にフォルダを作成できません。"
-            )
+        return try await FileIO.perform {
+            // `withIntermediateDirectories: true` は対象がすでに存在していても
+            // エラーを投げない（Foundation の標準動作）。「新規フォルダ」は
+            // Finder と同じく既存の同名項目との衝突をエラーとして扱うべきのため、
+            // 事前に明示チェックする [実機検証で発見: 同名フォルダを重複作成しても
+            // 何も起きなかった]。
+            let parent = url.deletingLastPathComponent()
+            guard FileManager.default.fileExists(atPath: parent.path) else {
+                throw FileOperationError.operationFailed(
+                    "「\(parent.lastPathComponent)」が見つからないため、この中にフォルダを作成できません。"
+                )
+            }
+            try Self.checkDestinationIsWritable(parent)
+            guard !FileManager.default.fileExists(atPath: url.path) else {
+                throw FileOperationError.operationFailed("「\(url.lastPathComponent)」という名前の項目はすでに存在します。")
+            }
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true) // [FM-01]
+            Log.fileOps.info("createDirectory: \(Log.path(url))")
+            return OpReceipt(before: nil, after: try? Self.identity(of: url), fromURL: url, toURL: url, kind: .createDirectory)
         }
-        try Self.checkDestinationIsWritable(parent)
-        guard !FileManager.default.fileExists(atPath: url.path) else {
-            throw FileOperationError.operationFailed("「\(url.lastPathComponent)」という名前の項目はすでに存在します。")
-        }
-        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true) // [FM-01]
-        Log.fileOps.info("createDirectory: \(Log.path(url))")
-        return OpReceipt(before: nil, after: try? identity(of: url), fromURL: url, toURL: url, kind: .createDirectory)
     }
 
     public func copy(_ items: [URL], to destination: URL, options: OpOptions = .init()) async throws -> [OpReceipt] {
@@ -175,9 +212,11 @@ public actor FileOperationService {
     public func promoteFromStaging(
         _ staging: URL, to destination: URL, options: OpOptions = .init()
     ) async throws -> [OpReceipt] {
-        let items = try FileManager.default.contentsOfDirectory(
-            at: staging, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
-        )
+        let items = try await FileIO.perform {
+            try FileManager.default.contentsOfDirectory(
+                at: staging, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
+            )
+        }
         return try await transfer(items, to: destination, options: options, kind: .promoteFromStaging) { source, target, onBytes in
             try Self.moveItem(
                 from: source, to: target, pauseToken: options.pauseToken, onBytesCopied: onBytes
@@ -208,43 +247,58 @@ public actor FileOperationService {
         // 同一実体かどうかは inode（`FileIdentity`）で判定する。実測では
         // 同一実体どうしは一致し、別実体とは一致しないことを確認済み。
         let resolved: ResolvedDestination
-        if Self.refersToSameEntry(item, target) {
+        if await FileIO.perform({ Self.refersToSameEntry(item, target) }) {
             resolved = ResolvedDestination(target: target, backupOfReplaced: nil)
         } else if let decided = try await resolveDestination(item, target, options: options) {
             resolved = decided
         } else {
             throw FileOperationError.operationFailed("rename of \(item.path) skipped by conflict policy")
         }
-        try Self.checkDestinationIsWritable(target.deletingLastPathComponent())
-        let before = try? identity(of: item)
-        try withReplaceBackupCleanup(resolved) {
-            try FileManager.default.moveItem(at: item, to: resolved.target) // [FM-05]
+        return try await FileIO.perform {
+            try Self.checkDestinationIsWritable(target.deletingLastPathComponent())
+            let before = try? Self.identity(of: item)
+            try Self.withReplaceBackupCleanup(resolved) {
+                try FileManager.default.moveItem(at: item, to: resolved.target) // [FM-05]
+            }
+            Log.fileOps.info("rename: \(Log.path(item)) → \(Log.path(resolved.target))")
+            return OpReceipt(
+                before: before, after: try? Self.identity(of: resolved.target),
+                fromURL: item, toURL: resolved.target, kind: .rename
+            )
         }
-        Log.fileOps.info("rename: \(Log.path(item)) → \(Log.path(resolved.target))")
-        return OpReceipt(before: before, after: try? identity(of: resolved.target), fromURL: item, toURL: resolved.target, kind: .rename)
     }
 
     public func trash(_ items: [URL], options: OpOptions = .init()) async throws -> [TrashReceipt] {
         // ゴミ箱側の行き先も伝える（ゴミ箱を開いているウインドウにも反映される）。
         var trashedURLs: [URL] = []
         defer { announce(items + trashedURLs) }
-        var identities: [URL: FileIdentity] = [:]
-        for item in items {
-            identities[item] = try? identity(of: item)
-        }
-        // **ゴミ箱を持たない場所では呼ばない** [NV4-01]。呼び出し側（UI）が
-        // 先に判定して完全削除の経路へ振り分けるのが本筋だが、ここでも
-        // 徹底する——`FileOperationService` を直に使う経路が増えても、
-        // 「ゴミ箱に入れたつもりが OS のダイアログを経て完全削除される」
-        // 事故が起きないようにするため（`createDirectory` の名前検証と同じ考え方）。
-        if let first = items.first, !TrashAvailability.hasTrash(forAll: items) {
-            throw FileOperationError.trashUnavailable(first)
+        // 識別子の取得（項目ごとに `stat`）と、ゴミ箱の有無の問い合わせ
+        // （ボリュームごとに 1 回、実測 0.01 秒）はどちらも I/O。
+        let identities = try await FileIO.perform { () -> [URL: FileIdentity] in
+            var identities: [URL: FileIdentity] = [:]
+            for item in items {
+                identities[item] = try? Self.identity(of: item)
+            }
+            // **ゴミ箱を持たない場所では呼ばない** [NV4-01]。呼び出し側（UI）が
+            // 先に判定して完全削除の経路へ振り分けるのが本筋だが、ここでも
+            // 徹底する——`FileOperationService` を直に使う経路が増えても、
+            // 「ゴミ箱に入れたつもりが OS のダイアログを経て完全削除される」
+            // 事故が起きないようにするため（`createDirectory` の名前検証と同じ考え方）。
+            if let first = items.first, !TrashAvailability.hasTrash(forAll: items) {
+                throw FileOperationError.trashUnavailable(first)
+            }
+            return identities
         }
         // NSWorkspace.shared.recycle(_:completionHandler:) を使い、Finder の
         // 「元に戻す」と互換にする [FM-04][TR2-01]。
+        //
+        // これは完了ハンドラで返る非同期 API なので `FileIO.perform` には
+        // 載せない（載せる意味も無い — 待っているスレッドが無いため）。
+        // 代わりに ``FileIO/withDeadline(_:_:)`` で**待つのをやめられる**
+        // ようにしてある [NV4-04]。
         let mapping: [URL: URL]
         do {
-            mapping = try await Self.withTimeout(seconds: AppLimits.FileOperations.trashTimeoutSeconds) {
+            mapping = try await FileIO.withDeadline(.seconds(AppLimits.FileOperations.trashTimeoutSeconds)) {
                 try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[URL: URL], Error>) in
                     NSWorkspace.shared.recycle(items) { urls, error in
                         if let error {
@@ -295,36 +349,37 @@ public actor FileOperationService {
         // **取り消せない操作** [PD-05] のため、他の操作より詳しく記録する。
         Log.fileOps.info("deletePermanently 開始: \(items.count) 件")
         for item in items {
-            guard itemExists(at: item) else {
+            // 存在確認とロックの有無。後者は配下を再帰的に歩くので、
+            // ネットワーク上の大きなフォルダでは十分に長い I/O になる。
+            let inspection = await FileIO.perform { () -> (exists: Bool, hasLocked: Bool) in
+                guard Self.itemExists(at: item) else { return (false, false) }
+                return (true, Self.hasAnyLockedItem(at: item))
+            }
+            guard inspection.exists else {
                 Log.fileOps.warning("deletePermanently: 項目が見つかりません \(Log.path(item))")
                 failures.append(DeletionFailure(url: item, reason: "項目が見つかりません"))
                 continue
             }
-            var unlocked: [URL] = []
-            if hasAnyLockedItem(at: item) {
+            if inspection.hasLocked {
                 let decision = await options.lockedItemResolver?(item) ?? .skip
                 guard decision == .delete else {
                     Log.fileOps.info("deletePermanently: ロック済みのためスキップ \(Log.path(item))")
                     skipped.append(item)
                     continue
                 }
-                // 削除の途中でロックに当たって中断しないよう、先にまとめて外す。
-                unlocked = unlockRecursively(item)
             }
-            let before = try? identity(of: item)
-            do {
-                try FileManager.default.removeItem(at: item) // [FM-14]
+            let result = await FileIO.perform {
+                Self.removeOne(item, unlockingFirst: inspection.hasLocked)
+            }
+            switch result {
+            case .removed(let before):
                 Log.fileOps.info("deletePermanently: 削除しました \(Log.path(item))")
                 receipts.append(OpReceipt(before: before, after: nil, fromURL: item, toURL: item, kind: .deletePermanently))
-            } catch {
-                // 削除できなかった以上、外したロックは元に戻す。さもないと
-                // 「消えてもいないのにロックだけ解除された」状態が残る
-                // [完全削除実装時のレビューで発見]。
-                relock(unlocked)
+            case .failed(let reason):
                 // [ER-12][ER-13] 判断の要らない失敗（権限・I/O）は中断せず記録し、
                 // 呼び出し側が完了後にまとめて提示する。
-                Log.fileOps.error("deletePermanently に失敗: \(Log.path(item)) — \(error.localizedDescription)")
-                failures.append(DeletionFailure(url: item, reason: error.localizedDescription))
+                Log.fileOps.error("deletePermanently に失敗: \(Log.path(item)) — \(reason)")
+                failures.append(DeletionFailure(url: item, reason: reason))
             }
         }
         Log.fileOps.info(
@@ -333,25 +388,53 @@ public actor FileOperationService {
         return DeletionOutcome(receipts: receipts, failures: failures, skipped: skipped)
     }
 
+    /// ``removeOne(_:unlockingFirst:)`` の結果。
+    private enum RemovalResult {
+        case removed(before: FileIdentity?)
+        case failed(reason: String)
+    }
+
+    /// 1 項目を完全に消す、ひとかたまりのブロッキング処理 [NV6-01]。
+    /// `FileIO.perform` の中からのみ呼ぶこと。
+    ///
+    /// ロック解除と削除を**同じかたまりに収めてある**のが要点で、
+    /// 「解除したが削除は別の往復」にすると、その隙間で中断されたときに
+    /// 「消えてもいないのにロックだけ解除された」状態が残る。
+    private nonisolated static func removeOne(_ item: URL, unlockingFirst: Bool) -> RemovalResult {
+        // 削除の途中でロックに当たって中断しないよう、先にまとめて外す。
+        let unlocked = unlockingFirst ? unlockRecursively(item) : []
+        let before = try? identity(of: item)
+        do {
+            try FileManager.default.removeItem(at: item) // [FM-14]
+            return .removed(before: before)
+        } catch {
+            // 削除できなかった以上、外したロックは元に戻す。さもないと
+            // 「消えてもいないのにロックだけ解除された」状態が残る
+            // [完全削除実装時のレビューで発見]。
+            relock(unlocked)
+            return .failed(reason: error.localizedDescription)
+        }
+    }
+
     /// シンボリックリンク自体の存在も「ある」と判定する。
     /// `FileManager.fileExists(atPath:)` はリンクを**辿る**ため、リンク切れの
     /// シンボリックリンクを「無い」と誤判定し、削除できなくなってしまう
     /// [完全削除実装時のレビューで発見。素の `removeItem` にはこの問題が
     /// 無かったので、存在チェックを足したことによる退行だった]。
-    private func itemExists(at url: URL) -> Bool {
+    private nonisolated static func itemExists(at url: URL) -> Bool {
         (try? FileManager.default.attributesOfItem(atPath: url.path)) != nil
     }
 
     /// `url` 自身、またはその配下のいずれかがロックされているか。
     /// 見つかった時点で打ち切るため、通常は即座に返る。
-    private func hasAnyLockedItem(at url: URL) -> Bool {
+    private nonisolated static func hasAnyLockedItem(at url: URL) -> Bool {
         if isLocked(url) { return true }
         return lockedDescendants(of: url, stopAtFirst: true).isEmpty == false
     }
 
     /// ロック解除は**削除の直前にだけ**行い、実際に解除した URL を返す。
     /// 削除が失敗した場合は呼び出し側が `relock(_:)` で元に戻す。
-    private func unlockRecursively(_ url: URL) -> [URL] {
+    private nonisolated static func unlockRecursively(_ url: URL) -> [URL] {
         var cleared: [URL] = []
         if isLocked(url) {
             setImmutable(url, false)
@@ -364,7 +447,7 @@ public actor FileOperationService {
         return cleared
     }
 
-    private func relock(_ urls: [URL]) {
+    private nonisolated static func relock(_ urls: [URL]) {
         for url in urls where itemExists(at: url) {
             setImmutable(url, true)
         }
@@ -375,7 +458,7 @@ public actor FileOperationService {
     /// すると「ディレクトリへのシンボリックリンク」でリンク先を列挙して
     /// しまい、削除対象ですらないリンク先のロックを外しかねない
     /// （`removeItem` はリンク自体しか消さない）[レビューで発見]。
-    private func lockedDescendants(of url: URL, stopAtFirst: Bool) -> [URL] {
+    private nonisolated static func lockedDescendants(of url: URL, stopAtFirst: Bool) -> [URL] {
         let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
         guard values?.isSymbolicLink != true, values?.isDirectory == true else { return [] }
         guard let enumerator = FileManager.default.enumerator(
@@ -389,11 +472,11 @@ public actor FileOperationService {
         return result
     }
 
-    private func isLocked(_ url: URL) -> Bool {
+    private nonisolated static func isLocked(_ url: URL) -> Bool {
         (try? url.resourceValues(forKeys: [.isUserImmutableKey]))?.isUserImmutable == true
     }
 
-    private func setImmutable(_ url: URL, _ locked: Bool) {
+    private nonisolated static func setImmutable(_ url: URL, _ locked: Bool) {
         var mutable = url
         var values = URLResourceValues()
         values.isUserImmutable = locked
@@ -410,56 +493,66 @@ public actor FileOperationService {
         guard let resolved = try await resolveDestination(source, target, options: options) else {
             throw FileOperationError.operationFailed("alias creation for \(source.path) skipped by conflict policy")
         }
-        let bookmarkData = try source.bookmarkData(options: [.suitableForBookmarkFile])
-        try withReplaceBackupCleanup(resolved) {
-            try URL.writeBookmarkData(bookmarkData, to: resolved.target)
+        return try await FileIO.perform {
+            let bookmarkData = try source.bookmarkData(options: [.suitableForBookmarkFile])
+            try Self.withReplaceBackupCleanup(resolved) {
+                try URL.writeBookmarkData(bookmarkData, to: resolved.target)
+            }
+            Log.fileOps.info("createAlias: \(Log.path(source)) → \(Log.path(resolved.target))")
+            return OpReceipt(
+                before: nil, after: try? Self.identity(of: resolved.target),
+                fromURL: source, toURL: resolved.target, kind: .createAlias
+            )
         }
-        Log.fileOps.info("createAlias: \(Log.path(source)) → \(Log.path(resolved.target))")
-        return OpReceipt(before: nil, after: try? identity(of: resolved.target), fromURL: source, toURL: resolved.target, kind: .createAlias)
     }
 
     /// Finder の「ロック」/「ロック解除」相当。
     public func setLocked(_ items: [URL], locked: Bool) async throws -> [OpReceipt] {
         defer { announce(items) }
-        var receipts: [OpReceipt] = []
-        for item in items {
-            var mutableItem = item
-            var values = URLResourceValues()
-            values.isUserImmutable = locked
-            do {
-                try mutableItem.setResourceValues(values)
-            } catch {
-                Log.fileOps.error(
-                    "setLocked(\(locked)) が \(receipts.count) 件成功後に失敗: \(item.path) — \(error.localizedDescription)"
-                )
-                throw error
+        return try await FileIO.perform {
+            var receipts: [OpReceipt] = []
+            for item in items {
+                var mutableItem = item
+                var values = URLResourceValues()
+                values.isUserImmutable = locked
+                do {
+                    try mutableItem.setResourceValues(values)
+                } catch {
+                    Log.fileOps.error(
+                        "setLocked(\(locked)) が \(receipts.count) 件成功後に失敗: \(item.path) — \(error.localizedDescription)"
+                    )
+                    throw error
+                }
+                let id = try? Self.identity(of: item)
+                receipts.append(OpReceipt(before: id, after: id, fromURL: item, toURL: item, kind: .setLocked))
             }
-            receipts.append(OpReceipt(before: try? identity(of: item), after: try? identity(of: item), fromURL: item, toURL: item, kind: .setLocked))
+            Log.fileOps.info("setLocked(\(locked)) 完了: \(receipts.count)/\(items.count) 件")
+            return receipts
         }
-        Log.fileOps.info("setLocked(\(locked)) 完了: \(receipts.count)/\(items.count) 件")
-        return receipts
     }
 
     public func restoreFromTrash(_ receipts: [TrashReceipt]) async throws -> [OpReceipt] {
         defer { announce(receipts.map(\.originalURL) + receipts.compactMap(\.trashURL)) }
-        var results: [OpReceipt] = []
-        for receipt in receipts {
-            guard let trashURL = receipt.trashURL else { continue }
-            do {
-                try FileManager.default.moveItem(at: trashURL, to: receipt.originalURL) // [UD-08]
-            } catch {
-                Log.fileOps.error(
-                    "restoreFromTrash に失敗: \(trashURL.path) → \(receipt.originalURL.path) — \(error.localizedDescription)"
-                )
-                throw error
+        return try await FileIO.perform {
+            var results: [OpReceipt] = []
+            for receipt in receipts {
+                guard let trashURL = receipt.trashURL else { continue }
+                do {
+                    try FileManager.default.moveItem(at: trashURL, to: receipt.originalURL) // [UD-08]
+                } catch {
+                    Log.fileOps.error(
+                        "restoreFromTrash に失敗: \(trashURL.path) → \(receipt.originalURL.path) — \(error.localizedDescription)"
+                    )
+                    throw error
+                }
+                Log.fileOps.info("restoreFromTrash: \(Log.path(trashURL)) → \(Log.path(receipt.originalURL))")
+                results.append(OpReceipt(
+                    before: nil, after: try? Self.identity(of: receipt.originalURL),
+                    fromURL: trashURL, toURL: receipt.originalURL, kind: .restoreFromTrash
+                ))
             }
-            Log.fileOps.info("restoreFromTrash: \(Log.path(trashURL)) → \(Log.path(receipt.originalURL))")
-            results.append(OpReceipt(
-                before: nil, after: try? identity(of: receipt.originalURL),
-                fromURL: trashURL, toURL: receipt.originalURL, kind: .restoreFromTrash
-            ))
+            return results
         }
-        return results
     }
 
     // MARK: - 事前検査 [ER-03]
@@ -623,35 +716,112 @@ public actor FileOperationService {
 
     // MARK: - 内部処理
 
+    /// 一括転送の骨組み。**ここは「段取り」だけを担い、ブロッキングな仕事は
+    /// すべて `FileIO.perform` の中の 2 つの関数（``preflight`` と ``carry``）へ
+    /// 追い出してある** [NV6-01]。
+    ///
+    /// 1 項目あたりのスレッド往復は通常 **2 回**（衝突の判定と、運ぶ処理）。
+    /// 衝突をユーザーに尋ねる場合だけ 1 回増える。往復そのものは
+    /// マイクロ秒規模で、実コピーの時間に対して無視できる。
     private func transfer(
         _ items: [URL],
         to destination: URL,
         options: OpOptions,
         kind: OperationKind,
-        perform: (URL, URL, @escaping (Int64) -> Void) throws -> FileCopyEngine.Outcome
+        perform: @escaping @Sendable (URL, URL, @escaping (Int64) -> Void) throws -> FileCopyEngine.Outcome
     ) async throws -> [OpReceipt] {
         // 移動元の各項目（親フォルダの一覧が変わる）と、書き込み先フォルダ
         // （そのフォルダの一覧が変わる）の両方を伝える。
         defer { announce(items + [destination]) }
 
-        // **1 バイトも書く前に、分かる失敗はすべてここで断る** [ER-03]。
-        // 一括処理の途中で失敗すると、成功した分の `OpReceipt` が破棄されて
-        // Undo にも履歴にも残らない（既知の課題）ため、そもそも始めないのが
-        // いちばん安全。
-        try Self.checkDestinationIsWritable(destination)
+        let tracker = try await FileIO.perform {
+            try Self.preflight(items: items, destination: destination, options: options, kind: kind)
+        }
+        tracker.begin()
+
+        var receipts: [OpReceipt] = []
+        for item in items {
+            // ユーザーが中断したら、そこまでに運び終えた分だけを返す
+            // （運び終えた項目は Undo できる状態で残る）[ER-16 の精神]。
+            if Cancellation.isRequested { break }
+            // 一時停止は項目の境界でも受ける（クローンのようにコールバックが
+            // 一度も来ない経路でも効くようにするため）。
+            //
+            // **待つのは専用スレッドの上で**。`waitWhilePaused` は
+            // `NSCondition` で実際にスレッドを止めるので、協調プールの上で
+            // 待つと 1 件の一時停止がアプリの `async` 処理を巻き添えにする。
+            // 止まっていない場合は往復しない（`isPaused` はロックを取るだけで
+            // I/O を伴わない）。
+            if let pauseToken = options.pauseToken, pauseToken.isPaused {
+                await FileIO.perform { pauseToken.waitWhilePaused() }
+            }
+            if Cancellation.isRequested { break }
+            tracker.startItem(item)
+            let target = destination.appendingPathComponent(item.lastPathComponent)
+            guard let resolved = try await resolveDestination(item, target, options: options) else {
+                Log.fileOps.debug("\(kind.logLabel): 衝突方針によりスキップ \(Log.path(item))")
+                tracker.finishItem()
+                continue // [ConflictPolicy.skip]
+            }
+            let carried: CarriedItem
+            do {
+                carried = try await FileIO.perform {
+                    try Self.carry(item, to: resolved, using: perform, tracker: tracker)
+                }
+            } catch {
+                // **どの項目で止まったか**を必ず残す [LG2-01]。
+                Log.fileOps.error(
+                    "\(kind.logLabel) が \(receipts.count) 件成功後に失敗: \(item.path) → \(resolved.target.path) — \(error.localizedDescription)"
+                )
+                // **そこまでに動いた分の受領書を捨てない** [ER-13][ER-16]
+                //［監査で発見］。以前はここで受領書ごと捨てていたため、
+                // 実際に移動し終えた項目が Undo にも操作履歴にも残らず、
+                // ユーザーには元に戻す手段が無かった。
+                // 1 件も動いていなければ運ぶものが無いので、素の失敗として投げる。
+                if receipts.isEmpty { throw error }
+                throw PartialTransferFailure(receipts: receipts, failedItem: item, underlying: error)
+            }
+            if carried.cancelled {
+                Log.fileOps.info("\(kind.logLabel) を中断しました（\(receipts.count)/\(items.count) 件まで完了）")
+                break
+            }
+            Log.fileOps.debug("\(kind.logLabel): \(Log.path(item)) → \(Log.path(resolved.target))")
+            receipts.append(OpReceipt(
+                before: carried.before, after: carried.after,
+                fromURL: item, toURL: resolved.target, kind: kind
+            ))
+            tracker.finishItem()
+        }
+        Log.fileOps.info("\(kind.logLabel) 完了: \(receipts.count)/\(items.count) 件 → \(Log.path(destination))")
+        return receipts
+    }
+
+    /// **1 バイトも書く前に、分かる失敗はすべてここで断る** [ER-03]。
+    /// 一括処理の途中で失敗すると、成功した分の `OpReceipt` が破棄されて
+    /// Undo にも履歴にも残らない（既知の課題）ため、そもそも始めないのが
+    /// いちばん安全。
+    ///
+    /// 総量の走査（`ProgressTracker` の初期化）は 5 万件のライブラリでは
+    /// 数秒かかるので、**この関数全体がブロッキング**である。返り値の
+    /// `ProgressTracker` は `@unchecked Sendable` なので `FileIO` の
+    /// 境界をまたいで持ち出せる。
+    private nonisolated static func preflight(
+        items: [URL], destination: URL, options: OpOptions, kind: OperationKind
+    ) throws -> ProgressTracker {
+        try checkDestinationIsWritable(destination)
         // 書き込み先への問い合わせは**ここで 1 回だけ**。ネットワーク
         // ボリュームでは 1 回ごとに往復が発生し得るため、項目ごとに尋ねない
         // ［ユーザー指摘: SMB は常時接続できるわけではない］。
         let pathLimit = PathLimits.maxPathBytes(at: destination)
         for item in items {
-            try Self.checkDestinationIsNotInsideSource(item, destination)
-            try Self.checkResultingPathFits(
+            try checkDestinationIsNotInsideSource(item, destination)
+            try checkResultingPathFits(
                 destination: destination, relativePath: item.lastPathComponent,
                 item: item, limit: pathLimit
             )
         }
 
-        var tracker = ProgressTracker(
+        let tracker = ProgressTracker(
             reporter: options.progress,
             items: items,
             destination: destination
@@ -660,16 +830,16 @@ public actor FileOperationService {
         // 走査していない場合（クローンで済む経路）は追加の走査をしてまでは
         // 見ない — その経路は同一ボリューム内で階層の深さが変わらないため。
         if let deepest = tracker.deepestRelativePath {
-            try Self.checkResultingPathFits(
+            try checkResultingPathFits(
                 destination: destination, relativePath: deepest.path,
                 item: deepest.item, limit: pathLimit
             )
         }
         if let largest = tracker.largestFile {
-            try Self.checkFileSizeFits(largest.size, item: largest.item, destination: destination)
+            try checkFileSizeFits(largest.size, item: largest.item, destination: destination)
         }
         if let longest = tracker.longestName {
-            try Self.checkNameFits(longest.name, item: longest.item, destination: destination)
+            try checkNameFits(longest.name, item: longest.item, destination: destination)
         }
         // **足りないと分かっているなら、1 バイトも書かずに断る** [ER-03]。
         // 以前はそのまま書き始め、途中で `ENOSPC` になって「エラー2」とだけ
@@ -693,121 +863,136 @@ public actor FileOperationService {
                 )
             }
         }
-        tracker.begin()
-        var receipts: [OpReceipt] = []
-        for item in items {
-            // ユーザーが中断したら、そこまでに運び終えた分だけを返す
-            // （運び終えた項目は Undo できる状態で残る）[ER-16 の精神]。
-            if Task.isCancelled { break }
-            // 一時停止は項目の境界でも受ける（クローンのようにコールバックが
-            // 一度も来ない経路でも効くようにするため）。
-            options.pauseToken?.waitWhilePaused()
-            if Task.isCancelled { break }
-            tracker.startItem(item)
-            let target = destination.appendingPathComponent(item.lastPathComponent)
-            guard let resolved = try await resolveDestination(item, target, options: options) else {
-                Log.fileOps.debug("\(kind.logLabel): 衝突方針によりスキップ \(Log.path(item))")
-                tracker.finishItem()
-                continue // [ConflictPolicy.skip]
-            }
-            let before = try? identity(of: item)
-            // 運ぶ前の姿を控える。運び終えたあとに元が変わっていたら、
-            // 写した内容は最新ではない（`moveItem` のコメント参照）。
-            // 移動は `moveItem` の中で同じことを確かめてから元を消すので、
-            // ここで効くのは主にコピー。
-            let stampBefore = try? FileMetadata.stamp(of: item)
-            var cancelled = false
-            do {
-                // 中断は「成功しなかった」として扱う — `.replace` の退避を
-                // 消させないため（`withReplaceBackupCleanup` のコメント参照）。
-                let outcome = try withReplaceBackupCleanup(resolved, succeeded: { outcome in
-                    if case .completed = outcome { return true }
-                    return false
-                }) {
-                    try perform(item, resolved.target) { bytes in tracker.addBytes(bytes) }
-                }
-                // **書き込み中のファイルを写していないか確かめる**［実測で確認］。
-                // 他アプリが書き足している最中のファイルをコピーすると、
-                // `copyfile` はその時点の姿を写して**成功を返す**。黙って
-                // 中途半端なコピーを残すと、ユーザーは完全な控えを取ったと
-                // 思い込む（そのあと元を消せばデータを失う）。
-                // 元が残っている場合だけ比べる（移動では既に消えている）。
-                if case .completed = outcome,
-                   let stampBefore,
-                   let stampAfter = try? FileMetadata.stamp(of: item),
-                   stampBefore != stampAfter {
-                    try? FileManager.default.removeItem(at: resolved.target)
-                    throw FileOperationError.sourceChangedDuringOperation(item)
-                }
-                if case .cancelled = outcome {
-                    cancelled = true
-                    // **中断した項目の書きかけを消す**［実機検証で発見］。
-                    // `copyfile` は 1 ファイルなら書きかけの宛先を自分で
-                    // 片付けるが、**再帰的なフォルダコピーを中断した場合は
-                    // 途中まで作った木を残す**（1.1GB のアーカイブ展開を
-                    // 止めたあと、134MB の中途半端なフォルダが残って発覚）。
-                    // 運び終えていない以上、受領書も返さない＝ Undo にも
-                    // 残らないので、ここで消さないと誰も片付けられない。
-                    //
-                    // 消してよいのは**この呼び出しで新しく作った場所**だから。
-                    // `.replace` で既存を退避している場合は
-                    // `restoreReplacedItem` が消して元へ戻すので触らない。
-                    if resolved.backupOfReplaced == nil {
-                        Self.removePartialWrite(at: resolved.target)
-                    }
-                }
-            } catch {
-                // **どの項目で止まったか**を必ず残す [LG2-01]。
-                Log.fileOps.error(
-                    "\(kind.logLabel) が \(receipts.count) 件成功後に失敗: \(item.path) → \(resolved.target.path) — \(error.localizedDescription)"
-                )
-                // **そこまでに動いた分の受領書を捨てない** [ER-13][ER-16]
-                //［監査で発見］。以前はここで受領書ごと捨てていたため、
-                // 実際に移動し終えた項目が Undo にも操作履歴にも残らず、
-                // ユーザーには元に戻す手段が無かった。
-                // 1 件も動いていなければ運ぶものが無いので、素の失敗として投げる。
-                if receipts.isEmpty { throw error }
-                throw PartialTransferFailure(receipts: receipts, failedItem: item, underlying: error)
-            }
-            if cancelled {
-                Log.fileOps.info("\(kind.logLabel) を中断しました（\(receipts.count)/\(items.count) 件まで完了）")
-                break
-            }
-            Log.fileOps.debug("\(kind.logLabel): \(Log.path(item)) → \(Log.path(resolved.target))")
-            receipts.append(OpReceipt(before: before, after: try? identity(of: resolved.target), fromURL: item, toURL: resolved.target, kind: kind))
-            tracker.finishItem()
+        return tracker
+    }
+
+    /// 1 項目を運び終えた結果。`transfer` の受領書はこれから組み立てる。
+    private struct CarriedItem {
+        let before: FileIdentity?
+        let after: FileIdentity?
+        /// ユーザーが中断した。`transfer` はここで打ち切る。
+        let cancelled: Bool
+    }
+
+    /// **1 項目を実際に運ぶ、ひとかたまりのブロッキング処理** [NV6-01]。
+    /// `FileIO.perform` の中からのみ呼ぶこと。
+    private nonisolated static func carry(
+        _ item: URL,
+        to resolved: ResolvedDestination,
+        using perform: (URL, URL, @escaping (Int64) -> Void) throws -> FileCopyEngine.Outcome,
+        tracker: ProgressTracker
+    ) throws -> CarriedItem {
+        let before = try? identity(of: item)
+        // 運ぶ前の姿を控える。運び終えたあとに元が変わっていたら、
+        // 写した内容は最新ではない（`moveItem` のコメント参照）。
+        // 移動は `moveItem` の中で同じことを確かめてから元を消すので、
+        // ここで効くのは主にコピー。
+        let stampBefore = try? FileMetadata.stamp(of: item)
+        // 中断は「成功しなかった」として扱う — `.replace` の退避を
+        // 消させないため（`withReplaceBackupCleanup` のコメント参照）。
+        let outcome = try withReplaceBackupCleanup(resolved, succeeded: { outcome in
+            if case .completed = outcome { return true }
+            return false
+        }) {
+            try perform(item, resolved.target) { bytes in tracker.addBytes(bytes) }
         }
-        Log.fileOps.info("\(kind.logLabel) 完了: \(receipts.count)/\(items.count) 件 → \(Log.path(destination))")
-        return receipts
+        // **書き込み中のファイルを写していないか確かめる**［実測で確認］。
+        // 他アプリが書き足している最中のファイルをコピーすると、
+        // `copyfile` はその時点の姿を写して**成功を返す**。黙って
+        // 中途半端なコピーを残すと、ユーザーは完全な控えを取ったと
+        // 思い込む（そのあと元を消せばデータを失う）。
+        // 元が残っている場合だけ比べる（移動では既に消えている）。
+        if case .completed = outcome,
+           let stampBefore,
+           let stampAfter = try? FileMetadata.stamp(of: item),
+           stampBefore != stampAfter {
+            try? FileManager.default.removeItem(at: resolved.target)
+            throw FileOperationError.sourceChangedDuringOperation(item)
+        }
+        if case .cancelled = outcome {
+            // **中断した項目の書きかけを消す**［実機検証で発見］。
+            // `copyfile` は 1 ファイルなら書きかけの宛先を自分で
+            // 片付けるが、**再帰的なフォルダコピーを中断した場合は
+            // 途中まで作った木を残す**（1.1GB のアーカイブ展開を
+            // 止めたあと、134MB の中途半端なフォルダが残って発覚）。
+            // 運び終えていない以上、受領書も返さない＝ Undo にも
+            // 残らないので、ここで消さないと誰も片付けられない。
+            //
+            // 消してよいのは**この呼び出しで新しく作った場所**だから。
+            // `.replace` で既存を退避している場合は
+            // `restoreReplacedItem` が消して元へ戻すので触らない。
+            if resolved.backupOfReplaced == nil {
+                removePartialWrite(at: resolved.target)
+            }
+            return CarriedItem(before: before, after: nil, cancelled: true)
+        }
+        return CarriedItem(before: before, after: try? identity(of: resolved.target), cancelled: false)
     }
 
     /// `resolveDestination` の戻り値。`.replace` の場合、書き込みが失敗したときに
     /// 元へ戻せるよう退避先も一緒に返す。
-    private struct ResolvedDestination {
+    private struct ResolvedDestination: Sendable {
         let target: URL
         let backupOfReplaced: URL?
     }
 
-    /// 衝突判定と解決 [7.1 節]。戻り値が `nil` の場合はその項目をスキップする。
-    private func resolveDestination(_ source: URL, _ destination: URL, options: OpOptions) async throws -> ResolvedDestination? {
-        guard FileManager.default.fileExists(atPath: destination.path) else {
-            return ResolvedDestination(target: destination, backupOfReplaced: nil)
-        }
+    /// ``resolve(_:_:policy:)`` の結果。ユーザーに尋ねる必要が生じたかどうかを
+    /// 呼び出し側（`actor` 側）へ返すために、決着とは別のケースを持つ。
+    private enum ConflictResolution {
+        case decided(ResolvedDestination)
+        /// [ConflictPolicy.skip]
+        case skip
+        /// `.ask` で、実際に衝突していた。呼び出し側が `conflictResolver` を待つ。
+        case needsUserDecision
+    }
 
-        var policy = options.conflictPolicy
-        if policy == .ask {
+    /// 衝突判定と解決 [7.1 節]。戻り値が `nil` の場合はその項目をスキップする。
+    ///
+    /// **ブロッキングな部分（存在確認・退避・連番探し）と、ユーザーを待つ部分を
+    /// 分けてある** [NV6-01]。前者は ``resolve(_:_:policy:)`` にまとまっていて
+    /// `FileIO.perform` の中で走り、後者（`conflictResolver` の `await`）は
+    /// この `actor` 上に残る。衝突が無い通常の経路は**往復 1 回**で済む。
+    ///
+    /// ユーザーが選んだあとにもう一度 ``resolve`` を通すのは、尋ねている間に
+    /// 書き込み先が変わっている可能性があるため（考えている時間は長い）。
+    private func resolveDestination(_ source: URL, _ destination: URL, options: OpOptions) async throws -> ResolvedDestination? {
+        var resolution = try await FileIO.perform {
+            try Self.resolve(source, destination, policy: options.conflictPolicy)
+        }
+        if case .needsUserDecision = resolution {
             guard let resolver = options.conflictResolver else {
                 throw FileOperationError.conflictResolutionRequired(source: source, destination: destination)
             }
-            policy = await resolver(source, destination)
-            guard policy != .ask else {
+            let chosen = await resolver(source, destination)
+            guard chosen != .ask else {
                 throw FileOperationError.conflictResolutionRequired(source: source, destination: destination)
             }
+            resolution = try await FileIO.perform {
+                try Self.resolve(source, destination, policy: chosen)
+            }
+        }
+        switch resolution {
+        case .decided(let resolved): return resolved
+        case .skip: return nil
+        case .needsUserDecision:
+            // `chosen != .ask` を確かめた直後なのでここへは来ないが、
+            // 将来 `ConflictPolicy` にケースが増えたときに黙って通さない。
+            throw FileOperationError.conflictResolutionRequired(source: source, destination: destination)
+        }
+    }
+
+    /// 衝突判定と、**ユーザーに尋ねずに決められる範囲**の解決。
+    /// `FileIO.perform` の中からのみ呼ぶこと [NV6-01]。
+    private nonisolated static func resolve(
+        _ source: URL, _ destination: URL, policy: ConflictPolicy
+    ) throws -> ConflictResolution {
+        guard FileManager.default.fileExists(atPath: destination.path) else {
+            return .decided(ResolvedDestination(target: destination, backupOfReplaced: nil))
         }
 
         switch policy {
         case .ask:
-            throw FileOperationError.conflictResolutionRequired(source: source, destination: destination)
+            return .needsUserDecision
         case .replace:
             // [フェーズ1完了時のリソースリーク・ファイル安全性監査で追加、
             // ユーザー指摘: 「壊れたファイルで健康なファイルを書き潰してしまう
@@ -826,11 +1011,11 @@ public actor FileOperationService {
             let backup = destination.deletingLastPathComponent()
                 .appendingPathComponent(".qoo-replace-backup-\(UUID().uuidString)")
             try FileManager.default.moveItem(at: destination, to: backup) // [FM-13]
-            return ResolvedDestination(target: destination, backupOfReplaced: backup)
+            return .decided(ResolvedDestination(target: destination, backupOfReplaced: backup))
         case .keepBoth:
-            return ResolvedDestination(target: nextAvailableName(for: destination), backupOfReplaced: nil) // [CF-01]
+            return .decided(ResolvedDestination(target: nextAvailableName(for: destination), backupOfReplaced: nil)) // [CF-01]
         case .skip:
-            return nil
+            return .skip
         }
     }
 
@@ -843,7 +1028,7 @@ public actor FileOperationService {
     ///   最中にキャンセルすると `copyfile` は書きかけの宛先を消すので、
     ///   成功扱いで退避まで消すと**退避元と書き込み先の両方を失う**
     ///   [レビューで発見。今回入れた変更の中で最も危険な経路だった]。
-    private func withReplaceBackupCleanup<T>(
+    private nonisolated static func withReplaceBackupCleanup<T>(
         _ resolved: ResolvedDestination,
         succeeded: (T) -> Bool = { _ in true },
         _ operation: () throws -> T
@@ -898,7 +1083,7 @@ public actor FileOperationService {
     }
 
     /// 書き込みが完了しなかったときに、退避しておいた元の項目を戻す。
-    private func restoreReplacedItem(_ resolved: ResolvedDestination) {
+    private nonisolated static func restoreReplacedItem(_ resolved: ResolvedDestination) {
         guard let backup = resolved.backupOfReplaced else { return }
         try? FileManager.default.removeItem(at: resolved.target) // 中途半端な書き込み結果があれば破棄
         try? FileManager.default.moveItem(at: backup, to: resolved.target)
@@ -906,7 +1091,7 @@ public actor FileOperationService {
 
     /// 置き換えられた元の項目をゴミ箱へ送る。送れなければ最後の手段として削除する
     /// （退避ファイルを残し続けると、次の同名操作で邪魔になる）。
-    private func moveReplacedItemToTrash(_ backup: URL) {
+    private nonisolated static func moveReplacedItemToTrash(_ backup: URL) {
         // **テスト中は実ゴミ箱に触れない** — 開発機のゴミ箱がテストの残骸で
         // 埋まる（`DiagnosticLog` がログの出力先を振り替えるのと同じ理由）。
         guard !RuntimeEnvironment.isRunningTests else {
@@ -923,7 +1108,7 @@ public actor FileOperationService {
     /// 衝突先の名前に既に連番サフィックス（例: `name 2`）が付いている場合はそれを
     /// 剥がしてから採番する。剥がさないと `name 2` との衝突のたびに末尾へさらに
     /// ` 2` が積み重なり `name 2 2` のようになってしまう。
-    private func nextAvailableName(for url: URL) -> URL {
+    private nonisolated static func nextAvailableName(for url: URL) -> URL {
         let ext = url.pathExtension
         let rawBase = ext.isEmpty ? url.lastPathComponent : String(url.lastPathComponent.dropLast(ext.count + 1))
         let base = Self.strippingTrailingCopyNumber(from: rawBase)
@@ -944,65 +1129,7 @@ public actor FileOperationService {
         return String(name[..<range.lowerBound])
     }
 
-    private func identity(of url: URL) throws -> FileIdentity {
+    private nonisolated static func identity(of url: URL) throws -> FileIdentity {
         try FileMetadata.identity(of: url)
-    }
-
-    /// **待つのをやめられるようにする** [NV4-04][NV6-03]。
-    ///
-    /// `NSWorkspace.recycle` は、UI 文脈を持たないプロセスでは
-    /// **完了ハンドラが永久に呼ばれない**（1-16b の実測で 40 秒以上確認、
-    /// 8章 §8.11.4）。`withCheckedThrowingContinuation` はそれを待ち続けるので、
-    /// **`actor` がそのまま永久に塞がり、アプリの全ファイル操作が停止する**。
-    ///
-    /// ここで打ち切れるのは**待つこと**だけで、走っている I/O は止まらない
-    /// [NV6-03]。それでも「アプリが二度と動かない」よりはるかに良い。
-    ///
-    /// 上限を過ぎたら `operation` の完了は捨てる。ゴミ箱の場合、捨てた側で
-    /// 実際に削除が進む可能性はあるが、`announce` は `defer` で必ず走るので
-    /// 表示は次の読み直しで実体に追随する。
-    /// **構造化並行性を使ってはいけない。** `withThrowingTaskGroup` で
-    /// 「本体」と「スリープ」を競争させる書き方は誤りで、**本体を抜ける際に
-    /// グループが全子タスクの完了を暗黙に待つ**ため、結局待たされる。しかも
-    /// `withCheckedThrowingContinuation` はキャンセルに反応しないので
-    /// `cancelAll()` も効かない（1-15 のアプリ終了処理で実際に踏んだ）。
-    ///
-    /// 独立した 2 本の非構造化タスクを走らせ、**先に着いた方が 1 度だけ
-    /// 応答する**形にする。
-    private static func withTimeout<T: Sendable>(
-        seconds: Double, _ operation: @escaping @Sendable () async throws -> T
-    ) async throws -> T {
-        let box = SingleResume<T>()
-        return try await withCheckedThrowingContinuation { continuation in
-            box.arm(continuation)
-            Task {
-                do { box.resume(.success(try await operation())) }
-                catch { box.resume(.failure(error)) }
-            }
-            Task {
-                try? await Task.sleep(for: .seconds(seconds))
-                box.resume(.failure(FileOperationError.timedOut(seconds: seconds)))
-            }
-        }
-    }
-
-    /// 1 度だけ再開できる継続の入れ物。二重再開は `CheckedContinuation` が
-    /// クラッシュとして検出するので、ロックで確実に 1 回に絞る。
-    private final class SingleResume<T: Sendable>: @unchecked Sendable {
-        private let lock = NSLock()
-        private var continuation: CheckedContinuation<T, Error>?
-
-        func arm(_ continuation: CheckedContinuation<T, Error>) {
-            lock.lock(); defer { lock.unlock() }
-            self.continuation = continuation
-        }
-
-        func resume(_ result: Result<T, Error>) {
-            lock.lock()
-            let pending = continuation
-            continuation = nil
-            lock.unlock()
-            pending?.resume(with: result)
-        }
     }
 }

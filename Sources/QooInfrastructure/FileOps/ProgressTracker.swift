@@ -175,7 +175,7 @@ final class ProgressTracker: @unchecked Sendable {
             }
         }
         for item in items {
-            if Task.isCancelled { return (0, nil, nil, nil) }
+            if Cancellation.isRequested { return (0, nil, nil, nil) }
             let name = item.lastPathComponent
             note(name, item)
             noteName(item)
@@ -187,7 +187,7 @@ final class ProgressTracker: @unchecked Sendable {
                 ) else { continue }
                 let rootPath = item.standardizedFileURL.path
                 while let child = enumerator.nextObject() as? URL {
-                    if Task.isCancelled { return (0, nil, nil, nil) }
+                    if Cancellation.isRequested { return (0, nil, nil, nil) }
                     noteName(child)
                     // 運んだあとの相対パスは「項目名 + 起点からの相対パス」。
                     // `NSDirectoryEnumerator` は相対パスを公開していないので
