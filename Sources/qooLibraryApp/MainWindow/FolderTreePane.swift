@@ -494,11 +494,20 @@ struct FolderTreePane: View {
         }
     }
 
-    /// 登録時の警告 [FS-06] をユーザー向けの文にする。
-    private static func description(for warning: VolumeWarning) -> String {
+    /// 登録時の警告 [FS-06][NV8-04] をユーザー向けの文にする。
+    private static func description(for warning: RegistrationWarning) -> String {
         switch warning {
         case .networkVolumeFSEventsUnreliable:
             return String(localized: "folderTree.warning.networkVolume")
+        case let .cloudSyncedLocation(provider):
+            // 提供元が分かるときは名前を出す。分からないときは総称で言う
+            // （ドメイン識別子は iCloud では素の UUID なので見せられない）。
+            guard let provider else {
+                return String(localized: "folderTree.warning.cloudSynced")
+            }
+            return String(
+                format: String(localized: "folderTree.warning.cloudSyncedNamed"), provider
+            )
         }
     }
 

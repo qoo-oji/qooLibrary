@@ -89,7 +89,7 @@ public struct VolumeEligibilityChecker: VolumeEligibilityChecking {
             return .rejected(reason: .persistentIDNotPreserved(fileSystem: cap.fileSystemName))
         }
 
-        var warnings: [VolumeWarning] = []
+        var warnings: [RegistrationWarning] = []
         if cap.isNetworkVolume {
             warnings.append(.networkVolumeFSEventsUnreliable) // [FS-06]
         }

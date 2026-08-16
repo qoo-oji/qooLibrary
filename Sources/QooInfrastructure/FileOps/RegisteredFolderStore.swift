@@ -214,7 +214,7 @@ public actor RegisteredFolderStore {
         public let folder: RegisteredFolder
         /// ネットワークボリュームである等、**登録は通るが知らせるべきこと**
         /// [FS-06]。空なら何も出さない。
-        public let warnings: [VolumeWarning]
+        public let warnings: [RegistrationWarning]
     }
 
     @discardableResult
@@ -225,12 +225,23 @@ public actor RegisteredFolderStore {
         let resolvedURL = url.resolvingSymlinksInPath() // [SL-07]
         try checkNotNested(resolvedURL)
 
-        var warnings: [VolumeWarning] = []
+        var warnings: [RegistrationWarning] = []
         switch try await volumeChecker.evaluate(resolvedURL) { // [RG-08][FS-01〜FS-05]
         case .rejected(let reason):
             throw RegisteredFolderError.unsupportedFileSystem(reason)
         case .eligible(let volumeWarnings):
             warnings = volumeWarnings // [FS-06] 提示は呼び出し側（UI）が行う
+        }
+
+        // **クラウド同期の配下かは、ボリュームからは分からない** — File Provider は
+        // 起動ボリュームの UUID を返す（8章 §8.11.1）ので、`volumeChecker` の
+        // 守備範囲の外にある。ここで一度だけ尋ねる [NV8-04][NV-98]。
+        if let cloud = await CloudSyncLocation.detect(at: resolvedURL) {
+            Log.fileOps.info(
+                "クラウド同期の配下に登録します（provider=\(cloud.providerName ?? "不明")"
+                    + " domain=\(cloud.domainIdentifier ?? "不明")）: \(Log.path(resolvedURL))"
+            )
+            warnings.append(.cloudSyncedLocation(provider: cloud.providerName))
         }
 
         let bookmarkData = try bookmarks.makeBookmark(for: resolvedURL) // [RG-07]

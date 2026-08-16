@@ -24,8 +24,17 @@ public struct VolumeCapability: Sendable, Equatable {
     }
 }
 
-public enum VolumeWarning: Sendable, Equatable {
+/// 登録は通るが、**ユーザーに伝えるべきこと**。
+///
+/// - Note: ボリュームの性質から出るものだけではない。クラウド同期の配下かは
+///   ボリュームからは分からず（File Provider は**起動ボリュームの UUID** を
+///   返す。8章 §8.11.1）、`RegisteredFolderStore.register` が別途調べて足す。
+///   だから型名は `Volume…` ではなく `Registration…` である。
+public enum RegistrationWarning: Sendable, Equatable {
     case networkVolumeFSEventsUnreliable // [FS-06]
+    /// クラウド同期（File Provider）の配下 [NV8-04]。`provider` は
+    /// `OneDrive` 等。分からなければ `nil`。
+    case cloudSyncedLocation(provider: String?)
 }
 
 public enum VolumeRejection: Sendable, Equatable {
@@ -34,7 +43,7 @@ public enum VolumeRejection: Sendable, Equatable {
 }
 
 public enum VolumeEligibility: Sendable, Equatable {
-    case eligible(warnings: [VolumeWarning])
+    case eligible(warnings: [RegistrationWarning])
     case rejected(reason: VolumeRejection)
 }
 

@@ -294,7 +294,7 @@ import Testing
     /// `.networkVolumeFSEventsUnreliable` を生成していたのに、`register` が
     /// `case .eligible: break` で捨てており、**UI へ届く口がそもそも無かった**
     /// （コメントには「提示は呼び出し側の責務」と書いてあった）。
-    @Test func registrationReportsVolumeWarningsToTheCaller() async throws {
+    @Test func registrationReportsWarningsToTheCaller() async throws {
         let root = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: root) }
         let target = root.appendingPathComponent("共有", isDirectory: true)

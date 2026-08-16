@@ -3380,6 +3380,40 @@
         }
       }
     },
+    "folderTree.warning.cloudSynced": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This folder is synced to the cloud. Sync services impose limits that qooLibrary cannot check — very long paths and characters such as \" * : < > ? | may silently fail to upload."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このフォルダはクラウドに同期されています。同期サービスには qooLibrary からは検査できない制約があり、非常に長いパスや「\" * : < > ? |」などの文字を含む項目が、エラーを出さないまま同期されないことがあります。"
+          }
+        }
+      }
+    },
+    "folderTree.warning.cloudSyncedNamed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This folder is synced by %@. Sync services impose limits that qooLibrary cannot check — very long paths and characters such as \" * : < > ? | may silently fail to upload."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このフォルダは %@ によって同期されています。同期サービスには qooLibrary からは検査できない制約があり、非常に長いパスや「\" * : < > ? |」などの文字を含む項目が、エラーを出さないまま同期されないことがあります。"
+          }
+        }
+      }
+    },
     "folderTree.warning.networkVolume": {
       "extractionState": "manual",
       "localizations": {
