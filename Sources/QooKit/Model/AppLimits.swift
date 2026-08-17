@@ -115,6 +115,21 @@ public enum AppLimits {
         /// 掃引のやり直しの合図（登録フォルダの増減・アクセス権の変化等）を
         /// 待ち合わせて 1 回にまとめる時間（秒）。
         public static let warmerRestartDebounceSeconds: Double = 2
+        /// 動画の**実体のコンテナ形式**を先頭バイト列から見分けるために読む
+        /// バイト数（`MediaContainerSniffer`）。判定に必要な最長は RIFF/AVI の
+        /// 12 バイト目までなので、16 で全形式に足りる。
+        public static let containerProbeBytes: Int = 16
+        /// `hev1` タグの HEVC を再タグ付けしてデコードする際
+        /// （`RetaggedHEVCThumbnailLoader`）、キーフレームを探して走査する
+        /// サンプル数の上限。**上限を設けるのは、同期サンプルを持たない
+        /// 壊れたファイルで延々と読み続けないため。**
+        public static let retaggedHEVCKeyframeScanLimit: Int = 600
+        /// 同じくキーフレームを探し始める位置（動画全体に対する割合）。
+        /// 冒頭は黒画面やロゴであることが多いため少し進んだ位置から探す。
+        public static let retaggedHEVCSeekFraction: Double = 0.1
+        /// 同じく探し始める位置の上限（秒）。長時間の動画で割合をそのまま
+        /// 使うと、内容と関係なく深い位置まで飛んでしまうため頭打ちにする。
+        public static let retaggedHEVCSeekCapSeconds: Double = 120
     }
 
     /// Quick Look [9.7 節、QL-01〜QL-10]。

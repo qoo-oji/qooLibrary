@@ -46,7 +46,9 @@ public actor ThumbnailService {
         maxConcurrent: Int = AppLimits.Thumbnail.defaultMaxConcurrent,
         cache: CoverImageCache = DefaultCoverImageCache.shared,
         imageLoader: ImageLoading = DefaultImageLoader(),
-        videoThumbnailLoader: VideoThumbnailLoading = QLVideoThumbnailLoader(),
+        // QuickLook を先に試し、それが作れないもの（`hev1` タグの HEVC）だけを
+        // 再タグ付けの経路が引き取る（`CompositeVideoThumbnailLoader` 参照）。
+        videoThumbnailLoader: VideoThumbnailLoading = CompositeVideoThumbnailLoader(),
         pdfThumbnailLoader: PDFThumbnailLoading = CoreGraphicsPDFThumbnailLoader(),
         // 既定値が**クロージャリテラル**なのが要点: `ThumbnailVisibility.shared`
         // は `@MainActor` 隔離のため、`actor` の（非隔離な）`init` から直接は

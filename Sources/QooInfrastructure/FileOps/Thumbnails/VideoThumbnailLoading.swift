@@ -2,6 +2,7 @@ import CoreGraphics
 import Foundation
 import QooKit
 import QuickLookThumbnailing
+import UniformTypeIdentifiers
 
 /// 動画ファイルのサムネイル生成 [IV-01 の自然な拡張、ユーザー要望: 本アプリは
 /// コミックライブラリ管理が主だが、きちんと設定すれば動画ライブラリとしても
@@ -27,11 +28,23 @@ import QuickLookThumbnailing
 ///   ただし**返される画像は常に正方形**で、動画の実際のアスペクト比を
 ///   無視してスクイーズされる癖があるため、`MatroskaDimensionReader` で
 ///   事前にコンテナから寸法を読み、リクエストサイズ自体をアスペクト比に
-///   合わせて補正している（下記 `requestSize(for:maxPixelSize:)` 参照）。
+///   合わせて補正している（下記 `prepareBlocking(for:maxPixelSize:)` 参照）。
 ///
 /// なお、上記のいずれの拡張も無い環境では mkv のサムネイルは得られず、
 /// 呼び出し側（`ThumbnailService`）が既定アイコンへフォールバックする
 /// [IM-04 と同じ方針]。
+///
+/// ## 実体と拡張子が食い違うファイル
+/// `QLThumbnailGenerator` は UTI を**拡張子から**決めるため、実体が別の
+/// コンテナだと必ず失敗する。`MediaContainerSniffer` で実体を見分け、
+/// 食い違うときだけ `Request.contentType` で宣言し直す（詳細は
+/// `MediaContainer.contentTypeToDeclare(forFileNamed:)`）。
+///
+/// ## QuickLook でどうしても作れないもの
+/// `hev1` タグの HEVC は AVFoundation が入口で断るため、どんな
+/// `contentType` を渡しても作れない（実測）。こちらは
+/// `RetaggedHEVCThumbnailLoader` が引き取る——`CompositeVideoThumbnailLoader`
+/// が「QuickLook → 失敗したら再タグ付け」の順に試す。
 public protocol VideoThumbnailLoading: Sendable {
     func makeThumbnail(for url: URL, maxPixelSize: Int) async -> CGImage?
 }
@@ -44,36 +57,57 @@ public struct QLVideoThumbnailLoader: VideoThumbnailLoading {
         self.timeoutSeconds = timeoutSeconds
     }
 
-    /// リクエストする寸法をコンテナの実アスペクト比に合わせて計算する
+    /// 1 回のリクエストを組み立てるために、ファイルを 1 度だけ読んで得るもの。
+    private struct Preparation: Sendable {
+        /// リクエストする寸法（アスペクト比を補正済み）。
+        let size: CGSize
+        /// 拡張子が実体と食い違うときに宣言し直す型。食い違っていなければ `nil`。
+        let contentType: UTType?
+    }
+
+    /// リクエストの寸法と宣言する型を、**先頭バイト列を 1 度読むだけ**で決める。
+    ///
+    /// ## 寸法（アスペクト比の補正）
     /// [ユーザー要望: 「リクエストサイズを実際のアスペクト比にあわせて
     /// ください」]。動画本体はデコードせず、コンテナのヘッダのみを読む
-    /// （`MatroskaDimensionReader`、mkv 以外・読み取り失敗時は `nil`）。
-    /// 取得できなければ、これまで通り正方形のリクエストにフォールバックする
-    /// （多くのサムネイル拡張は正方形リクエストでもアスペクト比を保って
-    /// 返してくれるが、`QLMedia` のように厳密にリクエストサイズへスクイーズ
-    /// する実装もあることが実機検証で判明したための対策）。
+    /// （`MatroskaDimensionReader`）。取得できなければ正方形のリクエストへ
+    /// フォールバックする（多くのサムネイル拡張は正方形リクエストでも
+    /// アスペクト比を保って返すが、`QLMedia` のように厳密にリクエストサイズへ
+    /// スクイーズする実装もあることが実機検証で判明したための対策）。
+    ///
+    /// ## 型の宣言し直し
+    /// 実体と拡張子が食い違うファイル（実測: `.mp4` を名乗る Matroska）は、
+    /// UTI が拡張子から決まるため誤ったパーサへ渡されて必ず失敗する。
+    /// `MediaContainer.contentTypeToDeclare(forFileNamed:)` 参照。
+    ///
+    /// ## 判定を拡張子から実体へ移した理由（1 つの読み取りが 2 つの役目を兼ねる）
+    /// 以前はアスペクト比補正の対象を**拡張子で**ゲートしていた（mp4/mov の
+    /// ヘッダを 8MB 読まないための節約）。しかしそれだと**拡張子違いの mkv は
+    /// 補正が効かず正方形になる**（実測で確認）。マジックバイト判定に置き換えると、
+    /// 同じ 16 バイトの読み取りが「型の差し替え」と「8MB を読まないゲート」の
+    /// 両方を兼ね、節約も維持したまま食い違いにも正しく効く。
+    ///
     /// - Note: **ブロッキング。`FileIO.perform` の中からのみ呼ぶ** [NV6-01、
     ///   フェーズ1完了時の監査で発見]。以前は `makeThumbnail` が協調プールの
-    ///   上で直接呼んでおり、ヘッダの読み取り（最大 8MB）が応答しない共有に
-    ///   当たるとスレッドを 1 本 30 秒占有した。
-    ///   **EBML コンテナ（mkv/webm/mka）のときだけ読む** — この補正は
-    ///   `QLMedia` の正方形スクイーズ対策そのもので、mp4/mov は QuickLook が
-    ///   正方形リクエストでもアスペクト比を保って返すため、全動画のヘッダを
-    ///   読む必要は元々無かった。
-    private nonisolated static func requestSizeBlocking(for url: URL, maxPixelSize: Int) -> CGSize {
+    ///   上で直接呼んでおり、ヘッダの読み取りが応答しない共有に当たると
+    ///   スレッドを 1 本 30 秒占有した。
+    private nonisolated static func prepareBlocking(for url: URL, maxPixelSize: Int) -> Preparation {
         let square = CGSize(width: maxPixelSize, height: maxPixelSize)
-        guard ["mkv", "webm", "mka"].contains(url.pathExtension.lowercased()) else { return square }
-        guard let dimensions = MatroskaDimensionReader.dimensions(of: url),
+        let container = MediaContainerSniffer.sniffBlocking(at: url)
+        let contentType = container?.contentTypeToDeclare(forFileNamed: url.lastPathComponent)
+
+        // アスペクト比の補正が要るのは EBML（Matroska/WebM）だけ。
+        guard container == .matroska,
+              let dimensions = MatroskaDimensionReader.dimensions(of: url),
               dimensions.width > 0, dimensions.height > 0
         else {
-            return square
+            return Preparation(size: square, contentType: contentType)
         }
         let aspect = dimensions.width / dimensions.height
-        if aspect >= 1 {
-            return CGSize(width: Double(maxPixelSize), height: Double(maxPixelSize) / aspect)
-        } else {
-            return CGSize(width: Double(maxPixelSize) * aspect, height: Double(maxPixelSize))
-        }
+        let size = aspect >= 1
+            ? CGSize(width: Double(maxPixelSize), height: Double(maxPixelSize) / aspect)
+            : CGSize(width: Double(maxPixelSize) * aspect, height: Double(maxPixelSize))
+        return Preparation(size: size, contentType: contentType)
     }
 
     /// `QLThumbnailGenerator.Request` は `Sendable` 準拠が無いため、複数の
@@ -86,13 +120,21 @@ public struct QLVideoThumbnailLoader: VideoThumbnailLoading {
     }
 
     public func makeThumbnail(for url: URL, maxPixelSize: Int) async -> CGImage? {
-        let size = await FileIO.perform { Self.requestSizeBlocking(for: url, maxPixelSize: maxPixelSize) }
-        let box = RequestBox(request: QLThumbnailGenerator.Request(
+        let preparation = await FileIO.perform { Self.prepareBlocking(for: url, maxPixelSize: maxPixelSize) }
+        let request = QLThumbnailGenerator.Request(
             fileAt: url,
-            size: size,
+            size: preparation.size,
             scale: 1,
             representationTypes: .thumbnail
-        ))
+        )
+        // 実体と拡張子が食い違うときだけ宣言し直す。`contentType` は
+        // `null_resettable` なので、既定（拡張子任せ）のままにするには
+        // 代入しない——`nil` を代入しても既定へ戻るだけだが、
+        // 「何もしない」意図を素直に表すため代入自体を避ける。
+        if let contentType = preparation.contentType {
+            request.contentType = contentType
+        }
+        let box = RequestBox(request: request)
 
         enum Outcome { case generated(CGImage?), timedOut }
 
