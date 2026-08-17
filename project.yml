@@ -104,7 +104,7 @@ targets:
       base:
         PRODUCT_NAME: qooLibrary
         PRODUCT_BUNDLE_IDENTIFIER: com.qoolibrary.app
-        MARKETING_VERSION: "0.1.0"
+        MARKETING_VERSION: "0.10"
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "6.0"
         MACOSX_DEPLOYMENT_TARGET: "26.0"

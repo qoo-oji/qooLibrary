@@ -50,7 +50,24 @@ mkdir -p "${SRC_DIR}"
 # ---- 1. Download + verify -------------------------------------------------
 if [ ! -f "${TARBALL}" ]; then
     echo "==> downloading ${UNRAR_URL}"
-    curl -sL -o "${TARBALL}" "${UNRAR_URL}"
+    # --fail is essential: without it curl writes the body of an HTTP error
+    # (rarlab.com returns 403 to some cloud IPs) straight into ${TARBALL}, and
+    # the run then fails as a *checksum mismatch* — which reads like the upstream
+    # artifact was tampered with and invites the worst possible fix, namely
+    # updating the pinned hash. Fail loudly on the HTTP layer instead, so a
+    # blocked download never looks like a supply-chain event.
+    # This actually happened in CI on 2026-08-17: the pinned hash was still
+    # correct (verified by downloading from a different network) but the job
+    # reported a mismatch.
+    if ! curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors \
+             -o "${TARBALL}" "${UNRAR_URL}"; then
+        echo "!! download failed for ${UNRAR_URL}"
+        echo "   The pinned checksum is NOT the suspect here — the transfer itself"
+        echo "   did not succeed. Do not touch UNRAR_SHA256; retry, or fetch the"
+        echo "   tarball from a network that rarlab.com does not block."
+        rm -f "${TARBALL}"
+        exit 1
+    fi
 fi
 
 ACTUAL_SHA256="$(shasum -a 256 "${TARBALL}" | awk '{print $1}')"
@@ -58,6 +75,9 @@ if [ "${ACTUAL_SHA256}" != "${UNRAR_SHA256}" ]; then
     echo "!! checksum mismatch for ${TARBALL}"
     echo "   expected ${UNRAR_SHA256}"
     echo "   actual   ${ACTUAL_SHA256}"
+    echo "   size     $(wc -c < "${TARBALL}") bytes"
+    echo "   The download reported success, so this is a genuine content change."
+    echo "   Verify the source independently before changing UNRAR_SHA256."
     exit 1
 fi
 echo "==> checksum OK"

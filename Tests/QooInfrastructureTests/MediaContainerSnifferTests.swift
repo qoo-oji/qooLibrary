@@ -74,30 +74,70 @@ struct MediaContainerSnifferTests {
         #expect(MediaContainer.isoBMFF.contentTypeToDeclare(forFileNamed: "a.mov") == nil)
     }
 
-    /// 実体と拡張子が食い違うときは、**システムが `.mkv` に割り当てている型**を
+    /// 実体と拡張子が食い違うときは、**システムがその形式に割り当てている型**を
     /// 返すこと（識別子を決め打ちしない）。
     ///
-    /// mkv を扱うアプリが 1 つも入っていない環境では `UTType` が引けないため
-    /// `nil` になる。その場合は宣言し直しても扱える拡張が無いので、
-    /// **どちらの結果でも仕様どおり**——「決め打ちの識別子を返さない」ことだけを
-    /// 固定する。
-    @Test func declaresTheSystemsOwnTypeWhenTheExtensionDisagrees() {
+    /// **判定に `mp4` を使うのが要点。** `public.mpeg-4` は macOS 標準の型なので
+    /// どの環境でも具体型が引ける。`mkv` は**インストール済みアプリ次第**なので
+    /// ここで使うと、開発機（Infuse 等が入っている）では通って、まっさらな CI で
+    /// 落ちる／空振りする——実際に一度そうなった。CLAUDE.md に既記録の
+    /// 「ルーティングの検証には OS 標準搭載の拡張子を使う」の再確認。
+    @Test func declaresTheSystemsOwnTypeWhenTheExtensionDisagrees() throws {
+        // 実体は mp4 なのに .mkv を名乗っている、という逆向きの食い違い。
+        let declared = MediaContainer.isoBMFF.contentTypeToDeclare(forFileNamed: "video.mkv")
+        let expected = try #require(UTType(filenameExtension: "mp4"))
+        #expect(declared == expected)
+        #expect(declared?.identifier == "public.mpeg-4")
+        #expect(declared?.conforms(to: .movie) == true)
+    }
+
+    @Test func declaresTheSystemsTypeForAnExtensionlessName() throws {
+        // 拡張子が無い場合も「食い違い」なので宣言の対象になる（拡張子から
+        // UTI を決められないため、宣言しないと必ず失敗する）。
+        let declared = MediaContainer.isoBMFF.contentTypeToDeclare(forFileNamed: "video")
+        let expected = try #require(UTType(filenameExtension: "mp4"))
+        #expect(declared == expected)
+    }
+
+    /// mkv の宣言は環境に依存するが、**どちらに転んでも契約は同じ**であること。
+    ///
+    /// 具体型があるなら「それを返す・`.movie` に準拠する・動的型ではない」、
+    /// 無いなら「宣言しない」。どの分岐でも必ず何かを主張するので、環境が
+    /// 変わっても空振りしない。
+    @Test func matroskaDeclarationFollowsWhatTheSystemKnows() {
         let declared = MediaContainer.matroska.contentTypeToDeclare(forFileNamed: "video.mp4")
+        let systemType = UTType(filenameExtension: "mkv")
         if let declared {
-            #expect(declared == UTType(filenameExtension: "mkv"))
+            #expect(declared == systemType)
             #expect(declared.conforms(to: .movie))
+            #expect(!declared.identifier.hasPrefix("dyn."))
+        } else {
+            // mkv を扱うアプリが 1 つも無い環境（CI がこれ）。合成された動的型は
+            // `.movie` に準拠しないので宣言の対象にならない。
+            #expect(systemType?.conforms(to: .movie) != true)
         }
     }
 
-    @Test func declaresNothingForAnExtensionlessName() throws {
-        // 拡張子が無い場合も「食い違い」なので宣言の対象になる（拡張子から
-        // UTI を決められないため、宣言しないと必ず失敗する）。
-        let declared = MediaContainer.matroska.contentTypeToDeclare(forFileNamed: "video")
-        if let expected = UTType(filenameExtension: "mkv") {
-            #expect(declared == expected)
-        } else {
-            #expect(declared == nil)
-        }
+    /// **`UTType(filenameExtension:)` は未知の拡張子でも `nil` を返さない**
+    /// ——`dyn.…` の動的型を合成して返す（実測。CI では `mkv` がこれになり、
+    /// 「引けなければ nil」という誤った前提で書いたテストが落ちて発覚した）。
+    ///
+    /// `contentTypeToDeclare` が動的型を弾けるのは `conforms(to: .movie)` の
+    /// ガードのおかげである。**この前提が崩れたら気づけるように固定しておく**
+    /// （`SystemSoundEffectTests` が OS 側の音源の実在を見張っているのと同じ趣旨）。
+    @Test func unknownExtensionsYieldADynamicTypeThatIsNotAMovie() throws {
+        let synthesized = try #require(UTType(filenameExtension: "zzzznotarealextension"))
+        #expect(synthesized.identifier.hasPrefix("dyn."))
+        #expect(!synthesized.conforms(to: .movie))
+    }
+
+    /// 上の動的型を**実際に弾いている**こと。手元の機では mkv も具体型に
+    /// 解決されるため、この経路は存在しない拡張子を直接渡さないと通らない
+    /// （それをしないと、CI を救っている当のガードが無検証のまま残る）。
+    @Test func doesNotDeclareASynthesizedDynamicType() {
+        #expect(MediaContainer.concreteMovieType(forExtension: "zzzznotarealextension") == nil)
+        // 対照: OS 標準搭載の拡張子はちゃんと引ける。
+        #expect(MediaContainer.concreteMovieType(forExtension: "mp4")?.identifier == "public.mpeg-4")
     }
 
     // MARK: - 実ファイルからの判定

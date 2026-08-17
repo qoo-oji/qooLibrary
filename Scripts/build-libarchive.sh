@@ -49,7 +49,17 @@ mkdir -p "${SRC_DIR}"
 # ---- 1. Download + verify -------------------------------------------------
 if [ ! -f "${TARBALL}" ]; then
     echo "==> downloading ${LIBARCHIVE_URL}"
-    curl -sL -o "${TARBALL}" "${LIBARCHIVE_URL}"
+    # --fail matters: without it an HTTP error body is written into ${TARBALL}
+    # and the run fails as a *checksum mismatch*, which looks like tampering and
+    # invites updating the pinned hash. Keep the two failure modes distinct
+    # (see build-unrar.sh for the CI incident that prompted this).
+    if ! curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors \
+             -o "${TARBALL}" "${LIBARCHIVE_URL}"; then
+        echo "!! download failed for ${LIBARCHIVE_URL}"
+        echo "   The transfer did not succeed — do not touch LIBARCHIVE_SHA256."
+        rm -f "${TARBALL}"
+        exit 1
+    fi
 fi
 
 ACTUAL_SHA256="$(shasum -a 256 "${TARBALL}" | awk '{print $1}')"
@@ -57,6 +67,9 @@ if [ "${ACTUAL_SHA256}" != "${LIBARCHIVE_SHA256}" ]; then
     echo "!! checksum mismatch for ${TARBALL}"
     echo "   expected ${LIBARCHIVE_SHA256}"
     echo "   actual   ${ACTUAL_SHA256}"
+    echo "   size     $(wc -c < "${TARBALL}") bytes"
+    echo "   The download reported success, so this is a genuine content change."
+    echo "   Verify the source independently before changing LIBARCHIVE_SHA256."
     exit 1
 fi
 echo "==> checksum OK"

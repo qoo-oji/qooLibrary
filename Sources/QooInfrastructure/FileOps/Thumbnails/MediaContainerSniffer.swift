@@ -82,7 +82,22 @@ public enum MediaContainer: Sendable, Equatable, CaseIterable {
     public func contentTypeToDeclare(forFileNamed name: String) -> UTType? {
         let ext = (name as NSString).pathExtension.lowercased()
         guard !matchingExtensions.contains(ext) else { return nil }
-        guard let type = UTType(filenameExtension: canonicalExtension), type.conforms(to: .movie) else {
+        return Self.concreteMovieType(forExtension: canonicalExtension)
+    }
+
+    /// システムがこの拡張子に割り当てている**具体的な動画型**。無ければ `nil`。
+    ///
+    /// ## `UTType(filenameExtension:)` は未知の拡張子でも `nil` を返さない
+    /// **`dyn.…` の動的型を合成して返す**（実測）。これを素通しすると、その形式を
+    /// 扱えるアプリが 1 つも無い環境で「意味の無い型」を QuickLook へ宣言して
+    /// しまう。`.movie` 準拠を要求することで動的型を弾いている——**この 1 行が、
+    /// mkv を扱うアプリの無い環境（CI がそれ）で従来どおりの挙動を保っている。**
+    ///
+    /// `private` にしないのは、動的型になる状況を環境に依らず再現できないため
+    /// （手元の機では mkv も具体型に解決される）。テストが存在しない拡張子を
+    /// 直接渡してこのガードを確かめる。
+    static func concreteMovieType(forExtension ext: String) -> UTType? {
+        guard let type = UTType(filenameExtension: ext), type.conforms(to: .movie) else {
             return nil
         }
         return type
