@@ -98,10 +98,30 @@ public final class BulkRenameCommand: Command {
                 }
                 throw error
             }
-            for entry in staged {
-                let receipt = try await fileOps.rename(entry.url, to: entry.target)
-                results.append((url: receipt.toURL, originalName: entry.originalName))
-                onProgress(results)
+            for (index, entry) in staged.enumerated() {
+                do {
+                    let receipt = try await fileOps.rename(entry.url, to: entry.target)
+                    results.append((url: receipt.toURL, originalName: entry.originalName))
+                    onProgress(results)
+                } catch {
+                    // **第 2 パスの失敗でも一時名のまま放置しない**
+                    // [フェーズ1完了時の監査で発見]。第 1 パスにはあった
+                    // この巻き戻しが第 2 パスには無く、途中で失敗すると
+                    // 残りの項目が `<uuid>.qoo-bulk-rename-tmp` という意味の
+                    // 分からない名前のまま取り残されていた（Undo の対象は
+                    // 目的の名前に到達した分だけなので、戻す手段も無い）。
+                    // 自分を含む未処理分を元の名前へ戻す。連鎖リネームでは
+                    // 元の名前が既に別の項目に使われていることがあるため、
+                    // 衝突したら `.keepBoth` で「元の名前 2」として救い出す
+                    // （UUID 名で見失うより、見える名前で残るほうがよい）。
+                    for pending in staged[index...].reversed() {
+                        _ = try? await fileOps.rename(
+                            pending.url, to: pending.originalName,
+                            options: OpOptions(conflictPolicy: .keepBoth)
+                        )
+                    }
+                    throw error
+                }
             }
         } else {
             for entry in plan {

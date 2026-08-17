@@ -61,9 +61,16 @@ final class ProgressTracker: @unchecked Sendable {
     /// 深さ・大きさと同じく、走査のついでに拾う。
     let longestName: (name: String, item: URL)?
 
-    init(reporter: ProgressReporter?, items: [URL], destination: URL) {
+    /// - Parameter writesNoBytes: **1 バイトも書かないと分かっている操作**
+    ///   （同一ボリューム内の移動 ＝ `rename(2)`）。`true` なら総量の走査も
+    ///   行わない。`willBeInstant` はクローン対応と volumeUUID を要求するため
+    ///   exFAT・SMB では偽になるが、移動はクローンの有無と無関係に
+    ///   バイトを運ばない——ここを区別しないと、**空きの少ない exFAT/SMB
+    ///   ボリューム内の正当な移動が「空き容量不足」で誤って断られる**
+    ///   [フェーズ1完了時の監査で発見]。
+    init(reporter: ProgressReporter?, items: [URL], destination: URL, writesNoBytes: Bool = false) {
         self.reporter = reporter
-        if Self.willBeInstant(items: items, destination: destination) {
+        if writesNoBytes || Self.willBeInstant(items: items, destination: destination) {
             requiredBytes = nil
             deepestRelativePath = nil
             largestFile = nil

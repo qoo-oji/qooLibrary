@@ -52,11 +52,21 @@ public struct QLVideoThumbnailLoader: VideoThumbnailLoading {
     /// （多くのサムネイル拡張は正方形リクエストでもアスペクト比を保って
     /// 返してくれるが、`QLMedia` のように厳密にリクエストサイズへスクイーズ
     /// する実装もあることが実機検証で判明したための対策）。
-    private func requestSize(for url: URL, maxPixelSize: Int) -> CGSize {
+    /// - Note: **ブロッキング。`FileIO.perform` の中からのみ呼ぶ** [NV6-01、
+    ///   フェーズ1完了時の監査で発見]。以前は `makeThumbnail` が協調プールの
+    ///   上で直接呼んでおり、ヘッダの読み取り（最大 8MB）が応答しない共有に
+    ///   当たるとスレッドを 1 本 30 秒占有した。
+    ///   **EBML コンテナ（mkv/webm/mka）のときだけ読む** — この補正は
+    ///   `QLMedia` の正方形スクイーズ対策そのもので、mp4/mov は QuickLook が
+    ///   正方形リクエストでもアスペクト比を保って返すため、全動画のヘッダを
+    ///   読む必要は元々無かった。
+    private nonisolated static func requestSizeBlocking(for url: URL, maxPixelSize: Int) -> CGSize {
+        let square = CGSize(width: maxPixelSize, height: maxPixelSize)
+        guard ["mkv", "webm", "mka"].contains(url.pathExtension.lowercased()) else { return square }
         guard let dimensions = MatroskaDimensionReader.dimensions(of: url),
               dimensions.width > 0, dimensions.height > 0
         else {
-            return CGSize(width: maxPixelSize, height: maxPixelSize)
+            return square
         }
         let aspect = dimensions.width / dimensions.height
         if aspect >= 1 {
@@ -76,9 +86,10 @@ public struct QLVideoThumbnailLoader: VideoThumbnailLoading {
     }
 
     public func makeThumbnail(for url: URL, maxPixelSize: Int) async -> CGImage? {
+        let size = await FileIO.perform { Self.requestSizeBlocking(for: url, maxPixelSize: maxPixelSize) }
         let box = RequestBox(request: QLThumbnailGenerator.Request(
             fileAt: url,
-            size: requestSize(for: url, maxPixelSize: maxPixelSize),
+            size: size,
             scale: 1,
             representationTypes: .thumbnail
         ))
@@ -105,6 +116,15 @@ public struct QLVideoThumbnailLoader: VideoThumbnailLoading {
                 // 自体が抜けられずハングし続ける（実機検証で `qlmanage -t` が
                 // 実際に無限にハングした事例と同じ危険を避けるため）。
                 QLThumbnailGenerator.shared.cancel(box.request)
+            } else {
+                // **生成が先に終わったら、眠っているタイムアウト子を起こす**
+                // [フェーズ1完了時の監査で発見]。これが無いと下の drain が
+                // `Task.sleep` の満了（既定 8 秒）まで待ち続け、**成功した
+                // 動画サムネイル 1 件ごとに PF-11 のスロットを 8 秒占有**
+                // していた（グリッドの動画セルが全スロットを塞ぎ、他の
+                // サムネイルが順番待ちで凍る）。`Task.sleep` はキャンセルに
+                // 即応するので、これで drain は一瞬で抜ける。
+                group.cancelAll()
             }
             for await _ in group {} // 残りの子タスクを drain してから抜ける
 

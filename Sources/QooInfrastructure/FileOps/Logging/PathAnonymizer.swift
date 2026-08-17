@@ -144,7 +144,19 @@ public struct PathAnonymizer: Sendable {
             // ① 印付きパス `⟪…⟫`（書き込み側が範囲を明示したもの）
             if character == Self.pathOpen,
                let marked = scanMarked(text, from: index, open: Self.pathOpen, close: Self.pathClose) {
-                result += anonymizing ? anonymizePath(marked.content, cache: &pathCache) : marked.content
+                if anonymizing {
+                    // **絶対パスでない中身は丸ごと伏せる**［フェーズ1完了時の
+                    // 監査で発見]。`anonymizePath` は絶対パス以外を素通しする
+                    // ため、相対パスや素の名前が `Log.path(_:)` に渡された場合、
+                    // **書き込み側が明示的に「ユーザーデータ」と印を付けた
+                    // 範囲がそのまま平文で書き出されていた**（印の経路は
+                    // 引用符の安全網も通らないので、印が無いより悪い）。
+                    result += marked.content.hasPrefix("/")
+                        ? anonymizePath(marked.content, cache: &pathCache)
+                        : token(for: marked.content, cache: &nameCache)
+                } else {
+                    result += marked.content
+                }
                 index = marked.next
                 continue
             }
@@ -240,7 +252,13 @@ public struct PathAnonymizer: Sendable {
     private static func isLeadingBoundary(_ character: Character) -> Bool {
         switch character {
         case " ", "\t", "\n", "\r", "\"", "'", "`", "(", "[", "{", "=", ":", ",", "/",
-             "\u{3000}", "「", "『", "（", "→", "…", "＝": true
+             "\u{3000}", "「", "『", "（", "→", "…", "＝",
+             // 日本語の文中に埋め込まれたパスの直前に現れる句読点・記号
+             // [フェーズ1完了時の監査で発見: `…できませんでした。/Volumes/…` の
+             // ような Foundation 由来の文で、`。` が境界と見なされず素のパスが
+             // 匿名化をすり抜けていた。範囲を広げる方向の変更なので、
+             // 「余分に伏せる側へ倒す」方針 [CB-27] と整合する]。
+             "。", "、", "：", "；", "」", "』", "）", "！", "？", "!", "?", ";": true
         default: false
         }
     }

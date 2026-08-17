@@ -171,6 +171,13 @@ public actor AppAssociationStore: AppAssociationService {
         guard !didLoad else { return }
         didLoad = true
         guard let data = try? Data(contentsOf: storageURL) else {
+            // ファイルが**在るのに読めない**場合は初回起動と区別してログに残す
+            // [フェーズ1完了時の監査で追加] — このまま何か 1 件でも設定を変えると
+            // `save()` が既定値で上書きするため、「関連付けが勝手に消えた」と
+            // 見える事象の唯一の手掛かりになる。
+            if FileManager.default.fileExists(atPath: storageURL.path) {
+                Log.fileOps.error("アプリ関連付けの永続化ファイルを読めません。既定値で続行します: \(Log.path(storageURL))")
+            }
             extensionSet = Self.defaultExtensions // 初回起動
             return
         }
@@ -199,7 +206,11 @@ public actor AppAssociationStore: AppAssociationService {
                 Log.fileOps.error("アプリ関連付けの永続化ファイルを読めません。既定値で続行します: \(Log.path(storageURL))")
             }
             associations = legacy ?? [:]
-            extensionSet = Self.defaultExtensions
+            // **関連付けを持つ拡張子は必ず一覧にも載せる**（`setPrimary` が守る
+            // 不変条件と同じ）[フェーズ1完了時の監査で発見]。既定値だけにすると、
+            // 旧形式ファイルに入っていた mkv 等の関連付けが「ビューア」タブに
+            // 現れず、確認も変更もできない迷子の設定になる。
+            extensionSet = Self.defaultExtensions.union(associations.keys)
         }
     }
 

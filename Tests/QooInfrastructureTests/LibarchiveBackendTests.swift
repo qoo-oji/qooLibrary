@@ -376,10 +376,11 @@ import Testing
         }
     }
 
-    /// 7z は libarchive の書き込み側に暗号化オプションが存在しないため、
-    /// `options.encryption` が設定されていても無視される
-    /// （防御的な設計、CLAUDE.md 参照）。
-    @Test func compressIgnoresEncryptionForSevenZip() async throws {
+    /// 7z は libarchive の書き込み側に暗号化オプションが存在しない。
+    /// **以前は黙って無視して平文の 7z を作っていた**が、それは
+    /// 「パスワードを設定したつもりの平文アーカイブ」という静かな失敗になる
+    /// [フェーズ1完了時の監査で修正]。指定されたら拒否し、アーカイブも作らない。
+    @Test func compressRefusesEncryptionForSevenZip() async throws {
         let root = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: root) }
         let sourceFile = root.appendingPathComponent("page.txt")
@@ -387,9 +388,9 @@ import Testing
         let archiveURL = root.appendingPathComponent("book.7z")
 
         let options = CompressionOptions(format: .sevenZip, encryption: .aes256)
-        try await LibarchiveBackend.shared.compress([sourceFile], to: archiveURL, options: options)
-
-        let listing = try await LibarchiveBackend.shared.listEntries(archiveURL)
-        #expect(listing.entries.map(\.pathname) == ["page.txt"])
+        await #expect(throws: (any Error).self) {
+            try await LibarchiveBackend.shared.compress([sourceFile], to: archiveURL, options: options)
+        }
+        #expect(!FileManager.default.fileExists(atPath: archiveURL.path))
     }
 }

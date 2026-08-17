@@ -155,7 +155,14 @@ public actor QuickLookCoverStore: QuickLookCoverProviding {
         var removed: Set<URL> = []
         for entry in entries where entry.url != keeping {
             guard total > maxCacheSize else { break }
-            try? FileManager.default.removeItem(at: entry.url)
+            // 消せたときだけ帳簿を減らす [フェーズ1完了時の監査で発見:
+            // 失敗しても減算・索引落としをしていたため、実在するファイルを
+            // 「無い」と扱い、合計も実際より小さく見積もっていた]。
+            do {
+                try FileManager.default.removeItem(at: entry.url)
+            } catch {
+                continue
+            }
             removed.insert(entry.url)
             total -= entry.size
         }

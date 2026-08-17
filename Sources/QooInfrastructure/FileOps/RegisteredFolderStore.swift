@@ -386,13 +386,17 @@ public actor RegisteredFolderStore {
             throw RegisteredFolderError.notRegistered
         }
 
-        // 古い場所のセキュリティスコープを閉じてから差し替える。閉じ忘れると
-        // 解除できないアクセスが残る［完全削除 FM-14 実装時のレビューで
-        // 実際に見つかった形のリーク］。
+        // **新しいブックマークを作ってから**古い場所のスコープを閉じる
+        // [フェーズ1完了時の監査で順序を修正]。先に閉じると、`makeBookmark` が
+        // 失敗したとき（選んだ直後に到達不能になった等）に、登録は古い場所の
+        // ままなのにスコープだけが失われ、その登録が再起動まで読めなくなる。
+        // 閉じ忘れは解除できないアクセスとして残る［完全削除 FM-14 実装時の
+        // レビューで実際に見つかった形のリーク］ため、成功時には必ず閉じる。
+        let newBookmark = try bookmarks.makeBookmark(for: resolvedURL) // [RG-07]
         if let old = activeAccessURLs.removeValue(forKey: id) {
             old.stopAccessingSecurityScopedResource()
         }
-        folders[index].bookmarkData = try bookmarks.makeBookmark(for: resolvedURL) // [RG-07]
+        folders[index].bookmarkData = newBookmark
         folders[index].lastKnownPath = resolvedURL.standardizedFileURL.path
         await activateAccessIfPossible(folders[index])
         try save()
@@ -465,15 +469,22 @@ public actor RegisteredFolderStore {
             return try await FileIO.perform(waitingAtMost: limit) {
                 var result: [UUID: FolderProbe] = [:]
                 for (id, url) in urls {
-                    let values = try? url.resourceValues(forKeys: [
+                    // **問い合わせに失敗した項目は「不明」（エントリ無し）にする**
+                    // [フェーズ1完了時の監査で発見]。以前は `isDirectory: false` に
+                    // 落としており、`classify` がそれを「ファイルに置き換えられた」
+                    // ＝ `.missing` と解釈するため、権限エラーや一過性の I/O
+                    // エラーで健全な登録に「見つかりません」と表示して解除を
+                    // 促してしまう——1-17 が無くそうとした取り違えそのもの。
+                    // `classify` は probe 無しを `.online` に倒す（縮退させない）。
+                    guard let values = try? url.resourceValues(forKeys: [
                         .isDirectoryKey,
                         .volumeSupportsPersistentIDsKey,
                         .volumeLocalizedFormatDescriptionKey,
-                    ])
+                    ]), let isDirectory = values.isDirectory else { continue }
                     result[id] = FolderProbe(
-                        isDirectory: values?.isDirectory ?? false,
-                        supportsPersistentIDs: values?.volumeSupportsPersistentIDs,
-                        fileSystemName: values?.volumeLocalizedFormatDescription
+                        isDirectory: isDirectory,
+                        supportsPersistentIDs: values.volumeSupportsPersistentIDs,
+                        fileSystemName: values.volumeLocalizedFormatDescription
                     )
                 }
                 return result

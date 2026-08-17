@@ -130,6 +130,13 @@ public actor ArchiveCompressor {
         var bytes: Int64 = 0
         let fm = FileManager.default
         for item in items {
+            // 取り消しは走査の途中でも効かせる [フェーズ1完了時の監査で発見:
+            // `ProgressTracker.walk` にはあるこの確認が、同じ木を数える
+            // こちらには無く、5 万件規模・ネットワーク上の事前集計を
+            // 中断できないまま `FileIO` のレーンが最後まで走っていた]。
+            // 中断後の値は使われない（呼び出し側が即座に投げる）ので、
+            // 途中までの集計を返してよい。
+            if Cancellation.isRequested { return (files, bytes) }
             let values = try? item.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey, .isSymbolicLinkKey])
             if values?.isSymbolicLink == true { continue }
             if values?.isDirectory == true {
@@ -138,6 +145,7 @@ public actor ArchiveCompressor {
                     options: [.skipsHiddenFiles]
                 ) else { continue }
                 while let child = enumerator.nextObject() as? URL {
+                    if Cancellation.isRequested { return (files, bytes) }
                     let childValues = try? child.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
                     guard childValues?.isRegularFile == true else { continue }
                     files += 1

@@ -27,7 +27,16 @@ enum EntryPathValidation {
 
         if name.isEmpty { return .rejected(.emptyName) }
         if name.hasPrefix("/") { return .rejected(.absolutePath) }
-        if name.split(separator: "/", omittingEmptySubsequences: false).contains("..") {
+        // **バックスラッシュも区切りとして検査する**［フェーズ1完了時の監査で
+        // 追加]。Windows 製のアーカイブは `..\..\evil` の形で格納され得て、
+        // "/" だけを区切りに見ると単一の（奇妙だが合法な）ファイル名として
+        // 素通りする。libarchive 経由では自前の書き込みなので実害は「変な名前の
+        // ファイルができる」に留まるが、RAR は UnRAR 自身が書き込むため、
+        // 区切りの解釈が UnRAR 側の変換に依存してしまう（CVE-2022-30333 と
+        // 同系）。`..` をどちらの区切りでも持つ名前は正当なアーカイブには
+        // まず現れないので、安全側に倒して拒否する。
+        if name.split(omittingEmptySubsequences: false, whereSeparator: { $0 == "/" || $0 == "\\" })
+            .contains("..") {
             return .rejected(.parentTraversal)
         }
         if name.unicodeScalars.contains(where: { $0.value == 0 || ($0.value < 0x20 && $0 != "\t") }) {

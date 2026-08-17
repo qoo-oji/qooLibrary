@@ -39,7 +39,7 @@ public final class ReplaceBackupJournal: @unchecked Sendable {
 
     /// 記録 1 件。**退避先と、戻すべき場所の両方**を持つ。片方だけでは
     /// 復旧できない（退避先の名前は UUID で、元の名前を含まないため）。
-    public struct Entry: Codable, Equatable, Sendable {
+    public struct Entry: Codable, Hashable, Sendable {
         let backupPath: String
         let targetPath: String
     }
@@ -155,7 +155,17 @@ public final class ReplaceBackupJournal: @unchecked Sendable {
         }
         // 戻せなかったものは記録に残す。次回起動でもう一度試せる
         // （相手がネットワークなら、次は繋がっているかもしれない）。
-        replace(with: survivors)
+        //
+        // **丸ごと差し替えてはならない**［フェーズ1完了時の監査で発見]。
+        // 復旧は退避の移動（ネットワークなら遅い）を挟むので、その間に
+        // 新しい `.replace` が `record()` した記録を、処理済みの一覧で
+        // 上書きすると消してしまう——そのままプロセスが落ちれば、
+        // まさに NV-92 が防ごうとした「記録の無い退避」になる。
+        // **自分が処理した記録だけ**を取り除き、生き残りと新規は残す。
+        let survivorSet = Set(survivors)
+        mutate { current in
+            current.removeAll { entries.contains($0) && !survivorSet.contains($0) }
+        }
         return outcomes
     }
 
@@ -188,12 +198,6 @@ public final class ReplaceBackupJournal: @unchecked Sendable {
         defer { lock.unlock() }
         var entries = loadLocked()
         change(&entries)
-        saveLocked(entries)
-    }
-
-    private func replace(with entries: [Entry]) {
-        lock.lock()
-        defer { lock.unlock() }
         saveLocked(entries)
     }
 

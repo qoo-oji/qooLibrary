@@ -182,7 +182,11 @@ public struct OpReceipt: Sendable {
 public struct TrashReceipt: Sendable {
     public let originalURL: URL
     public let trashURL: URL? // NSWorkspace.recycle の結果
-    public let identity: FileIdentity
+    /// `nil` は「識別子を取得できないまま移した」。**受領書自体は捨てない**
+    /// ——以前は識別子が取れなかった項目を受領書から黙って落としており、
+    /// 実際にはゴミ箱へ移動したのに Undo にも履歴にも残らなかった
+    /// [フェーズ1完了時の監査で発見]。復元は `trashURL` だけで足りる。
+    public let identity: FileIdentity?
 }
 
 // MARK: - 完全削除 [FM-14〜FM-18、8章 §8.5]

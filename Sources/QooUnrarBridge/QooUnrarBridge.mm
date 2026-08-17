@@ -29,12 +29,33 @@ namespace {
 
 constexpr size_t kPathBufferCount = 4096;
 
+// 必ず非 nil を返す。壊れた・悪意ある RAR のヘッダは不正な UTF-32
+// （孤立サロゲート等）を含み得て、その場合 -initWithBytes:… は nil を返す。
+// nil をそのまま流すと、呼び出し側の -stringByAppendingPathComponent: が
+// NSInvalidArgumentException を投げ（捕捉できず即死）、コールバックへ渡る
+// entry.utf8Path も NULL になって Swift 側の String(cString:) がトラップする
+// [フェーズ1完了時の監査で発見]。デコードできない場合は不正なスカラーを
+// U+FFFD に置き換えて復元する（1 文字ずつなので遅いが、壊れた名前のときしか
+// 通らない経路）。
 NSString *WideToString(const wchar_t *wide) {
     if (wide == nullptr) { return @""; }
     size_t length = wcslen(wide);
-    return [[NSString alloc] initWithBytes:wide
-                                     length:length * sizeof(wchar_t)
-                                   encoding:NSUTF32LittleEndianStringEncoding];
+    NSString *decoded = [[NSString alloc] initWithBytes:wide
+                                                 length:length * sizeof(wchar_t)
+                                               encoding:NSUTF32LittleEndianStringEncoding];
+    if (decoded != nil) { return decoded; }
+
+    NSMutableString *repaired = [NSMutableString stringWithCapacity:length];
+    for (size_t i = 0; i < length; i++) {
+        uint32_t scalar = (uint32_t)wide[i];
+        BOOL isValid = (scalar < 0xD800) || (scalar > 0xDFFF && scalar <= 0x10FFFF);
+        if (!isValid) { scalar = 0xFFFD; }
+        NSString *one = [[NSString alloc] initWithBytes:&scalar
+                                                 length:sizeof(scalar)
+                                               encoding:NSUTF32LittleEndianStringEncoding];
+        [repaired appendString:(one ?: @"�")];
+    }
+    return repaired;
 }
 
 // `buffer` must hold at least `bufferCount` wchar_t, including the
@@ -54,7 +75,13 @@ void SetError(char *errorBuffer, int errorBufferSize, NSString *message) {
 
 bool LooksUnsafe(NSString *entryName) {
     if ([entryName hasPrefix:@"/"]) { return true; }
-    for (NSString *component in [entryName componentsSeparatedByString:@"/"]) {
+    // バックスラッシュも区切りとして検査する [EntryPathValidation と同じ
+    // 防御]。Windows 製の RAR は `..\..\evil` の形で格納され得て、"/" だけを
+    // 区切りに見ると単一の（奇妙だが合法な）名前として素通りする
+    // （CVE-2022-30333 と同系。実際に外へ出るかは UnRAR 側の変換に依存する
+    // ため、こちらで先に塞ぐ）。
+    NSCharacterSet *separators = [NSCharacterSet characterSetWithCharactersInString:@"/\\"];
+    for (NSString *component in [entryName componentsSeparatedByCharactersInSet:separators]) {
         if ([component isEqualToString:@".."]) { return true; }
     }
     return false;

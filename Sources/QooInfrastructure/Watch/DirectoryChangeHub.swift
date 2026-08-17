@@ -257,11 +257,26 @@ public final class DirectoryChangeHub {
     private func handle(_ changes: [FileSystemChange]) {
         var paths: [String] = []
         var rescanRoots: [String] = []
+        var sawVolumeMountChange = false
         paths.reserveCapacity(changes.count)
         for change in changes {
-            paths.append(change.path)
-            if change.mustScanSubDirectories { rescanRoots.append(change.path) }
+            // 末尾スラッシュは索引の鍵（`standardizedFileURL.path`/`realpath`、
+            // どちらも末尾スラッシュ無し）と揃える。ディレクトリ粒度の
+            // イベントが `/…/Dir/` の形で届くと、そのままでは自分の行にも
+            // `hasPrefix(root + "/")` にも引き当たらない [監査で追加]。
+            var path = change.path
+            if path.count > 1, path.hasSuffix("/") { path = String(path.dropLast()) }
+            paths.append(path)
+            if change.mustScanSubDirectories { rescanRoots.append(path) }
+            if change.isVolumeMountChange { sawVolumeMountChange = true }
         }
+        // **ボリュームの着脱でポーリングの要否を判断し直す** [フェーズ1完了時の
+        // 監査で発見]。ポーリングの要否は関心の増減時にしか見ておらず、
+        // 未接続のまま登録された共有が後からマウントされても、関心の顔ぶれが
+        // 変わらない限りポーリングが始まらなかった（＝他のマシンの変更に
+        // 追随しない）。`scheduleRootRebuild` は待ち合わせ済みで、要否の判断
+        // （`updateRemotePolling`）も相乗りしている。
+        if sawVolumeMountChange { scheduleRootRebuild() }
         apply(changedPaths: paths, rescanRoots: rescanRoots)
     }
 
@@ -372,8 +387,12 @@ public final class DirectoryChangeHub {
 
         var affected: Set<UUID> = []
         for (token, current) in stamps {
-            // 計測している間に解除された登録は捨てる。
-            guard let registration = registrations[token] else { continue }
+            // 計測している間に解除された登録は捨てる。**同じ token のまま
+            // 別のフォルダへ登録し直された場合も捨てる** [監査で追加] —
+            // 古いフォルダの計測値を新しいフォルダの基準にしてしまうと、
+            // 初回の変化を取りこぼすか、偽の再読み込みを起こす。
+            guard let registration = registrations[token],
+                  registration.watchRoot == shallow[token] else { continue }
             let previous = registration.lastRemoteStamp
             guard previous != current else { continue }
             registrations[token]?.lastRemoteStamp = current
@@ -425,6 +444,15 @@ public final class DirectoryChangeHub {
     /// ごとの経路にはファイルシステムへの問い合わせを持ち込まない。
     nonisolated static func indexKeys(for url: URL) -> [String] {
         let standardized = url.standardizedFileURL.path
+        // **リモートのパスには `realpath(3)` を呼ばない** [NV6-02、フェーズ1
+        // 完了時の監査で発見]。`realpath` は成分ごとの `lstat` ＝そのボリューム
+        // への実 I/O で、`register()` はメインアクタから呼ばれるため、マウントが
+        // 残ったまま応答しない共有では**メインスレッドが最大 30 秒止まる**
+        // （しかも `watch()` は body の再評価のたびに同じ URL で繰り返し届く）。
+        // ネットワーク共有のマウントポイントは firmlink/シンボリックリンクの
+        // 裏に居ないので、標準化パスだけで照合に足りる。判定はマウント表
+        // 1 枚（I/O 無し、実測 0.13ms）。
+        if MountTable.current().isRemote(path: standardized) { return [standardized] }
         let physical = physicalPath(standardized)
         return standardized == physical ? [standardized] : [standardized, physical]
     }

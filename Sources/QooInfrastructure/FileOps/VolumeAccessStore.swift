@@ -33,6 +33,13 @@ public actor VolumeAccessStore {
     /// `startAccessingSecurityScopedResource` が `stop` で対応づけられないまま
     /// 残ってしまう [フェーズ1完了時のリソースリーク監査で追加]。
     private var activeAccessCounts: [URL: Int] = [:]
+    /// **アクセスを開始したときの URL を、許可 ID で引けるようにする**
+    /// [フェーズ1完了時の監査で発見、`RegisteredFolderStore.activeAccessURLs`
+    /// と同じ対策]。取り消し時にブックマークを解決し直す方式だと、
+    /// ①ボリュームが外れていて解決できない ②許可した場所が移動されて
+    /// 別の URL に解決される、のどちらでも `stopAccessingSecurityScopedResource`
+    /// が開始時の URL と対応づかず、スコープと参照カウントが取り残される。
+    private var activeAccessURLsByGrant: [UUID: URL] = [:]
     /// 初回読み込みのメモ化 [NV6-05]。`RegisteredFolderStore.loadTask` と同じ
     /// 理由——解決の await 中の actor 再入で二重読み込み・空読みをしないため。
     private var loadTask: Task<Void, Never>?
@@ -64,6 +71,14 @@ public actor VolumeAccessStore {
     public func grantedAccess() async -> [GrantedVolumeAccess] {
         await ensureLoaded()
         return grants.sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
+    }
+
+    /// アクセスを開始できている許可の件数（`RegisteredFolderStore.activeAccessCount()`
+    /// と同じ位置づけ）。診断と、取り消しがスコープを確実に閉じることの
+    /// 検証 [フェーズ1完了時の監査] に使う。ブックマークの再解決を伴わない。
+    public func activeAccessCount() async -> Int {
+        await ensureLoaded()
+        return activeAccessURLsByGrant.count
     }
 
     /// 指定した場所が、既存の許可のいずれかに覆われているか
@@ -153,8 +168,11 @@ public actor VolumeAccessStore {
 
     public func revokeAccess(_ id: UUID) async throws {
         await ensureLoaded()
-        guard let grant = grants.first(where: { $0.id == id }) else { return }
-        if let url = await resolvedURL(for: grant), let count = activeAccessCounts[url] {
+        guard grants.contains(where: { $0.id == id }) else { return }
+        // ブックマークの再解決には依存しない（`activeAccessURLsByGrant` の
+        // コメント参照）。**開始したときの URL** に対して閉じる。
+        if let url = activeAccessURLsByGrant.removeValue(forKey: id) {
+            let count = activeAccessCounts[url] ?? 1
             if count <= 1 {
                 url.stopAccessingSecurityScopedResource()
                 activeAccessCounts.removeValue(forKey: url)
@@ -203,6 +221,7 @@ public actor VolumeAccessStore {
         }
         if url.startAccessingSecurityScopedResource() {
             activeAccessCounts[url, default: 0] += 1
+            activeAccessURLsByGrant[grant.id] = url
             Log.sandbox.debug("ボリューム許可のアクセスを開始: \(Log.path(url))")
         } else {
             Log.sandbox.warning("ボリューム許可のセキュリティスコープを開始できません: \(Log.path(url))")

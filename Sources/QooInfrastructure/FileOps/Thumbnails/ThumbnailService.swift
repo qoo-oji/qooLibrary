@@ -39,6 +39,8 @@ public actor ThumbnailService {
     // 「同時に何本まで」の管理はここに集約する。
     private var activeCount = 0
     private var waiters: [(id: UUID, continuation: CheckedContinuation<Void, Never>)] = []
+    /// キャンセルによって起こされた（＝スロットを獲得していない）待機者の印。
+    private var cancelledWaiterIDs: Set<UUID> = []
 
     public init(
         maxConcurrent: Int = AppLimits.Thumbnail.defaultMaxConcurrent,
@@ -101,29 +103,34 @@ public actor ThumbnailService {
         // フォールバックするのが非表示時の正しい表示 [DS-01] だからで、
         // キャッシュ済みかどうかで見た目が変わってはならない。
         if await isGloballyHidden() { return nil }
-        // **クラウドにしか実体が無いファイルは、サムネイルのために
-        // ダウンロードしない**［実測に基づく判断］。
+        // **dataless 判定・stat・種別判定は 1 回の `FileIO.perform` にまとめる**
+        // [NV6-01][NV6-02、フェーズ1完了時の監査で発見]。以前はこの 3 つを
+        // actor の上（協調プール）で同期に呼んでおり、対象がネットワーク上で
+        // 相手が応答しないと、**この actor 自体が最大 30 秒塞がり、アプリ全体の
+        // サムネイル要求が直列に凍る**うえ、協調プールのスレッドも 1 本占有した
+        // （`BackgroundThumbnailWarmer` は最初から `FileIO` 経由にしてあり、
+        // それが本来の契約だった）。
         //
-        // 読むこと自体はできる（協調なしでも成功する）が、1 件あたり約 1 秒
-        // かけて実際にダウンロードが走る。サムネイルは一覧を開いただけで
-        // 何百件も自動生成されるため、クラウドに預けたライブラリを開くと、
-        // ユーザーが頼んでもいないのに蔵書全体のダウンロードが始まる。
-        // Finder も追い出されたファイルのサムネイルは作らない。
-        //
-        // ユーザーが明示的に頼んだ操作（Quick Look・展開・開く）は別経路で、
-        // そちらは従来どおり実体化する——頼まれた仕事はやる。
-        if isDataless(url) { return nil }
-        // **キャッシュの鍵は `FileIdentity` ではなく `FileContentStamp`**
-        // （更新日時とサイズを含む）。識別子だけで引くと、外部で差し替えた
-        // ファイルに古いサムネイルが出続け、削除→新規作成で inode が
-        // 再利用された場合には無関係なファイルのサムネイルが出る
-        // [`FileContentStamp` のコメント参照]。
-        guard let stamp = try? FileMetadata.stamp(of: url) else { return nil }
+        // - dataless: クラウドにしか実体が無いファイルは、サムネイルのために
+        //   ダウンロードしない［実測に基づく判断。一覧を開いただけで蔵書全体の
+        //   ダウンロードが始まるのを防ぐ。Quick Look・展開・開くといった
+        //   明示的な操作は別経路で従来どおり実体化する]。
+        // - stamp: **キャッシュの鍵は `FileIdentity` ではなく `FileContentStamp`**
+        //   （更新日時とサイズを含む）。識別子だけで引くと、外部で差し替えた
+        //   ファイルに古いサムネイルが出続け、inode 再利用では無関係な
+        //   ファイルのサムネイルが出る [`FileContentStamp` のコメント参照]。
+        let isDatalessCheck = isDataless
+        let probe = await FileIO.perform { () -> (stamp: FileContentStamp, kind: PreviewableFileKind)? in
+            if isDatalessCheck(url) { return nil }
+            guard let stamp = try? FileMetadata.stamp(of: url) else { return nil }
+            return (stamp, PreviewableFileKind.of(url))
+        }
+        guard let (stamp, kind) = probe else { return nil }
         if let cached = cache.loadCachedImage(for: stamp) {
             return cached
         }
 
-        await acquireSlot()
+        guard await acquireSlot() else { return nil }
         defer { releaseSlot() }
         // [フェーズ1完了時のリソースリーク監査で追加] `IconGridView` の
         // `.task(id:)` はセルが画面外へスクロールされると自動的にキャンセル
@@ -133,7 +140,7 @@ public actor ThumbnailService {
         if Cancellation.isRequested { return nil }
 
         let generated: CGImage?
-        switch PreviewableFileKind.of(url) {
+        switch kind {
         case .video:
             generated = await videoThumbnailLoader.makeThumbnail(for: url, maxPixelSize: maxPixelSize)
         case .pdf:
@@ -153,7 +160,7 @@ public actor ThumbnailService {
             // 実機で頻繁に問われるため、診断ログには残す。既定レベル
             // （`info`）では出さない — 対応していない形式のファイルが
             // 並んでいるだけで大量に出てしまうため。
-            Log.image.debug("サムネイルを生成できません（\(PreviewableFileKind.of(url))）: \(Log.path(url))")
+            Log.image.debug("サムネイルを生成できません（\(kind)）: \(Log.path(url))")
             return nil
         }
         do {
@@ -214,10 +221,18 @@ public actor ThumbnailService {
 
     // MARK: - 同時実行数の制限 [PF-11]
 
-    private func acquireSlot() async {
+    /// スロット待ちの件数。**検証のためだけにある** — 「キャンセルされた
+    /// 待機者が幻のスロットを獲得しない」ことは、待ち行列の状態を外から
+    /// 観測できないと確かめようがないため（`ReplaceBackupJournal.pendingBackupCount`
+    /// と同じ位置づけ）。
+    func pendingWaiterCount() -> Int { waiters.count }
+
+    /// - Returns: スロットを実際に獲得したか。**`false` のときは
+    ///   `releaseSlot()` を呼んではならない**（獲得していないものは返せない）。
+    private func acquireSlot() async -> Bool {
         if activeCount < maxConcurrent {
             activeCount += 1
-            return
+            return true
         }
         // [フェーズ1完了時のリソースリーク監査で追加] 素の `withCheckedContinuation`
         // はタスクのキャンセルを観測しないため、`waiters` に積まれたまま
@@ -234,15 +249,26 @@ public actor ThumbnailService {
         } onCancel: {
             Task { await self.resumeWaiterIfStillWaiting(id) }
         }
+        // **キャンセルで起こされた場合はスロットを獲得していない**［同監査の
+        // 再点検で発見]。ここで無条件に `activeCount += 1` すると、空きが無い
+        // まま起こされたのに獲得済みとして数え、直後の `releaseSlot()` が
+        // 別の待機者を起こす——高速スクロールでキャンセルが重なるたびに
+        // 実行中のデコードが `maxConcurrent + k` 本まで膨らみ、PF-11 の
+        // 上限が実質的に無効になっていた。
+        if cancelledWaiterIDs.remove(id) != nil { return false }
         activeCount += 1
+        return true
     }
 
     /// キャンセルされたリクエストの継続が `waiters` に残っていれば取り除いて
     /// 即座に再開させる。既に順番が回ってきて resume 済みなら何もしない
     /// （`withTaskCancellationHandler` の `onCancel` と通常の `releaseSlot()`
     /// が同じ継続を二重に resume してしまわないための安全策）。
+    /// 「キャンセルで起こした」印を残し、起こされた側がスロットを
+    /// 数えないようにする（`acquireSlot()` の戻り値の根拠）。
     private func resumeWaiterIfStillWaiting(_ id: UUID) {
         guard let index = waiters.firstIndex(where: { $0.id == id }) else { return }
+        cancelledWaiterIDs.insert(id)
         waiters.remove(at: index).continuation.resume()
     }
 

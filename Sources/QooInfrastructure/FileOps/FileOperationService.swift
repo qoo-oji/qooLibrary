@@ -301,7 +301,18 @@ public actor FileOperationService {
             try? FileManager.default.removeItem(at: target)
             throw FileOperationError.sourceChangedDuringOperation(source)
         }
-        try FileManager.default.removeItem(at: source)
+        do {
+            try FileManager.default.removeItem(at: source)
+        } catch {
+            // **元を消せなかったら、写した側を片付けてから失敗させる**
+            // ［フェーズ1完了時の監査で発見]。コピーは成功しているのに
+            // ここで素通しに投げると、宛先に**受領書の無い複製**が残る
+            // （Undo 不能・再試行は EEXIST で意味不明な失敗になる）。
+            // 元は無傷なので、宛先を消せば操作前の状態に正しく戻る。
+            Log.fileOps.error("移動の後始末（元の削除）に失敗したため、写した側を片付けます: \(Log.path(source))")
+            try? FileManager.default.removeItem(at: target)
+            throw error
+        }
         return outcome
     }
 
@@ -347,7 +358,15 @@ public actor FileOperationService {
         // 同一実体かどうかは inode（`FileIdentity`）で判定する。実測では
         // 同一実体どうしは一致し、別実体とは一致しないことを確認済み。
         let resolved: ResolvedDestination
-        if await FileIO.perform({ Self.refersToSameEntry(item, target) }) {
+        // **書き込み可否の検査は `resolveDestination` より前**［フェーズ1完了時の
+        // 監査で発見]。後に置くと、`.replace` が既存の宛先を退避した**後**で
+        // この検査が throw し、`withReplaceBackupCleanup` を素通りして退避が
+        // 復元されない——ユーザーのファイルが見えないドット名のまま残る
+        // （次回起動のジャーナル復旧までの間、「消えた」ように見える）。
+        if try await FileIO.perform({ () throws -> Bool in
+            try Self.checkDestinationIsWritable(target.deletingLastPathComponent())
+            return Self.refersToSameEntry(item, target)
+        }) {
             resolved = ResolvedDestination(target: target, backupOfReplaced: nil)
         } else if let decided = try await resolveDestination(item, target, options: options) {
             resolved = decided
@@ -355,7 +374,6 @@ public actor FileOperationService {
             throw FileOperationError.operationFailed("rename of \(item.path) skipped by conflict policy")
         }
         return try await FileIO.perform {
-            try Self.checkDestinationIsWritable(target.deletingLastPathComponent())
             let before = try? Self.identity(of: item)
             try Self.withReplaceBackupCleanup(resolved) {
                 try FileManager.default.moveItem(at: item, to: resolved.target) // [FM-05]
@@ -420,8 +438,8 @@ public actor FileOperationService {
         trashedURLs = Array(mapping.values)
         if let failure = outcome.failure {
             let partialReceipts = items.compactMap { original -> TrashReceipt? in
-                guard let trashed = mapping[original], let id = identities[original] else { return nil }
-                return TrashReceipt(originalURL: original, trashURL: trashed, identity: id)
+                guard let trashed = mapping[original] else { return nil }
+                return TrashReceipt(originalURL: original, trashURL: trashed, identity: identities[original])
             }
             Log.fileOps.error(
                 "trash が \(partialReceipts.count)/\(items.count) 件成功後に失敗 — \(failure.localizedDescription)"
@@ -433,9 +451,8 @@ public actor FileOperationService {
         for (original, trashed) in mapping {
             Log.fileOps.debug("trash: \(Log.path(original)) → \(Log.path(trashed))")
         }
-        return items.compactMap { original in
-            guard let id = identities[original] else { return nil }
-            return TrashReceipt(originalURL: original, trashURL: mapping[original], identity: id)
+        return items.map { original in
+            TrashReceipt(originalURL: original, trashURL: mapping[original], identity: identities[original])
         }
     }
 
@@ -669,11 +686,16 @@ public actor FileOperationService {
         let aliasName = "\(source.lastPathComponent) のエイリアス"
         let target = destinationFolder.appendingPathComponent(aliasName)
         defer { announce([target]) }
+        // **ブックマークの生成は `resolveDestination` より前**［フェーズ1完了時の
+        // 監査で発見、`rename` の検査順序と同じ理由]。後に置くと、`.replace` が
+        // 既存の宛先を退避した後でここが throw し、退避が復元されないまま残る。
+        let bookmarkData = try await FileIO.perform {
+            try source.bookmarkData(options: [.suitableForBookmarkFile])
+        }
         guard let resolved = try await resolveDestination(source, target, options: options) else {
             throw FileOperationError.operationFailed("alias creation for \(source.path) skipped by conflict policy")
         }
         return try await FileIO.perform {
-            let bookmarkData = try source.bookmarkData(options: [.suitableForBookmarkFile])
             try Self.withReplaceBackupCleanup(resolved) {
                 try URL.writeBookmarkData(bookmarkData, to: resolved.target)
             }
@@ -725,9 +747,16 @@ public actor FileOperationService {
                     try FileManager.default.moveItem(at: trashURL, to: receipt.originalURL) // [UD-08]
                 } catch {
                     Log.fileOps.error(
-                        "restoreFromTrash に失敗: \(trashURL.path) → \(receipt.originalURL.path) — \(error.localizedDescription)"
+                        "restoreFromTrash が \(results.count) 件成功後に失敗: \(trashURL.path) → \(receipt.originalURL.path) — \(error.localizedDescription)"
                     )
-                    throw error
+                    // **戻せた分の受領書を捨てない** [ER-13][ER-16]。素通しに
+                    // 投げると、実際にはゴミ箱から戻った項目が記録に残らない
+                    // （`transfer`/`trash`/`setLocked` と同じ扱い）
+                    // [フェーズ1完了時の監査で発見]。
+                    if results.isEmpty { throw error }
+                    throw PartialTransferFailure(
+                        receipts: results, failedItem: receipt.originalURL, underlying: error
+                    )
                 }
                 Log.fileOps.info("restoreFromTrash: \(Log.path(trashURL)) → \(Log.path(receipt.originalURL))")
                 results.append(OpReceipt(
@@ -1005,10 +1034,19 @@ public actor FileOperationService {
             )
         }
 
+        // **同一ボリューム内の移動は 1 バイトも書かない**（`rename(2)`）ため、
+        // 総量の走査も空き容量の検査も行わない [フェーズ1完了時の監査で発見:
+        // クローン非対応・volumeUUID 無しのボリューム（exFAT/SMB）では
+        // `willBeInstant` が偽になり、空きの少ない同一ボリューム内の正当な
+        // 移動を「空き容量不足」で誤って断っていた]。判定はマウント表
+        // （I/O 無し [NV6-02]）で行う — `volumeUUIDString` は SMB で常に nil。
+        let movesWithinVolume = (kind == .move || kind == .promoteFromStaging)
+            && Self.allOnSameVolume(items: items, destination: destination)
         let tracker = ProgressTracker(
             reporter: options.progress,
             items: items,
-            destination: destination
+            destination: destination,
+            writesNoBytes: movesWithinVolume
         )
         // 走査済みなら、いちばん深い項目まで含めて収まるか確かめる。
         // 走査していない場合（クローンで済む経路）は追加の走査をしてまでは
@@ -1050,6 +1088,19 @@ public actor FileOperationService {
         return tracker
     }
 
+    /// 全項目と書き込み先が同じボリュームにあるか。**マウント表だけで判定する**
+    /// [NV6-02] — 各ボリュームへの問い合わせを伴わないので、応答しない共有が
+    /// あっても固まらない。`FileIO.perform` の中からのみ呼ぶこと（`preflight` 用）。
+    private nonisolated static func allOnSameVolume(items: [URL], destination: URL) -> Bool {
+        let mounts = MountTable.current()
+        guard let destMount = mounts.entry(containing: destination.standardizedFileURL.path)?.mountPoint else {
+            return false
+        }
+        return items.allSatisfy {
+            mounts.entry(containing: $0.standardizedFileURL.path)?.mountPoint == destMount
+        }
+    }
+
     /// 1 項目を運び終えた結果。`transfer` の受領書はこれから組み立てる。
     private struct CarriedItem {
         let before: FileIdentity?
@@ -1074,28 +1125,34 @@ public actor FileOperationService {
         let stampBefore = try? FileMetadata.stamp(of: item)
         // 中断は「成功しなかった」として扱う — `.replace` の退避を
         // 消させないため（`withReplaceBackupCleanup` のコメント参照）。
+        //
+        // **「元が変わっていないか」の検証は、退避の後始末より前＝この
+        // クロージャの中で行わなければならない**［フェーズ1完了時の監査で
+        // 発見]。以前は `withReplaceBackupCleanup` が返ってから検証しており、
+        // その時点で `.replace` の退避は既にゴミ箱（ゴミ箱を持たない
+        // ボリュームでは完全削除）へ処分済みだった——そこで検証に失敗して
+        // 新しいコピーを消すと、**置き換えられた元と新しいコピーの両方を
+        // 失う**（まさに `.replace` の安全化が防ごうとした形）。クロージャの
+        // 中で投げれば、catch 側の `restoreReplacedItem` が書きかけを消して
+        // 退避を元へ戻す。
+        //
+        // 検証そのもの（書き込み中のファイルを写していないか）については
+        // ``sourceWasModified(before:source:destination:)`` のコメント参照。
         let outcome = try withReplaceBackupCleanup(resolved, succeeded: { outcome in
             if case .completed = outcome { return true }
             return false
-        }) {
-            try perform(item, resolved.target) { bytes in tracker.addBytes(bytes) }
-        }
-        // **書き込み中のファイルを写していないか確かめる**［実測で確認］。
-        // 他アプリが書き足している最中のファイルをコピーすると、
-        // `copyfile` はその時点の姿を写して**成功を返す**。黙って
-        // 中途半端なコピーを残すと、ユーザーは完全な控えを取ったと
-        // 思い込む（そのあと元を消せばデータを失う）。
-        // 元が残っている場合だけ比べる（移動では既に消えている）。
-        //
-        // **以前はここで更新日時の差だけを見ていた。** それだと SMB 上に
-        // 作ったばかりのファイルのコピーが偽陽性で失敗する（1-16b の実測、
-        // ``sourceWasModified(before:source:destination:)`` 参照）。あわせて、
-        // コピー経路には内容の突き合わせが無く「更新日時が同じまま中身が
-        // 変わる」場合を取り逃がしていた——共通の規則へ寄せて両方直している。
-        if case .completed = outcome,
-           Self.sourceWasModified(before: stampBefore, source: item, destination: resolved.target) {
-            try? FileManager.default.removeItem(at: resolved.target)
-            throw FileOperationError.sourceChangedDuringOperation(item)
+        }) { () throws -> FileCopyEngine.Outcome in
+            let outcome = try perform(item, resolved.target) { bytes in tracker.addBytes(bytes) }
+            if case .completed = outcome,
+               Self.sourceWasModified(before: stampBefore, source: item, destination: resolved.target) {
+                // 退避が無い経路では、最新でないコピーをここで片付ける
+                // （退避がある経路は catch 側の復元が同じことを行う）。
+                if resolved.backupOfReplaced == nil {
+                    try? FileManager.default.removeItem(at: resolved.target)
+                }
+                throw FileOperationError.sourceChangedDuringOperation(item)
+            }
+            return outcome
         }
         if case .cancelled = outcome {
             // **中断した項目の書きかけを消す**［実機検証で発見］。
@@ -1358,7 +1415,12 @@ public actor FileOperationService {
         while true {
             let candidateName = ext.isEmpty ? "\(base) \(n)" : "\(base) \(n).\(ext)"
             let candidate = directory.appendingPathComponent(candidateName)
-            if !FileManager.default.fileExists(atPath: candidate.path) {
+            // `fileExists` はシンボリックリンクを**辿る**ため、リンク切れの
+            // シンボリックリンクが候補名を占めていると「空いている」と誤判定し、
+            // 直後の `COPYFILE_EXCL`/`RENAME_EXCL` が EEXIST で失敗する。
+            // 辿らない `attributesOfItem` で判定する [フェーズ1完了時の監査で
+            // 発見。完全削除のリンク切れ対応と同じ罠]。
+            if (try? FileManager.default.attributesOfItem(atPath: candidate.path)) == nil {
                 return candidate
             }
             n += 1

@@ -105,6 +105,31 @@ import Testing
         #expect(try String(contentsOf: folder.appendingPathComponent("b.txt"), encoding: .utf8) == "b.txt")
     }
 
+    /// **第 2 パスの途中で失敗しても、一時名（UUID）のまま取り残さない**
+    /// [フェーズ1完了時の監査で発見]。連鎖リネーム（1→2, 2→不正な名前）の
+    /// 2 件目が失敗する形で再現する: 以前は残りが
+    /// `<uuid>.qoo-bulk-rename-tmp` のまま放置され、Undo でも戻せなかった。
+    @Test func phaseTwoFailureDoesNotStrandTemporaryNames() async throws {
+        let folder = try makeFolder(["1.txt", "2.txt"])
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let changes = [
+            BulkRename.Change(originalName: "1.txt", newName: "2.txt"),
+            // "/" を含む名前は `FileOperationService.rename` の検証が拒否する
+            // → 第 2 パス（一時名 → 目的の名前）で必ず失敗する。
+            BulkRename.Change(originalName: "2.txt", newName: "bad/name.txt"),
+        ]
+
+        await #expect(throws: (any Error).self) {
+            _ = try await BulkRenameCommand(folder: folder, changes: changes, fileOps: FileOperationService()).execute()
+        }
+
+        // 一時名のファイルが 1 つも残っていないことが要点。失敗した項目は
+        // 元の名前（衝突していれば「元の名前 2」）として見える形で残る。
+        let remaining = try names(in: folder)
+        #expect(remaining.allSatisfy { !$0.hasSuffix(".qoo-bulk-rename-tmp") }, "残骸: \(remaining)")
+        #expect(remaining.count == 2)
+    }
+
     /// 名前が変わらない行は触らない（Undo スタックを無意味に汚さない）。
     @Test func unchangedRowsAreLeftAlone() async throws {
         let folder = try makeFolder(["a.txt"])

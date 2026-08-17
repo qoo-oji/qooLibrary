@@ -115,12 +115,17 @@ final class FileSystemEventStream {
         guard newRoots != roots else { return }
         stopStream()
         roots = newRoots
-        guard !newRoots.isEmpty else { return }
-
         // 生成を待っている間に集合がまた変わり得る。**戻ってきたときに
         // 自分がまだ最新かを確かめ、そうでなければ捨てる** — さもないと
         // 30 秒前の古い集合を監視するストリームを据えてしまう。
+        //
+        // **空集合でも世代は必ず進める**［フェーズ1完了時の監査で発見]。
+        // 以前は空のとき世代を進めずに戻っていたため、待ちの最中の生成が
+        // 古い世代のまま「まだ最新」と判定され、**関心が 1 つも無いのに
+        // 古いルートを監視する幽霊ストリーム**が据え付けられた（次に空でない
+        // 集合が来るまで、イベントの配送とストリームが漏れ続ける）。
         generation &+= 1
+        guard !newRoots.isEmpty else { return }
         let mine = generation
         let handle = onChanges
         let queue = deliveryQueue

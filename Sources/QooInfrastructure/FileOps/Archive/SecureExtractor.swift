@@ -61,7 +61,14 @@ public actor SecureExtractor {
         if listing.entries.count > options.limits.maxEntries { // [EX-21]
             throw ExtractError.tooManyEntries(limit: options.limits.maxEntries)
         }
-        let declaredTotal = listing.entries.reduce(Int64(0)) { $0 + $1.uncompressedSize }
+        // **飽和加算でなければならない**［フェーズ1完了時の監査で発見]。
+        // 宣言サイズは攻撃者が自由に書けるため、素の `+` だと `Int64.max` 級の
+        // 値を 2 つ並べたアーカイブでここがトラップし、拒否ではなくクラッシュに
+        // なる。飽和させれば直後の空き容量比較が正しく拒否する。負の宣言値も
+        // 0 に切り上げて、合計を意図的に小さく見せる細工を無効にする。
+        let declaredTotal = listing.entries.reduce(Int64(0)) {
+            $0.addingClamped(Swift.max(0, $1.uncompressedSize))
+        }
         // 空き容量が分からないボリュームでは検査を飛ばす（`VolumeCapacity`
         // 参照 — 断る側に倒すと、空のディスクイメージのように
         // `…ForImportantUsage` が 0 を返す先へ展開できなくなる）。
@@ -71,7 +78,7 @@ public actor SecureExtractor {
             requested: options.limits.freeSpaceMargin, at: options.destination
         )
         if let available = Self.availableCapacity(at: options.destination),
-           available < declaredTotal + destinationMargin {
+           available < declaredTotal.addingClamped(destinationMargin) {
             throw ExtractError.insufficientFreeSpace(required: declaredTotal, available: available)
         }
         // **ステージング側の空きも確かめる**［監査で発見］。展開は必ず
@@ -85,9 +92,9 @@ public actor SecureExtractor {
         // 展開先とステージングが同じボリュームなら二重に要求しない。
         if !Self.isSameVolume(staging, options.destination),
            let stagingAvailable = Self.availableCapacity(at: staging),
-           stagingAvailable < declaredTotal + VolumeCapacity.margin(
+           stagingAvailable < declaredTotal.addingClamped(VolumeCapacity.margin(
                requested: options.limits.freeSpaceMargin, at: staging
-           ) {
+           )) {
             throw ExtractError.insufficientStagingSpace(
                 required: declaredTotal, available: stagingAvailable
             )

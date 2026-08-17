@@ -202,8 +202,15 @@ public struct UnrarBackend: ArchiveReading {
     private static let entryCallback: QooUnrarEntryCallback = { entryPtr, contextPtr in
         guard let entryPtr, let contextPtr else { return 0 }
         let box = Unmanaged<CallbackBox>.fromOpaque(contextPtr).takeUnretainedValue()
-        let name = String(cString: entryPtr.pointee.utf8Path)
-        let size = Int64(entryPtr.pointee.unpackedSize)
+        // `utf8Path` は注釈の無い C ポインタ（IUO）。ブリッジ側は非 nil を
+        // 保証するようになったが、NULL のまま `String(cString:)` へ渡すと
+        // トラップするため、こちらでも受け止める［フェーズ1完了時の監査で
+        // 追加した二重の守り］。
+        guard let namePtr = entryPtr.pointee.utf8Path else { return 0 }
+        let name = String(cString: namePtr)
+        // 宣言サイズは攻撃者が自由に書ける uint64。素の `Int64(_:)` は
+        // `Int64.max` を超える値でトラップする [`Int64.addingClamped` 参照]。
+        let size = Int64(clamping: entryPtr.pointee.unpackedSize)
         let isDirectory = entryPtr.pointee.isDirectory != 0
         if box.collectsEntries {
             // QooUnrarBridge の C API はシンボリックリンク／特殊ファイルの情報を
@@ -217,7 +224,9 @@ public struct UnrarBackend: ArchiveReading {
             // 総数は `SecureExtractor` がディレクトリを除いて数えているので、
             // こちらも数えない（進捗が総数を超えないようにする）。
             box.fileCount += 1
-            box.writtenBytes += size
+            // 宣言サイズの合算は飽和させる（素の `+=` は細工されたヘッダで
+            // トラップする）[`Int64.addingClamped` 参照]。
+            box.writtenBytes = box.writtenBytes.addingClamped(size)
         }
         box.progress?.report(OperationProgress(
             completedBytes: box.writtenBytes,

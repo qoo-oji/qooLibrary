@@ -180,4 +180,33 @@ import Testing
         #expect(token.count == 8)
         #expect(token.allSatisfy { $0.isHexDigit })
     }
+
+    /// **絶対パスでない中身が `⟪…⟫` の印で届いても、素通ししない**
+    /// [フェーズ1完了時の監査で発見]。書き込み側が「ユーザーデータ」と明示した
+    /// 範囲なので、パスとして分解できなければ丸ごと伏せる（印の経路は引用符の
+    /// 安全網も通らないため、素通しは印が無いより悪い）。
+    @Test func markedContentThatIsNotAnAbsolutePathIsStillRedacted() {
+        let line = "対象: \u{27EA}(成年コミック) [作家名] 作品名.cbz\u{27EB} を処理"
+        let anonymized = anonymizer.anonymize(line)
+        #expect(!anonymized.contains("成年コミック"))
+        #expect(!anonymized.contains("作品名"))
+        #expect(anonymized.contains("対象: "))
+        #expect(anonymized.contains(" を処理"))
+    }
+
+    /// 日本語の句読点の直後に置かれた素の絶対パスも匿名化される
+    /// [フェーズ1完了時の監査で発見]。Foundation 由来の文
+    /// （`…できませんでした。/Volumes/…`）で `。` が境界と見なされず
+    /// パスが素通りしていた。
+    @Test func barePathsAfterJapanesePunctuationAreAnonymized() {
+        for line in [
+            "操作を完了できませんでした。/Volumes/PRO-G40/成年コミック/作品.cbz",
+            "対象：/Volumes/PRO-G40/成年コミック/作品.cbz",
+            "読めません、/Volumes/PRO-G40/成年コミック/作品.cbz",
+        ] {
+            let anonymized = anonymizer.anonymize(line)
+            #expect(!anonymized.contains("成年コミック"), "素通り: \(anonymized)")
+            #expect(!anonymized.contains("作品"), "素通り: \(anonymized)")
+        }
+    }
 }

@@ -60,6 +60,33 @@ import Testing
 
         #expect(collected.completedBytesValues().contains(2), "2 項目目の最初のバイト報告が間引かれている")
     }
+
+    /// **バイトを書かない操作（同一ボリューム内の移動）は総量を数えない**
+    /// [フェーズ1完了時の監査で追加]。`requiredBytes` が nil であることが
+    /// 「空き容量の事前検査を掛けない」ことの根拠になる — 同一ボリューム内の
+    /// 移動は `rename(2)` で 1 バイトも書かないのに、クローン非対応の
+    /// ボリューム（exFAT/SMB）では総量と空きを比べて誤って断っていた。
+    @Test func writesNoBytesSkipsMeasurementAndFreeSpaceRequirement() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qoo-tracker-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = dir.appendingPathComponent("payload.bin")
+        try Data(count: 1_000_000).write(to: file)
+
+        let measured = ProgressTracker(reporter: nil, items: [file], destination: dir)
+        let notMeasured = ProgressTracker(reporter: nil, items: [file], destination: dir, writesNoBytes: true)
+
+        // 対照: 通常の経路では実サイズが数えられる（この環境の一時ディレクトリは
+        // クローン対応の APFS なので、`willBeInstant` が効くと両方 nil になり
+        // 比較にならない。その場合はこの対照を諦める）。
+        if measured.requiredBytes != nil {
+            #expect(measured.requiredBytes == 1_000_000)
+        }
+        #expect(notMeasured.requiredBytes == nil)
+        #expect(notMeasured.deepestRelativePath == nil)
+        #expect(notMeasured.largestFile == nil)
+    }
 }
 
 /// 報告を集めるだけの箱（報告は任意のスレッドから来る）。

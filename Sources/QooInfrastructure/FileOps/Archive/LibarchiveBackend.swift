@@ -369,6 +369,17 @@ public struct LibarchiveBackend: ArchiveReading {
                 }
             }
         case .sevenZip:
+            // **暗号化の指定は黙って無視せず拒否する**［フェーズ1完了時の
+            // 監査で追加]。libarchive の 7z ライターに暗号化オプションは
+            // 存在しないため、ここで受け入れると**パスワードを設定した
+            // つもりの平文アーカイブ**ができてしまう。UI 側
+            // （`FolderOperations.compressionOptions`）が正規化しているが、
+            // 経路が増えても破れないようバックエンドでも守る。
+            guard options.encryption == .none, passphrase == nil else {
+                throw ExtractError.backendFailure(
+                    "7z encryption is not supported; refusing to write an unencrypted archive for an encrypted request"
+                )
+            }
             archive_write_set_format_7zip(writer)
             guard archive_write_set_options(writer, "7zip:compression=\(options.sevenZipCodec.rawValue)") == ARCHIVE_OK else {
                 throw ExtractError.backendFailure(Self.errorMessage(writer))
@@ -498,11 +509,26 @@ public struct LibarchiveBackend: ArchiveReading {
         defer { try? handle.close() }
         let bufferSize = 256 * 1024
         while let chunk = try handle.read(upToCount: bufferSize), !chunk.isEmpty {
-            chunk.withUnsafeBytes { ptr in
-                _ = archive_write_data(writer, ptr.baseAddress, chunk.count)
+            // **戻り値を捨ててはならない**［フェーズ1完了時の監査で発見]。
+            // 以前は `_ =` で握りつぶしており、書き込み途中の失敗（圧縮開始後に
+            // 空きが尽きた・I/O エラー）でもループが回り続け、close まで通れば
+            // **中身の欠けた zip が「成功」として最終位置へ昇格**していた——
+            // 「圧縮…」の上書き保存なら健全な既存アーカイブを壊れたもので
+            // 置き換えることになる（監査観点 3 そのもの）。
+            let written = chunk.withUnsafeBytes { ptr in
+                archive_write_data(writer, ptr.baseAddress, chunk.count)
+            }
+            guard written == chunk.count else {
+                throw ExtractError.backendFailure(
+                    written < 0
+                        ? Self.errorMessage(writer)
+                        : "archive_write_data wrote \(written) of \(chunk.count) bytes"
+                )
             }
         }
-        archive_write_finish_entry(writer)
+        guard archive_write_finish_entry(writer) == ARCHIVE_OK else {
+            throw ExtractError.backendFailure(Self.errorMessage(writer))
+        }
     }
 
     // MARK: - libarchive の薄いラッパー
@@ -522,7 +548,7 @@ public struct LibarchiveBackend: ArchiveReading {
         }
         let rc = archive_read_open_filename(a, url.path, 64 * 1024)
         guard rc == ARCHIVE_OK else {
-            let message = String(cString: archive_error_string(a))
+            let message = Self.errorMessage(a)
             archive_read_free(a)
             throw ExtractError.backendFailure(message)
         }
@@ -582,7 +608,14 @@ public struct LibarchiveBackend: ArchiveReading {
     }
 
     private static func errorMessage(_ a: OpaquePointer) -> String {
-        String(cString: archive_error_string(a))
+        // `archive_error_string` は文言が設定されていないとき NULL を返す
+        // （ヘッダに nullability 注釈が無いため IUO でインポートされ、素の
+        // `String(cString:)` に渡すとトラップする）[フェーズ1完了時の監査で
+        // 発見]。エラーコードだけでも返せるようにフォールバックする。
+        guard let cString = archive_error_string(a) else {
+            return "archive error \(archive_errno(a))"
+        }
+        return String(cString: cString)
     }
 
     // `AE_IFDIR` 等の C マクロは `((__LA_MODE_T)0040000)` という cast 式のため
@@ -692,7 +725,12 @@ public struct LibarchiveBackend: ArchiveReading {
         while true {
             let candidateName = ext.isEmpty ? "\(base) \(n)" : "\(base) \(n).\(ext)"
             let candidate = directory.appendingPathComponent(candidateName)
-            if !FileManager.default.fileExists(atPath: candidate.path) {
+            // `fileExists` はシンボリックリンクを**辿る**ため、リンク切れの
+            // シンボリックリンクが候補名を占めていると「空いている」と誤判定し、
+            // 直後の書き込みが EEXIST で失敗する。辿らない `attributesOfItem`
+            // で判定する [フェーズ1完了時の監査で発見。完全削除のリンク切れ
+            // 対応と同じ罠]。
+            if (try? FileManager.default.attributesOfItem(atPath: candidate.path)) == nil {
                 return candidate
             }
             n += 1
