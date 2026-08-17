@@ -139,7 +139,7 @@ struct MainWindowView: View {
     private var hasPendingStartupFolderOverride: Bool {
         guard wasLaunchedWithoutExplicitFolder, !Self.hasAppliedStartupFolderThisLaunch else { return false }
         let kind = UserDefaults.standard.string(forKey: StartupFolderPreference.kindKey)
-        return kind != nil && kind != StartupFolderKind.virtualHome.rawValue
+        return kind != nil && kind != StartupFolderKind.home.rawValue
     }
 
     /// ウインドウタイトル [ユーザー要望]。タブが無い/フォルダが無い場合のみ
@@ -162,7 +162,27 @@ struct MainWindowView: View {
             goBack: { windowState.goBack() },
             goForward: { windowState.goForward() },
             goToParent: { windowState.goToParent() },
-            goHome: { windowState.goHome() },
+            goToParentInNewWindow: {
+                guard let target = windowState.parentTarget else { return }
+                openAsWindow(target)
+            },
+            // Finder の ⌥⌘↑ は「上の階層を新規ウインドウで開き、現在のウインドウ
+            // を閉じる」[nib のセレクタと実挙動で確認]。**閉じる対象は開く前に
+            // 掴んでおく** — `openWindow` の後では `NSApp.keyWindow` が新しい
+            // ウインドウを指す。実際に閉じるのは 1 サイクル遅らせる（新しい
+            // ウインドウが出る前に閉じると、最後の 1 枚だった場合に一瞬
+            // ウインドウが 0 枚になる）。
+            goToParentAndCloseWindow: {
+                guard let target = windowState.parentTarget else { return }
+                let current = NSApp.keyWindow
+                openAsWindow(target)
+                DispatchQueue.main.async { current?.close() }
+            },
+            goToStandardLocation: { location in
+                StandardLocationOpener.open(location, locale: locale) { url in
+                    windowState.navigate(to: url, root: .volume)
+                }
+            },
             beginGoToFolder: { presentGoToFolderDialog() },
             navigate: { url, root in windowState.navigate(to: url, root: root) },
             // ファイルメニュー [1-16 メニュー抜け監査]。どちらも ⌘T/⌘F として
@@ -619,7 +639,7 @@ struct MainWindowView: View {
             guard wasLaunchedWithoutExplicitFolder, !Self.hasAppliedStartupFolderThisLaunch else { return }
             Self.hasAppliedStartupFolderThisLaunch = true
             guard UserDefaults.standard.string(forKey: StartupFolderPreference.kindKey) != nil,
-                  UserDefaults.standard.string(forKey: StartupFolderPreference.kindKey) != StartupFolderKind.virtualHome.rawValue
+                  UserDefaults.standard.string(forKey: StartupFolderPreference.kindKey) != StartupFolderKind.home.rawValue
             else { return }
             let (url, root) = await StartupFolderPreference.resolve()
             windowState.folder = url
@@ -658,6 +678,15 @@ private struct PaneWidthPersisting: ViewModifier {
 struct PlaceholderPane: View {
     let title: String
     let subtitle: String
+    /// 次に何ができるかを 1 つだけ添える [ER-03 の三要素のうち三つ目]。
+    /// 現状の唯一の利用者は「アクセス権がありません」に添える
+    /// 「アクセスを許可…」（`FolderContentView`）。
+    var action: Action?
+
+    struct Action {
+        let title: String
+        let perform: () -> Void
+    }
 
     var body: some View {
         VStack(spacing: Tokens.spacing.s) {
@@ -668,6 +697,10 @@ struct PlaceholderPane: View {
                     .font(.system(size: Tokens.fontSize.body))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
+            }
+            if let action {
+                Button(action.title, action: action.perform)
+                    .padding(.top, Tokens.spacing.xs)
             }
         }
         .padding(Tokens.spacing.l)

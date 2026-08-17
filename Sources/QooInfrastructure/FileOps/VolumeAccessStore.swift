@@ -66,6 +66,41 @@ public actor VolumeAccessStore {
         return grants.sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
     }
 
+    /// 指定した場所が、既存の許可のいずれかに覆われているか
+    /// [1-16 移動メニューの Finder 準拠、標準の場所をプロンプト無しで開くため]。
+    ///
+    /// - Parameter requiringExactMatch: `true` にすると **その場所そのもの**
+    ///   への許可だけを数え、祖先への許可は覆っているとみなさない。
+    ///   デスクトップ・書類のような TCC 保護フォルダ用
+    ///   （`/` を許可してあってもサンドボックス層を通るだけで TCC は通らず、
+    ///   毎回ダイアログが出る。実測は `qooLibrary.entitlements` のコメント参照）。
+    ///
+    /// **実際に読めるかどうかは試さない** [設計判断]。TCC 保護フォルダに
+    /// 触ること自体がダイアログの引き金になり得るため、「触らずに分かる材料」
+    /// ＝自分が持っている許可だけで判定する。判定が保守的に外れた場合の害は
+    /// 「一度だけ余分にパネルが出る」ことに留まり、逆向きの誤り（本来出すべき
+    /// パネルを出さない）よりはるかに軽い。
+    public func hasGrant(covering url: URL, requiringExactMatch: Bool) async -> Bool {
+        await ensureLoaded()
+        let targetPath = url.resolvingSymlinksInPath().standardizedFileURL.path
+        let snapshot = grants
+        let resolutions = await bookmarks.resolveMany(
+            snapshot.map { (id: $0.id, data: $0.bookmarkData) }, waitingAtMost: resolutionDeadline
+        )
+        for grant in snapshot {
+            guard case .resolved(let grantURL, _)? = resolutions[grant.id] else { continue }
+            let grantPath = grantURL.standardizedFileURL.path
+            if grantPath == targetPath { return true }
+            guard !requiringExactMatch else { continue }
+            // 祖先判定は成分の境界で行う（`/Users/foo` が `/Users/foobar` を
+            // 覆っていると誤らないため）。`/` は末尾スラッシュを持つので
+            // そのまま前方一致でよい。
+            let prefix = grantPath.hasSuffix("/") ? grantPath : grantPath + "/"
+            if targetPath.hasPrefix(prefix) { return true }
+        }
+        return false
+    }
+
     /// 解決済みの URL。ボリューム未接続等でオフラインの場合は `nil`。
     ///
     /// 解決は `FileIO` 経由・上限時間付き [NV6-05]。上限を超えた解決は

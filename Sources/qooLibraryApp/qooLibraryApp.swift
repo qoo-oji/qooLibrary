@@ -606,6 +606,8 @@ private struct ViewMenuCommands: View {
 /// [`RegisteredFolderIndex` のコメント参照]。
 private struct GoMenuCommands: View {
     @FocusedValue(\.windowMenuActions) private var actions
+    /// 「選択項目を開く」（⌘↓）だけは選択の状態を知っている側が要る。
+    @FocusedValue(\.folderMenuActions) private var folderActions
     /// `@Observable` なので、参照した `library`/`temporary`/`paths` が変われば
     /// このビューは再評価される。
     private var registeredFolders: RegisteredFolderIndex { .shared }
@@ -618,19 +620,55 @@ private struct GoMenuCommands: View {
         Button("action.goForward", systemImage: "chevron.forward") { actions?.goForward() }
             .disabled(actions?.canGoForward != true)
             .fixedKeyboardShortcut(.goForward)
+        // Finder は「内包しているフォルダ」に ⌥ と ⌃ の 2 つの代替を持たせて
+        // いる（`MenuBar.nib` を実体化して確認）。同じ構成にする。
+        // ⇧⌘↑「デスクトップの起動ディスクを選択」だけはデスクトップの概念が
+        // 無いため対象外。
         Button("action.goToParent", systemImage: "arrow.up.folder") { actions?.goToParent() }
             .fixedKeyboardShortcut(.goToParent)
             .disabled(actions?.canGoToParent != true)
+            .modifierKeyAlternate(.option) {
+                Button("action.goToParent", systemImage: "arrow.up.folder") {
+                    actions?.goToParentAndCloseWindow()
+                }
+                .fixedKeyboardShortcut(.goToParentAndCloseWindow)
+                .disabled(actions?.canGoToParent != true)
+            }
+            .modifierKeyAlternate(.control) {
+                Button("menu.go.parentInNewWindow", systemImage: "arrow.up.folder") {
+                    actions?.goToParentInNewWindow()
+                }
+                .fixedKeyboardShortcut(.goToParentInNewWindow)
+                .disabled(actions?.canGoToParent != true)
+            }
+        // Finder の「選択項目を開く」（⌘↓）。実体は File メニューの「開く」
+        // （Return）と同じで、Finder に合わせたキーを別に持たせたもの
+        // [ユーザー判断]。選択の有無を知っているのは `FolderMenuActions` 側。
+        Button("menu.go.openSelection") { folderActions?.open() }
+            .fixedKeyboardShortcut(.openSelection)
+            .disabled(folderActions?.canOpen != true)
         Divider()
-        // Finder の「ホーム」相当。実体はサンドボックスの仮想ホームだが、
-        // 表記に実装詳細を出さない [ユーザー指摘、環境設定の「起動時に開く
-        // フォルダ」と同じ方針]。
-        Button("menu.go.home", systemImage: "house") { actions?.goHome() }
-            .disabled(actions == nil)
-        // Finder は書類・デスクトップ等の標準の場所を並べるが、本アプリで
-        // それに当たるのは登録済みのライブラリ／テンポラリフォルダ
-        // [設計判断: Finder の項目をそのまま移植しても、サンドボックスでは
-        // アクセス許可が無ければ開けず意味を成さない]。1 件も登録が無い
+        // Finder と同じ標準の場所 [ユーザー判断、1-16 移動メニューの Finder
+        // 準拠]。行き先・アイコン・キー・アクセス要件はすべて
+        // `StandardLocation` が持つ。**未許可ならその場でパネルを出して 1 回
+        // だけ許可を求める**ので、ここは呼ぶだけでよい。
+        //
+        // Finder にあってここに無いもの（最近の項目・AirDrop・ネットワーク等）
+        // と、その理由は `StandardLocation` の doc コメントにまとめてある。
+        standardLocationItem(.documents)
+        standardLocationItem(.desktop)
+        standardLocationItem(.downloads)
+        // Finder は「ライブラリ」を「ホーム」の ⌥ 代替として隠している。
+        standardLocationItem(.home)
+            .modifierKeyAlternate(.option) { standardLocationItem(.library) }
+        standardLocationItem(.computer)
+        standardLocationItem(.iCloudDrive)
+        standardLocationItem(.shared)
+        standardLocationItem(.applications)
+        standardLocationItem(.utilities)
+        Divider()
+        // ここから下は qooLibrary 独自。Finder のサイドバー相当にあたるのが
+        // 登録済みのライブラリ／テンポラリフォルダで、1 件も登録が無い
         // グループはサブメニュー自体を出さない。
         if !registeredFolders.library.isEmpty {
             Menu("folderTree.libraryFolders", systemImage: "books.vertical") {
@@ -663,6 +701,15 @@ private struct GoMenuCommands: View {
         Button("goToFolder.menuItem", systemImage: "arrow.forward.folder") { actions?.beginGoToFolder() }
             .fixedKeyboardShortcut(.goToFolder)
             .disabled(actions == nil)
+    }
+
+    /// 標準の場所 1 件。Finder と同じアイコン・同じキーを持つ。
+    private func standardLocationItem(_ location: StandardLocation) -> some View {
+        Button(location.titleKey, systemImage: location.systemImage) {
+            actions?.goToStandardLocation(location)
+        }
+        .fixedKeyboardShortcut(location.action)
+        .disabled(actions == nil)
     }
 
     @ViewBuilder

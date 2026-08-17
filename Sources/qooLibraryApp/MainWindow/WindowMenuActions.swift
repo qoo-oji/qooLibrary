@@ -20,8 +20,25 @@ struct WindowMenuActions {
     var goBack: () -> Void = {}
     var goForward: () -> Void = {}
     var goToParent: () -> Void = {}
-    var goHome: () -> Void = {}
+    /// Finder の「内包しているフォルダを新規ウインドウで開く」（⌃⌘↑）
+    /// [1-16 移動メニューの Finder 準拠]。
+    var goToParentInNewWindow: () -> Void = {}
+    /// Finder の「内包しているフォルダ」の ⌥ 代替（⌥⌘↑）。上の階層を新規
+    /// ウインドウで開き、現在のウインドウを閉じる。
+    var goToParentAndCloseWindow: () -> Void = {}
+    /// 標準の場所（ホーム・書類・デスクトップ…）へ移動する
+    /// [1-16 移動メニューの Finder 準拠]。**未許可ならその場でパネルを出して
+    /// 1 回だけ許可を求める**ので、呼ぶ側は行き先の到達性を気にしなくてよい
+    /// （`StandardLocationOpener` 参照）。
+    var goToStandardLocation: (StandardLocation) -> Void = { _ in }
     /// 「フォルダへ移動…」（⇧⌘G）のダイアログを開く [`GoToFolderDialog`]。
+    ///
+    /// Finder の「サーバへ接続…」（⌘K）はここには無い。**App Sandbox が
+    /// `NetFSMountURLSync` を既定で拒否する**ことを実測で確認しており
+    /// （`rc=1` EPERM、非サンドボックスでは `rc=65` EHOSTUNREACH まで進む）、
+    /// 通すには `com.apple.security.network.client` の追加が要る——§9 の
+    /// 「ネットワーク通信を実装しない [SC-01]」に直接触れるため、ユーザーの
+    /// 判断を仰いでから実装する。
     var beginGoToFolder: () -> Void = {}
     /// 登録フォルダ・最近使ったフォルダなど、行き先が確定している移動。
     /// `root` を伴うのは、ライブラリ／テンポラリから入った場合に

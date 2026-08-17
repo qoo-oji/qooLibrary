@@ -116,6 +116,63 @@ import Testing
         #expect(!FileManager.default.fileExists(atPath: storageURL.path))
     }
 
+    // MARK: - hasGrant [1-16 移動メニューの Finder 準拠、標準の場所を開く判定]
+
+    /// 祖先への許可で足りる場所（実ホーム・`/Users/Shared` 等）。
+    @Test func ancestorGrantCoversADescendantWhenExactMatchIsNotRequired() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let child = root.appendingPathComponent("Child/Grandchild", isDirectory: true)
+        try FileManager.default.createDirectory(at: child, withIntermediateDirectories: true)
+        let store = VolumeAccessStore(storageURL: root.appendingPathComponent("state.json"))
+        try await store.grantAccess(to: root, displayName: nil)
+
+        #expect(await store.hasGrant(covering: child, requiringExactMatch: false))
+        #expect(await store.hasGrant(covering: root, requiringExactMatch: false))
+    }
+
+    /// TCC 保護フォルダ（書類・デスクトップ）。**祖先の許可では足りない** —
+    /// `/` を許可してあってもサンドボックス層を通るだけで TCC は通らないため
+    /// [1章 §1.4 B-25 の実測]。
+    @Test func ancestorGrantDoesNotCountWhenExactMatchIsRequired() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let child = root.appendingPathComponent("Documents", isDirectory: true)
+        try FileManager.default.createDirectory(at: child, withIntermediateDirectories: true)
+        let store = VolumeAccessStore(storageURL: root.appendingPathComponent("state.json"))
+        try await store.grantAccess(to: root, displayName: nil)
+
+        #expect(await store.hasGrant(covering: child, requiringExactMatch: true) == false)
+
+        try await store.grantAccess(to: child, displayName: nil)
+        #expect(await store.hasGrant(covering: child, requiringExactMatch: true))
+    }
+
+    /// **名前が前方一致するだけの別フォルダを覆っていると誤らない。**
+    /// 素の `hasPrefix` で書くと `…/Doc` が `…/Documents` を覆う判定になる。
+    @Test func aSiblingWhoseNameMerelySharesAPrefixIsNotCovered() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let granted = root.appendingPathComponent("Doc", isDirectory: true)
+        let other = root.appendingPathComponent("Documents", isDirectory: true)
+        for url in [granted, other] {
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        }
+        let store = VolumeAccessStore(storageURL: root.appendingPathComponent("state.json"))
+        try await store.grantAccess(to: granted, displayName: nil)
+
+        #expect(await store.hasGrant(covering: other, requiringExactMatch: false) == false)
+        #expect(await store.hasGrant(covering: granted, requiringExactMatch: false))
+    }
+
+    @Test func nothingIsCoveredWhenThereAreNoGrants() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = VolumeAccessStore(storageURL: root.appendingPathComponent("state.json"))
+
+        #expect(await store.hasGrant(covering: root, requiringExactMatch: false) == false)
+    }
+
     @Test func grantsPersistAcrossStoreInstancesOverTheSameStorage() async throws {
         let root = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: root) }

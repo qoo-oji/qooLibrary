@@ -139,6 +139,40 @@
         }
       }
     },
+    "access.grantPanelMessage" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "qooLibrary needs your permission to open this folder. Choosing it here grants access permanently."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このフォルダを開くには許可が必要です。ここで選ぶと、以降は確認なしで開けるようになります。"
+          }
+        }
+      }
+    },
+    "access.grantPanelPrompt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allow Access"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アクセスを許可"
+          }
+        }
+      }
+    },
     "action.clearLabelFilter" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -400,13 +434,30 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Go to Enclosing Folder"
+            "value" : "Enclosing Folder"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "上の階層へ"
+            "value" : "内包しているフォルダ"
+          }
+        }
+      }
+    },
+    "action.goToParentAndCloseWindow" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enclosing Folder (Closing Current Window)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "内包しているフォルダ（現在のウインドウを閉じる）"
           }
         }
       }
@@ -4036,6 +4087,23 @@
         }
       }
     },
+    "menu.go.applications" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Applications"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アプリケーション"
+          }
+        }
+      }
+    },
     "menu.go.clearRecentFolders" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -4049,6 +4117,74 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "メニューを消去"
+          }
+        }
+      }
+    },
+    "menu.go.computer" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Computer"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "コンピュータ"
+          }
+        }
+      }
+    },
+    "menu.go.desktop" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desktop"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "デスクトップ"
+          }
+        }
+      }
+    },
+    "menu.go.documents" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Documents"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "書類"
+          }
+        }
+      }
+    },
+    "menu.go.downloads" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Downloads"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ダウンロード"
           }
         }
       }
@@ -4070,6 +4206,40 @@
         }
       }
     },
+    "menu.go.iCloudDrive" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud Drive"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud Drive"
+          }
+        }
+      }
+    },
+    "menu.go.library" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Library"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリ"
+          }
+        }
+      }
+    },
     "menu.go.noRecentFolders" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -4087,6 +4257,40 @@
         }
       }
     },
+    "menu.go.openSelection" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Selection"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選択項目を開く"
+          }
+        }
+      }
+    },
+    "menu.go.parentInNewWindow" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Enclosing Folder in New Window"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "内包しているフォルダを新規ウインドウで開く"
+          }
+        }
+      }
+    },
     "menu.go.recentFolders" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -4100,6 +4304,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "最近使ったフォルダ"
+          }
+        }
+      }
+    },
+    "menu.go.shared" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shared"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共有"
+          }
+        }
+      }
+    },
+    "menu.go.utilities" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Utilities"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ユーティリティ"
           }
         }
       }

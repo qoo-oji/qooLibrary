@@ -39,8 +39,30 @@ while let relative = enumerator?.nextObject() as? String {
     guard relative.hasSuffix(".swift") else { continue }
     let path = "\(sources)/\(relative)"
     guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { continue }
+    // **SF Symbol 名だけを返すメンバの中は丸ごと除く。** `systemImage:` 引数の
+    // 直後という形（下の `isSymbolArgument`）では、`var systemImage: String` の
+    // 中で `switch` して名前を返す書き方（`StandardLocation` がそう）を拾えず、
+    // `folder.badge.person.crop` のような点を含むシンボル名が鍵と誤認される。
+    //
+    // 見落とし（＝本物の鍵を見逃す）方向へ倒れないよう、宣言の形は
+    // `var systemImage: String` / `var systemName: String` に限定して判定する。
+    var braceDepth = 0
+    var symbolMemberDepth: Int?
     for (index, line) in text.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
         let text = String(line)
+        let depthBefore = braceDepth
+        braceDepth += text.filter { $0 == "{" }.count - text.filter { $0 == "}" }.count
+        defer {
+            let trimmed = text.trimmingCharacters(in: .whitespaces)
+            if symbolMemberDepth == nil,
+               trimmed.hasPrefix("var systemImage: String") || trimmed.hasPrefix("var systemName: String"),
+               braceDepth > depthBefore {
+                symbolMemberDepth = depthBefore
+            } else if let depth = symbolMemberDepth, braceDepth <= depth {
+                symbolMemberDepth = nil
+            }
+        }
+        if symbolMemberDepth != nil { continue }
         let range = NSRange(text.startIndex..., in: text)
         for match in keyPattern.matches(in: text, range: range) {
             guard let keyRange = Range(match.range(at: 1), in: text) else { continue }

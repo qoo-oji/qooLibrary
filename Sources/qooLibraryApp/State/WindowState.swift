@@ -44,8 +44,11 @@ public struct TabTarget: Sendable, Hashable, Codable {
     }
 
     /// ⌘T・タブバーの ＋・Dock からの起動などで開く既定の行き先。
+    ///
+    /// **実ホーム**［ユーザー判断、1-16 移動メニューの Finder 準拠］。読めない
+    /// ときだけ仮想ホームへ落ちる（`StandardLocation.defaultHome` 参照）。
     public static var home: TabTarget {
-        TabTarget(url: FileManager.default.homeDirectoryForCurrentUser, navigationRoot: .volume)
+        TabTarget(url: StandardLocation.defaultHome, navigationRoot: .volume)
     }
 }
 
@@ -181,13 +184,18 @@ public final class WindowState {
         RecentFoldersStore.shared.record(url)
     }
 
-    /// 移動メニューの「ホーム」[1-16]。サンドボックスの仮想ホーム
-    /// （`canGoToParent` が上限としている場所と同じ）へ移動する。ユーザーに
-    /// 見せる表記は実装詳細を出さず単に「ホーム」にする [ユーザー指摘、
-    /// 環境設定「起動時に開くフォルダ」と同じ方針]。
-    public func goHome() {
-        navigate(to: FileManager.default.homeDirectoryForCurrentUser, root: .volume)
-    }
+    // 移動メニューの「ホーム」は `StandardLocation.home` として
+    // `StandardLocationOpener` が扱う（未許可ならパネルを出してから移動する）
+    // ので、ここに専用のメソッドは持たない。
+    //
+    // **「ホーム」は実ホームを指す**［ユーザー判断、1-16 移動メニューの Finder
+    // 準拠］。以前は仮想ホーム（サンドボックスコンテナ）だったが、標準の場所
+    // （書類・デスクトップ等）を並べるにあたり「ホームの中の書類」と
+    // 「移動 > 書類」が別の場所を指す矛盾が生じるため統一した。仮想ホームの
+    // 中身は実ホームとほぼ同じで（Desktop/Downloads/Movies/Music/Pictures は
+    // いずれも実物へのシンボリックリンク）、実際に違うのはコンテナ専用の
+    // Documents と Library だけ——どちらもアプリの内部実装領域なので失うものは
+    // 無い。
 
     public var canGoBack: Bool { !backHistory.isEmpty }
     public var canGoForward: Bool { !forwardHistory.isEmpty }
@@ -270,6 +278,16 @@ public final class WindowState {
         navigate(to: parent)
         selection = [folder]
         pendingRevealURL = folder
+    }
+
+    /// 「上の階層」を別のウインドウ／タブで開くための行き先
+    /// [1-16 移動メニューの Finder 準拠、⌃⌘↑ と ⌥⌘↑ 用]。
+    ///
+    /// `canGoToParent` と全く同じ条件で `nil` になるので、境界（仮想ホーム・
+    /// 登録フォルダの根）の扱いが `goToParent()` とずれない。
+    public var parentTarget: TabTarget? {
+        guard canGoToParent, let folder else { return nil }
+        return TabTarget(url: folder.deletingLastPathComponent(), navigationRoot: navigationRoot)
     }
 
     /// 表示中のフォルダ自体が消えていたら、存在する直近の祖先へ静かに移動して

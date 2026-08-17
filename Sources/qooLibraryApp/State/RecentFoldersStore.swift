@@ -79,9 +79,16 @@ public final class RecentFoldersStore {
     /// 履歴に積む。既にあれば先頭へ繰り上げる（重複させない）。
     public func record(_ url: URL) {
         let path = url.standardizedFileURL.path
-        // 起動直後の既定表示（仮想ホーム）まで履歴に載ると、ユーザーが自分で
-        // 開いたわけではないものが常に一覧の先頭を占めてしまうため除外する。
-        guard path != FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path else { return }
+        // 起動直後の既定表示（ホーム）まで履歴に載ると、ユーザーが自分で開いた
+        // わけではないものが常に一覧の先頭を占めてしまうため除外する。
+        // **実ホームと仮想ホームの両方を除く** — 既定は実ホームだが、許可が
+        // 無いときは仮想ホームへ落ちる（`StandardLocation.defaultHome`）ので、
+        // どちらも「ユーザーが選んだわけではない行き先」になり得る。
+        let homePaths = [
+            StandardLocation.realHome.standardizedFileURL.path,
+            StandardLocation.virtualHome.standardizedFileURL.path,
+        ]
+        guard !homePaths.contains(path) else { return }
         var updated = paths
         updated.removeAll { $0 == path }
         updated.insert(path, at: 0)

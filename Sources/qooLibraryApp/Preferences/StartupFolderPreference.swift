@@ -10,7 +10,11 @@ import QooInfrastructure
 /// 追従する。ボリューム上の任意フォルダは専用の Security-Scoped Bookmark
 /// （`RegisteredFolderStore` とは別の、この設定専用のもの）で参照する。
 enum StartupFolderKind: String {
-    case virtualHome
+    /// ホーム（既定）。**`rawValue` が `"virtualHome"` なのは歴史的な事情**で、
+    /// 既に永続化されている設定値を壊さないためそのまま残している。実際の
+    /// 行き先は実ホーム（読めなければ仮想ホーム）で、`StandardLocation.defaultHome`
+    /// が決める［ユーザー判断、1-16 移動メニューの Finder 準拠］。
+    case home = "virtualHome"
     case registeredFolder
     case volumeFolder
 }
@@ -30,19 +34,27 @@ enum StartupFolderPreference {
     /// 起動時に実際に開くフォルダを解決する [`MainWindowView` から、アプリ
     /// 起動直後の最初のウインドウにだけ適用する]。`registeredFolder` は
     /// `RegisteredFolderStore` の解決を要するため非同期。登録解除済み・
-    /// ボリューム未接続等で解決できない場合は仮想ホームへフォールバックする。
+    /// ボリューム未接続等で解決できない場合はホームへフォールバックする。
     @MainActor
     static func resolve() async -> (url: URL, navigationRoot: NavigationRoot) {
+        // **先にボリューム許可を有効化しておく**［1-16 移動メニューの Finder
+        // 準拠でホームを実ホームへ移したときに必要になった］。`defaultHome` は
+        // 「実ホームが読めるか」で行き先を決めるが、`qooLibraryApp.init()` が
+        // 起動する `loadAndActivateAll()` は非同期なので、待たずに判定すると
+        // まだ許可が有効になっておらず**毎回仮想ホームへ落ちてしまう**。
+        // `ensureLoaded()` でメモ化されているため二重読み込みにはならない。
+        await VolumeAccessStore.shared.loadAndActivateAll()
+
         let defaults = UserDefaults.standard
-        let kind = defaults.string(forKey: kindKey).flatMap(StartupFolderKind.init(rawValue:)) ?? .virtualHome
+        let kind = defaults.string(forKey: kindKey).flatMap(StartupFolderKind.init(rawValue:)) ?? .home
 
         switch kind {
-        case .virtualHome:
-            return (FileManager.default.homeDirectoryForCurrentUser, .volume)
+        case .home:
+            return (StandardLocation.defaultHome, .volume)
 
         case .registeredFolder:
             guard let idString = defaults.string(forKey: registeredFolderIDKey), let id = UUID(uuidString: idString) else {
-                return (FileManager.default.homeDirectoryForCurrentUser, .volume)
+                return (StandardLocation.defaultHome, .volume)
             }
             // **こちらにも上限が要る** [NV-91]。`RegisteredFolderStore` は
             // `actor` で、その中のブックマーク解決は `FileIO` を経由して
@@ -63,13 +75,13 @@ enum StartupFolderPreference {
                 return URL?.none
             }
             guard let url = found ?? nil else {
-                return (FileManager.default.homeDirectoryForCurrentUser, .volume)
+                return (StandardLocation.defaultHome, .volume)
             }
             return (url, .registeredFolder(id: id, rootURL: url))
 
         case .volumeFolder:
             guard let data = defaults.data(forKey: volumeBookmarkKey) else {
-                return (FileManager.default.homeDirectoryForCurrentUser, .volume)
+                return (StandardLocation.defaultHome, .volume)
             }
             // **メインアクタで解決してはいけない** [NV6-02]。`.withoutMounting`
             // を付けてもブックマークの解決は対象を確かめるためにファイル
@@ -87,7 +99,7 @@ enum StartupFolderPreference {
                 return url
             }
             guard let resolved = resolved ?? nil else {
-                return (FileManager.default.homeDirectoryForCurrentUser, .volume)
+                return (StandardLocation.defaultHome, .volume)
             }
             // **アクセスの開始は上限の外側で行う。** 中でやると、期限切れで
             // 結果を捨てたあとにもクロージャは走り続けるので、**誰も保持して

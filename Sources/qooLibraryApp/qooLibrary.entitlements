@@ -8,5 +8,42 @@
 	<true/>
 	<key>com.apple.security.files.bookmarks.app-scope</key>
 	<true/>
+	<!--
+	  標準の場所（Finder の「移動」メニュー相当）へプロンプト無しで届くための
+	  entitlement [ユーザー判断、1-16 移動メニューの Finder 準拠]。
+
+	  **実測で確定させた**（実アプリと同じ entitlement でアドホック署名した
+	  最小アプリ、許可は 1 件も無い状態）:
+
+	  | 場所                          | 素のサンドボックス | ↓ を追加後 |
+	  |-------------------------------|--------------------|-----------|
+	  | ~/Downloads                   | ✗ (NSCocoaError 257) | ○        |
+	  | ~/Pictures / ~/Music / ~/Movies | ✗                | ○        |
+	  | ~（実ホーム）/ ~/Documents / ~/Desktop / ~/Library / /Users/Shared | ✗ | ✗ |
+	  | /Applications / /Applications/Utilities / /Volumes | ○ | ○ |
+
+	  つまり **デスクトップと書類には対応する entitlement が存在しない**
+	  （`/System/Library/Sandbox/Profiles/application.sb` を直接引いて確認。
+	  `com.apple.security.files.downloads.*` はあるが desktop/documents は無い）。
+	  そちらは `NSOpenPanel` でユーザーに選んでもらい、Security-Scoped Bookmark
+	  を `VolumeAccessStore` に永続化する経路で扱う（`StandardLocation` の
+	  `accessRequirement` 参照）。
+
+	  なお `/` への許可（環境設定「アクセス権」タブ）はサンドボックス層を
+	  通すだけで **TCC 層は通さない**ため、書類・デスクトップは `/` を許可
+	  していても毎回 TCC のダイアログが出る。さらに TCC の許可はコード署名の
+	  同一性（アドホック署名では CDHash）に紐づくので、開発ビルドでは
+	  再ビルドのたびに失効する——Security-Scoped Bookmark がコンテナに紐づいて
+	  再ビルドを越えて生き残るのとは対照的で、パネル＋ブックマーク経路に
+	  寄せる実利がここにある。
+	-->
+	<key>com.apple.security.files.downloads.read-write</key>
+	<true/>
+	<key>com.apple.security.assets.pictures.read-write</key>
+	<true/>
+	<key>com.apple.security.assets.music.read-write</key>
+	<true/>
+	<key>com.apple.security.assets.movies.read-write</key>
+	<true/>
 </dict>
 </plist>

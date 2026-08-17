@@ -169,10 +169,25 @@ struct KeyboardPreferencesTab: View {
         let key: String.LocalizationValue = switch action {
         case .newTab: "action.newTab"
         case .open: "action.open"
+        case .openSelection: "menu.go.openSelection" // 移動メニューの表記を再利用
         case .goToParent: "action.goToParent"
+        case .goToParentInNewWindow: "menu.go.parentInNewWindow" // 同上
+        case .goToParentAndCloseWindow: "action.goToParentAndCloseWindow"
         case .goBack: "action.goBack"
         case .goForward: "action.goForward"
         case .goToFolder: "action.goToFolder"
+        // 標準の場所 [1-16 移動メニューの Finder 準拠]。表記は移動メニューと
+        // 共有する（同じものを別の言い方で見せない）。
+        case .goToHome: "menu.go.home"
+        case .goToDocuments: "menu.go.documents"
+        case .goToDesktop: "menu.go.desktop"
+        case .goToDownloads: "menu.go.downloads"
+        case .goToLibrary: "menu.go.library"
+        case .goToComputer: "menu.go.computer"
+        case .goToICloudDrive: "menu.go.iCloudDrive"
+        case .goToShared: "menu.go.shared"
+        case .goToApplications: "menu.go.applications"
+        case .goToUtilities: "menu.go.utilities"
         case .rename: "action.rename"
         case .moveToTrash: "action.moveToTrash"
         case .deletePermanently: "action.deletePermanently"

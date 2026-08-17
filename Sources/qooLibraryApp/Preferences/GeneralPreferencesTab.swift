@@ -33,7 +33,7 @@ struct GeneralPreferencesTab: View {
     // （仮想ホーム/登録フォルダ/ボリューム上の任意フォルダ）に加えて、
     // UI 表示専用に「登録フォルダのうちどちらのリストか」も別キーで
     // 覚えておく（`StartupFolderPreference` 型コメント参照）。
-    @AppStorage(StartupFolderPreference.kindKey) private var startupFolderKind = StartupFolderKind.virtualHome.rawValue
+    @AppStorage(StartupFolderPreference.kindKey) private var startupFolderKind = StartupFolderKind.home.rawValue
     @AppStorage(StartupFolderPreference.registeredFolderIDKey) private var startupRegisteredFolderID = ""
     @AppStorage(StartupFolderPreference.registeredFolderCategoryKey) private var startupRegisteredFolderCategory = ""
     @AppStorage(StartupFolderPreference.volumeDisplayNameKey) private var startupVolumeDisplayName = ""
@@ -188,7 +188,7 @@ struct GeneralPreferencesTab: View {
         startupFolderUIModeRaw = mode.rawValue // ラジオの選択状態はこれで確定・定着する
         switch mode {
         case .virtualHome:
-            startupFolderKind = StartupFolderKind.virtualHome.rawValue
+            startupFolderKind = StartupFolderKind.home.rawValue
         case .volumeFolder:
             startupFolderKind = StartupFolderKind.volumeFolder.rawValue
         case .temporaryFolder, .libraryFolder:

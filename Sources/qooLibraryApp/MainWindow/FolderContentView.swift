@@ -123,6 +123,8 @@ struct FolderContentView: View {
     /// 表示され得る**。
     @State private var reloadGeneration = 0
     @State private var loadError: String?
+    /// 読み込み失敗の理由が「権限が無い」ときだけ「アクセスを許可…」を出す。
+    @State private var loadErrorIsAccessDenied = false
     @State private var renamingEntry: FolderEntry?
     @State private var renameText = ""
     @FocusState private var isRenameFieldFocused: Bool
@@ -262,7 +264,22 @@ struct FolderContentView: View {
         VStack(alignment: .leading, spacing: 0) {
             Group {
             if let loadError {
-                PlaceholderPane(title: String(localized: "folder.loadError", locale: locale), subtitle: loadError)
+                // 権限が無いだけなら、行き止まりにせずその場で許可を求められる
+                // ようにする [ユーザー要望]。移動メニューを経由しない到達
+                // （ツリーのクリック・ダブルクリックで潜る等）では
+                // `StandardLocationOpener` の事前判定が働かないため、**実際に
+                // 失敗したこの 1 箇所**から同じ導線を出すことで経路によらず
+                // 拾える（フォルダツリーの `AccessDeniedRow` と揃う）。
+                PlaceholderPane(
+                    title: String(localized: "folder.loadError", locale: locale),
+                    subtitle: loadError,
+                    action: loadErrorIsAccessDenied
+                        ? PlaceholderPane.Action(
+                            title: String(localized: "folderTree.grantAccessEllipsis", locale: locale),
+                            perform: { requestAccessForCurrentFolder() }
+                        )
+                        : nil
+                )
             } else if listStyle == .icon {
                 // アイコン表示 [IV-01/08/09、PF-10]。`Table` と違い選択・D&D・
                 // コンテキストメニューの AppKit 標準機能が無いため、それぞれ
@@ -1644,6 +1661,23 @@ struct FolderContentView: View {
     /// - Note: **世代番号で古い結果を捨てる。** 非同期になったことで、速く
     ///   連続してフォルダを移ると走査の順序が入れ替わり得る。再帰検索
     ///   （`appliedSearchGeneration`）で既に使っているのと同じ手当て。
+    /// 表示中のフォルダへのアクセスをその場で求める [ユーザー要望]。
+    ///
+    /// 許可の取得・永続化は移動メニューと同じ `StandardLocationOpener` に委ねる
+    /// ——許可 UI が 2 つに分かれると、片方だけ直して取り残される
+    /// （1-12 のアプリ関連付けで実際に起きた）。
+    ///
+    /// `folder`（構造体に保持された値）ではなく `currentFolder()` を読む
+    /// [既知の罠: ナビゲーション直後は 1 世代古い View インスタンスの
+    /// クロージャが実行され得る]。
+    private func requestAccessForCurrentFolder() {
+        guard let folder = currentFolder() else { return }
+        Task {
+            guard await StandardLocationOpener.requestAccess(to: folder, locale: locale) else { return }
+            reload()
+        }
+    }
+
     private func reload() {
         reloadGeneration &+= 1
         let generation = reloadGeneration
@@ -1668,7 +1702,9 @@ struct FolderContentView: View {
     /// 一覧の読み込み結果。`FileIO` の境界をまたぐので `Sendable`。
     private enum FolderReadOutcome: Sendable {
         case loaded([FolderEntry])
-        case failed(String)
+        /// `isAccessDenied` は「アクセスを許可…」を出してよいかの判断材料
+        /// （消えている・壊れているといった他の失敗と区別する）。
+        case failed(String, isAccessDenied: Bool)
     }
 
     /// **実際の走査。メインアクタの外で走る。**
@@ -1704,7 +1740,26 @@ struct FolderContentView: View {
                 )
             })
         } catch {
-            return .failed(error.localizedDescription)
+            return .failed(error.localizedDescription, isAccessDenied: Self.isAccessDenied(error))
+        }
+    }
+
+    /// 読めなかった理由が「権限が無い」かどうか。**ここでだけ判定する。**
+    ///
+    /// 権限のときだけ「アクセスを許可…」を出したいので、消えている・壊れている
+    /// といった他の失敗と区別する必要がある。判定を外すと、実体が消えたフォルダ
+    /// でも許可パネルを勧めてしまう。
+    private nonisolated static func isAccessDenied(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        switch nsError.domain {
+        case NSCocoaErrorDomain:
+            return nsError.code == NSFileReadNoPermissionError
+        case NSPOSIXErrorDomain:
+            return nsError.code == Int(EACCES) || nsError.code == Int(EPERM)
+        default:
+            // `underlyingError` に POSIX が包まれていることがある。
+            guard let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError else { return false }
+            return isAccessDenied(underlying)
         }
     }
 
@@ -1722,7 +1777,7 @@ struct FolderContentView: View {
             // 情報表示にフォールバックする（既存の設計）。
             let currentURLs = Set(entries.map(\.url))
             selection.formIntersection(currentURLs)
-        case let .failed(message):
+        case let .failed(message, isAccessDenied):
             // 表示中のフォルダ自体が消えている場合（ツリーや別ウインドウから
             // ゴミ箱へ入れた・名前を変更した、アプリ外の Finder で削除した等）は、
             // エラー表示で行き止まりにせず存在する直近の祖先へ移動する
@@ -1732,6 +1787,7 @@ struct FolderContentView: View {
             if await relocateIfFolderVanished() { return }
             entries = []
             loadError = message
+            loadErrorIsAccessDenied = isAccessDenied
         }
         publishQuickLookOrder()
         recomputeAutoFitColumnWidths() // [ユーザー指摘の修正] 列幅を内容に合わせて再計測する。

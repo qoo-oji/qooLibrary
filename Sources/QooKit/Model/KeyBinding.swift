@@ -38,12 +38,33 @@ public struct KeyCombo: Sendable, Codable, Equatable, Hashable {
 public enum ActionID: String, Sendable, Codable, CaseIterable {
     case newTab
     case open
+    /// Finder の「選択項目を開く」（⌘↓）[1-16 移動メニューの Finder 準拠]。
+    /// `open`（Return）と同じ動作で、Finder に合わせたキーを別に持たせたもの。
+    case openSelection
     case goToParent
+    /// Finder の「内包しているフォルダを新規ウインドウで開く」（⌃⌘↑）。
+    case goToParentInNewWindow
+    /// Finder の「内包しているフォルダ」の ⌥ 代替（⌥⌘↑）。上の階層を新規
+    /// ウインドウで開き、現在のウインドウを閉じる。
+    case goToParentAndCloseWindow
     case goBack
     case goForward
     /// Finder の「フォルダへ移動…」（⇧⌘G）[1-16 移動メニュー]。パスを直接
     /// 入力して移動する。
     case goToFolder
+    /// 標準の場所へ移動する [1-16 移動メニューの Finder 準拠]。キーはいずれも
+    /// Finder と同一。実際の行き先とアクセス要件は `StandardLocation`
+    /// （`Sources/qooLibraryApp/MainWindow/StandardLocations.swift`）が持つ。
+    case goToHome
+    case goToDocuments
+    case goToDesktop
+    case goToDownloads
+    case goToLibrary
+    case goToComputer
+    case goToICloudDrive
+    case goToShared
+    case goToApplications
+    case goToUtilities
     case rename
     case moveToTrash
     case deletePermanently
@@ -156,7 +177,16 @@ public enum DefaultKeyBindings {
         // [MW2-04 の設計判断、タブバー auto-hide 対応時に追加]。
         KeyBinding(id: .newTab, combos: [KeyCombo(key: "t", modifiers: .command)]),
         KeyBinding(id: .open, combos: [KeyCombo(key: "return")]), // [KB-02]
+        KeyBinding(id: .openSelection, combos: [KeyCombo(key: "down", modifiers: .command)], isCustomizable: false),
         KeyBinding(id: .goToParent, combos: [KeyCombo(key: "up", modifiers: .command)]),
+        KeyBinding(
+            id: .goToParentInNewWindow,
+            combos: [KeyCombo(key: "up", modifiers: [.command, .control])], isCustomizable: false
+        ),
+        KeyBinding(
+            id: .goToParentAndCloseWindow,
+            combos: [KeyCombo(key: "up", modifiers: [.command, .option])], isCustomizable: false
+        ),
         // 戻る/進む: Finder 流の ⌘[ / ⌘] に加えて、ブラウザ流の ⌘← / ⌘→ も
         // 併用したいという実運用上の要望により両方を既定にした
         // [実機検証: ⌘] が他アプリのショートカットと競合する環境があったため、
@@ -173,6 +203,35 @@ public enum DefaultKeyBindings {
             KeyCombo(key: "right", modifiers: .command),
         ], isCustomizable: false),
         KeyBinding(id: .goToFolder, combos: [KeyCombo(key: "g", modifiers: [.command, .shift])], isCustomizable: false),
+        // 標準の場所 [1-16 移動メニューの Finder 準拠]。キーはすべて Finder と
+        // 同一のため変更不可（メニューにそのまま表示される）。
+        KeyBinding(id: .goToHome, combos: [KeyCombo(key: "h", modifiers: [.command, .shift])], isCustomizable: false),
+        KeyBinding(id: .goToDocuments, combos: [KeyCombo(key: "o", modifiers: [.command, .shift])], isCustomizable: false),
+        KeyBinding(id: .goToDesktop, combos: [KeyCombo(key: "d", modifiers: [.command, .shift])], isCustomizable: false),
+        KeyBinding(id: .goToDownloads, combos: [KeyCombo(key: "l", modifiers: [.command, .option])], isCustomizable: false),
+        // **ライブラリだけは「ホーム + ⌥」でなければならない**（⇧⌘L ではない）。
+        //
+        // これは代替項目の成立条件そのもの [実測]。**代替は「基底と同じキー等価を
+        // 持ち、修飾マスクだけが違う」ときにだけ現れる。** ⇧⌘L を付けると
+        // キー等価が `L` になって基底（ホーム = ⇧⌘H）と組にならず、⌥ を押しても
+        // 一生出てこない（実機で踏んだ）。同じ理由で「内包しているフォルダ」の
+        // 2 つの代替は動く——あちらは 3 つとも ↑ を共有している。
+        //
+        // なお **Finder 自身のライブラリはキーを持たない**（実行時メニューを AX で
+        // 採取して確認: `AXMenuItemCmdChar` が空、修飾マスクは「⌥ のみ・⌘ を
+        // 含まない」）。⇧⌘L だと思い込んでいたのは古い macOS の記憶だった。
+        // SwiftUI の `modifierKeyAlternate` は基底のキー等価を引き継ぐため
+        // 「キー無し」にはできず、⌥⇧⌘H が実際に効く。ここを空にすると
+        // 環境設定の一覧だけが「未割り当て」と嘘をつくので、実態に合わせる。
+        KeyBinding(
+            id: .goToLibrary,
+            combos: [KeyCombo(key: "h", modifiers: [.command, .shift, .option])], isCustomizable: false
+        ),
+        KeyBinding(id: .goToComputer, combos: [KeyCombo(key: "c", modifiers: [.command, .shift])], isCustomizable: false),
+        KeyBinding(id: .goToICloudDrive, combos: [KeyCombo(key: "i", modifiers: [.command, .shift])], isCustomizable: false),
+        KeyBinding(id: .goToShared, combos: [KeyCombo(key: "s", modifiers: [.command, .shift])], isCustomizable: false),
+        KeyBinding(id: .goToApplications, combos: [KeyCombo(key: "a", modifiers: [.command, .shift])], isCustomizable: false),
+        KeyBinding(id: .goToUtilities, combos: [KeyCombo(key: "u", modifiers: [.command, .shift])], isCustomizable: false),
         // **Finder の「名前を変更」にキーは無い**（⌘R は「オリジナルを表示」）。
         // ⌘R は本アプリ独自の割り当てなので変更可能なまま残す。
         KeyBinding(id: .rename, combos: [KeyCombo(key: "r", modifiers: .command)]), // [KB-03]
