@@ -65,14 +65,17 @@ enum StartupFolderPreference {
             // **起動だけは先へ進める**。ホームで開いてしまうほうが、
             // 何も出ないよりはるかにましである。
             let found = try? await FileIO.withDeadline(.seconds(5)) {
-                for folderKind in [RegisteredFolderKind.library, .temporary] {
-                    let folders = await RegisteredFolderStore.shared.folders(kind: folderKind)
-                    guard let folder = folders.first(where: { $0.id == id }),
-                          let url = await RegisteredFolderStore.shared.resolvedURL(for: folder)
-                    else { continue }
-                    return url
-                }
-                return URL?.none
+                // **状態を見る** [1-17]。以前は解決できさえすれば開いていたため、
+                // 起動時フォルダに指定したライブラリをゴミ箱へ入れると
+                // **毎回ゴミ箱の中を開いた状態で起動していた**（ブックマークは
+                // inode を追跡するので解決には成功する [BM-2]）。入って
+                // 辿れない状態ならホームへ落とすほうがよい。
+                let states = await RegisteredFolderStore.shared.states()
+                guard let state = states.first(where: { $0.folder.id == id }),
+                      state.status.allowsNavigation,
+                      let url = state.status.resolvedURL
+                else { return URL?.none }
+                return url
             }
             guard let url = found ?? nil else {
                 return (StandardLocation.defaultHome, .volume)

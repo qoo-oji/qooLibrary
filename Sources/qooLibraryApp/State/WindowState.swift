@@ -339,7 +339,32 @@ public final class WindowState {
         // ネットワークボリュームでは切断が例外ではなく通常状態なので
         // （8章 §8.11）、これは稀な事故ではなく日常的に踏まれる。
         guard !Self.isOnAnUnmountedVolume(folder) else { return false }
-        guard let target = Self.ancestorPaths(of: folder).last(where: { existing.contains($0) })
+        // **退避先は登録ルートで止める** [RG3-06]。ライブラリ／テンポラリ経由で
+        // 開いているタブは、その登録フォルダが「最上位」として振る舞う
+        // （`canGoToParent` が同じ境界で ⌘↑ を止めている）。退避だけがその境界を
+        // 越えて外へ出ると、「⌘↑ では出られないのに、中のフォルダを消したら
+        // 勝手に外に出た」という食い違いになる。
+        //
+        // ボリューム経由（`.volume`）のタブには境界が無いので、従来どおり
+        // ファイルシステムのルートまで遡ってよい。
+        let ancestors = Self.ancestorPaths(of: folder)
+        // **境界が現在地を実際に含んでいるときだけ適用する** [レビューで発見]。
+        // `navigationRoot` は「どの入口から来たか」を持ち回る値で、パスバーで
+        // 登録ルートより上の階層へ移ったり、`relocate` で登録先が変わったり
+        // すると、`.registeredFolder` のまま現在地が `rootURL` の外に出る。
+        // その状態で無条件に絞ると候補が空になり、**自己修復そのものが
+        // 黙って働かなくなる**——タブが読み込みエラーのまま行き止まりになる。
+        let floor: String? = {
+            guard case .registeredFolder(_, let rootURL) = navigationRoot else { return nil }
+            let root = rootURL.standardizedFileURL.path
+            guard ancestors.contains(root) else { return nil }
+            return root
+        }()
+        let reachable = ancestors.filter { path in
+            guard let floor else { return true }
+            return path == floor || path.hasPrefix(floor + "/")
+        }
+        guard let target = reachable.last(where: { existing.contains($0) })
             .map({ URL(fileURLWithPath: $0) })
         else { return false }
         self.folder = target

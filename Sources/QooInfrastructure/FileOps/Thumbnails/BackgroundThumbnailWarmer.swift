@@ -165,19 +165,18 @@ public final class BackgroundThumbnailWarmer {
 
     // MARK: - 掃引本体（メインアクタの外）
 
-    /// 既定の掃引対象: 登録済みライブラリ／テンポラリフォルダの解決済み URL。
-    /// 解決に失敗した登録（ボリューム未接続等 [SB-05]）は黙って外す —
-    /// オフラインの共有へ手を出さないのはこの機能の趣旨そのもの。
+    /// 既定の掃引対象: 登録済みライブラリ／テンポラリフォルダのうち、
+    /// **入って辿れる状態のもの**だけ [1-17]。
+    ///
+    /// 未接続（[SB-05]）を外すのはこの機能の趣旨そのもの——オフラインの共有へ
+    /// 手を出さない。**ゴミ箱の中も同じ理由で外す** [BM-2]: ブックマークは
+    /// inode を追跡するので解決には成功してしまい、状態を見ないと「消される
+    /// 寸前のフォルダを丹念に走査してサムネイルを作る」ことになる。
     nonisolated private static func registeredFolderRoots() async -> [SweepRoot] {
-        let store = RegisteredFolderStore.shared
-        var roots: [SweepRoot] = []
-        for kind in [RegisteredFolderKind.library, .temporary] {
-            for folder in await store.folders(kind: kind) {
-                guard let url = await store.resolvedURL(for: folder) else { continue }
-                roots.append(SweepRoot(url: url, hidesThumbnails: folder.hidesThumbnails))
-            }
+        await RegisteredFolderStore.shared.states().compactMap { state in
+            guard state.status.allowsNavigation, let url = state.status.resolvedURL else { return nil }
+            return SweepRoot(url: url, hidesThumbnails: state.folder.hidesThumbnails)
         }
-        return roots
     }
 
     nonisolated private static func runSweep(_ context: SweepContext) async {

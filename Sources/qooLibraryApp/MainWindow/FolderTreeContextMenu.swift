@@ -71,6 +71,19 @@ enum FolderTreeRowRole: Sendable, Equatable {
     case plainFolder
 }
 
+/// 登録ルート行に添える縮退の注記 [1-17、8章 §8.7.1]。
+///
+/// **状態そのものを持ち回り、表示も可否もここから導く。** 「書き込めるか」
+/// 「警告を出すか」を別々の真偽値に散らすと、状態を増やしたときに片方だけ
+/// 直し忘れる——このコードベースが繰り返し踏んでいる形なので、判断材料を
+/// 1 つに束ねておく。
+struct RegisteredRootAnnotation: Equatable {
+    let status: RegisteredFolderStatus
+    /// 外部での移動で入れ子禁止が事後に破れている [RG3-05]。``status`` とは
+    /// 直交する（オンラインのまま入れ子、が普通に起こる）。
+    let isNested: Bool
+}
+
 /// 右クリックされた 1 行の文脈。`FolderTreeContextMenu` が項目を出し分ける
 /// ための唯一の判断材料にする（View 側で個別に条件を書き散らさない）。
 struct FolderTreeRowContext {
@@ -79,6 +92,12 @@ struct FolderTreeRowContext {
     let role: FolderTreeRowRole
     /// 登録ルート行のときだけ非 `nil` [RG-05][RG-06]。
     let registeredFolder: RegisteredFolder?
+    /// 登録ルート行が縮退しているときだけ非 `nil` [1-17]。**根の行だけ**が持つ。
+    var annotation: RegisteredRootAnnotation?
+    /// この行のフォルダの中へ書き込んでよいか [1-17]。`annotation` と違い、
+    /// **登録ルートから子孫へそのまま伝播する**（`FolderTreeRow.allowsWriting`
+    /// のコメント参照）。
+    var allowsWriting: Bool = true
 
     var group: FolderTreeGroup { branch.group }
     var navigationRoot: NavigationRoot { branch.navigationRoot }
@@ -118,6 +137,19 @@ struct FolderTreeRowContext {
     /// ため出さない [ユーザー判断: ボリュームのルート行はナビゲーション＋
     /// ユーティリティのみ]。
     var allowsItemOperations: Bool { role != .volumeRoot }
+
+    /// この行のフォルダ**の中へ**書き込む操作（新規フォルダ・ペースト・
+    /// ここに項目を移動）を出すか [1-17]。
+    ///
+    /// ここで塞ぐのは `.unsupportedFileSystem` の登録**とその配下**である
+    /// ——閲覧はできるが、移動・改名のたびにラベル・評価との結びつきが
+    /// 失われるボリューム [FS-08]。
+    ///
+    /// `.inTrash`／`.offline`／`.missing` はこの判定に**到達しない**:
+    /// それらの行は `FolderTreeRow` ではなく `DegradedRegisteredFolderRow`
+    /// が描き、そもそも中へ入れない（`RegisteredFolderStatus.allowsNavigation`）。
+    /// 入れなければ配下の行も生まれないので、ここで重ねて塞ぐ必要が無い。
+    var allowsWritingInto: Bool { allowsWriting }
 }
 
 // MARK: - メニュー本体
@@ -231,17 +263,22 @@ struct FolderTreeContextMenu: View {
 
     @ViewBuilder
     private var creationSection: some View {
-        Divider()
-        Button("action.newFolder", systemImage: "folder.badge.plus") { actions.beginNewFolder(context) } // [FM-01]
-        Button("action.paste", systemImage: "document.on.clipboard") { operations.paste(into: context.url) }
-            .disabled(!operations.canPaste)
-            // Finder と同じく ⌥ で「ここに項目を移動」に入れ替わる
-            // [Finder 対比監査。⌥ 代替の一覧と、対応しなかった項目の理由は
-            // CLAUDE.md「Finder の ⌥ 代替項目」節を参照]。
-            .modifierKeyAlternate(.option) {
-                Button("folder.moveItemsHere", systemImage: "folder") { operations.moveItemsHere(into: context.url) }
-                    .disabled(!operations.canPaste)
-            }
+        // 縮退している登録ルート（ゴミ箱の中・同一性を追跡できないボリューム）
+        // には書き込ませない [1-17]。**コンテキストメニューは「出さない」**
+        // という既存の使い分けに従う（メニューバー側は「無効にする」）。
+        if context.allowsWritingInto {
+            Divider()
+            Button("action.newFolder", systemImage: "folder.badge.plus") { actions.beginNewFolder(context) } // [FM-01]
+            Button("action.paste", systemImage: "document.on.clipboard") { operations.paste(into: context.url) }
+                .disabled(!operations.canPaste)
+                // Finder と同じく ⌥ で「ここに項目を移動」に入れ替わる
+                // [Finder 対比監査。⌥ 代替の一覧と、対応しなかった項目の理由は
+                // CLAUDE.md「Finder の ⌥ 代替項目」節を参照]。
+                .modifierKeyAlternate(.option) {
+                    Button("folder.moveItemsHere", systemImage: "folder") { operations.moveItemsHere(into: context.url) }
+                        .disabled(!operations.canPaste)
+                }
+        }
     }
 
     // MARK: 編集系

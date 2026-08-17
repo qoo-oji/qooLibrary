@@ -85,6 +85,23 @@ struct FolderTreePane: View {
     @State private var volumesWatch = DirectoryObservation()
     @State private var libraryEntries: [RegisteredFolderEntry] = []
     @State private var temporaryEntries: [RegisteredFolderEntry] = []
+    /// 登録ルートの**親フォルダ**を見張る [1-17][RG3-07]。キーは親のパス。
+    ///
+    /// ## なぜ親なのか
+    /// 縮退へ落ちる引き金は 2 つある。ボリュームの着脱は `volumesWatch`
+    /// （`/Volumes`）が拾うが、**登録ルート自身がゴミ箱へ移された・消された・
+    /// 改名された**場合は、その変更が現れるのは**親フォルダ**である。
+    /// 登録ルート自身を見張っても、中身が変わらない限り届かない。
+    ///
+    /// これが無いと、Finder で登録ライブラリをゴミ箱へ入れても、ツリーは
+    /// 「正常」のまま残り続ける——実機検証で実際にそうなった。1-17 が塞ごうと
+    /// している「気づかないままゴミ箱の中へ書き続ける」状態がそのまま残る。
+    /// アプリ内でゴミ箱へ入れた場合は `SessionState.reloadToken` が動くので
+    /// 拾えていたが、**アプリ外からの操作だけが漏れていた。**
+    ///
+    /// 親は重複しやすい（ライブラリを同じボリューム直下にまとめている等）ので
+    /// パスで畳んで、実際の見張りは重複なく 1 つずつにする。
+    @State private var registrationParentWatches: [String: DirectoryObservation] = [:]
     /// ファイル操作の共通レイヤ [`FolderOperations` 参照]。中央ペインと
     /// まったく同じ実装を共有する。操作の途中で判断を仰ぐシートの描画は
     /// `.folderOperationsHost(_:)` が担う。
@@ -151,8 +168,27 @@ struct FolderTreePane: View {
             // 別物**で、ここでやるのは「ツリーのボリューム一覧を実体に合わせる」
             // だけ。2-2 で `VolumeMonitor` が入っても、こちらは表示の追随として
             // そのまま残せる。
+            // 登録ルートがアプリの外でゴミ箱へ移された・消された・改名された
+            // ときに追随する [1-17]。変更が現れるのは**親フォルダ**なので、
+            // そちらを見張っている（`registrationParentWatches` 参照）。
+            .onChange(of: registrationParentGeneration) {
+                Task { await reloadRegisteredFolders() }
+            }
             .onChange(of: volumesWatch.generation) {
-                Task { await reloadVolumes() }
+                Task {
+                    await reloadVolumes()
+                    // **登録フォルダの状態も一緒に取り直す** [RG3-07、1-17]。
+                    // ボリュームの着脱こそが `.online` ⇄ `.offline` を動かす
+                    // 主たる引き金で、ここで取り直さないと、外付けを抜いても
+                    // 登録フォルダは「正常」のまま残り続ける（`reloadToken` が
+                    // たまたま動くまで気づけない）。
+                    //
+                    // フェーズ1の判定は受動的でよい [RG3-07] が、**受け取れる
+                    // 信号は取りこぼさない**——2-2 で `NSWorkspace` のボリューム
+                    // 通知（VD-01〜06）に置き換わっても、状態モデルと判定順序は
+                    // そのままで駆動方法だけが替わる。
+                    await reloadRegisteredFolders()
+                }
             }
             .task {
                 volumesWatch.watch(Self.volumesDirectory, scope: .shallow)
@@ -349,14 +385,68 @@ struct FolderTreePane: View {
                         onSelect: onSelect,
                         onDropFailure: { presentFailureMessage($0) },
                         operations: operations, menuActions: menuActions,
-                        registeredFolder: entry.folder
+                        registeredFolder: entry.folder,
+                        annotation: entry.annotation,
+                        allowsWriting: entry.state.status.allowsWriting
                     )
                 } else {
-                    // ブックマーク解決失敗（ボリューム未接続等）[SB-05]。
-                    OfflineRegisteredFolderRow(displayName: entry.folder.displayName) {
-                        unregisterFolder(entry.folder)
-                    }
+                    // 入って辿れない縮退状態 [1-17]。**行を出し続けるのが要点**
+                    // ——登録レコードは決して自動削除しない [RG3-04][SB-05] ので、
+                    // 状態を見せて次の一手を示す。
+                    DegradedRegisteredFolderRow(
+                        state: entry.state,
+                        onRelocate: { presentRelocatePanel(for: entry.folder) },
+                        onRevealInFinder: { operations.revealInFinder([$0]) },
+                        onUnregister: { unregisterFolder(entry.folder) }
+                    )
                 }
+            }
+        }
+    }
+
+    /// 実体を見失った登録に、新しい場所を割り当て直す [1-17、`.missing` の
+    /// 「場所を選び直す…」]。
+    ///
+    /// **登録解除して登録し直すのとは違う。** 登録 ID が保たれるので、それに
+    /// 紐づくもの（フェーズ1ではサムネイル非表示設定、フェーズ2ではラベル・
+    /// 評価・カバー画像）がそのまま生き残る。
+    private func presentRelocatePanel(for folder: RegisteredFolder) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = String(localized: "folderTree.relocatePanelPrompt", locale: locale)
+        panel.message = String(
+            format: String(localized: "folderTree.relocatePanelMessage", locale: locale), folder.displayName
+        )
+        // **最後に分かっている場所の「親」から開く** [1-17]。当のフォルダ自身は
+        // もう無いので、そこを指しても Finder 側で無視される。
+        if let last = folder.lastKnownPath {
+            panel.directoryURL = URL(fileURLWithPath: last).deletingLastPathComponent()
+        }
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        Task {
+            do {
+                let result = try await RegisteredFolderStore.shared.relocate(folder.id, to: url)
+                await reloadRegisteredFolders()
+                // ツリーだけでなく、この登録フォルダを表示していた他のペインも
+                // 読み直させる（登録の増減と同じ共通シグナル）。
+                SessionState.shared.reloadToken += 1
+                // **新規登録と同じ警告を出す** [FS-06][NV-87][NV8-04、レビューで
+                // 発見]。ネットワーク共有やクラウドへ移し替えたのに何も言わない
+                // のでは、登録経路との食い違いになる。
+                if !result.warnings.isEmpty {
+                    await NotificationRouter.shared.present(NotificationItem(
+                        category: .warning, severity: .transient,
+                        title: String(localized: "folderTree.registeredWithWarningTitle", locale: locale),
+                        body: result.warnings.map(Self.description(for:)).joined(separator: "\n")
+                    ))
+                }
+            } catch {
+                await NotificationRouter.shared.presentError(
+                    error, whatHappened: String(localized: "folderTree.relocateFailedTitle", locale: locale)
+                )
             }
         }
     }
@@ -570,10 +660,14 @@ struct FolderTreePane: View {
     }
 
     private func reloadRegisteredFolders() async {
-        async let libraries = RegisteredFolderStore.shared.folders(kind: .library)
-        async let temporaries = RegisteredFolderStore.shared.folders(kind: .temporary)
-        libraryEntries = await Self.entries(for: libraries, kind: .library)
-        temporaryEntries = await Self.entries(for: temporaries, kind: .temporary)
+        // **状態を 1 回でまとめて解決する** [1-17]。以前は登録ごとに
+        // `resolvedURL(for:)` を逐次呼んでいたが、`states()` はマウント表を
+        // 1 回だけ写し、残りの解決と実体確認を並行に行う——応答しない
+        // ボリュームがあっても待ちは上限 1 回分で収まる。
+        let states = await RegisteredFolderStore.shared.states()
+        libraryEntries = Self.entries(from: states, kind: .library)
+        temporaryEntries = Self.entries(from: states, kind: .temporary)
+        syncRegistrationParentWatches(states)
         // 「移動」メニュー用のキャッシュも同じタイミングで更新する [1-16]。
         // 登録の追加・解除・表示名変更・`SessionState.reloadToken` の変化は
         // すべてこのメソッドを経由するため、更新経路をここ 1 本に集約できる
@@ -581,14 +675,58 @@ struct FolderTreePane: View {
         await RegisteredFolderIndex.shared.refresh()
     }
 
-    private static func entries(for folders: [RegisteredFolder], kind: FolderTreeNode.Kind) async -> [RegisteredFolderEntry] {
-        var result: [RegisteredFolderEntry] = []
-        for folder in folders {
-            let url = await RegisteredFolderStore.shared.resolvedURL(for: folder)
-            let node = url.map { FolderTreeNode(url: $0, displayName: folder.displayName, kind: kind) }
-            result.append(RegisteredFolderEntry(folder: folder, node: node))
+    /// 登録ルートの親フォルダの見張りを、いまの登録内容に合わせる [1-17]。
+    ///
+    /// **場所が分かっているものだけ**が対象。オフラインの登録は親も
+    /// 未接続のボリューム上にあり、見張っても届かない（届くようになるのは
+    /// 接続されたときで、それは `volumesWatch` が拾う）。
+    private func syncRegistrationParentWatches(_ states: [RegisteredFolderState]) {
+        let parents = Set(
+            states.compactMap { state -> String? in
+                guard let url = state.status.resolvedURL else { return nil }
+                return url.deletingLastPathComponent().standardizedFileURL.path
+            }
+        )
+        // 要らなくなったものを解く。`DirectoryObservation` は解放時に自分で
+        // 登録を解くので、辞書から外すだけでよい。
+        for key in registrationParentWatches.keys where !parents.contains(key) {
+            registrationParentWatches.removeValue(forKey: key)
         }
-        return result
+        for parent in parents where registrationParentWatches[parent] == nil {
+            let observation = DirectoryObservation()
+            observation.watch(URL(fileURLWithPath: parent), scope: .shallow)
+            registrationParentWatches[parent] = observation
+        }
+    }
+
+    /// 見張っている親フォルダの世代の合計。**`body` から読むことが購読になる**
+    /// ので、`.onChange` の比較対象にそのまま使う（`DirectoryObservation` は
+    /// `@Observable`）。個々の値が要るわけではなく、「どれかが動いた」ことだけ
+    /// 分かればよい。
+    private var registrationParentGeneration: Int {
+        registrationParentWatches.values.reduce(0) { $0 &+ $1.generation }
+    }
+
+    /// 状態一覧から、片方のグループぶんの行の材料を組み立てる。
+    ///
+    /// **`node` を作るのは「入って辿れる」状態のときだけ** [RG3-06]。
+    /// オフラインで作ってしまうと、行を展開しただけで未接続のボリュームを
+    /// 読みに行く——ネットワーク越しならそこで接続タイムアウト分ブロックする。
+    private static func entries(
+        from states: [RegisteredFolderState], kind: RegisteredFolderKind
+    ) -> [RegisteredFolderEntry] {
+        let nodeKind: FolderTreeNode.Kind = kind == .library ? .library : .temporary
+        return states
+            .filter { $0.folder.kind == kind }
+            .sorted { $0.folder.displayName.localizedStandardCompare($1.folder.displayName) == .orderedAscending }
+            .map { state in
+                let node = state.status.allowsNavigation
+                    ? state.status.resolvedURL.map {
+                        FolderTreeNode(url: $0, displayName: state.folder.displayName, kind: nodeKind)
+                    }
+                    : nil
+                return RegisteredFolderEntry(state: state, node: node)
+            }
     }
 
     private static func errorMessage(for error: Error) -> String {
@@ -617,10 +755,24 @@ struct FolderTreeSelection: Hashable {
     let branch: FolderTreeBranch
 }
 
+/// 登録済みフォルダ 1 件の、ツリーが描くのに必要な材料 [1-17]。
+///
+/// `node` は**入って辿れる状態のときだけ**作る（`.online` と
+/// `.unsupportedFileSystem`）。オフライン・ゴミ箱・消失では `nil` にして
+/// `DegradedRegisteredFolderRow` へ回す——`FolderTreeRow` を作ってしまうと、
+/// 行を展開しただけで未接続のボリュームを読みに行く [RG3-06]。
 private struct RegisteredFolderEntry: Identifiable {
-    let folder: RegisteredFolder
+    let state: RegisteredFolderState
     let node: FolderTreeNode?
+
+    var folder: RegisteredFolder { state.folder }
     var id: UUID { folder.id }
+
+    /// 行に添える注記。正常かつ入れ子でもなければ `nil`（何も足さない）。
+    var annotation: RegisteredRootAnnotation? {
+        guard state.status.isDegraded || state.isNested else { return nil }
+        return RegisteredRootAnnotation(status: state.status, isNested: state.isNested)
+    }
 }
 
 private struct GroupHeader: View {
@@ -689,26 +841,96 @@ private struct EmptyGroupRow: View {
     }
 }
 
-/// [SB-05] ブックマーク解決に失敗した登録フォルダ（ボリューム未接続等）。
-/// フェーズ1にはスキャン・DB が無いため「オフライン状態として保持」ではなく
-/// 単純な表示のみだが、登録解除だけはここからもできるようにしている。
-private struct OfflineRegisteredFolderRow: View {
-    let displayName: String
+/// 入って辿れない縮退状態の登録フォルダ [1-17、8章 §8.7.1]。
+///
+/// 1-13 以来ここは「ブックマークを解決できなかった行」1 種類しかなく、
+/// 未接続も削除もゴミ箱も同じグレーの行に潰れていた。**性質が違えば
+/// 次の一手も違う**ので、状態ごとに見た目と操作を変える:
+///
+/// | 状態 | 見た目 | 出す操作 | 復帰 |
+/// |---|---|---|---|
+/// | `.offline` | グレーアウト | 登録解除 | 接続すれば自動 [VD-03] |
+/// | `.inTrash` | 警告色 | Finder で表示・登録解除 | ゴミ箱から戻せば自動 |
+/// | `.missing` | 通常色＋疑問符 | 場所を選び直す…・登録解除 | 手動 |
+///
+/// **どの状態でも登録解除を出す**が、それはユーザーが選んだときだけ効く
+/// ——アプリが勝手に消すことは無い [RG3-04][SB-05]。
+private struct DegradedRegisteredFolderRow: View {
+    @Environment(\.locale) private var locale
+    let state: RegisteredFolderState
+    let onRelocate: () -> Void
+    let onRevealInFinder: (URL) -> Void
     let onUnregister: () -> Void
+
+    /// `.offline` だけ薄くする。ゴミ箱・消失は「気づいてほしい」状態なので
+    /// 薄めない——未接続は待てば戻る日常的な状態で、そちらこそ目立たない
+    /// ほうがよい。
+    private var opacity: Double {
+        if case .offline = state.status { return 0.4 }
+        return 1
+    }
+
+    private var iconName: String {
+        switch state.status {
+        case .offline: "externaldrive.badge.xmark"
+        case .inTrash: "trash"
+        case .missing: "questionmark.folder"
+        // 入って辿れる状態はこの行を使わない（`FolderTreeRow` が描く）。
+        case .online, .unsupportedFileSystem: "folder"
+        }
+    }
+
+    private var iconColor: Color {
+        switch state.status {
+        case .inTrash, .missing: Tokens.Colors.dangerText
+        case .offline, .online, .unsupportedFileSystem: .secondary
+        }
+    }
+
+    /// ツールチップに出す説明。**「何が起きたか」と「次に何ができるか」を
+    /// 併せて言う** [ER-03 の考え方をこの行にも当てる]。
+    private var hint: String {
+        let key: String.LocalizationValue = switch state.status {
+        case .offline: "folderTree.status.offlineHint"
+        case .inTrash: "folderTree.status.inTrashHint"
+        case .missing: "folderTree.status.missingHint"
+        case .online, .unsupportedFileSystem: "folderTree.status.missingHint"
+        }
+        let message = String(localized: key, locale: locale)
+        // 最後に分かっている場所を添える。「どのボリュームを繋げばよいか」が
+        // 分からないと、オフラインの行は手の打ちようが無い。
+        guard let path = state.status.lastKnownPath else { return message }
+        return "\(message)\n\(path)"
+    }
 
     var body: some View {
         Label {
-            Text(displayName)
+            Text(state.folder.displayName)
+                .font(.system(size: Tokens.fontSize.body))
         } icon: {
-            Image(systemName: "questionmark.folder")
+            Image(systemName: iconName)
+                .foregroundStyle(iconColor)
                 .frame(width: 16, alignment: .center)
         }
-        .opacity(0.4)
+        .opacity(opacity)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, Tokens.spacing.xs)
         .padding(.vertical, 2)
-        .help("folderTree.notFoundHint")
+        .contentShape(Rectangle())
+        .help(hint)
         .contextMenu {
-            Button("folderTree.unregister") { onUnregister() }
+            // ゴミ箱の中は中身を確かめたくなるので Finder への導線を出す
+            // [8章 §8.7.1 の「許可する操作」]。qooLibrary 自身では中へ
+            // 入らせない——入れなければ中で書くこともできない［ユーザー判断］。
+            if case .inTrash(let url) = state.status {
+                Button("folder.revealInFinder", systemImage: "macwindow") { onRevealInFinder(url) }
+                Divider()
+            }
+            if case .missing = state.status {
+                Button("folderTree.relocateEllipsis", systemImage: "arrow.forward.folder") { onRelocate() }
+                Divider()
+            }
+            Button("folderTree.unregister", systemImage: "minus.circle") { onUnregister() }
         }
     }
 }
@@ -739,9 +961,29 @@ private struct FolderTreeRow: View {
     /// ままにし、登録解除・表示名変更のメニューが実フォルダの深い階層に
     /// 誤って出ないようにする。
     var registeredFolder: RegisteredFolder?
+    /// 登録ルート行が縮退しているときの注記 [1-17]。`registeredFolder` と同じく
+    /// **子孫には伝播させない**——`.unsupportedFileSystem` はボリューム全体の
+    /// 性質なので配下にも当てはまるが、警告を全行に重ねて出しても読みづらく
+    /// なるだけで、登録ルートに 1 つ出れば伝わる。
+    var annotation: RegisteredRootAnnotation?
+    /// この行の配下へ書き込んでよいか [1-17]。**警告の表示と違い、これは
+    /// 子孫へそのまま伝播させる**［レビューで発見］。
+    ///
+    /// `.unsupportedFileSystem` はボリューム全体の性質なので、登録ルートだけを
+    /// 塞いでも**1 つ開いて中の行を右クリックすれば素通りできた**（子孫の
+    /// `role` は `.plainFolder` なので、むしろ複製・圧縮・ゴミ箱まで開く）。
+    /// 見た目は根に 1 つで足りるが、禁止は配下すべてに効かなければ意味が無い。
+    var allowsWriting: Bool = true
+
+    /// 縮退の警告文言を組み立てるのに要る [1-17]。`Text` のリテラルと違い
+    /// `String(localized:)` は環境のロケールを自動では見ないため、明示的に
+    /// 読んで渡す必要がある [CLAUDE.md「表示言語」節の区別]。
+    @Environment(\.locale) private var locale
 
     @State private var children: [FolderTreeNode]?
     @State private var accessDenied = false
+    /// ボリュームが取り外されている [1-17]。`accessDenied` とは案内が違う。
+    @State private var volumeNotMounted = false
     /// 展開している間、このフォルダの直下を見張る [10章 §10.0]。
     @State private var watch = DirectoryObservation()
     @State private var isDropTargeted = false
@@ -766,7 +1008,10 @@ private struct FolderTreeRow: View {
     /// コンテキストメニューの出し分けに必要な情報一式
     /// [`FolderTreeRowContext` 参照]。
     private var menuContext: FolderTreeRowContext {
-        FolderTreeRowContext(node: node, branch: branch, role: role, registeredFolder: registeredFolder)
+        FolderTreeRowContext(
+            node: node, branch: branch, role: role, registeredFolder: registeredFolder,
+            annotation: annotation, allowsWriting: allowsWriting
+        )
     }
 
     /// ボリューム行の右端に出す取り出しボタン [ユーザー要望、Finder の
@@ -840,6 +1085,19 @@ private struct FolderTreeRow: View {
             // 適用する必要がある。
             .frame(maxWidth: .infinity, alignment: .leading)
 
+            // 縮退している登録ルートの警告 [1-17]。`.unsupportedFileSystem`
+            // （閲覧はできるが同一性を追跡できない [FS-08]）と、外部での移動で
+            // 入れ子が破れた場合 [RG3-05] がここに出る。**起動時にダイアログを
+            // 出さずに行へ残す**のがこの見せ方の要点［ユーザー判断］——邪魔に
+            // ならず、状態がその場に残るので後からでも気づける。
+            if let annotation, let message = Self.warningMessage(for: annotation, locale: locale) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: Tokens.fontSize.caption))
+                    .foregroundStyle(isSelected ? Color(nsColor: .alternateSelectedControlTextColor) : Tokens.Colors.dangerText)
+                    .help(message)
+                    .padding(.trailing, Tokens.spacing.xs)
+            }
+
             // 取り出しボタンは行の右端に置く [ユーザー要望]。上の `Label` が
             // `maxWidth: .infinity` で残り幅を占めるので、自然に右詰めになる。
             ejectButton
@@ -868,6 +1126,10 @@ private struct FolderTreeRow: View {
             // 選択は `.tag` を通じて `listSelection` に入り、ペイン側の
             // `.onChange` が実際の移動を行う。
             .dropDestination(for: URL.self) { items, _ in // [DD-05] ツリーへドロップで移動
+                // 縮退している登録ルートへは落とさせない [1-17]。メニューから
+                // 塞いでも D&D が空いていたら意味が無い——**書き込みの経路は
+                // まとめて閉じる**。
+                guard menuContext.allowsWritingInto else { return false }
                 DropHandling.performDrop(
                     items, into: node.url, operations: operations,
                     onComplete: {
@@ -879,12 +1141,36 @@ private struct FolderTreeRow: View {
                     onFailure: onDropFailure
                 )
                 return true
-            } isTargeted: { isDropTargeted = $0 }
+            } isTargeted: { isDropTargeted = $0 && menuContext.allowsWritingInto }
+    }
+
+    /// 行に添える警告の文言。出すものが無ければ `nil`。
+    ///
+    /// **`.unsupportedFileSystem` を優先する。** 入れ子より深刻で、かつ
+    /// 「このボリュームでは同一性を追跡できない」ほうが先に手当てすべき
+    /// 事象だから（入れ子はフォルダを動かせば直るが、こちらはボリューム
+    /// そのものを替えるか登録をやめるしかない）。
+    static func warningMessage(for annotation: RegisteredRootAnnotation, locale: Locale) -> String? {
+        if case .unsupportedFileSystem(_, let fileSystemName) = annotation.status {
+            guard let fileSystemName else {
+                return String(localized: "folderTree.status.unsupportedFileSystem", locale: locale)
+            }
+            return String(
+                format: String(localized: "folderTree.status.unsupportedFileSystemNamed", locale: locale),
+                fileSystemName
+            )
+        }
+        if annotation.isNested {
+            return String(localized: "folderTree.status.nested", locale: locale)
+        }
+        return nil
     }
 
     var body: some View {
         DisclosureGroup(isExpanded: node.isSymlink ? .constant(false) : isExpanded) {
-            if accessDenied {
+            if volumeNotMounted {
+                VolumeNotMountedRow() // [1-17][SB-05]
+            } else if accessDenied {
                 AccessDeniedRow() // [SB-04][LP2-09]
             } else if let children {
                 ForEach(children) { child in
@@ -892,7 +1178,9 @@ private struct FolderTreeRow: View {
                         node: child, expandedIDs: $expandedIDs, visibleIDs: $visibleIDs, selectedURL: selectedURL,
                         branch: branch, role: .plainFolder, onSelect: onSelect,
                         onDropFailure: onDropFailure,
-                        operations: operations, menuActions: menuActions
+                        operations: operations, menuActions: menuActions,
+                        // 注記（警告の見た目）は根だけ、書き込みの可否は配下すべてへ。
+                        allowsWriting: allowsWriting
                     )
                 }
             } else {
@@ -932,9 +1220,10 @@ private struct FolderTreeRow: View {
                 // 実体を読み直す。
                 children = nil
                 accessDenied = false
+                volumeNotMounted = false
                 return
             }
-            guard children == nil, !accessDenied else { return }
+            guard children == nil, !accessDenied, !volumeNotMounted else { return }
             loadChildren()
         }
         // 子を読み込んでいる間だけ、このフォルダの直下を見張る [10章 §10.0]。
@@ -957,8 +1246,9 @@ private struct FolderTreeRow: View {
         // コンテキストメニュー由来のファイル操作（新規フォルダ・複製・ゴミ箱
         // 等）の結果がツリーへ反映されるのも、この経路。
         .onChange(of: SessionState.shared.reloadToken) {
-            guard children != nil || accessDenied else { return }
+            guard children != nil || accessDenied || volumeNotMounted else { return }
             accessDenied = false
+            volumeNotMounted = false
             loadChildren()
         }
     }
@@ -994,6 +1284,11 @@ private struct FolderTreeRow: View {
             case .denied:
                 children = nil
                 accessDenied = true
+                volumeNotMounted = false
+            case .volumeNotMounted:
+                children = nil
+                accessDenied = false
+                volumeNotMounted = true
             }
         }
     }
@@ -1001,15 +1296,45 @@ private struct FolderTreeRow: View {
     private enum ChildrenOutcome: Sendable {
         case loaded([FolderTreeNode])
         case denied
+        /// ボリュームが接続されていない [1-17]。`denied` と分けるのは、
+        /// **アクセス権を足しても直らない**ため——同じ扱いにすると、
+        /// 環境設定「アクセス権」タブへ誘導したきり行き止まりになる。
+        case volumeNotMounted
     }
 
     /// **メインアクタの外で走る。** `FileIO.perform` の中からのみ呼ぶこと。
     private nonisolated static func readChildren(of node: FolderTreeNode) -> ChildrenOutcome {
-        do { return .loaded(try FolderTreeNode.children(of: node)) } catch { return .denied }
+        do {
+            return .loaded(try FolderTreeNode.children(of: node))
+        } catch FolderTreeAccessError.volumeNotMounted {
+            return .volumeNotMounted
+        } catch {
+            return .denied
+        }
     }
 }
 
-/// [SB-04][LP2-09] **フルディスクアクセスへ誘導していた旧実装は撤去した**
+/// ボリュームが取り外されている [1-17][SB-05][LP-04]。
+///
+/// **`AccessDeniedRow` と分けてあるのが要点。** 以前は
+/// `FolderTreeNode.children(of:)` が `NSCocoaErrorDomain` の失敗をすべて
+/// 「アクセス権がありません」に丸めていたため、外付けを抜いただけでも
+/// 環境設定「アクセス権」タブへ誘導していた——許可を足しても直らないので、
+/// ユーザーは行き止まりに入る。ここには**ボタンを置かない**: 直す方法は
+/// アプリの外（挿し直す・サーバへ繋ぐ）にあり、押せるものを出しても嘘になる。
+private struct VolumeNotMountedRow: View {
+    var body: some View {
+        Label {
+            Text("folderTree.volumeNotMounted")
+        } icon: {
+            Image(systemName: "externaldrive.badge.xmark")
+        }
+        .font(.system(size: Tokens.fontSize.caption))
+        .foregroundStyle(.secondary)
+    }
+}
+
+/// [SB-04][LP2-09] アクセス権が無い。**フルディスクアクセスへ誘導していた旧実装は撤去した**
 /// ——実機検証の結果、フルディスクアクセスは App Sandbox のカーネルレベルの
 /// ファイル読み取り制限を回避しないと判明したため（CLAUDE.md 1-4 節「将来
 /// 検討」の訂正参照）。**その場で `NSOpenPanel` を開く実装も一度作ったが、

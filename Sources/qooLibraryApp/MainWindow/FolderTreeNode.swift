@@ -62,6 +62,18 @@ public struct FolderTreeNode: Identifiable, Sendable, Hashable {
                 options: [.skipsHiddenFiles]
             )
         } catch let error as NSError where error.domain == NSCocoaErrorDomain {
+            // **「読めなかった」を全部「アクセス権がありません」に丸めない** [1-17]。
+            //
+            // ボリュームが取り外されただけでも `NSCocoaErrorDomain` の失敗に
+            // なるため、以前はそのとき環境設定「アクセス権」タブへ誘導して
+            // いた——許可を足しても直らないので、ユーザーは行き止まりに入る。
+            // 原因が違えば次の一手も違う。
+            //
+            // 判定はマウント表と突き合わせるだけで、**当のパスには触れない**
+            // [NV6-02]——触れば、応答しない共有ではそこでまた止まる。
+            if MountTable.current().isOnAnUnmountedVolume(node.url) {
+                throw FolderTreeAccessError.volumeNotMounted
+            }
             throw FolderTreeAccessError.denied(underlying: error)
         }
 
@@ -104,5 +116,9 @@ public struct FolderTreeNode: Identifiable, Sendable, Hashable {
 }
 
 public enum FolderTreeAccessError: Error {
+    /// アクセス権が無い [SB-04]。環境設定「アクセス権」タブで許可すれば直る。
     case denied(underlying: NSError)
+    /// ボリュームが接続されていない [1-17][SB-05]。**許可を足しても直らない**
+    /// ので、`denied` とは別に扱って別の案内を出す。
+    case volumeNotMounted
 }

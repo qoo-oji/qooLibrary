@@ -1740,6 +1740,16 @@ struct FolderContentView: View {
                 )
             })
         } catch {
+            // **ボリュームが外れているだけなら、そう言う** [RG3-06][1-17]。
+            // OS の生の文言（「ファイル…が存在しないため開けませんでした」等）
+            // では、挿し直せば戻ることが伝わらない。判定はマウント表と
+            // 突き合わせるだけで当のパスには触れない [NV6-02]。
+            if MountTable.current().isOnAnUnmountedVolume(folder) {
+                return .failed(
+                    String(localized: "folder.volumeNotConnected", locale: AppLanguage.effectiveLocale),
+                    isAccessDenied: false
+                )
+            }
             return .failed(error.localizedDescription, isAccessDenied: Self.isAccessDenied(error))
         }
     }

@@ -57,10 +57,18 @@ public final class RegisteredFolderIndex {
     }
 
     public func refresh() async {
-        async let libraries = RegisteredFolderStore.shared.folders(kind: .library)
-        async let temporaries = RegisteredFolderStore.shared.folders(kind: .temporary)
-        library = await Self.entries(for: libraries)
-        temporary = await Self.entries(for: temporaries)
+        // **状態を見て、入って辿れるものだけを載せる** [1-17]。
+        //
+        // 以前は `resolvedURL(for:)` を直に呼んでいたため、ゴミ箱へ移した
+        // 登録フォルダもそのまま並んでいた——ブックマークは inode を追跡し
+        // 解決に成功し続けるので [BM-2]、URL は「ゴミ箱の中」を指す。
+        // 結果、ツリーでは入れないようにしたのに**「移動」メニューと
+        // 起動時フォルダからは素通りで入れて、中で自由に書けた**。
+        // 「同じ機能に複数の到達経路があり、片方だけ塞いで取り残す」という、
+        // 1-12 のアプリ関連付けで実際に踏んだ形そのもの。
+        let states = await RegisteredFolderStore.shared.states()
+        library = Self.entries(from: states, kind: .library)
+        temporary = Self.entries(from: states, kind: .temporary)
         // 登録フォルダの増減・表示名変更・DS-04 の切替・アクセス権やボリューム
         // の変化（`SessionState.reloadToken` 経由）は、すべてこの refresh() に
         // 集約されている（更新経路 1 本、型のコメント参照）。バックグラウンドの
@@ -71,17 +79,24 @@ public final class RegisteredFolderIndex {
         BackgroundThumbnailWarmer.shared.restart()
     }
 
-    private static func entries(for folders: [RegisteredFolder]) async -> [Entry] {
-        var result: [Entry] = []
-        for folder in folders {
-            guard let url = await RegisteredFolderStore.shared.resolvedURL(for: folder) else { continue }
-            result.append(Entry(
-                id: folder.id,
-                displayName: folder.displayName,
-                url: url,
-                thumbnailsAlwaysHidden: folder.hidesThumbnails
-            ))
-        }
-        return result
+    /// **`allowsNavigation` が真のものだけ**を載せる [1-17]。オフライン・
+    /// ゴミ箱・消失の登録は「移動」メニューにも起動時フォルダにも出さない
+    /// ——出しても開けないか、開いてはいけない場所である。
+    ///
+    /// 副次的に、バックグラウンドの動画サムネイル生成 [9.6 節] もこの一覧を
+    /// 掃くので、ゴミ箱の中や未接続のボリュームを掃きに行かなくなる。
+    private static func entries(from states: [RegisteredFolderState], kind: RegisteredFolderKind) -> [Entry] {
+        states
+            .filter { $0.folder.kind == kind }
+            .sorted { $0.folder.displayName.localizedStandardCompare($1.folder.displayName) == .orderedAscending }
+            .compactMap { state in
+                guard state.status.allowsNavigation, let url = state.status.resolvedURL else { return nil }
+                return Entry(
+                    id: state.folder.id,
+                    displayName: state.folder.displayName,
+                    url: url,
+                    thumbnailsAlwaysHidden: state.folder.hidesThumbnails
+                )
+            }
     }
 }
