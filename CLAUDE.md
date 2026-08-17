@@ -3259,6 +3259,19 @@ Swift 6 言語モード、`StrictConcurrency` 有効。
 - 書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)。
   最初のエントリは **0.10**（2026-08-18、フェーズ 1 完了）。
 
+**一方、`Resources/Localizable.xcstrings` の Xcode による更新は、指示を待たず
+そのままコミットしてよい** [ユーザー指示]。Xcode はビルドのたびにこのファイルを
+書き戻し、**鍵の並べ替えや `extractionState` の付け替えだけの差分**を頻繁に生む。
+
+- `extractionState: "stale"` は**当てにならない**。実際にソース中で使われている
+  鍵に付いたり外れたりする（実測: `preferences.cache.backgroundVideoWarming` と
+  `folderTree.volumeNotMounted` の間で印が入れ替わっただけの差分が出た。両方とも
+  ソース中で使われていた）。**stale を「未使用」の根拠にして鍵を消さないこと。**
+- ただし**意味的な差分が無いことは確認してから**コミットする。JSON を読んで
+  「鍵の増減」と「値の変化」を突き合わせれば、並べ替えだけなのかが分かる
+  （`check-localization-keys.swift` はコード → カタログの方向しか見ないので、
+  カタログ側の値の変化はこの検査では捕まらない）。
+
 ## 9. やってはいけないこと（明示的な禁止事項）
 
 - `FileOperationService` を経由しないファイルシステム変更（§3.2）
