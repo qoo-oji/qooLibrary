@@ -99,9 +99,12 @@ jobs:
           set -eu
           git fetch origin "${{ github.base_ref }}" --depth=1
           CHANGED=$(git diff --name-only "origin/${{ github.base_ref }}"...HEAD)
-          if echo "$CHANGED" | grep -q '^ThirdParty/'; then
+          # ThirdParty/ の変更（ベンダリング）と、SwiftPM の依存の変更
+          # （Package.swift / Package.resolved）の両方を見る [LC-05]。
+          if echo "$CHANGED" | grep -qE '^(ThirdParty/|Package\.swift$|Package\.resolved$)'; then
             if ! echo "$CHANGED" | grep -q '^THIRD-PARTY-NOTICES\.md$'; then
-              echo "!! ThirdParty/ changed but THIRD-PARTY-NOTICES.md was not updated [LC-05]"
+              echo "!! dependencies changed but THIRD-PARTY-NOTICES.md was not updated [LC-05]"
+              echo "   changed:"; echo "$CHANGED" | grep -E '^(ThirdParty/|Package\.)'
               exit 1
             fi
           fi

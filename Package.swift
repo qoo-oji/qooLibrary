@@ -15,10 +15,13 @@ var targets: [Target] = [
         name: "QooKit"
     ),
 
-    // MARK: - Persistence layer (SwiftData) [A-02]
+    // MARK: - Persistence layer (SQLite / GRDB) [A-02]
+    // GRDB を import してよいのはこのターゲットだけ（静的検査 B-11 が強制する）。
+    // 上位層は QooKit のリポジトリプロトコル越しにのみ触る。
+    // SwiftData ではなく SQLite を選んだ根拠は Spikes/README.md「T-03 / T-04」。
     .target(
         name: "QooPersistence",
-        dependencies: ["QooKit"]
+        dependencies: ["QooKit", .product(name: "GRDB", package: "GRDB.swift")]
     ),
 
     // MARK: - libarchive vendoring [LC-15][B-02]
@@ -102,6 +105,13 @@ targets.append(
 
 targets.append(
     .testTarget(
+        name: "QooPersistenceTests",
+        dependencies: ["QooPersistence"]
+    )
+)
+
+targets.append(
+    .testTarget(
         name: "QooApplicationTests",
         dependencies: ["QooApplication"]
     )
@@ -141,6 +151,11 @@ let package = Package(
         .library(name: "QooPersistence", targets: ["QooPersistence"]),
         .library(name: "QooInfrastructure", targets: ["QooInfrastructure"]),
         .library(name: "QooApplication", targets: ["QooApplication"]),
+    ],
+    dependencies: [
+        // SQLite への薄いラッパー（MIT）。永続化層のみが使う [A-02]。
+        // 採用理由と実測値は Spikes/README.md「T-03 / T-04: 永続化層の性能」。
+        .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.11.1"),
     ],
     targets: targets,
     swiftLanguageModes: [.v6]

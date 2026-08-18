@@ -1,8 +1,14 @@
 # Third-Party Notices
 
-qooLibrary vendors the following third-party components. Each is isolated
-under `ThirdParty/<name>/` and is **not** covered by qooLibrary's MIT license
-(see `LICENSE`). [LC-04][LC-24]
+qooLibrary uses the following third-party components. They are **not** covered
+by qooLibrary's MIT license (see `LICENSE`). [LC-04][LC-24]
+
+Two kinds appear here:
+
+- **Vendored** — built from source into `ThirdParty/<name>/` by a script in
+  `Scripts/`, and isolated behind a single wrapper target.
+- **Source dependency** — resolved by SwiftPM from `Package.swift`, pinned in
+  `Package.resolved`, and isolated to a single module by a CI static check.
 
 This file must be updated whenever a dependency is added, upgraded, or
 removed (PR checklist item). [LC-05][B-05]
@@ -70,3 +76,23 @@ preferred; UnRAR is a deliberate, isolated exception — see above). Then:
 2. Add a section to this file following the format above.
 3. If the dependency is required for the default build, also update
    `README.md`'s build instructions.
+
+## GRDB.swift
+
+- **Kind**: source dependency (SwiftPM). Not vendored under `ThirdParty/`.
+- **Version**: pinned in `Package.resolved`. Minimum `7.11.1`.
+- **Used for**: the persistence layer — SQLite access, schema migrations,
+  connection pooling (WAL), and online backups. Replaced the originally
+  planned SwiftData; the measurements behind that decision are in
+  `Spikes/README.md` ("T-03 / T-04: 永続化層の性能").
+- **License**: MIT. Copyright (C) 2015-2025 Gwendal Roué.
+  Full text: <https://github.com/groue/GRDB.swift/blob/master/LICENSE>
+- **Source**: <https://github.com/groue/GRDB.swift>
+- **Modifications**: none. Unmodified upstream source, resolved by SwiftPM.
+- **Isolation**: only the `QooPersistence` target may `import GRDB` [A-02].
+  `Scripts/check-layer-dependencies.swift` (B-11) fails the build if any other
+  target imports it, so SQL, connections and row types cannot leak past the
+  repository protocols. Those protocols live in `QooKit`, which depends on
+  Foundation alone.
+- **SQLite itself**: GRDB links against the SQLite that ships with macOS. No
+  separate SQLite copy is vendored, and SQLCipher is not used.
