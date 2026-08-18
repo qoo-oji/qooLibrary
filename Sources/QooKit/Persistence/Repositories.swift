@@ -66,6 +66,14 @@ public protocol LibraryRepository: Sendable {
     func library(uuid: UUID) async throws -> LibrarySummary?
     /// パーサへ渡す設定 [VT-01][VT-02]。
     func settingsSnapshot(libraryID: LibraryID) async throws -> LibrarySettingsSnapshot?
+    /// **編集用**の設定 [LS-01]。`settingsSnapshot` と違いソース文字列のまま返し、
+    /// 無効にしてあるフォーマットも落とさない——編集にスナップショットを使うと、
+    /// 保存したときに無効なフォーマットが消える。
+    func settingsDraft(libraryID: LibraryID) async throws -> LibrarySettingsDraft?
+    /// 設定を保存する [LS-01][LT-03]。**`settingsRevision` の更新はこの中で行う**
+    /// ——呼び出し側に任せると、上げ忘れたときパーサが古いコンパイル結果を
+    /// 使い続ける [VT-02]。検証に通らない草案は保存しない。
+    func updateSettings(_ draft: LibrarySettingsDraft, libraryID: LibraryID) async throws
     func register(_ registration: LibraryRegistration,
                   template: LibraryTypeTemplate) async throws -> LibraryID     // [RG-01][LT-03]
     /// `keepLabels` はフェーズ 2 のラベル保管庫へ回すかどうか [RG-06]。

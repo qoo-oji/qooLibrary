@@ -284,6 +284,13 @@ struct FolderTreeContextMenu: View {
                 actions.enableLibrary(folder, context.url)
             }
         }
+        if visible.contains(.settings) {
+            // **テンプレートは雛形でしかない** [LT-03]。写された設定を実際に
+            // 調整できる場所への入口。
+            Button("library.settings.menuItem", systemImage: "gearshape") {
+                actions.openLibrarySettings(folder)
+            }
+        }
         if visible.contains(.rescan) {
             Button("library.rescan.menuItem", systemImage: "arrow.clockwise") {
                 actions.rescanLibrary(folder, context.url)
@@ -467,4 +474,5 @@ struct FolderTreeContextMenuActions {
     var enableLibrary: (RegisteredFolder, URL) -> Void = { _, _ in }
     var rescanLibrary: (RegisteredFolder, URL) -> Void = { _, _ in }
     var disableLibrary: (RegisteredFolder) -> Void = { _ in }
+    var openLibrarySettings: (RegisteredFolder) -> Void = { _ in }
 }

@@ -20,9 +20,10 @@ struct LibraryMenuVisibilityTests {
         #expect(LibraryMenuVisibility.items(isEnabled: false, isOnline: false).isEmpty)
     }
 
-    @Test("有効・オンライン → 再スキャンと無効化")
+    @Test("有効・オンライン → 設定・再スキャン・無効化")
     func enabledAndOnline() {
-        #expect(LibraryMenuVisibility.items(isEnabled: true, isOnline: true) == [.rescan, .disable])
+        #expect(LibraryMenuVisibility.items(isEnabled: true, isOnline: true)
+                == [.settings, .rescan, .disable])
     }
 
     /// **この 1 件が本命。** 無効化は DB の行を消すだけでボリュームを要らない。
@@ -30,6 +31,9 @@ struct LibraryMenuVisibilityTests {
     func enabledAndOfflineStillOffersDisable() {
         let items = LibraryMenuVisibility.items(isEnabled: true, isOnline: false)
         #expect(items.contains(.disable), "ボリュームを失っても片付けられなければならない")
+        // 設定は DB しか触らない。**縮退状態でこそ見直したい**（登録し直す前に
+        // 型を直しておく等）ので、無効化と同じくオンライン条件で塞がない [LS-01]。
+        #expect(items.contains(.settings), "設定は DB しか触らないので開けなければならない")
         #expect(!items.contains(.rescan), "実ファイルを列挙できないので再スキャンは出さない")
         #expect(!items.contains(.enable))
     }

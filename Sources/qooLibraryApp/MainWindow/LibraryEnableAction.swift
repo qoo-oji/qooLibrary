@@ -107,6 +107,28 @@ enum LibraryEnableAction {
                           url: url, locale: locale) }
     }
 
+    /// ライブラリだけを手がかりに走査し直す [SY-05]。
+    ///
+    /// **根の URL を呼び出し側に要求しない。** 設定ウインドウのように
+    /// フォルダツリーを持たない画面からも呼べるようにするため、登録フォルダの
+    /// 解決をここで行う——View 越しに要求を回す作りにすると、メインウインドウが
+    /// 閉じていると黙って何も起きない（実機検証でそうなった）。
+    static func rescan(library: LibrarySummary, locale: Locale) {
+        Task {
+            let folders = await RegisteredFolderStore.shared.folders(kind: .library)
+                + RegisteredFolderStore.shared.folders(kind: .temporary)
+            guard let folder = folders.first(where: { $0.id == library.uuid }),
+                  let url = await RegisteredFolderStore.shared.resolvedURL(for: folder) else {
+                await NotificationRouter.shared.presentError(
+                    LibraryRootUnavailableError(displayName: library.displayName),
+                    whatHappened: String(localized: "library.scan.failed", locale: locale))
+                return
+            }
+            await scan(libraryID: library.id, displayName: library.displayName,
+                       url: url, locale: locale)
+        }
+    }
+
     static func disable(folder: RegisteredFolder) {
         Task {
             do {
@@ -279,6 +301,18 @@ struct LibraryUnavailableError: Error, UserPresentableError {
         guard let failure else { return nil }
         return String(describing: failure)
     }
+    var severity: NotificationSeverity { .sheet }
+}
+
+/// 走査したいのに根へ到達できない [1-17 の縮退状態]。
+struct LibraryRootUnavailableError: Error, UserPresentableError {
+    let displayName: String
+
+    var whatHappened: String { String(localized: "library.rootUnavailable") }
+    var whyItHappened: String { String(localized: "library.rootUnavailable.why") }
+    var recoverySuggestions: [RecoveryAction] { [] }
+    var recoveryHint: String? { String(localized: "library.rootUnavailable.hint") }
+    var technicalDetail: String? { displayName }
     var severity: NotificationSeverity { .sheet }
 }
 

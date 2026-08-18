@@ -20,6 +20,7 @@ struct FolderTreePane: View {
     /// `LocalizedStringKey` 解決を経由しない箇所向け [1-12 ローカライズ方針、
     /// CLAUDE.md 参照]。
     @Environment(\.locale) private var locale
+    @Environment(\.openWindow) private var openWindow
     /// 中央ペインで現在表示中のフォルダ。一致するツリー行をハイライトする [LP-06]。
     let selectedURL: URL?
     /// `selectedURL` の入口 [`NavigationRoot` 参照]。実体として同じフォルダ
@@ -400,7 +401,8 @@ struct FolderTreePane: View {
                         onUnregister: { unregisterFolder(entry.folder) },
                         isLibraryEnabled: LibraryServices.shared
                             .isEnabled(registrationUUID: entry.folder.id),
-                        onDisableLibrary: { disableLibrary(entry.folder) }
+                        onDisableLibrary: { disableLibrary(entry.folder) },
+                        onOpenLibrarySettings: { openLibrarySettings(entry.folder) }
                     )
                 }
             }
@@ -478,7 +480,8 @@ struct FolderTreePane: View {
             isLibraryEnabled: { LibraryServices.shared.isEnabled(registrationUUID: $0.id) },
             enableLibrary: { LibraryEnableAction.begin(folder: $0, url: $1, locale: locale) },
             rescanLibrary: { LibraryEnableAction.rescan(folder: $0, url: $1, locale: locale) },
-            disableLibrary: { LibraryEnableAction.disable(folder: $0) }
+            disableLibrary: { LibraryEnableAction.disable(folder: $0) },
+            openLibrarySettings: { openLibrarySettings($0) }
         )
     }
 
@@ -660,6 +663,17 @@ struct FolderTreePane: View {
                 performUnregister(folder, disablingLibrary: true)
             }
         }
+    }
+
+    /// ライブラリの設定ウインドウを開く [LS-01〜LS-03]。
+    ///
+    /// `Window(id:)` は同じ id で再度開いてもビューを作り直さないので、
+    /// 「どのライブラリを見せるか」は受け皿（`LibrarySettingsNavigation`）へ
+    /// 先に置いてから開く——`PreferencesNavigation` と同じ形。
+    private func openLibrarySettings(_ folder: RegisteredFolder) {
+        guard let summary = LibraryServices.shared.library(registrationUUID: folder.id) else { return }
+        LibrarySettingsNavigation.shared.pendingLibraryID = summary.id
+        openWindow(id: "librarySettings")
     }
 
     /// ライブラリ機能だけを無効にする（登録フォルダは残す）。
@@ -948,6 +962,8 @@ private struct DegradedRegisteredFolderRow: View {
     /// ——実機検証で「ボリュームを失うと無効化の手段が消える」形で実際に踏んだ。
     let isLibraryEnabled: Bool
     let onDisableLibrary: () -> Void
+    /// 設定は DB しか触らないので、縮退状態でも開ける [LS-01]。
+    let onOpenLibrarySettings: () -> Void
 
     /// `.offline` だけ薄くする。ゴミ箱・消失は「気づいてほしい」状態なので
     /// 薄めない——未接続は待てば戻る日常的な状態で、そちらこそ目立たない
@@ -1019,13 +1035,19 @@ private struct DegradedRegisteredFolderRow: View {
             }
             // 縮退した行は定義上オンラインではないので `isOnline: false`。
             // 方針は `FolderTreeContextMenu` と同じ関数から引く。
-            if LibraryMenuVisibility.items(isEnabled: isLibraryEnabled, isOnline: false)
-                .contains(.disable) {
+            let libraryItems = LibraryMenuVisibility.items(isEnabled: isLibraryEnabled,
+                                                           isOnline: false)
+            if libraryItems.contains(.settings) {
+                Button("library.settings.menuItem", systemImage: "gearshape") {
+                    onOpenLibrarySettings()
+                }
+            }
+            if libraryItems.contains(.disable) {
                 Button("library.disable.menuItem", systemImage: "books.vertical.circle") {
                     onDisableLibrary()
                 }
-                Divider()
             }
+            if !libraryItems.isEmpty { Divider() }
             Button("folderTree.unregister", systemImage: "minus.circle") { onUnregister() }
         }
     }

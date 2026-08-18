@@ -233,6 +233,16 @@ struct QooLibraryApp: App {
         // 取り除く方法が無かった。`Window(id:)` シーンにはこの自動装飾が
         // 無く、`⌘,`・メニュー項目は上の `CommandGroup(replacing: .appSettings)`
         // で手動配線する]。
+        // ライブラリの設定 [LS-01〜LS-03][15.1 節]。**テンプレートは登録時に
+        // 一度写されるだけの雛形** [LT-03] なので、写された設定を実際に
+        // 調整できる場所がここになる。開くのはフォルダツリーの
+        // 「ライブラリの設定…」から（`LibrarySettingsNavigation` が対象を渡す）。
+        Window("librarySettings.windowTitle", id: "librarySettings") {
+            LibrarySettingsWindow()
+                .appLanguageOverride()
+        }
+        .defaultSize(width: 980, height: 620)
+
         Window("preferences.windowTitle", id: "preferences") {
             PreferencesView()
                 .appLanguageOverride()

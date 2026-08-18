@@ -204,6 +204,27 @@ public final class LibraryServices {
         await refreshLibraries()
     }
 
+    // MARK: - 設定の編集 [LS-01〜LS-03]
+
+    /// 編集用の設定を読む [LS-01]。
+    public func settingsDraft(libraryID: LibraryID) async throws -> LibrarySettingsDraft? {
+        guard let repository = libraryRepository else { throw ServiceError.notReady }
+        return try await repository.settingsDraft(libraryID: libraryID)
+    }
+
+    /// 設定を保存する [LS-01][LT-03]。
+    ///
+    /// **テンプレートは登録時に一度写されるだけの雛形**なので、以後の調整は
+    /// すべてこの経路を通る。保存後に一覧を読み直すのは、表示名やタイプ名の
+    /// 変更をフォルダツリーとメニューへ即座に反映するため。
+    public func updateSettings(_ draft: LibrarySettingsDraft,
+                               libraryID: LibraryID) async throws {
+        guard let repository = libraryRepository else { throw ServiceError.notReady }
+        try await repository.updateSettings(draft, libraryID: libraryID)
+        Log.app.info("ライブラリ設定を保存: \(Log.redactable(draft.displayName))")
+        await refreshLibraries()
+    }
+
     // MARK: - スキャン
 
     /// 1 ライブラリを走査して DB を実体に合わせる [SY-01][FO-20]。

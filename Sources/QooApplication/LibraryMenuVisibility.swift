@@ -19,13 +19,17 @@ public enum LibraryMenuVisibility {
             // 実測できないため [1-17]。
             return isOnline ? [.enable] : []
         }
-        // 無効化は**ボリュームを要らない**。DB の行を消すだけ。
+        // 無効化と設定は**ボリュームを要らない**。前者は DB の行を消すだけ、
+        // 後者は DB の設定を書き換えるだけ。**縮退状態でこそ設定を見直したい**
+        // ことがある（登録し直す前に型を直しておく等）ので、オンライン条件で
+        // 塞がない——無効化をオンライン条件で囲って「外付けを失うと二度と
+        // 片付けられない」欠陥を作った前例がある。
         // 再スキャンだけが実ファイルの列挙を伴うのでオンラインを要る。
-        return isOnline ? [.rescan, .disable] : [.disable]
+        return isOnline ? [.settings, .rescan, .disable] : [.settings, .disable]
     }
 
     public enum Item: Hashable, Sendable {
-        case enable, rescan, disable
+        case enable, settings, rescan, disable
     }
 }
 
