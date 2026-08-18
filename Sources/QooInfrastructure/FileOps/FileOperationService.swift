@@ -79,10 +79,24 @@ public actor FileOperationService {
         DirectoryChangeHub.noteLocalChanges(at: urls)
     }
 
+    /// 期待変更台帳への**事前**登録 [FO-11]。
+    ///
+    /// `announce` は `defer` で走る（＝操作の**後**）。台帳はそれでは間に合わない
+    /// ——長い操作の途中で FSEvents が届くと、自分の変更を外部変更と誤認する。
+    /// 各操作の入口でここを呼び、分かっている入力の URL を先に登録しておく。
+    /// 完了後に確定した同一性は `announce` 側から `recordActual` で足す。
+    ///
+    /// `ExpectedChangeLedger` を `actor` にしていないのはこのため——`await` を
+    /// 挟むと「実行前」を保証できない。
+    private nonisolated func expect(_ urls: [URL], _ kind: OperationKind) {
+        ExpectedChangeLedger.shared.expect(urls, kind: kind)
+    }
+
     // MARK: - 基本操作 [7.1 節]
 
     @discardableResult
     public func createDirectory(at url: URL, options: OpOptions = .init()) async throws -> OpReceipt {
+        expect([url], .createDirectory)                                   // [FO-11]
         defer { announce([url]) }
         // 名前の妥当性は URL を組み立てる前に呼び出し側でも見ているが、
         // ここでも徹底する（`FileOperationService` を直に使う経路が増えても
@@ -342,6 +356,8 @@ public actor FileOperationService {
     @discardableResult
     public func rename(_ item: URL, to newName: String, options: OpOptions = .init()) async throws -> OpReceipt {
         let validName = try Self.validated(newName)
+        // 検証の後・実 I/O の前に登録する [FO-11]。移動元と移動先の両方。
+        expect([item, item.deletingLastPathComponent().appendingPathComponent(validName)], .rename)
         let target = item.deletingLastPathComponent().appendingPathComponent(validName)
         defer { announce([item, target]) }
 
@@ -389,6 +405,7 @@ public actor FileOperationService {
     public func trash(_ items: [URL], options: OpOptions = .init()) async throws -> [TrashReceipt] {
         // ゴミ箱側の行き先も伝える（ゴミ箱を開いているウインドウにも反映される）。
         var trashedURLs: [URL] = []
+        expect(items, .trash)                                             // [FO-11]
         defer { announce(items + trashedURLs) }
         // 識別子の取得（項目ごとに `stat`）と、ゴミ箱の有無の問い合わせ
         // （ボリュームごとに 1 回、実測 0.01 秒）はどちらも I/O。
@@ -473,6 +490,7 @@ public actor FileOperationService {
     public func deletePermanently(
         _ items: [URL], options: DeletePermanentlyOptions = .init()
     ) async throws -> DeletionOutcome {
+        expect(items, .deletePermanently)                                 // [FO-11]
         defer { announce(items) }
         var receipts: [OpReceipt] = []
         var failures: [DeletionFailure] = []
@@ -685,6 +703,7 @@ public actor FileOperationService {
     public func createAlias(for source: URL, in destinationFolder: URL, options: OpOptions = .init()) async throws -> OpReceipt {
         let aliasName = "\(source.lastPathComponent) のエイリアス"
         let target = destinationFolder.appendingPathComponent(aliasName)
+        expect([target], .createAlias)                                    // [FO-11]
         defer { announce([target]) }
         // **ブックマークの生成は `resolveDestination` より前**［フェーズ1完了時の
         // 監査で発見、`rename` の検査順序と同じ理由]。後に置くと、`.replace` が
@@ -709,6 +728,7 @@ public actor FileOperationService {
 
     /// Finder の「ロック」/「ロック解除」相当。
     public func setLocked(_ items: [URL], locked: Bool) async throws -> [OpReceipt] {
+        expect(items, .setLocked)                                         // [FO-11]
         defer { announce(items) }
         return try await FileIO.perform {
             var receipts: [OpReceipt] = []
@@ -738,6 +758,7 @@ public actor FileOperationService {
     }
 
     public func restoreFromTrash(_ receipts: [TrashReceipt]) async throws -> [OpReceipt] {
+        expect(receipts.map(\.originalURL) + receipts.compactMap(\.trashURL), .move)  // [FO-11]
         defer { announce(receipts.map(\.originalURL) + receipts.compactMap(\.trashURL)) }
         return try await FileIO.perform {
             var results: [OpReceipt] = []
@@ -945,6 +966,7 @@ public actor FileOperationService {
     ) async throws -> [OpReceipt] {
         // 移動元の各項目（親フォルダの一覧が変わる）と、書き込み先フォルダ
         // （そのフォルダの一覧が変わる）の両方を伝える。
+        expect(items + [destination], kind)                               // [FO-11]
         defer { announce(items + [destination]) }
 
         let tracker = try await FileIO.perform {

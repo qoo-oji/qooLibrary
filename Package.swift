@@ -114,6 +114,16 @@ targets.append(
 )
 
 targets.append(
+    // 層をまたぐ統合テスト（16章 §16.1「統合」）。スキャンのように
+    // QooInfrastructure と QooPersistence の両方を要するものはここへ置く
+    // ——両者は相互依存しないため、片方のテストターゲットからは書けない [A-01]。
+    .testTarget(
+        name: "IntegrationTests",
+        dependencies: ["QooInfrastructure", "QooPersistence", "QooKit"]
+    )
+)
+
+targets.append(
     .testTarget(
         name: "QooApplicationTests",
         dependencies: ["QooApplication"]

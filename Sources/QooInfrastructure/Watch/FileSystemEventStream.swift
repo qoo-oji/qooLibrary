@@ -93,9 +93,15 @@ final class FileSystemEventStream {
     /// ``setRoots(_:)`` の注記を参照。
     private var generation = 0
 
-    init(onChanges: @escaping @Sendable ([FileSystemChange]) -> Void) {
+    init(sinceWhen: FSEventStreamEventId = FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
+         onChanges: @escaping @Sendable ([FileSystemChange]) -> Void) {
         self.onChanges = onChanges
+        self.lastEventID = sinceWhen
     }
+
+    /// 直近に処理したイベント ID。監視を止めるときに保存し、次回の
+    /// `sinceWhen` に渡して空白を埋める [WA-02][WA-03][SY-02][SY-03]。
+    var latestEventID: FSEventStreamEventId { lastEventID }
 
     deinit {
         // **待たない。** 破棄も相手が居なければ待たされ得るので、

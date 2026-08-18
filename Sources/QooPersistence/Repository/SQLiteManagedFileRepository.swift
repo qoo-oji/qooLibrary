@@ -183,34 +183,64 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
     /// 保持するので触らない [TR-01]。
     ///
     /// `seen` は 5 万件規模になりうるので、`IN (...)` ではなく一時テーブルへ入れる。
+    /// 観測されなかったレコードを返す（孤立にはしない）。
+    public func unseen(libraryID: LibraryID, scope: FileQuery.Scope,
+                       seen: Set<FileID>) async throws -> [FileRow] {
+        try await database.writer.write { db in
+            try Self.fillSeenTable(db, seen)
+            let (clause, args) = Self.unseenClause(libraryID: libraryID, scope: scope)
+            return try ManagedFileRecord.fetchAll(
+                db, sql: "SELECT * FROM managedFile WHERE \(clause)",
+                arguments: StatementArguments(args.map { Optional($0) })).map(\.fileRow)
+        }
+    }
+
+    /// 1 冊扱いの解除 [IF-05]。**孤立にしない・ラベルにも触れない。**
+    public func releaseBookFolder(_ id: FileID) async throws {
+        try await database.writer.write { db in
+            try db.execute(sql: """
+                UPDATE managedFile SET isBookFolder = 0, state = 'active' WHERE id = ?
+                """, arguments: [id.rawValue])
+        }
+    }
+
+    @discardableResult
     public func markUnseenAsOrphaned(libraryID: LibraryID, scope: FileQuery.Scope,
                                      seen: Set<FileID>) async throws -> Int {
         try await database.writer.write { db in
-            try db.execute(sql: "CREATE TEMP TABLE IF NOT EXISTS seenFile (id INTEGER PRIMARY KEY)")
-            try db.execute(sql: "DELETE FROM seenFile")
-            let insert = try db.cachedStatement(sql: "INSERT OR IGNORE INTO seenFile (id) VALUES (?)")
-            for id in seen { try insert.execute(arguments: [id.rawValue]) }
-
-            var sql = """
-                UPDATE managedFile SET state = 'orphaned'
-                WHERE libraryId = ? AND state = 'active'
-                  AND id NOT IN (SELECT id FROM seenFile)
-                """
-            var args: [any DatabaseValueConvertible] = [libraryID.rawValue]
-            if case .folder(let path, let recursive) = scope {
-                if recursive {
-                    sql += " AND relativePath LIKE ? ESCAPE '\\'"
-                    args.append(Self.likePrefix(path) + "%")
-                } else {
-                    // 直下のみ: パス区切りが 1 つも増えないもの
-                    sql += " AND relativePath LIKE ? ESCAPE '\\' AND instr(substr(relativePath, ?), '/') = 0"
-                    args.append(Self.likePrefix(path) + "%")
-                    args.append(path.isEmpty ? 1 : path.count + 2)
-                }
-            }
-            try db.execute(sql: sql, arguments: StatementArguments(args.map { Optional($0) }))
+            try Self.fillSeenTable(db, seen)
+            let (clause, args) = Self.unseenClause(libraryID: libraryID, scope: scope)
+            try db.execute(sql: "UPDATE managedFile SET state = 'orphaned' WHERE \(clause)",
+                           arguments: StatementArguments(args.map { Optional($0) }))
             return db.changesCount
         }
+    }
+
+    static func fillSeenTable(_ db: Database, _ seen: Set<FileID>) throws {
+        // `seen` は 5 万件規模になりうるので `IN (...)` ではなく一時テーブルへ。
+        try db.execute(sql: "CREATE TEMP TABLE IF NOT EXISTS seenFile (id INTEGER PRIMARY KEY)")
+        try db.execute(sql: "DELETE FROM seenFile")
+        let insert = try db.cachedStatement(sql: "INSERT OR IGNORE INTO seenFile (id) VALUES (?)")
+        for id in seen { try insert.execute(arguments: [id.rawValue]) }
+    }
+
+    static func unseenClause(libraryID: LibraryID, scope: FileQuery.Scope)
+        -> (String, [any DatabaseValueConvertible])
+    {
+        var sql = "libraryId = ? AND state = 'active' AND id NOT IN (SELECT id FROM seenFile)"
+        var args: [any DatabaseValueConvertible] = [libraryID.rawValue]
+        if case .folder(let path, let recursive) = scope {
+            if recursive {
+                sql += " AND relativePath LIKE ? ESCAPE '\\'"
+                args.append(likePrefix(path) + "%")
+            } else {
+                // 直下のみ: パス区切りが 1 つも増えないもの
+                sql += " AND relativePath LIKE ? ESCAPE '\\' AND instr(substr(relativePath, ?), '/') = 0"
+                args.append(likePrefix(path) + "%")
+                args.append(path.isEmpty ? 1 : path.count + 2)
+            }
+        }
+        return (sql, args)
     }
 
     /// パーサの結果を書き戻す [RC-01]。

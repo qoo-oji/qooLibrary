@@ -95,9 +95,18 @@ public protocol ManagedFileRepository: Sendable {
     func row(id: FileID) async throws -> FileRow?
     func query(_ q: FileQuery) async throws -> FilePage
     func count(_ q: FileQuery) async throws -> Int
+    /// 走査の範囲にあるが今回観測されなかったレコードを返す。
+    ///
+    /// 孤立にするかどうかは呼び出し側が決める——**ブックフォルダが 1 冊扱いを
+    /// 解除された場合は孤立にしてはならない** [IF-05]。実体はまだそこにある。
+    func unseen(libraryID: LibraryID, scope: FileQuery.Scope,
+                seen: Set<FileID>) async throws -> [FileRow]
     /// 走査の範囲にあるが今回観測されなかったレコードを孤立にする [ID-06]。
+    @discardableResult
     func markUnseenAsOrphaned(libraryID: LibraryID, scope: FileQuery.Scope,
                               seen: Set<FileID>) async throws -> Int
+    /// 1 冊扱いを解除する [IF-05]。**ラベル紐づけは維持し、孤立にもしない**。
+    func releaseBookFolder(_ id: FileID) async throws
     /// パーサの結果を書き戻す [RC-01]。
     func applyParsedFields(_ fields: ParsedFileFields?, to id: FileID) async throws
 }

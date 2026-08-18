@@ -216,6 +216,22 @@ public enum AppLimits {
         /// フォルダを表示している間だけ、ディレクトリの更新日時を軽く
         /// 突き合わせる経路を併用する。アプリが前面にあるときだけ動く。
         public static let remotePollInterval: Double = 2.0
+        /// 期待変更台帳のエントリの有効期限（既定 10 秒）[FO-13]。
+        /// 期限切れのエントリは破棄し、以後は外部変更として扱う。
+        public static let ledgerEntryLifetime: TimeInterval = 10
+
+        /// FSEvents のコアレス時間（既定 1.0 秒）[SY-07]。
+        /// 10.0 節の表示追随（0.25 秒）とは別物——こちらはスキャンの入力なので、
+        /// 短時間の大量イベントをまとめる方を優先する。
+        public static let scanCoalescingLatency: TimeInterval = 1.0
+
+        /// フルスキャンの既定間隔（7 日）[SY-05][SE3-07]。
+        public static let fullScanIntervalDays: Int = 7
+
+        /// スキャンの保存バッチ [SE3-05][ST-10][ST-13]。
+        /// 500 件または 1 秒の早い方でコミットし、トランザクション境界と一致させる。
+        public static let scanBatchSize = 500
+
     }
 
     /// 中央ペインの検索 [1-16]。

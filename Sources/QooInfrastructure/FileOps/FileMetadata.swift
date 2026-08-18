@@ -50,6 +50,20 @@ enum FileMetadata {
         try stamp(of: url).identity
     }
 
+    /// ボリューム識別子が分かっている場合の版。**走査のホットパス用** [PF-13]。
+    ///
+    /// 1 ライブラリの全ファイルは同じボリュームにあるので、識別子はライブラリ
+    /// ごとに 1 回求めれば足りる。1 件ごとに `VolumeIdentity.identifier(for:)`
+    /// （`statfs` を伴う）を呼ぶと 5 万件で無駄が積み上がる。
+    ///
+    /// - Note: ライブラリの内側に別ボリュームがマウントされている場合は
+    ///   inode が衝突しうるが、3.2 節はライブラリを 1 ボリューム前提としている。
+    static func identity(of url: URL, volumeUUID: String) -> FileIdentity? {
+        var info = stat()
+        guard stat(url.path, &info) == 0 else { return nil }
+        return FileIdentity(volumeUUID: volumeUUID, inode: UInt64(info.st_ino))
+    }
+
     /// 「どのファイルの、どの内容か」。キャッシュの鍵に使う
     /// [`FileContentStamp` のコメント参照]。
     static func stamp(of url: URL) throws -> FileContentStamp {
