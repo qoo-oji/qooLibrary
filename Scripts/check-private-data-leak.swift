@@ -127,6 +127,10 @@ let generic: Set<String> = [
     "ミッション", "メディア", "レイヤー", "フェイス", "ハンター", "アーカイブ", "クリーン",
     "トラップ", "スイート", "システム", "ドロップ", "イベント", "プール", "アプリ", "リスク",
     "レベル", "スイッチ", "コネクション", "ロッカー", "大丈夫", "潜在的", "設定以外", "化計画",
+    // 英語の一般語。ローマ字表記のファイル名から抽出されるが辞書語である。
+    // コミットログを走査対象に加えた [MT-29] ことで当たるようになった
+    // （"archive preview doubles as the placeholder" の doubles）。
+    "doubles",
 ]
 
 let targets = nouns.subtracting(generic).filter { $0.count >= 3 }
@@ -145,27 +149,26 @@ for name in targets {
     buckets[key(s[0], s[1]), default: []].append(Needle(scalars: s, text: name))
 }
 
-// MARK: - 追跡ファイルを厳密に走査
+// MARK: - 走査
 
-let listed = Process()
-listed.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-listed.arguments = ["git", "-C", repoRoot.path, "ls-files"]
-let pipe = Pipe()
-listed.standardOutput = pipe
-try listed.run()
-let files = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-    .split(separator: "\n").map(String.init)
-listed.waitUntilExit()
+func run(_ arguments: [String]) -> String {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+    process.arguments = arguments
+    let pipe = Pipe()
+    process.standardOutput = pipe
+    try? process.run()
+    let out = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+    process.waitUntilExit()
+    return out
+}
 
 var suspects: [String: [String]] = [:]
-var scannedFiles = 0
 
-for relative in files where !relative.hasPrefix("Tests/GoldenDataset/private/") {
-    let url = repoRoot.appendingPathComponent(relative)
-    guard let raw = try? String(contentsOf: url, encoding: .utf8) else { continue }
-    scannedFiles += 1
+/// 1 つの本文を照合する。`origin` は違反時に示す出どころ。
+func scan(_ raw: String, origin: String) {
     let hay = Array(raw.precomposedStringWithCanonicalMapping.unicodeScalars)
-    guard hay.count >= 2 else { continue }
+    guard hay.count >= 2 else { return }
     for i in 0..<(hay.count - 1) {
         guard let bucket = buckets[key(hay[i], hay[i + 1])] else { continue }
         for needle in bucket {
@@ -178,14 +181,50 @@ for relative in files where !relative.hasPrefix("Tests/GoldenDataset/private/") 
             if i > 0, scriptClass(hay[i - 1]) == scriptClass(needle.scalars[0]) { continue }
             if i + n < hay.count,
                scriptClass(hay[i + n]) == scriptClass(needle.scalars[n - 1]) { continue }
-            suspects[needle.text, default: []].append(relative)
+            suspects[needle.text, default: []].append(origin)
         }
     }
 }
 
+// ① 追跡ファイル
+let files = run(["git", "-C", repoRoot.path, "ls-files"])
+    .split(separator: "\n").map(String.init)
+var scannedFiles = 0
+for relative in files where !relative.hasPrefix("Tests/GoldenDataset/private/") {
+    let url = repoRoot.appendingPathComponent(relative)
+    guard let raw = try? String(contentsOf: url, encoding: .utf8) else { continue }
+    scannedFiles += 1
+    scan(raw, origin: relative)
+}
+
+// ② コミットログ [MT-29]
+//
+// **ファイルだけを見ていては足りない。** リポジトリを公開するとは、
+// 履歴を公開することでもある。実際、MT-28 の履歴書き換えでは
+// `--message-callback` でメッセージ側も対象にしており、**メッセージが
+// 漏洩経路であることは分かっていたのに、以後の検査には入っていなかった。**
+//
+// 著者名・日付は対象にしない（実蔵書の固有名詞とは別の関心事）。
+let logSeparator = "\u{1}"
+let messages = run([
+    "git", "-C", repoRoot.path, "log", "--all", "--format=%H%n%B\(logSeparator)",
+])
+var scannedCommits = 0
+for chunk in messages.components(separatedBy: logSeparator) {
+    let body = chunk.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !body.isEmpty else { continue }
+    let hash = String(body.prefix(40))
+    scannedCommits += 1
+    scan(body, origin: "コミット \(hash.prefix(8))")
+}
+
+// ③ タグとブランチの名前（人が付ける文字列なので実名が入りうる）
+let refs = run(["git", "-C", repoRoot.path, "for-each-ref", "--format=%(refname)"])
+scan(refs, origin: "ref 名")
+
 let violations = suspects.sorted { $0.key < $1.key }.map { (name: $0.key, files: Array(Set($0.value)).sorted()) }
 
-print("==> 実蔵書 \(entryCount) 件から固有名詞 \(targets.count) 種を取り、追跡ファイル \(scannedFiles) 件を全文照合した")
+print("==> 実蔵書 \(entryCount) 件から固有名詞 \(targets.count) 種を取り、追跡ファイル \(scannedFiles) 件・コミット \(scannedCommits) 件・ref 名を全文照合した")
 if violations.isEmpty {
     print("==> OK: 実蔵書の固有名詞は含まれていない [MT-28]")
     exit(0)
