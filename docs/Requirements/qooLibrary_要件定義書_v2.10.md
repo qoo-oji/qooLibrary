@@ -3,7 +3,7 @@
 | 項目 | 内容 |
 |---|---|
 | 文書名 | qooLibrary 要件定義書 |
-| バージョン | 2.9 |
+| バージョン | 2.10 |
 | 作成日 | 2026-08-09 |
 | 作成者 | Kosuke Nishimura |
 | ステータス | **確定**（未決事項なし。技術検証項目は 21.3 節） |
@@ -34,6 +34,7 @@
 | 2.7 | 2026-08-09 | Quick Look 連携（7.7 節）、完全削除（FM-14〜18）、初回セットアップウィザード（15.12 節）を追加。表示設定のフォルダ単位記憶は不採用と確定 |
 | 2.8 | 2026-08-09 | 残る未決事項をすべて解決。フォーマット編集支援（9.5 節）、重複ファイルの比較・削除（DU-20〜29）、テンプレート更新の差分適用（LT-10〜16）、サムネイル一括非表示（DS-01〜07）、ゴールデンテスト（MT-20〜28）、診断ログ（LG2-01〜08）を追加 |
 | 2.9 | 2026-08-18 | **永続化方式を SwiftData から SQLite（GRDB）へ変更**（5.2 節）。フェーズ 2 着手時の実測（T-03 / T-04、`Spikes/README.md`）で、SwiftData が想定規模 C-07 の境界線上にあることが確認されたため。あわせて 5.5 節（移行）・5.7 節（接続構成）を書き換え、R-05 と T-03 / T-04 を解決済みとした |
+| 2.10 | 2026-08-18 | **プリセットテンプレート（11.4 節）を実蔵書との突き合わせ結果に合わせて修正。** パーサ実装後に実ファイル名 2,346 件を通したところ、①同人CG の実際の印は `(同人CG集)` でライブラリタイプ名 `同人CG` と一致せず **146 件すべてが未解決**になる ②同人誌の先頭 `(同人誌)` をイベント名として扱っており **1,803 件すべてに「イベント: 同人誌」という無意味なラベル**が付く、の 2 点が判明した。同人CG のライブラリタイプ名を `同人CG集` に、同人誌(A)(B) に `(@librarytype)` 始まりのフォーマットを追加（イベント版より優先）。修正後の一致率は 成年コミック 100% / 同人誌 99.9% / 同人CG 100% |
 
 ---
 
@@ -1431,6 +1432,12 @@ macOS のファイルシステムはファイル名を NFD で保持するため
 
 ## 11.4 テンプレート定義
 
+> **実蔵書との突き合わせ（2026-08、v2.10）**: パーサ実装後、実ファイル名 2,346 件を
+> 各プリセットで解析して適合率を測った。結果は 成年コミック 100%（396/396）/
+> 同人誌 99.9%（1,803/1,804。1 件は閉じ括弧が欠けたファイル名）/ 同人CG 100%（146/146）。
+> この測定で 2 件の定義の誤りが見つかり、本節を修正した（改訂履歴 v2.10 参照）。
+> 実装は `Sources/QooKit/Resources/Templates/library-types.json` [MT-02]。
+
 ### 一般コミック(A)
 
 | 項目 | 値 |
@@ -1494,7 +1501,7 @@ macOS のファイルシステムはファイル名を NFD で保持するため
 | labelgroup6 | プレイ（自動ラベル付与対象外） |
 | `@series` の紐づけ | なし |
 | フォルダ階層割り当て | なし |
-| ファイル名フォーマット | `(@labelgroup1) [@labelgroup2 (@labelgroup3)] @title (@labelgroup4) [@labelgroup5]`<br>`(@labelgroup1) [@labelgroup2 (@labelgroup3)] @title (@labelgroup4)`<br>`(@labelgroup1) [@labelgroup2 (@labelgroup3)] @title [@labelgroup5]`<br>`(@labelgroup1) [@labelgroup2 (@labelgroup3)] @title`<br>`(@labelgroup1) [@labelgroup2] @title (@labelgroup4) [@labelgroup5]`<br>`(@labelgroup1) [@labelgroup2] @title (@labelgroup4)`<br>`(@labelgroup1) [@labelgroup2] @title [@labelgroup5]`<br>`(@labelgroup1) [@labelgroup2] @title`<br>`[@labelgroup2] @title (@labelgroup4) [@labelgroup5]`<br>`[@labelgroup2] @title (@labelgroup4)`<br>`[@labelgroup2] @title [@labelgroup5]`<br>`[@labelgroup2] @title` |
+| ファイル名フォーマット | **先頭が `(@librarytype)` の 8 本 → `(@labelgroup1)`（イベント）の 8 本 → 括弧なしの 4 本**、計 20 本。<br>ライブラリタイプ版を先に置くのは、先頭の括弧タグが**ライブラリタイプの印**であることが実蔵書で確認されたため（v2.10）。`(C99)` のような本来のイベント名は型条件に合わないので、そのまま後段のイベント版へ落ちる。<br><br>`(@librarytype) [@labelgroup2 (@labelgroup3)] @title (@labelgroup4) [@labelgroup5]`<br>`(@librarytype) [@labelgroup2 (@labelgroup3)] @title (@labelgroup4)`<br>`(@librarytype) [@labelgroup2 (@labelgroup3)] @title [@labelgroup5]`<br>`(@librarytype) [@labelgroup2 (@labelgroup3)] @title`<br>`(@librarytype) [@labelgroup2] @title (@labelgroup4) [@labelgroup5]`<br>`(@librarytype) [@labelgroup2] @title (@labelgroup4)`<br>`(@librarytype) [@labelgroup2] @title [@labelgroup5]`<br>`(@librarytype) [@labelgroup2] @title`<br>`(@labelgroup1) [@labelgroup2 (@labelgroup3)] @title (@labelgroup4) [@labelgroup5]`<br>`(@labelgroup1) [@labelgroup2 (@labelgroup3)] @title (@labelgroup4)`<br>`(@labelgroup1) [@labelgroup2 (@labelgroup3)] @title [@labelgroup5]`<br>`(@labelgroup1) [@labelgroup2 (@labelgroup3)] @title`<br>`(@labelgroup1) [@labelgroup2] @title (@labelgroup4) [@labelgroup5]`<br>`(@labelgroup1) [@labelgroup2] @title (@labelgroup4)`<br>`(@labelgroup1) [@labelgroup2] @title [@labelgroup5]`<br>`(@labelgroup1) [@labelgroup2] @title`<br>`[@labelgroup2] @title (@labelgroup4) [@labelgroup5]`<br>`[@labelgroup2] @title (@labelgroup4)`<br>`[@labelgroup2] @title [@labelgroup5]`<br>`[@labelgroup2] @title` |
 | 巻数フォーマット | VS-Doujin |
 
 ### 同人誌(B)
@@ -1509,7 +1516,7 @@ macOS のファイルシステムはファイル名を NFD で保持するため
 
 | 項目 | 値 |
 |---|---|
-| ライブラリタイプ名 | 同人CG |
+| ライブラリタイプ名 | 同人CG集（実ファイルの印が `(同人CG集)` であるため。v2.10 で `同人CG` から修正）|
 | labelgroup1 | サークル |
 | labelgroup2 | 著者 |
 | labelgroup3 | ジャンル |
@@ -1526,7 +1533,7 @@ macOS のファイルシステムはファイル名を NFD で保持するため
 
 | 項目 | 値 |
 |---|---|
-| ライブラリタイプ名 | 同人CG |
+| ライブラリタイプ名 | 同人CG集（実ファイルの印が `(同人CG集)` であるため。v2.10 で `同人CG` から修正）|
 | ラベルグループ | 同人CG(A) と同一 |
 | `@series` の紐づけ | なし |
 | フォルダ階層割り当て | 第1階層: `@labelgroup1`（サークル） |

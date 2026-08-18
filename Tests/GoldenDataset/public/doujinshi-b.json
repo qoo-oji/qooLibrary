@@ -6,7 +6,6 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "イベント値0",
           "@labelgroup2" : "サークル値0",
           "@labelgroup3" : "著者値0",
           "@labelgroup4" : "ジャンル値0",
@@ -24,7 +23,7 @@
         }
       },
       "id" : "builtin.doujinshi-b.p1",
-      "input" : "(イベント値0) [サークル値0 (著者値0)] 作品タイトル0 第01巻 (ジャンル値0) [その他値0].cbz",
+      "input" : "(同人誌) [サークル値0 (著者値0)] 作品タイトル0 第01巻 (ジャンル値0) [その他値0].cbz",
       "kind" : "positive"
     },
     {
@@ -33,7 +32,6 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "イベント値1",
           "@labelgroup2" : "サークル値1",
           "@labelgroup3" : "著者値1",
           "@labelgroup4" : "ジャンル値1",
@@ -50,7 +48,7 @@
         }
       },
       "id" : "builtin.doujinshi-b.p2",
-      "input" : "(イベント値1) [サークル値1 (著者値1)] 作品 タイトル 1 vol.2 (ジャンル値1).cbz",
+      "input" : "(同人誌) [サークル値1 (著者値1)] 作品 タイトル 1 vol.2 (ジャンル値1).cbz",
       "kind" : "positive"
     },
     {
@@ -59,7 +57,6 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "イベント値2",
           "@labelgroup2" : "サークル値2",
           "@labelgroup3" : "著者値2",
           "@labelgroup5" : "その他値2",
@@ -75,7 +72,7 @@
         }
       },
       "id" : "builtin.doujinshi-b.p3",
-      "input" : "(イベント値2) [サークル値2 (著者値2)] 作品タイトル2ー長音 上巻 [その他値2].cbz",
+      "input" : "(同人誌) [サークル値2 (著者値2)] 作品タイトル2ー長音 上巻 [その他値2].cbz",
       "kind" : "positive"
     },
     {
@@ -84,7 +81,6 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "イベント値3",
           "@labelgroup2" : "サークル値3",
           "@labelgroup3" : "著者値3",
           "@title" : "作品タイトル3"
@@ -97,7 +93,7 @@
         }
       },
       "id" : "builtin.doujinshi-b.p4",
-      "input" : "(イベント値3) [サークル値3 (著者値3)] 作品タイトル3.cbz",
+      "input" : "(同人誌) [サークル値3 (著者値3)] 作品タイトル3.cbz",
       "kind" : "positive"
     },
     {
@@ -106,7 +102,6 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "イベント値4",
           "@labelgroup2" : "サークル値4",
           "@labelgroup4" : "ジャンル値4",
           "@labelgroup5" : "その他値4",
@@ -123,7 +118,7 @@
         }
       },
       "id" : "builtin.doujinshi-b.p5",
-      "input" : "(イベント値4) [サークル値4] サブタイトル付き作品4 第05巻 (ジャンル値4) [その他値4].cbz",
+      "input" : "(同人誌) [サークル値4] サブタイトル付き作品4 第05巻 (ジャンル値4) [その他値4].cbz",
       "kind" : "positive"
     },
     {
@@ -132,7 +127,6 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "イベント値5",
           "@labelgroup2" : "サークル値5",
           "@labelgroup4" : "ジャンル値5",
           "@title" : "作品タイトル5 vol.6"
@@ -148,7 +142,7 @@
         }
       },
       "id" : "builtin.doujinshi-b.p6",
-      "input" : "(イベント値5) [サークル値5] 作品タイトル5 vol.6 (ジャンル値5).cbz",
+      "input" : "(同人誌) [サークル値5] 作品タイトル5 vol.6 (ジャンル値5).cbz",
       "kind" : "positive"
     },
     {
@@ -157,7 +151,6 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "イベント値6",
           "@labelgroup2" : "サークル値6",
           "@labelgroup5" : "その他値6",
           "@title" : "作品 タイトル 6 上巻"
@@ -172,7 +165,7 @@
         }
       },
       "id" : "builtin.doujinshi-b.p7",
-      "input" : "(イベント値6) [サークル値6] 作品 タイトル 6 上巻 [その他値6].cbz",
+      "input" : "(同人誌) [サークル値6] 作品 タイトル 6 上巻 [その他値6].cbz",
       "kind" : "positive"
     },
     {
@@ -181,7 +174,6 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "イベント値7",
           "@labelgroup2" : "サークル値7",
           "@title" : "作品タイトル7ー長音"
         },
@@ -193,7 +185,7 @@
         }
       },
       "id" : "builtin.doujinshi-b.p8",
-      "input" : "(イベント値7) [サークル値7] 作品タイトル7ー長音.cbz",
+      "input" : "(同人誌) [サークル値7] 作品タイトル7ー長音.cbz",
       "kind" : "positive"
     },
     {
@@ -202,7 +194,9 @@
       },
       "expected" : {
         "fields" : {
+          "@labelgroup1" : "イベント値8",
           "@labelgroup2" : "サークル値8",
+          "@labelgroup3" : "著者値8",
           "@labelgroup4" : "ジャンル値8",
           "@labelgroup5" : "その他値8",
           "@title" : "作品タイトル8 第09巻"
@@ -218,7 +212,7 @@
         }
       },
       "id" : "builtin.doujinshi-b.p9",
-      "input" : "[サークル値8] 作品タイトル8 第09巻 (ジャンル値8) [その他値8].cbz",
+      "input" : "(イベント値8) [サークル値8 (著者値8)] 作品タイトル8 第09巻 (ジャンル値8) [その他値8].cbz",
       "kind" : "positive"
     },
     {
@@ -227,7 +221,9 @@
       },
       "expected" : {
         "fields" : {
+          "@labelgroup1" : "イベント値9",
           "@labelgroup2" : "サークル値9",
+          "@labelgroup3" : "著者値9",
           "@labelgroup4" : "ジャンル値9",
           "@title" : "サブタイトル付き作品9 vol.10"
         },
@@ -242,7 +238,7 @@
         }
       },
       "id" : "builtin.doujinshi-b.p10",
-      "input" : "[サークル値9] サブタイトル付き作品9 vol.10 (ジャンル値9).cbz",
+      "input" : "(イベント値9) [サークル値9 (著者値9)] サブタイトル付き作品9 vol.10 (ジャンル値9).cbz",
       "kind" : "positive"
     },
     {
@@ -251,7 +247,9 @@
       },
       "expected" : {
         "fields" : {
+          "@labelgroup1" : "イベント値10",
           "@labelgroup2" : "サークル値10",
+          "@labelgroup3" : "著者値10",
           "@labelgroup5" : "その他値10",
           "@title" : "作品タイトル10 上巻"
         },
@@ -265,7 +263,7 @@
         }
       },
       "id" : "builtin.doujinshi-b.p11",
-      "input" : "[サークル値10] 作品タイトル10 上巻 [その他値10].cbz",
+      "input" : "(イベント値10) [サークル値10 (著者値10)] 作品タイトル10 上巻 [その他値10].cbz",
       "kind" : "positive"
     },
     {
@@ -274,7 +272,9 @@
       },
       "expected" : {
         "fields" : {
+          "@labelgroup1" : "イベント値11",
           "@labelgroup2" : "サークル値11",
+          "@labelgroup3" : "著者値11",
           "@title" : "作品 タイトル 11"
         },
         "formatIndex" : 11,
@@ -285,7 +285,7 @@
         }
       },
       "id" : "builtin.doujinshi-b.p12",
-      "input" : "[サークル値11] 作品 タイトル 11.cbz",
+      "input" : "(イベント値11) [サークル値11 (著者値11)] 作品 タイトル 11.cbz",
       "kind" : "positive"
     },
     {
@@ -296,12 +296,11 @@
         "fields" : {
           "@labelgroup1" : "イベント値12",
           "@labelgroup2" : "サークル値12",
-          "@labelgroup3" : "著者値12",
           "@labelgroup4" : "ジャンル値12",
           "@labelgroup5" : "その他値12",
           "@title" : "作品タイトル12ー長音 第13巻"
         },
-        "formatIndex" : 0,
+        "formatIndex" : 12,
         "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品タイトル12ー長音",
@@ -312,7 +311,7 @@
         }
       },
       "id" : "builtin.doujinshi-b.p13",
-      "input" : "(イベント値12) [サークル値12 (著者値12)] 作品タイトル12ー長音 第13巻 (ジャンル値12) [その他値12].cbz",
+      "input" : "(イベント値12) [サークル値12] 作品タイトル12ー長音 第13巻 (ジャンル値12) [その他値12].cbz",
       "kind" : "positive"
     },
     {
@@ -323,11 +322,10 @@
         "fields" : {
           "@labelgroup1" : "イベント値13",
           "@labelgroup2" : "サークル値13",
-          "@labelgroup3" : "著者値13",
           "@labelgroup4" : "ジャンル値13",
           "@title" : "作品タイトル13 vol.14"
         },
-        "formatIndex" : 1,
+        "formatIndex" : 13,
         "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品タイトル13",
@@ -338,7 +336,7 @@
         }
       },
       "id" : "builtin.doujinshi-b.p14",
-      "input" : "(イベント値13) [サークル値13 (著者値13)] 作品タイトル13 vol.14 (ジャンル値13).cbz",
+      "input" : "(イベント値13) [サークル値13] 作品タイトル13 vol.14 (ジャンル値13).cbz",
       "kind" : "positive"
     },
     {
@@ -349,11 +347,10 @@
         "fields" : {
           "@labelgroup1" : "イベント値14",
           "@labelgroup2" : "サークル値14",
-          "@labelgroup3" : "著者値14",
           "@labelgroup5" : "その他値14",
           "@title" : "サブタイトル付き作品14 上巻"
         },
-        "formatIndex" : 2,
+        "formatIndex" : 14,
         "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "サブタイトル付き作品14",
@@ -363,7 +360,7 @@
         }
       },
       "id" : "builtin.doujinshi-b.p15",
-      "input" : "(イベント値14) [サークル値14 (著者値14)] サブタイトル付き作品14 上巻 [その他値14].cbz",
+      "input" : "(イベント値14) [サークル値14] サブタイトル付き作品14 上巻 [その他値14].cbz",
       "kind" : "positive"
     },
     {
@@ -374,10 +371,9 @@
         "fields" : {
           "@labelgroup1" : "イベント値15",
           "@labelgroup2" : "サークル値15",
-          "@labelgroup3" : "著者値15",
           "@title" : "作品タイトル15"
         },
-        "formatIndex" : 3,
+        "formatIndex" : 15,
         "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
@@ -385,7 +381,7 @@
         }
       },
       "id" : "builtin.doujinshi-b.p16",
-      "input" : "(イベント値15) [サークル値15 (著者値15)] 作品タイトル15.cbz",
+      "input" : "(イベント値15) [サークル値15] 作品タイトル15.cbz",
       "kind" : "positive"
     },
     {
@@ -394,13 +390,12 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "イベント値16",
           "@labelgroup2" : "サークル値16",
           "@labelgroup4" : "ジャンル値16",
           "@labelgroup5" : "その他値16",
           "@title" : "作品 タイトル 16 第17巻"
         },
-        "formatIndex" : 4,
+        "formatIndex" : 16,
         "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品 タイトル 16",
@@ -411,7 +406,7 @@
         }
       },
       "id" : "builtin.doujinshi-b.p17",
-      "input" : "(イベント値16) [サークル値16] 作品 タイトル 16 第17巻 (ジャンル値16) [その他値16].cbz",
+      "input" : "[サークル値16] 作品 タイトル 16 第17巻 (ジャンル値16) [その他値16].cbz",
       "kind" : "positive"
     },
     {
@@ -420,12 +415,11 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "イベント値17",
           "@labelgroup2" : "サークル値17",
           "@labelgroup4" : "ジャンル値17",
           "@title" : "作品タイトル17ー長音 vol.18"
         },
-        "formatIndex" : 5,
+        "formatIndex" : 17,
         "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品タイトル17ー長音",
@@ -436,7 +430,7 @@
         }
       },
       "id" : "builtin.doujinshi-b.p18",
-      "input" : "(イベント値17) [サークル値17] 作品タイトル17ー長音 vol.18 (ジャンル値17).cbz",
+      "input" : "[サークル値17] 作品タイトル17ー長音 vol.18 (ジャンル値17).cbz",
       "kind" : "positive"
     },
     {
@@ -445,12 +439,11 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "イベント値18",
           "@labelgroup2" : "サークル値18",
           "@labelgroup5" : "その他値18",
           "@title" : "作品タイトル18 上巻"
         },
-        "formatIndex" : 6,
+        "formatIndex" : 18,
         "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品タイトル18",
@@ -460,7 +453,7 @@
         }
       },
       "id" : "builtin.doujinshi-b.p19",
-      "input" : "(イベント値18) [サークル値18] 作品タイトル18 上巻 [その他値18].cbz",
+      "input" : "[サークル値18] 作品タイトル18 上巻 [その他値18].cbz",
       "kind" : "positive"
     },
     {
@@ -469,11 +462,10 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "イベント値19",
           "@labelgroup2" : "サークル値19",
           "@title" : "サブタイトル付き作品19"
         },
-        "formatIndex" : 7,
+        "formatIndex" : 19,
         "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
@@ -481,7 +473,7 @@
         }
       },
       "id" : "builtin.doujinshi-b.p20",
-      "input" : "(イベント値19) [サークル値19] サブタイトル付き作品19.cbz",
+      "input" : "[サークル値19] サブタイトル付き作品19.cbz",
       "kind" : "positive"
     },
     {
@@ -491,11 +483,12 @@
       "expected" : {
         "fields" : {
           "@labelgroup2" : "サークル値20",
+          "@labelgroup3" : "著者値20",
           "@labelgroup4" : "ジャンル値20",
           "@labelgroup5" : "その他値20",
           "@title" : "作品タイトル20 第21巻"
         },
-        "formatIndex" : 8,
+        "formatIndex" : 0,
         "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品タイトル20",
@@ -506,7 +499,7 @@
         }
       },
       "id" : "builtin.doujinshi-b.p21",
-      "input" : "[サークル値20] 作品タイトル20 第21巻 (ジャンル値20) [その他値20].cbz",
+      "input" : "(同人誌) [サークル値20 (著者値20)] 作品タイトル20 第21巻 (ジャンル値20) [その他値20].cbz",
       "kind" : "positive"
     },
     {
@@ -516,10 +509,11 @@
       "expected" : {
         "fields" : {
           "@labelgroup2" : "サークル値21",
+          "@labelgroup3" : "著者値21",
           "@labelgroup4" : "ジャンル値21",
           "@title" : "作品 タイトル 21 vol.22"
         },
-        "formatIndex" : 9,
+        "formatIndex" : 1,
         "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品 タイトル 21",
@@ -530,7 +524,7 @@
         }
       },
       "id" : "builtin.doujinshi-b.p22",
-      "input" : "[サークル値21] 作品 タイトル 21 vol.22 (ジャンル値21).cbz",
+      "input" : "(同人誌) [サークル値21 (著者値21)] 作品 タイトル 21 vol.22 (ジャンル値21).cbz",
       "kind" : "positive"
     },
     {
