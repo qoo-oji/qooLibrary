@@ -2,6 +2,27 @@ import Foundation
 
 /// アプリ全体の定数を集約する [4章 命名規約]。マジックナンバーの直書き禁止。
 public enum AppLimits {
+    /// ファイル名フォーマットのパーサ [9 章][MT-10〜MT-16][MT2-02][PTI-05]。
+    public enum Format {
+        /// 1 ライブラリあたりのラベルグループ数 [LG-01][MT-11]。
+        ///
+        /// **上限値に依存する実装をしてはならない** [MT-10]。固定カラムを作らない、
+        /// `@labelgroup#` を多桁対応にする、既定色をアルゴリズムで生成する、の
+        /// 3 点が要点 [MT-12][MT-13]。この定数を書き換えるだけで引き上げられる
+        /// ことを単体テストで固定している。
+        public static let maxLabelGroups = 10
+
+        /// 1 回の照合で辿ってよい探索ノード数の上限 [MT2-02]。
+        /// 病的なフォーマットで停止しなくなるのを防ぐ。超過した照合は
+        /// 「照合不能」として次のフォーマットへ進み、警告をログに出す。
+        public static let maxMatchSteps = 20_000
+
+        /// 保護文字列のマスクに使う私用領域 U+E000〜U+E0FF [PTI-05]。
+        /// これを超える出現は、超過分をマスクせず警告する。
+        public static let maskPlaceholderCapacity = 256
+        public static let maskPlaceholderBase: UInt32 = 0xE000
+    }
+
     /// 展開時の安全上限 [EX-20〜EX-22]。環境設定で変更できる想定のため、
     /// ここに置くのは既定値のみ。
     public enum Extraction {
