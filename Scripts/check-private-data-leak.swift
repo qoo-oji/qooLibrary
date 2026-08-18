@@ -85,7 +85,7 @@ let generic: Set<String> = [
 ]
 
 /// 日本語の固有名詞になりやすい連なり。**まるごとのトークンだけを見ると
-/// 取りこぼす**——実在名の一部（`作品A` の中の `バグベア`）を標本に
+/// 取りこぼす**——長い作品名の中に含まれる短いカタカナ語を標本に
 /// 使ってしまう事故が実際にあり得る（変異検証で確認した）。
 let katakanaRun = try! NSRegularExpression(pattern: "[ァ-ヶー]{4,}")
 let kanjiRun = try! NSRegularExpression(pattern: "[一-龠]{3,}")
