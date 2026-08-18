@@ -2,6 +2,14 @@ import Foundation
 
 /// アプリ全体の定数を集約する [4章 命名規約]。マジックナンバーの直書き禁止。
 public enum AppLimits {
+    /// 一覧の問い合わせ [7.4][PF-02][PF-03][PF-10][DB-04]。
+    public enum Query {
+        /// 1 ページの件数。全件を materialize しない [PF-10][FI-05]。
+        public static let defaultPageSize = 200
+        /// この件数を超えたら起動時に警告する [DB-04][IX-05]。
+        public static let dbRecordWarningThreshold = 50_000
+    }
+
     /// ファイル名フォーマットのパーサ [9 章][MT-10〜MT-16][MT2-02][PTI-05]。
     public enum Format {
         /// 1 ライブラリあたりのラベルグループ数 [LG-01][MT-11]。
