@@ -88,11 +88,41 @@ struct VolumeMatcherTests {
         #expect(m.value.number == nil)
     }
 
-    @Test("登録順（優先順）で最初に一致したものを採る [SE-21][VM2-01]")
-    func priorityWins() throws {
-        // 第??巻 が ??巻 より先に登録されている
+    @Test("末尾に届く一致のうち最長を採る [SE-21 の解釈、2026-08]")
+    func longestMatchWins() throws {
         let m = try #require(matchEnd("作品 第01巻"))
         #expect(m.value.raw == "第01巻")     // "01巻" ではない
+    }
+
+    /// **登録順に対して頑健であること。**仕様書 §5.4 の既定セットは `??巻` を
+    /// `第??巻` より先に列挙しており、登録順で決める実装だと `作品 第01巻` が
+    /// `01巻` と読まれてシリーズ名が `作品 第` になる。実データの一般コミックは
+    /// 94% が `第??巻` なので実害が大きい。
+    @Test("パターンの登録順が逆でも同じ結果になる")
+    func robustAgainstRegistrationOrder() throws {
+        let specOrder = VolumePatternCompiler.compileAll([
+            VolumePattern(source: "??巻", priority: 0),
+            VolumePattern(source: "第??巻", priority: 1),
+        ])
+        let reversed = VolumePatternCompiler.compileAll([
+            VolumePattern(source: "第??巻", priority: 0),
+            VolumePattern(source: "??巻", priority: 1),
+        ])
+        for patterns in [specOrder, reversed] {
+            let out = SeriesExtractor.extract(fromTitle: "作品 第01巻", patterns: patterns)
+            #expect(out.seriesName == "作品")
+            #expect(out.volume.raw == "第01巻")
+        }
+    }
+
+    @Test("同じ長さなら登録順が先のものを採る [SE-21]")
+    func tieBreakByRegistrationOrder() throws {
+        let p = VolumePatternCompiler.compileAll([
+            VolumePattern(source: "v??", priority: 0),
+            VolumePattern(source: "V??", priority: 1),
+        ])
+        let m = try #require(VolumeMatcher.matchAtEnd(Array("作品 v3"), patterns: p))
+        #expect(m.value.number == 3)
     }
 
     @Test("末尾に届かない一致は matchAtEnd では採らない [SE-02]")

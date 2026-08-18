@@ -1,0 +1,781 @@
+{
+  "cases" : [
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "イベント値0",
+          "@labelgroup2" : "サークル値0",
+          "@labelgroup3" : "著者値0",
+          "@labelgroup4" : "ジャンル値0",
+          "@labelgroup5" : "その他値0",
+          "@title" : "作品タイトル0 第01巻"
+        },
+        "formatIndex" : 0,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "作品タイトル0",
+        "volume" : {
+          "kind" : "numeric",
+          "number" : 1,
+          "raw" : "第01巻"
+        }
+      },
+      "id" : "builtin.doujinshi-a.p1",
+      "input" : "(イベント値0) [サークル値0 (著者値0)] 作品タイトル0 第01巻 (ジャンル値0) [その他値0].cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "イベント値1",
+          "@labelgroup2" : "サークル値1",
+          "@labelgroup3" : "著者値1",
+          "@labelgroup4" : "ジャンル値1",
+          "@title" : "作品 タイトル 1 vol.2"
+        },
+        "formatIndex" : 1,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "作品 タイトル 1",
+        "volume" : {
+          "kind" : "numeric",
+          "number" : 2,
+          "raw" : "vol.2"
+        }
+      },
+      "id" : "builtin.doujinshi-a.p2",
+      "input" : "(イベント値1) [サークル値1 (著者値1)] 作品 タイトル 1 vol.2 (ジャンル値1).cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "イベント値2",
+          "@labelgroup2" : "サークル値2",
+          "@labelgroup3" : "著者値2",
+          "@labelgroup5" : "その他値2",
+          "@title" : "作品タイトル2ー長音 上巻"
+        },
+        "formatIndex" : 2,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "作品タイトル2ー長音",
+        "volume" : {
+          "kind" : "ordinal",
+          "raw" : "上巻"
+        }
+      },
+      "id" : "builtin.doujinshi-a.p3",
+      "input" : "(イベント値2) [サークル値2 (著者値2)] 作品タイトル2ー長音 上巻 [その他値2].cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "イベント値3",
+          "@labelgroup2" : "サークル値3",
+          "@labelgroup3" : "著者値3",
+          "@title" : "作品タイトル3"
+        },
+        "formatIndex" : 3,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.doujinshi-a.p4",
+      "input" : "(イベント値3) [サークル値3 (著者値3)] 作品タイトル3.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "イベント値4",
+          "@labelgroup2" : "サークル値4",
+          "@labelgroup4" : "ジャンル値4",
+          "@labelgroup5" : "その他値4",
+          "@title" : "サブタイトル付き作品4 第05巻"
+        },
+        "formatIndex" : 4,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "サブタイトル付き作品4",
+        "volume" : {
+          "kind" : "numeric",
+          "number" : 5,
+          "raw" : "第05巻"
+        }
+      },
+      "id" : "builtin.doujinshi-a.p5",
+      "input" : "(イベント値4) [サークル値4] サブタイトル付き作品4 第05巻 (ジャンル値4) [その他値4].cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "イベント値5",
+          "@labelgroup2" : "サークル値5",
+          "@labelgroup4" : "ジャンル値5",
+          "@title" : "作品タイトル5 vol.6"
+        },
+        "formatIndex" : 5,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "作品タイトル5",
+        "volume" : {
+          "kind" : "numeric",
+          "number" : 6,
+          "raw" : "vol.6"
+        }
+      },
+      "id" : "builtin.doujinshi-a.p6",
+      "input" : "(イベント値5) [サークル値5] 作品タイトル5 vol.6 (ジャンル値5).cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "イベント値6",
+          "@labelgroup2" : "サークル値6",
+          "@labelgroup5" : "その他値6",
+          "@title" : "作品 タイトル 6 上巻"
+        },
+        "formatIndex" : 6,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "作品 タイトル 6",
+        "volume" : {
+          "kind" : "ordinal",
+          "raw" : "上巻"
+        }
+      },
+      "id" : "builtin.doujinshi-a.p7",
+      "input" : "(イベント値6) [サークル値6] 作品 タイトル 6 上巻 [その他値6].cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "イベント値7",
+          "@labelgroup2" : "サークル値7",
+          "@title" : "作品タイトル7ー長音"
+        },
+        "formatIndex" : 7,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.doujinshi-a.p8",
+      "input" : "(イベント値7) [サークル値7] 作品タイトル7ー長音.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup2" : "サークル値8",
+          "@labelgroup4" : "ジャンル値8",
+          "@labelgroup5" : "その他値8",
+          "@title" : "作品タイトル8 第09巻"
+        },
+        "formatIndex" : 8,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "作品タイトル8",
+        "volume" : {
+          "kind" : "numeric",
+          "number" : 9,
+          "raw" : "第09巻"
+        }
+      },
+      "id" : "builtin.doujinshi-a.p9",
+      "input" : "[サークル値8] 作品タイトル8 第09巻 (ジャンル値8) [その他値8].cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup2" : "サークル値9",
+          "@labelgroup4" : "ジャンル値9",
+          "@title" : "サブタイトル付き作品9 vol.10"
+        },
+        "formatIndex" : 9,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "サブタイトル付き作品9",
+        "volume" : {
+          "kind" : "numeric",
+          "number" : 10,
+          "raw" : "vol.10"
+        }
+      },
+      "id" : "builtin.doujinshi-a.p10",
+      "input" : "[サークル値9] サブタイトル付き作品9 vol.10 (ジャンル値9).cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup2" : "サークル値10",
+          "@labelgroup5" : "その他値10",
+          "@title" : "作品タイトル10 上巻"
+        },
+        "formatIndex" : 10,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "作品タイトル10",
+        "volume" : {
+          "kind" : "ordinal",
+          "raw" : "上巻"
+        }
+      },
+      "id" : "builtin.doujinshi-a.p11",
+      "input" : "[サークル値10] 作品タイトル10 上巻 [その他値10].cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup2" : "サークル値11",
+          "@title" : "作品 タイトル 11"
+        },
+        "formatIndex" : 11,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.doujinshi-a.p12",
+      "input" : "[サークル値11] 作品 タイトル 11.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "イベント値12",
+          "@labelgroup2" : "サークル値12",
+          "@labelgroup3" : "著者値12",
+          "@labelgroup4" : "ジャンル値12",
+          "@labelgroup5" : "その他値12",
+          "@title" : "作品タイトル12ー長音 第13巻"
+        },
+        "formatIndex" : 0,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "作品タイトル12ー長音",
+        "volume" : {
+          "kind" : "numeric",
+          "number" : 13,
+          "raw" : "第13巻"
+        }
+      },
+      "id" : "builtin.doujinshi-a.p13",
+      "input" : "(イベント値12) [サークル値12 (著者値12)] 作品タイトル12ー長音 第13巻 (ジャンル値12) [その他値12].cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "イベント値13",
+          "@labelgroup2" : "サークル値13",
+          "@labelgroup3" : "著者値13",
+          "@labelgroup4" : "ジャンル値13",
+          "@title" : "作品タイトル13 vol.14"
+        },
+        "formatIndex" : 1,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "作品タイトル13",
+        "volume" : {
+          "kind" : "numeric",
+          "number" : 14,
+          "raw" : "vol.14"
+        }
+      },
+      "id" : "builtin.doujinshi-a.p14",
+      "input" : "(イベント値13) [サークル値13 (著者値13)] 作品タイトル13 vol.14 (ジャンル値13).cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "イベント値14",
+          "@labelgroup2" : "サークル値14",
+          "@labelgroup3" : "著者値14",
+          "@labelgroup5" : "その他値14",
+          "@title" : "サブタイトル付き作品14 上巻"
+        },
+        "formatIndex" : 2,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "サブタイトル付き作品14",
+        "volume" : {
+          "kind" : "ordinal",
+          "raw" : "上巻"
+        }
+      },
+      "id" : "builtin.doujinshi-a.p15",
+      "input" : "(イベント値14) [サークル値14 (著者値14)] サブタイトル付き作品14 上巻 [その他値14].cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "イベント値15",
+          "@labelgroup2" : "サークル値15",
+          "@labelgroup3" : "著者値15",
+          "@title" : "作品タイトル15"
+        },
+        "formatIndex" : 3,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.doujinshi-a.p16",
+      "input" : "(イベント値15) [サークル値15 (著者値15)] 作品タイトル15.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "イベント値16",
+          "@labelgroup2" : "サークル値16",
+          "@labelgroup4" : "ジャンル値16",
+          "@labelgroup5" : "その他値16",
+          "@title" : "作品 タイトル 16 第17巻"
+        },
+        "formatIndex" : 4,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "作品 タイトル 16",
+        "volume" : {
+          "kind" : "numeric",
+          "number" : 17,
+          "raw" : "第17巻"
+        }
+      },
+      "id" : "builtin.doujinshi-a.p17",
+      "input" : "(イベント値16) [サークル値16] 作品 タイトル 16 第17巻 (ジャンル値16) [その他値16].cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "イベント値17",
+          "@labelgroup2" : "サークル値17",
+          "@labelgroup4" : "ジャンル値17",
+          "@title" : "作品タイトル17ー長音 vol.18"
+        },
+        "formatIndex" : 5,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "作品タイトル17ー長音",
+        "volume" : {
+          "kind" : "numeric",
+          "number" : 18,
+          "raw" : "vol.18"
+        }
+      },
+      "id" : "builtin.doujinshi-a.p18",
+      "input" : "(イベント値17) [サークル値17] 作品タイトル17ー長音 vol.18 (ジャンル値17).cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "イベント値18",
+          "@labelgroup2" : "サークル値18",
+          "@labelgroup5" : "その他値18",
+          "@title" : "作品タイトル18 上巻"
+        },
+        "formatIndex" : 6,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "作品タイトル18",
+        "volume" : {
+          "kind" : "ordinal",
+          "raw" : "上巻"
+        }
+      },
+      "id" : "builtin.doujinshi-a.p19",
+      "input" : "(イベント値18) [サークル値18] 作品タイトル18 上巻 [その他値18].cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "イベント値19",
+          "@labelgroup2" : "サークル値19",
+          "@title" : "サブタイトル付き作品19"
+        },
+        "formatIndex" : 7,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.doujinshi-a.p20",
+      "input" : "(イベント値19) [サークル値19] サブタイトル付き作品19.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup2" : "サークル値20",
+          "@labelgroup4" : "ジャンル値20",
+          "@labelgroup5" : "その他値20",
+          "@title" : "作品タイトル20 第21巻"
+        },
+        "formatIndex" : 8,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "作品タイトル20",
+        "volume" : {
+          "kind" : "numeric",
+          "number" : 21,
+          "raw" : "第21巻"
+        }
+      },
+      "id" : "builtin.doujinshi-a.p21",
+      "input" : "[サークル値20] 作品タイトル20 第21巻 (ジャンル値20) [その他値20].cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup2" : "サークル値21",
+          "@labelgroup4" : "ジャンル値21",
+          "@title" : "作品 タイトル 21 vol.22"
+        },
+        "formatIndex" : 9,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "作品 タイトル 21",
+        "volume" : {
+          "kind" : "numeric",
+          "number" : 22,
+          "raw" : "vol.22"
+        }
+      },
+      "id" : "builtin.doujinshi-a.p22",
+      "input" : "[サークル値21] 作品 タイトル 21 vol.22 (ジャンル値21).cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.doujinshi-a.n1",
+      "input" : "括弧のない名前.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.doujinshi-a.n2",
+      "input" : "著者名 タイトル.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.doujinshi-a.n3",
+      "input" : "[閉じ忘れ タイトル.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.doujinshi-a.n4",
+      "input" : "閉じだけ] タイトル.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.doujinshi-a.n5",
+      "input" : "[著者名].cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.doujinshi-a.n6",
+      "input" : "[] タイトル.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.doujinshi-a.n7",
+      "input" : "[   ] タイトル.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.doujinshi-a.n8",
+      "input" : "タイトル [著者名].cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.doujinshi-a.n9",
+      "input" : "{中括弧} タイトル.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.doujinshi-a.n10",
+      "input" : "〈山括弧〉 タイトル.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.doujinshi-a.n11",
+      "input" : "1234567890.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.doujinshi-a.n12",
+      "input" : "タイトルのみ.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.doujinshi-a.n13",
+      "input" : "－－－.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.doujinshi-a.n14",
+      "input" : "( ) タイトル.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.doujinshi-a.n15",
+      "input" : "]] [[.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.doujinshi-a.n16",
+      "input" : "タイトル(閉じない.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.doujinshi-a.n17",
+      "input" : ")))).cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.doujinshi-a.n18",
+      "input" : "((((.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.doujinshi-a.n19",
+      "input" : "・・・.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.doujinshi-a.n20",
+      "input" : "　.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.doujinshi-a.n21",
+      "input" : "a.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "同人誌(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.doujinshi-a.n22",
+      "input" : "ﾀｲﾄﾙ.cbz",
+      "kind" : "negative"
+    }
+  ],
+  "datasetName" : "builtin.doujinshi-a",
+  "visibility" : "public"
+}

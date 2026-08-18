@@ -1,0 +1,688 @@
+{
+  "cases" : [
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値0",
+          "@title" : "作品タイトル0"
+        },
+        "formatIndex" : 0,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.adult-comic-a.p1",
+      "input" : "(成年コミック) [著者値0] 作品タイトル0.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値1",
+          "@title" : "作品 タイトル 1"
+        },
+        "formatIndex" : 1,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.adult-comic-a.p2",
+      "input" : "[著者値1] 作品 タイトル 1.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値2",
+          "@title" : "作品タイトル2ー長音"
+        },
+        "formatIndex" : 0,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.adult-comic-a.p3",
+      "input" : "(成年コミック) [著者値2] 作品タイトル2ー長音.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値3",
+          "@title" : "作品タイトル3"
+        },
+        "formatIndex" : 1,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.adult-comic-a.p4",
+      "input" : "[著者値3] 作品タイトル3.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値4",
+          "@title" : "サブタイトル付き作品4"
+        },
+        "formatIndex" : 0,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.adult-comic-a.p5",
+      "input" : "(成年コミック) [著者値4] サブタイトル付き作品4.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値5",
+          "@title" : "作品タイトル5"
+        },
+        "formatIndex" : 1,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.adult-comic-a.p6",
+      "input" : "[著者値5] 作品タイトル5.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値6",
+          "@title" : "作品 タイトル 6"
+        },
+        "formatIndex" : 0,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.adult-comic-a.p7",
+      "input" : "(成年コミック) [著者値6] 作品 タイトル 6.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値7",
+          "@title" : "作品タイトル7ー長音"
+        },
+        "formatIndex" : 1,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.adult-comic-a.p8",
+      "input" : "[著者値7] 作品タイトル7ー長音.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値8",
+          "@title" : "作品タイトル8"
+        },
+        "formatIndex" : 0,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.adult-comic-a.p9",
+      "input" : "(成年コミック) [著者値8] 作品タイトル8.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値9",
+          "@title" : "サブタイトル付き作品9"
+        },
+        "formatIndex" : 1,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.adult-comic-a.p10",
+      "input" : "[著者値9] サブタイトル付き作品9.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値10",
+          "@title" : "作品タイトル10"
+        },
+        "formatIndex" : 0,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.adult-comic-a.p11",
+      "input" : "(成年コミック) [著者値10] 作品タイトル10.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値11",
+          "@title" : "作品 タイトル 11"
+        },
+        "formatIndex" : 1,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.adult-comic-a.p12",
+      "input" : "[著者値11] 作品 タイトル 11.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値12",
+          "@title" : "作品タイトル12ー長音"
+        },
+        "formatIndex" : 0,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.adult-comic-a.p13",
+      "input" : "(成年コミック) [著者値12] 作品タイトル12ー長音.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値13",
+          "@title" : "作品タイトル13"
+        },
+        "formatIndex" : 1,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.adult-comic-a.p14",
+      "input" : "[著者値13] 作品タイトル13.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値14",
+          "@title" : "サブタイトル付き作品14"
+        },
+        "formatIndex" : 0,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.adult-comic-a.p15",
+      "input" : "(成年コミック) [著者値14] サブタイトル付き作品14.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値15",
+          "@title" : "作品タイトル15"
+        },
+        "formatIndex" : 1,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.adult-comic-a.p16",
+      "input" : "[著者値15] 作品タイトル15.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値16",
+          "@title" : "作品 タイトル 16"
+        },
+        "formatIndex" : 0,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.adult-comic-a.p17",
+      "input" : "(成年コミック) [著者値16] 作品 タイトル 16.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値17",
+          "@title" : "作品タイトル17ー長音"
+        },
+        "formatIndex" : 1,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.adult-comic-a.p18",
+      "input" : "[著者値17] 作品タイトル17ー長音.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値18",
+          "@title" : "作品タイトル18"
+        },
+        "formatIndex" : 0,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.adult-comic-a.p19",
+      "input" : "(成年コミック) [著者値18] 作品タイトル18.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値19",
+          "@title" : "サブタイトル付き作品19"
+        },
+        "formatIndex" : 1,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.adult-comic-a.p20",
+      "input" : "[著者値19] サブタイトル付き作品19.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値20",
+          "@title" : "作品タイトル20"
+        },
+        "formatIndex" : 0,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.adult-comic-a.p21",
+      "input" : "(成年コミック) [著者値20] 作品タイトル20.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値21",
+          "@title" : "作品 タイトル 21"
+        },
+        "formatIndex" : 1,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.adult-comic-a.p22",
+      "input" : "[著者値21] 作品 タイトル 21.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.adult-comic-a.n1",
+      "input" : "括弧のない名前.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.adult-comic-a.n2",
+      "input" : "著者名 タイトル.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.adult-comic-a.n3",
+      "input" : "[閉じ忘れ タイトル.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.adult-comic-a.n4",
+      "input" : "閉じだけ] タイトル.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.adult-comic-a.n5",
+      "input" : "[著者名].cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.adult-comic-a.n6",
+      "input" : "[] タイトル.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.adult-comic-a.n7",
+      "input" : "[   ] タイトル.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.adult-comic-a.n8",
+      "input" : "タイトル [著者名].cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.adult-comic-a.n9",
+      "input" : "{中括弧} タイトル.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.adult-comic-a.n10",
+      "input" : "〈山括弧〉 タイトル.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.adult-comic-a.n11",
+      "input" : "1234567890.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.adult-comic-a.n12",
+      "input" : "タイトルのみ.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.adult-comic-a.n13",
+      "input" : "－－－.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.adult-comic-a.n14",
+      "input" : "( ) タイトル.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.adult-comic-a.n15",
+      "input" : "]] [[.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.adult-comic-a.n16",
+      "input" : "タイトル(閉じない.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.adult-comic-a.n17",
+      "input" : ")))).cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.adult-comic-a.n18",
+      "input" : "((((.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.adult-comic-a.n19",
+      "input" : "・・・.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.adult-comic-a.n20",
+      "input" : "　.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.adult-comic-a.n21",
+      "input" : "a.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "成年コミック(A)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.adult-comic-a.n22",
+      "input" : "ﾀｲﾄﾙ.cbz",
+      "kind" : "negative"
+    }
+  ],
+  "datasetName" : "builtin.adult-comic-a",
+  "visibility" : "public"
+}

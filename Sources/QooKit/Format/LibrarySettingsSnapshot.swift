@@ -27,8 +27,8 @@ public struct LibrarySettingsSnapshot: Sendable {
 
     /// 優先順に並んだファイル名フォーマット [FF-03]。
     public let filenameFormats: [CompiledFormat]
-    /// フォルダ階層 → フォーマット [AL-01]。
-    public let folderLevelFormats: [Int: CompiledFormat]
+    /// フォルダ階層 → 割り当て [AL-01][AL-02][AL-03]。
+    public let folderLevelAssignments: [Int: FolderLevelMappingSpec.Assignment]
     /// 優先順に並んだ巻数フォーマット [SE-21]。
     public let volumeFormats: [CompiledVolumePattern]
 
@@ -50,7 +50,7 @@ public struct LibrarySettingsSnapshot: Sendable {
                 delimiters: DelimiterSet = .default,
                 protectedTokens: [ProtectedToken] = [],
                 filenameFormats: [CompiledFormat] = [],
-                folderLevelFormats: [Int: CompiledFormat] = [:],
+                folderLevelAssignments: [Int: FolderLevelMappingSpec.Assignment] = [:],
                 volumeFormats: [CompiledVolumePattern] = [],
                 semanticBindings: [SemanticKeyword: Int] = [:],
                 normalization: NormalizationOptions = .default,
@@ -67,7 +67,7 @@ public struct LibrarySettingsSnapshot: Sendable {
         self.delimiters = delimiters
         self.protectedTokens = protectedTokens
         self.filenameFormats = filenameFormats
-        self.folderLevelFormats = folderLevelFormats
+        self.folderLevelAssignments = folderLevelAssignments
         self.volumeFormats = volumeFormats
         self.semanticBindings = semanticBindings
         self.normalization = normalization

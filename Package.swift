@@ -12,7 +12,10 @@ var targets: [Target] = [
     // MARK: - Domain layer [A-01]
     // Foundation のみに依存する。SwiftData / AppKit / SwiftUI を import しない。
     .target(
-        name: "QooKit"
+        name: "QooKit",
+        // プリセットテンプレート・既定巻数フォーマットは JSON リソースとして持つ
+        // [MT-02]。コード内のリテラルにしない。
+        resources: [.process("Resources")]
     ),
 
     // MARK: - Persistence layer (SQLite / GRDB) [A-02]

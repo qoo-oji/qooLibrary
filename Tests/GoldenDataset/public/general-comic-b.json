@@ -1,0 +1,769 @@
+{
+  "cases" : [
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値0",
+          "@title" : "作品タイトル0 第01巻"
+        },
+        "formatIndex" : 0,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "作品タイトル0",
+        "volume" : {
+          "kind" : "numeric",
+          "number" : 1,
+          "raw" : "第01巻"
+        }
+      },
+      "id" : "builtin.general-comic-b.p1",
+      "input" : "(一般コミック) [著者値0] 作品タイトル0 第01巻.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値1",
+          "@title" : "作品 タイトル 1 vol.2"
+        },
+        "formatIndex" : 1,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "作品 タイトル 1",
+        "volume" : {
+          "kind" : "numeric",
+          "number" : 2,
+          "raw" : "vol.2"
+        }
+      },
+      "id" : "builtin.general-comic-b.p2",
+      "input" : "[著者値1] 作品 タイトル 1 vol.2.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "fields" : {
+          "@title" : "作品タイトル2ー長音 上巻"
+        },
+        "formatIndex" : 2,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "作品タイトル2ー長音",
+        "volume" : {
+          "kind" : "ordinal",
+          "raw" : "上巻"
+        }
+      },
+      "id" : "builtin.general-comic-b.p3",
+      "input" : "作品タイトル2ー長音 上巻.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値3",
+          "@title" : "作品タイトル3"
+        },
+        "formatIndex" : 0,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.general-comic-b.p4",
+      "input" : "(一般コミック) [著者値3] 作品タイトル3.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値4",
+          "@title" : "サブタイトル付き作品4 第05巻"
+        },
+        "formatIndex" : 1,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "サブタイトル付き作品4",
+        "volume" : {
+          "kind" : "numeric",
+          "number" : 5,
+          "raw" : "第05巻"
+        }
+      },
+      "id" : "builtin.general-comic-b.p5",
+      "input" : "[著者値4] サブタイトル付き作品4 第05巻.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "fields" : {
+          "@title" : "作品タイトル5 vol.6"
+        },
+        "formatIndex" : 2,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "作品タイトル5",
+        "volume" : {
+          "kind" : "numeric",
+          "number" : 6,
+          "raw" : "vol.6"
+        }
+      },
+      "id" : "builtin.general-comic-b.p6",
+      "input" : "作品タイトル5 vol.6.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値6",
+          "@title" : "作品 タイトル 6 上巻"
+        },
+        "formatIndex" : 0,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "作品 タイトル 6",
+        "volume" : {
+          "kind" : "ordinal",
+          "raw" : "上巻"
+        }
+      },
+      "id" : "builtin.general-comic-b.p7",
+      "input" : "(一般コミック) [著者値6] 作品 タイトル 6 上巻.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値7",
+          "@title" : "作品タイトル7ー長音"
+        },
+        "formatIndex" : 1,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.general-comic-b.p8",
+      "input" : "[著者値7] 作品タイトル7ー長音.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "fields" : {
+          "@title" : "作品タイトル8 第09巻"
+        },
+        "formatIndex" : 2,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "作品タイトル8",
+        "volume" : {
+          "kind" : "numeric",
+          "number" : 9,
+          "raw" : "第09巻"
+        }
+      },
+      "id" : "builtin.general-comic-b.p9",
+      "input" : "作品タイトル8 第09巻.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値9",
+          "@title" : "サブタイトル付き作品9 vol.10"
+        },
+        "formatIndex" : 0,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "サブタイトル付き作品9",
+        "volume" : {
+          "kind" : "numeric",
+          "number" : 10,
+          "raw" : "vol.10"
+        }
+      },
+      "id" : "builtin.general-comic-b.p10",
+      "input" : "(一般コミック) [著者値9] サブタイトル付き作品9 vol.10.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値10",
+          "@title" : "作品タイトル10 上巻"
+        },
+        "formatIndex" : 1,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "作品タイトル10",
+        "volume" : {
+          "kind" : "ordinal",
+          "raw" : "上巻"
+        }
+      },
+      "id" : "builtin.general-comic-b.p11",
+      "input" : "[著者値10] 作品タイトル10 上巻.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "fields" : {
+          "@title" : "作品 タイトル 11"
+        },
+        "formatIndex" : 2,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.general-comic-b.p12",
+      "input" : "作品 タイトル 11.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値12",
+          "@title" : "作品タイトル12ー長音 第13巻"
+        },
+        "formatIndex" : 0,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "作品タイトル12ー長音",
+        "volume" : {
+          "kind" : "numeric",
+          "number" : 13,
+          "raw" : "第13巻"
+        }
+      },
+      "id" : "builtin.general-comic-b.p13",
+      "input" : "(一般コミック) [著者値12] 作品タイトル12ー長音 第13巻.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値13",
+          "@title" : "作品タイトル13 vol.14"
+        },
+        "formatIndex" : 1,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "作品タイトル13",
+        "volume" : {
+          "kind" : "numeric",
+          "number" : 14,
+          "raw" : "vol.14"
+        }
+      },
+      "id" : "builtin.general-comic-b.p14",
+      "input" : "[著者値13] 作品タイトル13 vol.14.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "fields" : {
+          "@title" : "サブタイトル付き作品14 上巻"
+        },
+        "formatIndex" : 2,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "サブタイトル付き作品14",
+        "volume" : {
+          "kind" : "ordinal",
+          "raw" : "上巻"
+        }
+      },
+      "id" : "builtin.general-comic-b.p15",
+      "input" : "サブタイトル付き作品14 上巻.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値15",
+          "@title" : "作品タイトル15"
+        },
+        "formatIndex" : 0,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.general-comic-b.p16",
+      "input" : "(一般コミック) [著者値15] 作品タイトル15.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値16",
+          "@title" : "作品 タイトル 16 第17巻"
+        },
+        "formatIndex" : 1,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "作品 タイトル 16",
+        "volume" : {
+          "kind" : "numeric",
+          "number" : 17,
+          "raw" : "第17巻"
+        }
+      },
+      "id" : "builtin.general-comic-b.p17",
+      "input" : "[著者値16] 作品 タイトル 16 第17巻.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "fields" : {
+          "@title" : "作品タイトル17ー長音 vol.18"
+        },
+        "formatIndex" : 2,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "作品タイトル17ー長音",
+        "volume" : {
+          "kind" : "numeric",
+          "number" : 18,
+          "raw" : "vol.18"
+        }
+      },
+      "id" : "builtin.general-comic-b.p18",
+      "input" : "作品タイトル17ー長音 vol.18.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値18",
+          "@title" : "作品タイトル18 上巻"
+        },
+        "formatIndex" : 0,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "作品タイトル18",
+        "volume" : {
+          "kind" : "ordinal",
+          "raw" : "上巻"
+        }
+      },
+      "id" : "builtin.general-comic-b.p19",
+      "input" : "(一般コミック) [著者値18] 作品タイトル18 上巻.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値19",
+          "@title" : "サブタイトル付き作品19"
+        },
+        "formatIndex" : 1,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.general-comic-b.p20",
+      "input" : "[著者値19] サブタイトル付き作品19.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "fields" : {
+          "@title" : "作品タイトル20 第21巻"
+        },
+        "formatIndex" : 2,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "作品タイトル20",
+        "volume" : {
+          "kind" : "numeric",
+          "number" : 21,
+          "raw" : "第21巻"
+        }
+      },
+      "id" : "builtin.general-comic-b.p21",
+      "input" : "作品タイトル20 第21巻.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "fields" : {
+          "@labelgroup1" : "著者値21",
+          "@title" : "作品 タイトル 21 vol.22"
+        },
+        "formatIndex" : 0,
+        "libraryTypeMismatch" : false,
+        "matched" : true,
+        "series" : "作品 タイトル 21",
+        "volume" : {
+          "kind" : "numeric",
+          "number" : 22,
+          "raw" : "vol.22"
+        }
+      },
+      "id" : "builtin.general-comic-b.p22",
+      "input" : "(一般コミック) [著者値21] 作品 タイトル 21 vol.22.cbz",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "formatIndex" : 2,
+        "libraryTypeMismatch" : false,
+        "matched" : true
+      },
+      "id" : "builtin.general-comic-b.n1",
+      "input" : "括弧のない名前.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "formatIndex" : 2,
+        "libraryTypeMismatch" : false,
+        "matched" : true
+      },
+      "id" : "builtin.general-comic-b.n2",
+      "input" : "著者名 タイトル.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "formatIndex" : 2,
+        "libraryTypeMismatch" : false,
+        "matched" : true
+      },
+      "id" : "builtin.general-comic-b.n3",
+      "input" : "[閉じ忘れ タイトル.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "formatIndex" : 2,
+        "libraryTypeMismatch" : false,
+        "matched" : true
+      },
+      "id" : "builtin.general-comic-b.n4",
+      "input" : "閉じだけ] タイトル.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "formatIndex" : 2,
+        "libraryTypeMismatch" : false,
+        "matched" : true
+      },
+      "id" : "builtin.general-comic-b.n5",
+      "input" : "[著者名].cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "formatIndex" : 2,
+        "libraryTypeMismatch" : false,
+        "matched" : true
+      },
+      "id" : "builtin.general-comic-b.n6",
+      "input" : "[] タイトル.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "formatIndex" : 2,
+        "libraryTypeMismatch" : false,
+        "matched" : true
+      },
+      "id" : "builtin.general-comic-b.n7",
+      "input" : "[   ] タイトル.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "formatIndex" : 2,
+        "libraryTypeMismatch" : false,
+        "matched" : true
+      },
+      "id" : "builtin.general-comic-b.n8",
+      "input" : "タイトル [著者名].cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "formatIndex" : 2,
+        "libraryTypeMismatch" : false,
+        "matched" : true
+      },
+      "id" : "builtin.general-comic-b.n9",
+      "input" : "{中括弧} タイトル.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "formatIndex" : 2,
+        "libraryTypeMismatch" : false,
+        "matched" : true
+      },
+      "id" : "builtin.general-comic-b.n10",
+      "input" : "〈山括弧〉 タイトル.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "formatIndex" : 2,
+        "libraryTypeMismatch" : false,
+        "matched" : true
+      },
+      "id" : "builtin.general-comic-b.n11",
+      "input" : "1234567890.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "formatIndex" : 2,
+        "libraryTypeMismatch" : false,
+        "matched" : true
+      },
+      "id" : "builtin.general-comic-b.n12",
+      "input" : "タイトルのみ.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "formatIndex" : 2,
+        "libraryTypeMismatch" : false,
+        "matched" : true
+      },
+      "id" : "builtin.general-comic-b.n13",
+      "input" : "－－－.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "formatIndex" : 2,
+        "libraryTypeMismatch" : false,
+        "matched" : true
+      },
+      "id" : "builtin.general-comic-b.n14",
+      "input" : "( ) タイトル.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "formatIndex" : 2,
+        "libraryTypeMismatch" : false,
+        "matched" : true
+      },
+      "id" : "builtin.general-comic-b.n15",
+      "input" : "]] [[.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "formatIndex" : 2,
+        "libraryTypeMismatch" : false,
+        "matched" : true
+      },
+      "id" : "builtin.general-comic-b.n16",
+      "input" : "タイトル(閉じない.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "formatIndex" : 2,
+        "libraryTypeMismatch" : false,
+        "matched" : true
+      },
+      "id" : "builtin.general-comic-b.n17",
+      "input" : ")))).cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "formatIndex" : 2,
+        "libraryTypeMismatch" : false,
+        "matched" : true
+      },
+      "id" : "builtin.general-comic-b.n18",
+      "input" : "((((.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "formatIndex" : 2,
+        "libraryTypeMismatch" : false,
+        "matched" : true
+      },
+      "id" : "builtin.general-comic-b.n19",
+      "input" : "・・・.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.general-comic-b.n20",
+      "input" : "　.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "formatIndex" : 2,
+        "libraryTypeMismatch" : false,
+        "matched" : true
+      },
+      "id" : "builtin.general-comic-b.n21",
+      "input" : "a.cbz",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "一般コミック(B)"
+      },
+      "expected" : {
+        "formatIndex" : 2,
+        "libraryTypeMismatch" : false,
+        "matched" : true
+      },
+      "id" : "builtin.general-comic-b.n22",
+      "input" : "ﾀｲﾄﾙ.cbz",
+      "kind" : "negative"
+    }
+  ],
+  "datasetName" : "builtin.general-comic-b",
+  "visibility" : "public"
+}

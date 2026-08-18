@@ -1,0 +1,220 @@
+{
+  "_comment": [
+    "プリセットのライブラリタイプ [11.4 節][LT-01][MT-02]。",
+    "プリセットは編集不可。編集したいユーザーには複製を促す [LT-05]。",
+    "`version` はアプリ更新での改訂を検出するために使う [LT-10]。改訂したら上げること。",
+    "`folderLevels` のキーは階層番号（1 = ライブラリ直下）[AL-01]。",
+    "`assignment` は singleLabelGroup / format / none のいずれか [AL-01〜AL-03]。"
+  ],
+  "presets": [
+    {
+      "key": "builtin.general-comic-a",
+      "displayName": "一般コミック(A)",
+      "libraryTypeName": "一般コミック",
+      "version": 1,
+      "labelGroups": [
+        { "index": 1, "name": "著者" },
+        { "index": 2, "name": "シリーズ" }
+      ],
+      "semanticBindings": { "@series": 2 },
+      "folderLevels": {},
+      "filenameFormats": [
+        "(@librarytype) [@labelgroup1] @title",
+        "[@labelgroup1] @title"
+      ],
+      "volumeSet": "VS-Full"
+    },
+    {
+      "key": "builtin.general-comic-b",
+      "displayName": "一般コミック(B)",
+      "libraryTypeName": "一般コミック",
+      "version": 1,
+      "labelGroups": [
+        { "index": 1, "name": "著者" },
+        { "index": 2, "name": "シリーズ" }
+      ],
+      "semanticBindings": { "@series": 2 },
+      "folderLevels": {
+        "1": { "kind": "format", "format": "[@labelgroup1] @labelgroup2" },
+        "2": { "kind": "format", "format": "@labelgroup2" }
+      },
+      "filenameFormats": [
+        "(@librarytype) [@labelgroup1] @title",
+        "[@labelgroup1] @title",
+        "@title"
+      ],
+      "volumeSet": "VS-Full"
+    },
+    {
+      "key": "builtin.adult-comic-a",
+      "displayName": "成年コミック(A)",
+      "libraryTypeName": "成年コミック",
+      "version": 1,
+      "labelGroups": [
+        { "index": 1, "name": "著者" },
+        { "index": 2, "name": "プレイ", "autoAssign": false }
+      ],
+      "semanticBindings": {},
+      "folderLevels": {},
+      "filenameFormats": [
+        "(@librarytype) [@labelgroup1] @title",
+        "[@labelgroup1] @title"
+      ],
+      "volumeSet": "VS-None"
+    },
+    {
+      "key": "builtin.adult-comic-b",
+      "displayName": "成年コミック(B)",
+      "libraryTypeName": "成年コミック",
+      "version": 1,
+      "labelGroups": [
+        { "index": 1, "name": "著者" },
+        { "index": 2, "name": "プレイ", "autoAssign": false }
+      ],
+      "semanticBindings": {},
+      "folderLevels": {
+        "1": { "kind": "singleLabelGroup", "labelGroup": 1 }
+      },
+      "filenameFormats": [
+        "(@librarytype) [@labelgroup1] @title",
+        "[@labelgroup1] @title",
+        "@title"
+      ],
+      "volumeSet": "VS-None"
+    },
+    {
+      "key": "builtin.doujinshi-a",
+      "displayName": "同人誌(A)",
+      "libraryTypeName": "同人誌",
+      "version": 1,
+      "labelGroups": [
+        { "index": 1, "name": "イベント" },
+        { "index": 2, "name": "サークル" },
+        { "index": 3, "name": "著者" },
+        { "index": 4, "name": "ジャンル" },
+        { "index": 5, "name": "その他" },
+        { "index": 6, "name": "プレイ", "autoAssign": false }
+      ],
+      "semanticBindings": {},
+      "folderLevels": {},
+      "filenameFormats": [
+        "(@labelgroup1) [@labelgroup2 (@labelgroup3)] @title (@labelgroup4) [@labelgroup5]",
+        "(@labelgroup1) [@labelgroup2 (@labelgroup3)] @title (@labelgroup4)",
+        "(@labelgroup1) [@labelgroup2 (@labelgroup3)] @title [@labelgroup5]",
+        "(@labelgroup1) [@labelgroup2 (@labelgroup3)] @title",
+        "(@labelgroup1) [@labelgroup2] @title (@labelgroup4) [@labelgroup5]",
+        "(@labelgroup1) [@labelgroup2] @title (@labelgroup4)",
+        "(@labelgroup1) [@labelgroup2] @title [@labelgroup5]",
+        "(@labelgroup1) [@labelgroup2] @title",
+        "[@labelgroup2] @title (@labelgroup4) [@labelgroup5]",
+        "[@labelgroup2] @title (@labelgroup4)",
+        "[@labelgroup2] @title [@labelgroup5]",
+        "[@labelgroup2] @title"
+      ],
+      "volumeSet": "VS-Doujin"
+    },
+    {
+      "key": "builtin.doujinshi-b",
+      "displayName": "同人誌(B)",
+      "libraryTypeName": "同人誌",
+      "version": 1,
+      "labelGroups": [
+        { "index": 1, "name": "イベント" },
+        { "index": 2, "name": "サークル" },
+        { "index": 3, "name": "著者" },
+        { "index": 4, "name": "ジャンル" },
+        { "index": 5, "name": "その他" },
+        { "index": 6, "name": "プレイ", "autoAssign": false }
+      ],
+      "semanticBindings": {},
+      "folderLevels": {
+        "1": { "kind": "singleLabelGroup", "labelGroup": 2 }
+      },
+      "filenameFormats": [
+        "(@labelgroup1) [@labelgroup2 (@labelgroup3)] @title (@labelgroup4) [@labelgroup5]",
+        "(@labelgroup1) [@labelgroup2 (@labelgroup3)] @title (@labelgroup4)",
+        "(@labelgroup1) [@labelgroup2 (@labelgroup3)] @title [@labelgroup5]",
+        "(@labelgroup1) [@labelgroup2 (@labelgroup3)] @title",
+        "(@labelgroup1) [@labelgroup2] @title (@labelgroup4) [@labelgroup5]",
+        "(@labelgroup1) [@labelgroup2] @title (@labelgroup4)",
+        "(@labelgroup1) [@labelgroup2] @title [@labelgroup5]",
+        "(@labelgroup1) [@labelgroup2] @title",
+        "[@labelgroup2] @title (@labelgroup4) [@labelgroup5]",
+        "[@labelgroup2] @title (@labelgroup4)",
+        "[@labelgroup2] @title [@labelgroup5]",
+        "[@labelgroup2] @title"
+      ],
+      "volumeSet": "VS-Doujin"
+    },
+    {
+      "key": "builtin.doujin-cg-a",
+      "displayName": "同人CG(A)",
+      "libraryTypeName": "同人CG",
+      "version": 1,
+      "labelGroups": [
+        { "index": 1, "name": "サークル" },
+        { "index": 2, "name": "著者" },
+        { "index": 3, "name": "ジャンル" },
+        { "index": 4, "name": "その他" },
+        { "index": 5, "name": "プレイ", "autoAssign": false }
+      ],
+      "semanticBindings": {},
+      "folderLevels": {},
+      "filenameFormats": [
+        "(@librarytype) [@labelgroup1 (@labelgroup2)] @title (@labelgroup3) [@labelgroup4]",
+        "(@librarytype) [@labelgroup1 (@labelgroup2)] @title (@labelgroup3)",
+        "(@librarytype) [@labelgroup1 (@labelgroup2)] @title [@labelgroup4]",
+        "(@librarytype) [@labelgroup1 (@labelgroup2)] @title",
+        "(@librarytype) [@labelgroup1] @title (@labelgroup3) [@labelgroup4]",
+        "(@librarytype) [@labelgroup1] @title (@labelgroup3)",
+        "(@librarytype) [@labelgroup1] @title [@labelgroup4]",
+        "(@librarytype) [@labelgroup1] @title",
+        "[@labelgroup1 (@labelgroup2)] @title (@labelgroup3) [@labelgroup4]",
+        "[@labelgroup1 (@labelgroup2)] @title (@labelgroup3)",
+        "[@labelgroup1 (@labelgroup2)] @title [@labelgroup4]",
+        "[@labelgroup1 (@labelgroup2)] @title",
+        "[@labelgroup1] @title (@labelgroup3) [@labelgroup4]",
+        "[@labelgroup1] @title (@labelgroup3)",
+        "[@labelgroup1] @title [@labelgroup4]",
+        "[@labelgroup1] @title"
+      ],
+      "volumeSet": "VS-Doujin"
+    },
+    {
+      "key": "builtin.doujin-cg-b",
+      "displayName": "同人CG(B)",
+      "libraryTypeName": "同人CG",
+      "version": 1,
+      "labelGroups": [
+        { "index": 1, "name": "サークル" },
+        { "index": 2, "name": "著者" },
+        { "index": 3, "name": "ジャンル" },
+        { "index": 4, "name": "その他" },
+        { "index": 5, "name": "プレイ", "autoAssign": false }
+      ],
+      "semanticBindings": {},
+      "folderLevels": {
+        "1": { "kind": "singleLabelGroup", "labelGroup": 1 }
+      },
+      "filenameFormats": [
+        "(@librarytype) [@labelgroup1 (@labelgroup2)] @title (@labelgroup3) [@labelgroup4]",
+        "(@librarytype) [@labelgroup1 (@labelgroup2)] @title (@labelgroup3)",
+        "(@librarytype) [@labelgroup1 (@labelgroup2)] @title [@labelgroup4]",
+        "(@librarytype) [@labelgroup1 (@labelgroup2)] @title",
+        "(@librarytype) [@labelgroup1] @title (@labelgroup3) [@labelgroup4]",
+        "(@librarytype) [@labelgroup1] @title (@labelgroup3)",
+        "(@librarytype) [@labelgroup1] @title [@labelgroup4]",
+        "(@librarytype) [@labelgroup1] @title",
+        "[@labelgroup1 (@labelgroup2)] @title (@labelgroup3) [@labelgroup4]",
+        "[@labelgroup1 (@labelgroup2)] @title (@labelgroup3)",
+        "[@labelgroup1 (@labelgroup2)] @title [@labelgroup4]",
+        "[@labelgroup1 (@labelgroup2)] @title",
+        "[@labelgroup1] @title (@labelgroup3) [@labelgroup4]",
+        "[@labelgroup1] @title (@labelgroup3)",
+        "[@labelgroup1] @title [@labelgroup4]",
+        "[@labelgroup1] @title"
+      ],
+      "volumeSet": "VS-Doujin"
+    }
+  ]
+}

@@ -37,23 +37,33 @@ public enum VolumeMatcher {
             .map(\.element)
     }
 
-    /// タイトル末尾に限定した照合 [SE-02]。**登録順で最初に一致したもの**を返す [SE-21]。
+    /// タイトル末尾に限定した照合 [SE-02]。
+    ///
+    /// **末尾に届く一致のうち最長のものを採る。同じ長さなら登録順が先のもの** [SE-21]。
+    ///
+    /// 仕様書 §5.2 VM2-01 は「登録順に評価し最初にマッチしたものを採用する」と
+    /// していたが、それだけでは登録順に対して脆い [設計判断、2026-08]。
+    /// §5.4 の既定セットは `??巻` を `第??巻` より先に列挙しており、その順だと
+    /// `作品 第01巻` が `01巻` と読まれてシリーズ名が `作品 第` になる——実データの
+    /// 一般コミックは **94% が `第??巻`** なので実害が大きい。長い方を採れば、
+    /// ユーザーがパターンを追加した順番によらず正しく読める。登録順は同点の
+    /// 決着にのみ使う（SE-21 の趣旨はそこにある）。
     public static func matchAtEnd(_ chars: [Character],
                                   patterns: [CompiledVolumePattern]) -> VolumeMatch? {
         guard !chars.isEmpty else { return nil }
+        var best: VolumeMatch?
         for pattern in patterns {
-            // 末尾に届く一致だけを見る。開始位置は**左から**探す。
-            //
-            // 右から探すと `??` が最短の数字列を掴んでしまう——`作品 12巻` が
-            // `2巻`（巻数 2）と読まれる。左から探して最初に末尾へ届いたものが、
-            // そのパターンでの最長一致になる。
+            // 開始位置は**左から**探す。右から探すと `??` が最短の数字列を掴んで
+            // しまう——`作品 12巻` が `2巻`（巻数 2）と読まれる。左から探して
+            // 最初に末尾へ届いたものが、そのパターンでの最長一致になる。
             for start in 0..<chars.count {
-                if let m = match(pattern, in: chars, at: start), m.range.upperBound == chars.count {
-                    return m
-                }
+                guard let m = match(pattern, in: chars, at: start),
+                      m.range.upperBound == chars.count else { continue }
+                if m.length > (best?.length ?? 0) { best = m }   // 同長なら先に入った方を残す
+                break                                            // このパターンの最長は 1 つ
             }
         }
-        return nil
+        return best
     }
 
     // MARK: - 1 パターンの照合

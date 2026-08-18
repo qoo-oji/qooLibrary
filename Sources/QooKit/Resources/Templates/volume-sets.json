@@ -1,0 +1,46 @@
+{
+  "_comment": [
+    "巻数フォーマットセット [11.3 節][MT-02]。",
+    "メタ記号: ?? = 1 桁以上の数字（全角可、小数可） / <space> = 空白 1 個以上。",
+    "列挙順は優先順 [SE-21]。より長く・より限定的なパターンを先に置くこと",
+    "（`第??巻` を `??巻` より前に。実装は最長一致を優先するので順序に依存しないが、",
+    "順序が効く場面に備えて正しい順で書いておく）。",
+    "`<space>??`（空白＋数字）は既定に含めない。タイトル末尾の数字を巻数と誤認する",
+    "影響が大きいため、必要なユーザーが自分で追加する [05章 §5.4 の設計判断]。"
+  ],
+  "sets": {
+    "VS-Full": [
+      { "source": "第??巻" },
+      { "source": "??巻" },
+      { "source": "volume<space>??" }, { "source": "volume.??" }, { "source": "volume??" },
+      { "source": "Volume<space>??" }, { "source": "Volume.??" }, { "source": "Volume??" },
+      { "source": "vol<space>??" }, { "source": "vol.??" }, { "source": "vol??" },
+      { "source": "Vol<space>??" }, { "source": "Vol.??" }, { "source": "Vol??" },
+      { "source": "_v??" }, { "source": "_V??" }, { "source": "_??" },
+      { "source": "v??" }, { "source": "V??" },
+      { "source": "最終巻", "ordinalRank": 9999 },
+      { "source": "上巻", "ordinalRank": 1 },
+      { "source": "中巻", "ordinalRank": 2 },
+      { "source": "下巻", "ordinalRank": 3 }
+    ],
+    "VS-Doujin": [
+      { "source": "第??巻" },
+      { "source": "??巻" },
+      { "source": "volume<space>??" }, { "source": "volume.??" }, { "source": "volume??" },
+      { "source": "Volume<space>??" }, { "source": "Volume.??" }, { "source": "Volume??" },
+      { "source": "vol<space>??" }, { "source": "vol.??" }, { "source": "vol??" },
+      { "source": "Vol<space>??" }, { "source": "Vol.??" }, { "source": "Vol??" },
+      { "source": "総集編??", "ordinalRank": 10000 },
+      { "source": "総集編", "ordinalRank": 10000 },
+      { "source": "最終巻", "ordinalRank": 9999 },
+      { "source": "完結編", "ordinalRank": 4 },
+      { "source": "上巻", "ordinalRank": 1 },
+      { "source": "中巻", "ordinalRank": 2 },
+      { "source": "下巻", "ordinalRank": 3 },
+      { "source": "前編", "ordinalRank": 1 },
+      { "source": "中編", "ordinalRank": 2 },
+      { "source": "後編", "ordinalRank": 3 }
+    ],
+    "VS-None": []
+  }
+}
