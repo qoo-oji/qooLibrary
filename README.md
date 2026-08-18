@@ -115,3 +115,14 @@ Scripts/build-unrar.sh
 
 `Sources/` 配下は MIT（`LICENSE` 参照）。`ThirdParty/` 配下は個別ライセンス
 （`THIRD-PARTY-NOTICES.md` 参照）。
+
+## 開発時の設定（クローンごとに 1 回）
+
+```sh
+git config core.hooksPath Scripts/git-hooks
+```
+
+実蔵書の固有名詞がコミットへ入るのを止める pre-commit hook を有効にする
+[MT-28][MT-29][MT-31]。**この検査はコーパス（gitignore 対象）が手元にある
+環境でしか動かないため CI では走らない。** CI に頼れない以上、コミットの
+瞬間に機械的に止めるしかない。

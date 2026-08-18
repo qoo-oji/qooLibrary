@@ -1,0 +1,31 @@
+#!/bin/sh
+#
+# 実蔵書の固有名詞がコミットへ入るのを止める [MT-28][MT-29][MT-31]。
+#
+# **これが唯一の防壁である。** 漏洩検査はコーパス（`Tests/GoldenDataset/private/`、
+# gitignore 対象）が手元にある環境でしか動かないので CI では走らない。CI に頼れない
+# 以上、コミットの瞬間に機械的に止めるしかない。
+#
+# 「コミット前に手元で走らせること」と文書へ書くだけでは、**人間もエージェントも
+# 忘れる**——実際、実蔵書の固有名詞が公開リポジトリへ入って push されるまで
+# 誰も気づかなかった。文書を hook に変えるのがこの仕掛けの目的。
+#
+# 有効化（クローンごとに 1 回）:
+#     git config core.hooksPath Scripts/git-hooks
+#
+# 緊急時に迂回する場合は `git commit --no-verify`。**迂回したら、その理由と
+# 代わりに行った確認を必ず記録すること。**
+set -e
+
+repo_root=$(git rev-parse --show-toplevel)
+check="$repo_root/Scripts/check-private-data-leak.swift"
+
+[ -f "$check" ] || exit 0
+
+if ! swift "$check"; then
+    echo ""
+    echo "!! 実蔵書の固有名詞が含まれているためコミットを中止した。"
+    echo "   合成名へ置き換えてからやり直すこと。"
+    echo "   （どうしても迂回する場合は git commit --no-verify）"
+    exit 1
+fi
