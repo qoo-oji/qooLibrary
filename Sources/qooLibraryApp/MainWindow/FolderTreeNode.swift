@@ -26,6 +26,17 @@ public struct FolderTreeNode: Identifiable, Sendable, Hashable {
     /// 「接続解除」に変えるためだけに使う（Finder に合わせる）。
     public var isNetworkVolume: Bool = false
 
+    /// 直下にサブフォルダがあるか。`nil` は**判定していない／できない**
+    /// [ユーザー要望: 直下にファイルしか無いフォルダに三角マークを出さない]。
+    ///
+    /// ツリーはフォルダしか表示しないので、直下にサブフォルダが無ければ
+    /// 展開しても何も出ない——それでも三角が出るのは嘘である。`false` の
+    /// ときだけ三角を消し、**`nil`（不明）では今までどおり出す**: 誤って
+    /// 消すと「開けるはずのフォルダが開けない」行き止まりになるのに対し、
+    /// 誤って出しても「開いたら空だった」で済む。害が非対称なので、
+    /// 判定できないときは出す側へ倒す。
+    public var hasSubfolders: Bool?
+
     public enum Kind: Sendable, Hashable {
         case volume, temporary, library, plainFolder
     }
@@ -34,7 +45,8 @@ public struct FolderTreeNode: Identifiable, Sendable, Hashable {
         url: URL, displayName: String? = nil, kind: Kind,
         isOnline: Bool = true, isSymlink: Bool = false, isLocked: Bool = false,
         isEjectableVolume: Bool = false,
-        isNetworkVolume: Bool = false
+        isNetworkVolume: Bool = false,
+        hasSubfolders: Bool? = nil
     ) {
         self.id = url.standardizedFileURL.path
         self.url = url
@@ -45,6 +57,7 @@ public struct FolderTreeNode: Identifiable, Sendable, Hashable {
         self.isLocked = isLocked
         self.isEjectableVolume = isEjectableVolume
         self.isNetworkVolume = isNetworkVolume
+        self.hasSubfolders = hasSubfolders
     }
 
     /// 子ノードを列挙する。実 FileManager 呼び出しを伴う（読み取りのみ、
@@ -77,17 +90,35 @@ public struct FolderTreeNode: Identifiable, Sendable, Hashable {
             throw FolderTreeAccessError.denied(underlying: error)
         }
 
+        // 三角マークの出し分けに使う「直下にサブフォルダがあるか」を、
+        // 子の一覧を作るこの 1 回にまとめて調べる [`hasSubfolders` 参照]。
+        // **行が画面に出るたびに 1 行ずつ調べる形にはしない** — 一覧はこの
+        // `@State` にそのまま残るので、スクロールで行が作り直されても
+        // 調べ直しにならず、ちらつきも出ない（表示前に確定している）。
+        //
+        // **ネットワーク越しのときは調べない** [NV-100 と同じ判断]。1 行ごとに
+        // 往復が増える形は 1-16b で一貫して避けてきたもので、ここでも
+        // 「サブフォルダの数だけ往復する」ことになる。判定しないと `nil` に
+        // なり、三角は今までどおり出る（安全側）。マウント表の読み出しは
+        // ファイルシステムに一切問い合わせないので、この分岐自体は無料。
+        let probesSubfolders = !MountTable.current().isRemote(node.url)
+
         return contents
             .compactMap { url -> FolderTreeNode? in
                 let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .isUserImmutableKey])
                 guard values?.isDirectory == true else { return nil } // ツリーはフォルダのみ
                 // ライブラリ配下の .qooarchive はツリーに表示しない [LP-08][FA-11]
                 if url.lastPathComponent == ".qooarchive" { return nil }
+                let isSymlink = values?.isSymbolicLink ?? false
                 return FolderTreeNode(
                     url: url,
                     kind: node.kind == .volume ? .volume : node.kind,
-                    isSymlink: values?.isSymbolicLink ?? false,
-                    isLocked: values?.isUserImmutable ?? false
+                    isSymlink: isSymlink,
+                    isLocked: values?.isUserImmutable ?? false,
+                    // シンボリックリンクはそもそも展開できない [SL-05] ので
+                    // 中を読みに行かない。三角は `.disabled` で出したままにする
+                    // （リンクであることは行のアイコンのバッジで分かる）。
+                    hasSubfolders: (probesSubfolders && !isSymlink) ? DirectoryProbe.hasSubdirectory(at: url) : nil
                 )
             }
             .sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
@@ -103,12 +134,15 @@ public struct FolderTreeNode: Identifiable, Sendable, Hashable {
 
         return urls.map { url in
             let name = (try? url.resourceValues(forKeys: [.volumeLocalizedNameKey]))?.volumeLocalizedName
+            let isNetwork = VolumeEjector.isNetworkVolume(url) // [NV-96]
             return FolderTreeNode(
                 url: url,
                 displayName: name,
                 kind: .volume,
                 isEjectableVolume: VolumeEjector.isEjectable(url), // [1-16]
-                isNetworkVolume: VolumeEjector.isNetworkVolume(url) // [NV-96]
+                isNetworkVolume: isNetwork,
+                // ネットワーク越しは調べない（`children(of:)` と同じ判断）。
+                hasSubfolders: isNetwork ? nil : DirectoryProbe.hasSubdirectory(at: url)
             )
         }
         .sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }

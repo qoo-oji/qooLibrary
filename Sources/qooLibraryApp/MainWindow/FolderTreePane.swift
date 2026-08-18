@@ -723,8 +723,17 @@ struct FolderTreePane: View {
         // 1 回だけ写し、残りの解決と実体確認を並行に行う——応答しない
         // ボリュームがあっても待ちは上限 1 回分で収まる。
         let states = await RegisteredFolderStore.shared.states()
-        libraryEntries = Self.entries(from: states, kind: .library)
-        temporaryEntries = Self.entries(from: states, kind: .temporary)
+        // **`entries` はメインアクタの外で組み立てる** [NV6-02]。行の材料を
+        // 作るだけだった以前と違い、いまは登録ルートの直下も 1 回読む
+        // （三角マークの出し分け、`FolderTreeNode.hasSubfolders` 参照）。
+        let built = await FileIO.perform {
+            (
+                library: Self.entries(from: states, kind: .library),
+                temporary: Self.entries(from: states, kind: .temporary)
+            )
+        }
+        libraryEntries = built.library
+        temporaryEntries = built.temporary
         syncRegistrationParentWatches(states)
         // 「移動」メニュー用のキャッシュも同じタイミングで更新する [1-16]。
         // 登録の追加・解除・表示名変更・`SessionState.reloadToken` の変化は
@@ -770,7 +779,12 @@ struct FolderTreePane: View {
     /// **`node` を作るのは「入って辿れる」状態のときだけ** [RG3-06]。
     /// オフラインで作ってしまうと、行を展開しただけで未接続のボリュームを
     /// 読みに行く——ネットワーク越しならそこで接続タイムアウト分ブロックする。
-    private static func entries(
+    /// **`nonisolated` であること。** `FileIO.perform` の閉包から呼ぶので、
+    /// `View` から受け継いだ `@MainActor` のままだと隔離検査の表明が破れて
+    /// **起動直後に即死する**（`dispatch_assert_queue_fail` →
+    /// `EXC_BREAKPOINT`。実際に踏んだ。コンパイラは警告を出すので、
+    /// アプリ層の警告を放置しないこと）。
+    private nonisolated static func entries(
         from states: [RegisteredFolderState], kind: RegisteredFolderKind
     ) -> [RegisteredFolderEntry] {
         let nodeKind: FolderTreeNode.Kind = kind == .library ? .library : .temporary
@@ -779,8 +793,15 @@ struct FolderTreePane: View {
             .sorted { $0.folder.displayName.localizedStandardCompare($1.folder.displayName) == .orderedAscending }
             .map { state in
                 let node = state.status.allowsNavigation
-                    ? state.status.resolvedURL.map {
-                        FolderTreeNode(url: $0, displayName: state.folder.displayName, kind: nodeKind)
+                    ? state.status.resolvedURL.map { url in
+                        FolderTreeNode(
+                            url: url, displayName: state.folder.displayName, kind: nodeKind,
+                            // 登録ルートも三角マークの出し分けの対象
+                            // [ユーザー報告: 直下にファイルしか無いのに三角が出る]。
+                            // ネットワーク越しは調べない（`children(of:)` と同じ判断）。
+                            hasSubfolders: MountTable.current().isRemote(url)
+                                ? nil : DirectoryProbe.hasSubdirectory(at: url)
+                        )
                     }
                     : nil
                 return RegisteredFolderEntry(state: state, node: node)
@@ -1241,36 +1262,37 @@ private struct FolderTreeRow: View {
         return nil
     }
 
+    /// 右クリックメニューは全行に付ける [ユーザー要望: 中央ペインの
+    /// フォルダ用メニューに原則あわせる]。項目の出し分けは
+    /// `FolderTreeContextMenu` が `branch`（グループ）と `role`
+    /// （ルートか通常フォルダか）から判断する。
+    private var labelWithContextMenu: some View {
+        rowLabel.contextMenu {
+            FolderTreeContextMenu(context: menuContext, operations: operations, actions: menuActions)
+        }
+    }
+
     var body: some View {
-        DisclosureGroup(isExpanded: node.isSymlink ? .constant(false) : isExpanded) {
-            if volumeNotMounted {
-                VolumeNotMountedRow() // [1-17][SB-05]
-            } else if accessDenied {
-                AccessDeniedRow() // [SB-04][LP2-09]
-            } else if let children {
-                ForEach(children) { child in
-                    FolderTreeRow(
-                        node: child, expandedIDs: $expandedIDs, visibleIDs: $visibleIDs, selectedURL: selectedURL,
-                        branch: branch, role: .plainFolder, onSelect: onSelect,
-                        onDropFailure: onDropFailure,
-                        operations: operations, menuActions: menuActions,
-                        // 注記（警告の見た目）は根だけ、書き込みの可否は配下すべてへ。
-                        allowsWriting: allowsWriting
-                    )
-                }
+        Group {
+            if node.hasSubfolders == false {
+                // **直下にサブフォルダが無いと分かっている行には三角を出さない**
+                // [ユーザー報告: 登録したライブラリフォルダの直下にファイルしか
+                // 無いのに三角が出る]。ツリーはフォルダしか表示しないので、
+                // 開いても何も出ない三角は嘘である。`DisclosureGroup` は
+                // 中身の有無に関わらず必ず三角を描くため、素の行として描く。
+                //
+                // **`nil`（判定していない／できない）のときは従来どおり三角を
+                // 出す** — 誤って消すと「開けるはずのフォルダが開けない」
+                // 行き止まりになるのに対し、誤って出しても「開いたら空だった」
+                // で済む [`FolderTreeNode.hasSubfolders` 参照]。
+                // **先頭に余白を足さないこと。** `List` は三角の分の
+                // 溝を行の側で確保しており、`DisclosureGroup` でない行の
+                // ラベルも同じ位置から始まる（[実測] 同じ階層で、三角のある
+                // 行のラベルが x=920.0、素の行も余白なしで x=920.0。18pt
+                // 足した最初の版は 938.0 になり、その分だけ右へずれていた）。
+                labelWithContextMenu
             } else {
-                ProgressView()
-                    .controlSize(.small)
-            }
-        } label: {
-            // 右クリックメニューは全行に付ける [ユーザー要望: 中央ペインの
-            // フォルダ用メニューに原則あわせる]。以前は登録ルート行だけが
-            // 「表示名を変更…」「登録解除」を持ち、それ以外の行は
-            // 右クリックしても何も出なかった。項目の出し分けは
-            // `FolderTreeContextMenu` が `branch`（グループ）と `role`
-            // （ルートか通常フォルダか）から判断する。
-            rowLabel.contextMenu {
-                FolderTreeContextMenu(context: menuContext, operations: operations, actions: menuActions)
+                disclosureRow
             }
         }
         // **`.tag` は `DisclosureGroup` 自身に付ける（label ではない）。**
@@ -1385,6 +1407,36 @@ private struct FolderTreeRow: View {
             return .volumeNotMounted
         } catch {
             return .denied
+        }
+    }
+
+    /// サブフォルダを持つ（か、持つか分からない）行。**中身の有無に
+    /// 関わらず `DisclosureGroup` は必ず三角を描く**ので、三角を出さない
+    /// 行はこちらを通さない（`body` 参照）。
+    @ViewBuilder
+    private var disclosureRow: some View {
+        DisclosureGroup(isExpanded: node.isSymlink ? .constant(false) : isExpanded) {
+            if volumeNotMounted {
+                VolumeNotMountedRow() // [1-17][SB-05]
+            } else if accessDenied {
+                AccessDeniedRow() // [SB-04][LP2-09]
+            } else if let children {
+                ForEach(children) { child in
+                    FolderTreeRow(
+                        node: child, expandedIDs: $expandedIDs, visibleIDs: $visibleIDs, selectedURL: selectedURL,
+                        branch: branch, role: .plainFolder, onSelect: onSelect,
+                        onDropFailure: onDropFailure,
+                        operations: operations, menuActions: menuActions,
+                        // 注記（警告の見た目）は根だけ、書き込みの可否は配下すべてへ。
+                        allowsWriting: allowsWriting
+                    )
+                }
+            } else {
+                ProgressView()
+                    .controlSize(.small)
+            }
+        } label: {
+            labelWithContextMenu
         }
     }
 }
