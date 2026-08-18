@@ -16,6 +16,12 @@ public struct VolumeSetDefinition: Sendable, Codable, Hashable {
 
     private enum CodingKeys: String, CodingKey { case sets }
 
+    public init(sets: [String: [Entry]]) { self.sets = sets }
+
+    /// 巻数フォーマットセットを 1 つも持たない定義。読み込みに失敗した経路が
+    /// 「何も無い」を表すために使う（`nil` を配り歩くより取り違えが少ない）。
+    public static let empty = VolumeSetDefinition(sets: [:])
+
     /// 名前で引いて `VolumePattern` の列にする。列挙順が優先順になる [SE-21]。
     public func patterns(named name: String) -> [VolumePattern]? {
         guard let entries = sets[name] else { return nil }
@@ -159,7 +165,17 @@ public enum TemplateInstantiation {
             guard let level = Int(rawLevel) else { continue }
             switch spec.kind {
             case .none:
-                levels[level] = .none
+                // **`Assignment.none` と明示する。** 素の `.none` は Swift が
+                // `Optional.none` と解釈し、辞書への `nil` 代入＝**キー削除**に
+                // なる（コンパイラも警告する）。DB からの復元経路
+                // （`SQLiteLibraryRepository.settingsSnapshot`）は修飾ずみで
+                // キーを残すため、揃えないとテンプレート由来と DB 由来で
+                // 辞書の形が食い違う。現時点の唯一の読み手
+                // （`FolderLabelResolver.labelsFromPath`）は「キーが無い」も
+                // 「`.none`」も同じく読み飛ばすので挙動は変わらないが、
+                // 「その階層は明示的に割り当てない」[AL-03] と「設定されて
+                // いない」は別の意味であり、区別を失ってはならない。
+                levels[level] = FolderLevelMappingSpec.Assignment.none
             case .singleLabelGroup:
                 guard let group = spec.labelGroup else { continue }
                 levels[level] = .singleLabelGroup(index: group)

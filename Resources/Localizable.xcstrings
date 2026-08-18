@@ -4154,6 +4154,414 @@
         }
       }
     },
+    "library.disable.failed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The library could not be disabled."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリを無効にできませんでした。"
+          }
+        }
+      }
+    },
+    "library.disable.menuItem" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Disable Library Features"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリ機能を無効にする"
+          }
+        }
+      }
+    },
+    "library.enable.confirm" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有効にする"
+          }
+        }
+      }
+    },
+    "library.enable.explanation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose a library type for “%@”. qooLibrary reads file and folder names with this type's formats and assigns labels automatically."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」のライブラリタイプを選んでください。qooLibrary はこのタイプのフォーマットでファイル名・フォルダ名を読み取り、ラベルを自動で付けます。"
+          }
+        }
+      }
+    },
+    "library.enable.failed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The library could not be enabled."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリを有効にできませんでした。"
+          }
+        }
+      }
+    },
+    "library.enable.footnote" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Files are only read, never modified. You can change the type later without losing labels you set by hand."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ファイルは読み取るだけで、変更しません。タイプは後から変更でき、手動で付けたラベルは失われません。"
+          }
+        }
+      }
+    },
+    "library.enable.menuItem" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable as Library…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリとして有効にする…"
+          }
+        }
+      }
+    },
+    "library.enable.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable as Library"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリとして有効にする"
+          }
+        }
+      }
+    },
+    "library.enable.typeLabel" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Library Type"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリタイプ"
+          }
+        }
+      }
+    },
+    "library.rescan.menuItem" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rescan Now"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今すぐ再スキャン"
+          }
+        }
+      }
+    },
+    "library.scan.bookFoldersReleased" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d folder(s) are no longer treated as a single book because they now contain subfolders. The files are still there and their labels are kept."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d 件のフォルダにサブフォルダができたため、1 冊としての扱いをやめました。ファイルはそのままで、ラベルも保持しています。"
+          }
+        }
+      }
+    },
+    "library.scan.failed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The scan could not be completed."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スキャンを完了できませんでした。"
+          }
+        }
+      }
+    },
+    "library.scan.orphaned" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d item(s) are recorded in the library but could not be found on disk. Their labels and ratings are kept."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d 件がライブラリに記録されていますが、実体が見つかりませんでした。ラベルと評価は保持しています。"
+          }
+        }
+      }
+    },
+    "library.scan.progressTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scanning “%@”…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」をスキャンしています…"
+          }
+        }
+      }
+    },
+    "library.scan.reviewTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” needs your attention"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」に確認したい点があります"
+          }
+        }
+      }
+    },
+    "library.scan.unresolved" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d file name(s) did not match any format, so no labels were assigned."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d 件のファイル名がどのフォーマットにも一致せず、ラベルが付いていません。"
+          }
+        }
+      }
+    },
+    "library.unavailable" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Library features are unavailable."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリ機能を利用できません。"
+          }
+        }
+      }
+    },
+    "library.unavailable.hint" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "File management works as usual. Export diagnostics from the Help menu if this continues."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ファイル管理は通常どおり使えます。続くようならヘルプメニューから診断情報を書き出してください。"
+          }
+        }
+      }
+    },
+    "library.unavailable.migrationFailed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The library store could not be upgraded to the format this version expects."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリのデータベースを、このバージョンが必要とする形式へ更新できませんでした。"
+          }
+        }
+      }
+    },
+    "library.unavailable.openFailed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The library store could not be opened."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリのデータベースを開けませんでした。"
+          }
+        }
+      }
+    },
+    "library.unavailable.schemaTooNew" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The library store was created by a newer version of qooLibrary."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリのデータベースが、より新しいバージョンの qooLibrary で作られています。"
+          }
+        }
+      }
+    },
+    "library.unavailable.templates" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The built-in library type definitions could not be loaded."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "組み込みのライブラリタイプ定義を読み込めませんでした。"
+          }
+        }
+      }
+    },
+    "library.unregister.explanation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” is enabled as a library. Unregistering it also removes its library data."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」はライブラリとして有効になっています。登録を解除すると、ライブラリのデータも一緒に削除されます。"
+          }
+        }
+      }
+    },
+    "library.unregister.warning" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Labels, ratings and cover images you set by hand will be lost. The files themselves are not touched."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "手動で設定したラベル・評価・カバー画像は失われます。ファイル自体には手を加えません。"
+          }
+        }
+      }
+    },
     "mainWindow.createNewFolder" : {
       "extractionState" : "stale",
       "localizations" : {

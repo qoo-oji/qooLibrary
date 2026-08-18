@@ -90,6 +90,36 @@ public actor ScanEngine {
         }
 
         let rootURL = try root ?? resolveRoot(library)
+
+        // **根が本当にこのライブラリのものかを確かめる。**
+        //
+        // 上の `isOnline` は「唯一の砦」と書いてあるが、その値を更新する経路が
+        // 無い間は常に真で素通りする。しかも `resolveRoot` は保存済みのパス
+        // 文字列から URL を組み立てるだけで、実体の有無もボリュームの同一性も
+        // 見ていない。したがって砦は実質「列挙が throw すること」に依存して
+        // いた——偶然に頼った安全である。
+        //
+        // 危ないのは**同じマウントポイントに別のボリュームが載る**場合
+        // （macOS は `/Volumes/<名前>` を使い回す）。列挙は成功し、中身は
+        // 別物なので、**観測されなかった＝ライブラリ全件が孤立**になる。
+        // 外部ボリュームを抜き差ししただけでラベル紐づけを一括で失う事故
+        // [R-01][SB-05][ID-08] そのもの。
+        //
+        // ボリューム識別子で突き合わせればどちらの形も塞げる。取れない
+        // （ネットワーク等）場合は突き合わせを諦めて先へ進む——判定できない
+        // ことを理由に正当なスキャンを断るほうが害が大きい [NV3-01 と同じ判断]。
+        let rootIsSound = await FileIO.perform { () -> Bool in
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: rootURL.path, isDirectory: &isDirectory),
+                  isDirectory.boolValue else { return false }
+            guard let current = VolumeIdentity.identifier(for: rootURL) else { return true }
+            return current == library.volumeUUID
+        }
+        guard rootIsSound else {
+            summary.skipped = true
+            Log.scan.info("スキャンを見送る（根が無いか別のボリューム）: \(Log.redactable(library.displayName)) — \(Log.path(rootURL))")
+            return summary
+        }
         guard let settings = try await deps.libraries.settingsSnapshot(libraryID: library.id) else {
             summary.skipped = true
             return summary

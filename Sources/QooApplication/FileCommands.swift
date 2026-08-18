@@ -274,6 +274,17 @@ public final class DeletePermanentlyCommand: Command {
         let actuallyGone = doomed.filter { candidate in
             deletedPaths.contains { candidate.resolvedPath == $0 || candidate.resolvedPath.hasPrefix($0 + "/") }
         }
+        // **ライブラリ行も一緒に消す。**登録だけ解除すると、DB にライブラリ行と
+        // 数万件のレコードが取り残される——誰も片付けられず、同じ場所を再登録
+        // すると新しい UUID で 2 件目ができて古い行が永久に残る。
+        //
+        // ここでは確認を出さない。**実体は既に完全削除されている**ので、
+        // それを指すラベル・評価はもう意味を持たない（フォルダツリーからの
+        // 「登録解除」とは違い、利用者は取り消せない削除を承知で実行している）。
+        for candidate in actuallyGone
+        where LibraryServices.shared.isEnabled(registrationUUID: candidate.folder.id) {
+            try? await LibraryServices.shared.disable(registrationUUID: candidate.folder.id)
+        }
         await registeredFolders.unregisterAll(ids: actuallyGone.map(\.folder.id))
         unregisteredFolders = actuallyGone.map(\.folder)
 

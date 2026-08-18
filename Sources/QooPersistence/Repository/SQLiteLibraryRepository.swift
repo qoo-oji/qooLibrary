@@ -179,8 +179,14 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
     /// **以後の設定変更はライブラリ側に閉じる**——テンプレート本体には影響しない [LT-03]。
     public func register(_ registration: LibraryRegistration,
                          template: LibraryTypeTemplate) async throws -> LibraryID {
+        // **空集合で登録してはならない** [AL-11][IF-01]。`LibraryEnumerator` は
+        // 空を「すべてのファイルが対象」と読むため、空のまま登録すると初回
+        // スキャンが `.DS_Store` まで取り込む。要件定義書 11.4 節は
+        // 「対象拡張子は全テンプレート共通」と定めており、テンプレート側は
+        // この値を持たないので、ここで既定を入れるのが正しい場所になる。
+        // 以後の変更はライブラリ設定ウインドウ（2-12）が担う。
         let payload = LibrarySettingsPayload(
-            targetExtensions: [],
+            targetExtensions: AppDefaults.Library.targetExtensions.sorted(),
             imageExtensions: [],
             delimiters: .default,
             semanticBindings: template.semanticBindings,

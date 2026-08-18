@@ -1,3 +1,4 @@
+import QooApplication
 import QooInfrastructure
 import QooKit
 import SwiftUI
@@ -248,6 +249,9 @@ struct FolderTreeContextMenu: View {
             // 止めたい、はむしろテンポラリで起きやすい）。
             if context.role == .registeredRoot, let folder = context.registeredFolder {
                 Divider()
+                if context.group == .library {
+                    libraryFeatureItems(folder)
+                }
                 Toggle(
                     "folderTree.alwaysHideThumbnails",
                     isOn: Binding(
@@ -255,6 +259,39 @@ struct FolderTreeContextMenu: View {
                         set: { actions.setThumbnailsAlwaysHidden(folder, $0) }
                     )
                 )
+            }
+        }
+    }
+
+    /// ライブラリ機能の有効化・再スキャン・無効化 [RG-01][LT-03][SY-05]。
+    ///
+    /// **フェーズ 1 の登録フォルダとフェーズ 2 のライブラリは別物**［ユーザー判断］。
+    /// 登録しただけでは DB もラベルも持たず、ここで明示的に有効化して初めて
+    /// 走査の対象になる。起動時に全件を自動で有効化しないのは、ライブラリ
+    /// タイプを推測したまま実蔵書数千件をいきなり走査することになるため
+    /// ——1 件ずつ選ばせれば、使い捨てのボリュームで先に試せる。
+    ///
+    /// **オンラインのときだけ出す。** オフラインのまま有効化すると
+    /// `resolvedPath`/`volumeUUID` を実測できない [1-17]。`allowsWriting` は
+    /// 登録ルートでは「その根が `.online` か」そのものなので、判定を増やさず
+    /// これに乗る（ゴミ箱の中・未接続・消失・非対応 FS はすべて偽になる）。
+    @ViewBuilder
+    private func libraryFeatureItems(_ folder: RegisteredFolder) -> some View {
+        let visible = LibraryMenuVisibility.items(
+            isEnabled: actions.isLibraryEnabled(folder), isOnline: context.allowsWriting)
+        if visible.contains(.enable) {
+            Button("library.enable.menuItem", systemImage: "books.vertical") {
+                actions.enableLibrary(folder, context.url)
+            }
+        }
+        if visible.contains(.rescan) {
+            Button("library.rescan.menuItem", systemImage: "arrow.clockwise") {
+                actions.rescanLibrary(folder, context.url)
+            }
+        }
+        if visible.contains(.disable) {
+            Button("library.disable.menuItem", systemImage: "books.vertical.circle") {
+                actions.disableLibrary(folder)
             }
         }
     }
@@ -421,4 +458,13 @@ struct FolderTreeContextMenuActions {
     /// （`RegisteredFolderIndex` がまさにこの用途で 1-16 に作られている）。
     var isThumbnailsAlwaysHidden: (RegisteredFolder) -> Bool = { _ in false }
     var setThumbnailsAlwaysHidden: (RegisteredFolder, Bool) -> Void = { _, _ in }
+    /// この登録フォルダがライブラリとして有効か [フェーズ 2 の結線]。
+    ///
+    /// `isThumbnailsAlwaysHidden` と同じ理由で、メニューの組み立ては同期的で
+    /// `await` できないため `actor` からは読めない。メインアクタ上の
+    /// `LibraryServices`（`@Observable`）から同期的に読む。
+    var isLibraryEnabled: (RegisteredFolder) -> Bool = { _ in false }
+    var enableLibrary: (RegisteredFolder, URL) -> Void = { _, _ in }
+    var rescanLibrary: (RegisteredFolder, URL) -> Void = { _, _ in }
+    var disableLibrary: (RegisteredFolder) -> Void = { _ in }
 }

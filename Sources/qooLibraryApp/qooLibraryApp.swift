@@ -102,6 +102,21 @@ struct QooLibraryApp: App {
         Task {
             await DefaultCoverImageCache.shared.purgeOutdatedVersions()
         }
+        // ライブラリ機能の合成根 [フェーズ 2 の結線、`LibraryServices` 参照]。
+        // ストアを開き、リポジトリとスキャンエンジンを組み立てる。
+        //
+        // **開けなくてもアプリは起動し続ける**［設計判断］——qooLibrary は
+        // フェーズ 1 の時点でファイルマネージャーとして完結しているので、
+        // ライブラリ機能だけを畳んで残りを従来どおり使えるほうが害が小さい。
+        // 失敗は `LibraryServices.startupFailure` に残り、有効化を試みた
+        // ときに理由付きで提示される [ER-03]。
+        //
+        // **ここで走査は始めない。** 走査の対象になるのはユーザーが明示的に
+        // ライブラリとして有効化した登録フォルダだけで、有効化は
+        // `LibraryEnableAction` からしか起こらない。
+        Task { @MainActor in
+            await LibraryServices.shared.bootstrap()
+        }
         // [ER-01] エラー・通知の提示はこのコントローラ1箇所からのみ行う
         // （`NotificationRouterPresenterController` のコメント参照）。
         NotificationRouterPresenterController.shared.start()

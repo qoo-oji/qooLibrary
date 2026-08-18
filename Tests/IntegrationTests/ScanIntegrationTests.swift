@@ -330,3 +330,49 @@ struct ScanIntegrationTests {
         #expect(try await w.libraries.totalFileCount() == 1200)
     }
 }
+
+@Suite("スキャンの砦: 根の同一性 [R-01][SB-05][ID-08]", .serialized)
+struct ScanRootSanityTests {
+
+    /// **同じマウントポイントに別のボリュームが載った**場合。
+    ///
+    /// macOS は `/Volumes/<名前>` を使い回すので、外部ディスクを抜いて別の
+    /// ディスクを挿すと、パスは同じまま中身だけが別物になる。存在確認だけ
+    /// では列挙が成功してしまい、**観測されなかった＝ライブラリ全件が孤立**
+    /// になる——外部ボリュームを抜き差ししただけでラベル紐づけを一括で失う
+    /// 事故そのもの。
+    @Test("別のボリュームが同じ場所に載っていたら走査を見送る")
+    func aDifferentVolumeAtTheSamePathDoesNotOrphanEverything() async throws {
+        let w = try await ScanWorkspace()
+        try w.write("(同人誌) [サークル値0 (著者値0)] 作品タイトル0 第01巻 (ジャンル値0).cbz")
+        try w.write("(同人誌) [サークル値1 (著者値1)] 作品タイトル1.cbz")
+        #expect(try await w.scanFull().added == 2)
+
+        // 登録済みのボリューム識別子だけを別物にする。DB から見れば
+        // 「同じパスに別のボリュームが載っている」のと区別がつかない。
+        let id = w.libraryID.rawValue
+        try await w.database.writer.write { db in
+            try db.execute(sql: "UPDATE library SET volumeUUID = ? WHERE id = ?",
+                           arguments: ["VOLUME-THAT-IS-NOT-HERE", id])
+        }
+
+        let summary = try await w.scanFull()
+        #expect(summary.skipped, "ボリュームが一致しないなら走査を見送るべき")
+        #expect(summary.orphaned == 0, "別ボリュームを理由に全件を孤立にしてはならない")
+        #expect(try await w.rows().allSatisfy { $0.state != .orphaned })
+    }
+
+    @Test("根が消えていたら走査を見送る")
+    func aVanishedRootDoesNotOrphanEverything() async throws {
+        let w = try await ScanWorkspace()
+        try w.write("(同人誌) [サークル値0 (著者値0)] 作品タイトル0 第01巻 (ジャンル値0).cbz")
+        #expect(try await w.scanFull().added == 1)
+
+        try FileManager.default.removeItem(at: w.root)
+
+        let summary = try await w.scanFull()
+        #expect(summary.skipped)
+        #expect(summary.orphaned == 0)
+        #expect(try await w.rows().allSatisfy { $0.state != .orphaned })
+    }
+}

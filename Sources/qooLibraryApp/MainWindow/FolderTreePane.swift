@@ -397,7 +397,10 @@ struct FolderTreePane: View {
                         state: entry.state,
                         onRelocate: { presentRelocatePanel(for: entry.folder) },
                         onRevealInFinder: { operations.revealInFinder([$0]) },
-                        onUnregister: { unregisterFolder(entry.folder) }
+                        onUnregister: { unregisterFolder(entry.folder) },
+                        isLibraryEnabled: LibraryServices.shared
+                            .isEnabled(registrationUUID: entry.folder.id),
+                        onDisableLibrary: { disableLibrary(entry.folder) }
                     )
                 }
             }
@@ -467,7 +470,15 @@ struct FolderTreePane: View {
             // [DS-04] 状態はメインアクタ上のキャッシュから同期的に読み、
             // 書き込みだけ非同期でストアへ送ってからキャッシュを取り直す。
             isThumbnailsAlwaysHidden: { RegisteredFolderIndex.shared.hidesThumbnails(registeredFolderID: $0.id) },
-            setThumbnailsAlwaysHidden: { setThumbnailsAlwaysHidden($0, hidden: $1) }
+            setThumbnailsAlwaysHidden: { setThumbnailsAlwaysHidden($0, hidden: $1) },
+            // [フェーズ 2 の結線] ライブラリ機能。実処理は `LibraryEnableAction`
+            // に集約してある——フォルダツリーとメニューバーの両方から同じ実装を
+            // 呼ぶため（同じに見える操作に独立した経路を作ると、片方だけ直して
+            // 取り残す。1-12 のアプリ関連付けで実際に踏んだ形）。
+            isLibraryEnabled: { LibraryServices.shared.isEnabled(registrationUUID: $0.id) },
+            enableLibrary: { LibraryEnableAction.begin(folder: $0, url: $1, locale: locale) },
+            rescanLibrary: { LibraryEnableAction.rescan(folder: $0, url: $1, locale: locale) },
+            disableLibrary: { LibraryEnableAction.disable(folder: $0) }
         )
     }
 
@@ -625,9 +636,56 @@ struct FolderTreePane: View {
         }
     }
 
+    /// 登録解除 [RG-06 の簡易版]。
+    ///
+    /// **ライブラリとして有効なら、DB のライブラリ行も一緒に消す。**
+    /// 片方だけ消すと、登録は無いのにライブラリ行と数万件のレコードが
+    /// DB に取り残される——誰も片付けられず、同じフォルダを再登録すると
+    /// 新しい UUID で 2 件目ができて古い行が永久に残る。
+    ///
+    /// **消える前に必ず尋ねる。** `LibraryRepository.unregister` は
+    /// `keepLabels` をまだ見ずに連鎖削除するので、**手で付けた評価やラベルが
+    /// 黙って失われる**。ラベル保管庫 [RG-06][2-11] が入るまでは、せめて
+    /// 何が失われるかを伝えてから消す。
     private func unregisterFolder(_ folder: RegisteredFolder) {
+        guard LibraryServices.shared.isEnabled(registrationUUID: folder.id) else {
+            performUnregister(folder)
+            return
+        }
+        DialogWindowPresenter.shared.present(
+            title: String(localized: "folderTree.unregister", locale: locale)
+        ) { dismiss in
+            LibraryUnregisterConfirmationDialog(folderName: folder.displayName) {
+                dismiss()
+                performUnregister(folder, disablingLibrary: true)
+            }
+        }
+    }
+
+    /// ライブラリ機能だけを無効にする（登録フォルダは残す）。
+    private func disableLibrary(_ folder: RegisteredFolder) {
         Task {
             do {
+                try await LibraryServices.shared.disable(registrationUUID: folder.id)
+            } catch {
+                await NotificationRouter.shared.presentError(
+                    error, whatHappened: String(localized: "library.disable.failed", locale: locale)
+                )
+            }
+            await reloadRegisteredFolders()
+        }
+    }
+
+    private func performUnregister(_ folder: RegisteredFolder, disablingLibrary: Bool = false) {
+        Task {
+            do {
+                // **ライブラリを先に、登録解除を後に。** 逆にすると、
+                // 解除でセキュリティスコープが閉じたあとに DB を触ることになり、
+                // 失敗したときに「登録は消えたがライブラリ行は残る」という
+                // 一番片付けにくい状態を作る。
+                if disablingLibrary {
+                    try await LibraryServices.shared.disable(registrationUUID: folder.id)
+                }
                 try await RegisteredFolderStore.shared.unregister(folder.id)
             } catch {
                 // 保存失敗を握りつぶさない [ER-01、2026-08 既知の不具合の一掃]。
@@ -861,6 +919,14 @@ private struct DegradedRegisteredFolderRow: View {
     let onRelocate: () -> Void
     let onRevealInFinder: (URL) -> Void
     let onUnregister: () -> Void
+    /// この登録がライブラリとして有効か [フェーズ 2 の結線]。
+    ///
+    /// **縮退した行にも無効化を出すために要る。** この行型は
+    /// `FolderTreeContextMenu` を通らない別経路なので、出し分けの方針
+    /// （`LibraryMenuVisibility`）を共有しないと 2 つの行で食い違う
+    /// ——実機検証で「ボリュームを失うと無効化の手段が消える」形で実際に踏んだ。
+    let isLibraryEnabled: Bool
+    let onDisableLibrary: () -> Void
 
     /// `.offline` だけ薄くする。ゴミ箱・消失は「気づいてほしい」状態なので
     /// 薄めない——未接続は待てば戻る日常的な状態で、そちらこそ目立たない
@@ -928,6 +994,15 @@ private struct DegradedRegisteredFolderRow: View {
             }
             if case .missing = state.status {
                 Button("folderTree.relocateEllipsis", systemImage: "arrow.forward.folder") { onRelocate() }
+                Divider()
+            }
+            // 縮退した行は定義上オンラインではないので `isOnline: false`。
+            // 方針は `FolderTreeContextMenu` と同じ関数から引く。
+            if LibraryMenuVisibility.items(isEnabled: isLibraryEnabled, isOnline: false)
+                .contains(.disable) {
+                Button("library.disable.menuItem", systemImage: "books.vertical.circle") {
+                    onDisableLibrary()
+                }
                 Divider()
             }
             Button("folderTree.unregister", systemImage: "minus.circle") { onUnregister() }
