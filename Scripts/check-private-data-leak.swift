@@ -51,6 +51,12 @@ guard let corpusFiles = try? FileManager.default.contentsOfDirectory(
 struct Corpus: Decodable {
     struct Entry: Decodable { let relativePath: String; let isDirectory: Bool }
     let entries: [Entry]
+    /// **登録フォルダ自身の表示名**。`entries` は根からの相対パスなので、
+    /// **根の名前はどのエントリにも現れない**——ここを読まないと、
+    /// ライブラリ／テンポラリフォルダの名前が検査の死角に入る [MT-31]。
+    /// 実際、実在のフォルダ名が CLAUDE.md に 3 箇所残っているのを
+    /// この穴が見逃していた。
+    let libraryName: String
 }
 
 // MARK: - 文字の種別（誤検出を切るための境界判定に使う）
@@ -93,6 +99,12 @@ var entryCount = 0
 for file in corpusFiles where file.pathExtension == "json" {
     guard let data = try? Data(contentsOf: file),
           let corpus = try? JSONDecoder().decode(Corpus.self, from: data) else { continue }
+    // 登録フォルダ自身の名前 [MT-31]。フォルダ名も保護対象である
+    // ［ユーザー判断: ボリューム名・機材構成は許容するが、ファイル名と
+    // フォルダ名は許容できない］。
+    let libraryName = corpus.libraryName.precomposedStringWithCanonicalMapping
+    if libraryName.count >= 3 { nouns.insert(libraryName) }
+    addRuns(libraryName, into: &nouns)
     for entry in corpus.entries {
         let name = (entry.relativePath as NSString).lastPathComponent
         let stem = ((name as NSString).deletingPathExtension)
