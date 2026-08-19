@@ -6,7 +6,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値0",
+          "@author" : "著者0",
           "@title" : "作品タイトル0"
         },
         "formatIndex" : 0,
@@ -17,7 +17,7 @@
         }
       },
       "id" : "builtin.adult-comic-a.p1",
-      "input" : "(成年コミック) [著者値0] 作品タイトル0.cbz",
+      "input" : "(成年コミック) [著者0] 作品タイトル0.cbz",
       "kind" : "positive"
     },
     {
@@ -26,7 +26,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値1",
+          "@author" : "著者1",
           "@title" : "作品 タイトル 1"
         },
         "formatIndex" : 1,
@@ -37,7 +37,7 @@
         }
       },
       "id" : "builtin.adult-comic-a.p2",
-      "input" : "[著者値1] 作品 タイトル 1.cbz",
+      "input" : "[著者1] 作品 タイトル 1.cbz",
       "kind" : "positive"
     },
     {
@@ -46,7 +46,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値2",
+          "@author" : "著者2",
           "@title" : "作品タイトル2ー長音"
         },
         "formatIndex" : 0,
@@ -57,7 +57,7 @@
         }
       },
       "id" : "builtin.adult-comic-a.p3",
-      "input" : "(成年コミック) [著者値2] 作品タイトル2ー長音.cbz",
+      "input" : "(成年コミック) [著者2] 作品タイトル2ー長音.cbz",
       "kind" : "positive"
     },
     {
@@ -66,7 +66,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値3",
+          "@author" : "著者3",
           "@title" : "作品タイトル3"
         },
         "formatIndex" : 1,
@@ -77,7 +77,7 @@
         }
       },
       "id" : "builtin.adult-comic-a.p4",
-      "input" : "[著者値3] 作品タイトル3.cbz",
+      "input" : "[著者3] 作品タイトル3.cbz",
       "kind" : "positive"
     },
     {
@@ -86,7 +86,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値4",
+          "@author" : "著者4",
           "@title" : "サブタイトル付き作品4"
         },
         "formatIndex" : 0,
@@ -97,7 +97,7 @@
         }
       },
       "id" : "builtin.adult-comic-a.p5",
-      "input" : "(成年コミック) [著者値4] サブタイトル付き作品4.cbz",
+      "input" : "(成年コミック) [著者4] サブタイトル付き作品4.cbz",
       "kind" : "positive"
     },
     {
@@ -106,7 +106,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値5",
+          "@author" : "著者5",
           "@title" : "作品タイトル5"
         },
         "formatIndex" : 1,
@@ -117,7 +117,7 @@
         }
       },
       "id" : "builtin.adult-comic-a.p6",
-      "input" : "[著者値5] 作品タイトル5.cbz",
+      "input" : "[著者5] 作品タイトル5.cbz",
       "kind" : "positive"
     },
     {
@@ -126,7 +126,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値6",
+          "@author" : "著者6",
           "@title" : "作品 タイトル 6"
         },
         "formatIndex" : 0,
@@ -137,7 +137,7 @@
         }
       },
       "id" : "builtin.adult-comic-a.p7",
-      "input" : "(成年コミック) [著者値6] 作品 タイトル 6.cbz",
+      "input" : "(成年コミック) [著者6] 作品 タイトル 6.cbz",
       "kind" : "positive"
     },
     {
@@ -146,7 +146,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値7",
+          "@author" : "著者7",
           "@title" : "作品タイトル7ー長音"
         },
         "formatIndex" : 1,
@@ -157,7 +157,7 @@
         }
       },
       "id" : "builtin.adult-comic-a.p8",
-      "input" : "[著者値7] 作品タイトル7ー長音.cbz",
+      "input" : "[著者7] 作品タイトル7ー長音.cbz",
       "kind" : "positive"
     },
     {
@@ -166,7 +166,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値8",
+          "@author" : "著者8",
           "@title" : "作品タイトル8"
         },
         "formatIndex" : 0,
@@ -177,7 +177,7 @@
         }
       },
       "id" : "builtin.adult-comic-a.p9",
-      "input" : "(成年コミック) [著者値8] 作品タイトル8.cbz",
+      "input" : "(成年コミック) [著者8] 作品タイトル8.cbz",
       "kind" : "positive"
     },
     {
@@ -186,7 +186,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値9",
+          "@author" : "著者9",
           "@title" : "サブタイトル付き作品9"
         },
         "formatIndex" : 1,
@@ -197,7 +197,7 @@
         }
       },
       "id" : "builtin.adult-comic-a.p10",
-      "input" : "[著者値9] サブタイトル付き作品9.cbz",
+      "input" : "[著者9] サブタイトル付き作品9.cbz",
       "kind" : "positive"
     },
     {
@@ -206,7 +206,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値10",
+          "@author" : "著者10",
           "@title" : "作品タイトル10"
         },
         "formatIndex" : 0,
@@ -217,7 +217,7 @@
         }
       },
       "id" : "builtin.adult-comic-a.p11",
-      "input" : "(成年コミック) [著者値10] 作品タイトル10.cbz",
+      "input" : "(成年コミック) [著者10] 作品タイトル10.cbz",
       "kind" : "positive"
     },
     {
@@ -226,7 +226,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値11",
+          "@author" : "著者11",
           "@title" : "作品 タイトル 11"
         },
         "formatIndex" : 1,
@@ -237,7 +237,7 @@
         }
       },
       "id" : "builtin.adult-comic-a.p12",
-      "input" : "[著者値11] 作品 タイトル 11.cbz",
+      "input" : "[著者11] 作品 タイトル 11.cbz",
       "kind" : "positive"
     },
     {
@@ -246,7 +246,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値12",
+          "@author" : "著者12",
           "@title" : "作品タイトル12ー長音"
         },
         "formatIndex" : 0,
@@ -257,7 +257,7 @@
         }
       },
       "id" : "builtin.adult-comic-a.p13",
-      "input" : "(成年コミック) [著者値12] 作品タイトル12ー長音.cbz",
+      "input" : "(成年コミック) [著者12] 作品タイトル12ー長音.cbz",
       "kind" : "positive"
     },
     {
@@ -266,7 +266,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値13",
+          "@author" : "著者13",
           "@title" : "作品タイトル13"
         },
         "formatIndex" : 1,
@@ -277,7 +277,7 @@
         }
       },
       "id" : "builtin.adult-comic-a.p14",
-      "input" : "[著者値13] 作品タイトル13.cbz",
+      "input" : "[著者13] 作品タイトル13.cbz",
       "kind" : "positive"
     },
     {
@@ -286,7 +286,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値14",
+          "@author" : "著者14",
           "@title" : "サブタイトル付き作品14"
         },
         "formatIndex" : 0,
@@ -297,7 +297,7 @@
         }
       },
       "id" : "builtin.adult-comic-a.p15",
-      "input" : "(成年コミック) [著者値14] サブタイトル付き作品14.cbz",
+      "input" : "(成年コミック) [著者14] サブタイトル付き作品14.cbz",
       "kind" : "positive"
     },
     {
@@ -306,7 +306,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値15",
+          "@author" : "著者15",
           "@title" : "作品タイトル15"
         },
         "formatIndex" : 1,
@@ -317,7 +317,7 @@
         }
       },
       "id" : "builtin.adult-comic-a.p16",
-      "input" : "[著者値15] 作品タイトル15.cbz",
+      "input" : "[著者15] 作品タイトル15.cbz",
       "kind" : "positive"
     },
     {
@@ -326,7 +326,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値16",
+          "@author" : "著者16",
           "@title" : "作品 タイトル 16"
         },
         "formatIndex" : 0,
@@ -337,7 +337,7 @@
         }
       },
       "id" : "builtin.adult-comic-a.p17",
-      "input" : "(成年コミック) [著者値16] 作品 タイトル 16.cbz",
+      "input" : "(成年コミック) [著者16] 作品 タイトル 16.cbz",
       "kind" : "positive"
     },
     {
@@ -346,7 +346,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値17",
+          "@author" : "著者17",
           "@title" : "作品タイトル17ー長音"
         },
         "formatIndex" : 1,
@@ -357,7 +357,7 @@
         }
       },
       "id" : "builtin.adult-comic-a.p18",
-      "input" : "[著者値17] 作品タイトル17ー長音.cbz",
+      "input" : "[著者17] 作品タイトル17ー長音.cbz",
       "kind" : "positive"
     },
     {
@@ -366,7 +366,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値18",
+          "@author" : "著者18",
           "@title" : "作品タイトル18"
         },
         "formatIndex" : 0,
@@ -377,7 +377,7 @@
         }
       },
       "id" : "builtin.adult-comic-a.p19",
-      "input" : "(成年コミック) [著者値18] 作品タイトル18.cbz",
+      "input" : "(成年コミック) [著者18] 作品タイトル18.cbz",
       "kind" : "positive"
     },
     {
@@ -386,7 +386,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値19",
+          "@author" : "著者19",
           "@title" : "サブタイトル付き作品19"
         },
         "formatIndex" : 1,
@@ -397,7 +397,7 @@
         }
       },
       "id" : "builtin.adult-comic-a.p20",
-      "input" : "[著者値19] サブタイトル付き作品19.cbz",
+      "input" : "[著者19] サブタイトル付き作品19.cbz",
       "kind" : "positive"
     },
     {
@@ -406,7 +406,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値20",
+          "@author" : "著者20",
           "@title" : "作品タイトル20"
         },
         "formatIndex" : 0,
@@ -417,7 +417,7 @@
         }
       },
       "id" : "builtin.adult-comic-a.p21",
-      "input" : "(成年コミック) [著者値20] 作品タイトル20.cbz",
+      "input" : "(成年コミック) [著者20] 作品タイトル20.cbz",
       "kind" : "positive"
     },
     {
@@ -426,7 +426,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値21",
+          "@author" : "著者21",
           "@title" : "作品 タイトル 21"
         },
         "formatIndex" : 1,
@@ -437,7 +437,7 @@
         }
       },
       "id" : "builtin.adult-comic-a.p22",
-      "input" : "[著者値21] 作品 タイトル 21.cbz",
+      "input" : "[著者21] 作品 タイトル 21.cbz",
       "kind" : "positive"
     },
     {

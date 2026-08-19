@@ -84,14 +84,23 @@ extension EnvironmentValues {
 final class DialogWindowPresenter {
     static let shared = DialogWindowPresenter()
 
-    /// 表示中のダイアログ。`dismiss()` の宛先であり、二重提示の判定でもある。
+    /// 表示中のダイアログ。最後の要素が `dismiss()` の宛先。
     ///
-    /// **提示を予約する時点で立てる。** ウインドウを実際に作るのは次のループ
+    /// **スタックで持つ。** ダイアログの中からさらにダイアログを開きたい
+    /// ことがある——ライブラリ有効化ウインドウ（それ自体がモーダル）から
+    /// ファイル名フォーマットの編集を開く経路がそう。1 枚しか持たない
+    /// 造りだと、2 枚目の提示が黙って無視される［実機で発見: 編集ボタンを
+    /// 押しても何も起きなかった］。
+    private var stack: [NSViewController] = []
+
+    /// **提示を予約した時点で立てる。** ウインドウを実際に作るのは次のループ
     /// なので、あとから入る値だけで判定すると、続けて 2 回呼ばれたときに
     /// 両方が guard を通り、1 枚目を閉じた直後に 2 枚目が独りでに開く
     /// ［実機検証で発見: 確定して閉じたはずのダイアログが 1.4 秒後にまた現れた］。
-    private var isPresenting = false
-    private weak var current: NSViewController?
+    ///
+    /// 入れ子を許すようになっても**この防止は残す**——防ぎたいのは
+    /// 「まだ画面に出ていないものへ重ねる」ことであって、入れ子そのものではない。
+    private var isCreating = false
 
     private init() {}
 
@@ -111,11 +120,12 @@ final class DialogWindowPresenter {
         title: String,
         @ViewBuilder content: @escaping (DialogDismissAction) -> Content
     ) {
-        // 既に 1 枚出ている（か、出ようとしている）なら何もしない。
-        // アプリケーションモーダルなので本来ユーザー操作からは起こり得ないが、
-        // コード経路が増えたときにモーダルが入れ子になるのを構造的に防ぐ。
-        guard !isPresenting else { return }
-        isPresenting = true
+        // **生成待ちのものへは重ねない。** 直前の `present` がまだウインドウを
+        // 作っていない状態で 2 枚目を通すと、1 枚目を閉じた直後に 2 枚目が
+        // 独りでに開く（上記 `isCreating` の注記）。既に画面へ出ているものの
+        // 上へ重ねるのは正当な入れ子なので通す。
+        guard !isCreating else { return }
+        isCreating = true
 
         // **1 回分の実行を後ろへ回す。** メニュー項目やコンテキストメニューから
         // 呼ばれた場合、AppKit のメニュートラッキングが完全に終わってから
@@ -130,10 +140,10 @@ final class DialogWindowPresenter {
         title: String,
         content: (DialogDismissAction) -> Content
     ) {
+        defer { isCreating = false }
         guard let presenter = Self.presentingViewController() else {
             // 提示先のウインドウが無い（全ウインドウを閉じている等）。
-            // 出しようが無いので予約だけ解いて諦める。
-            isPresenting = false
+            // 出しようが無いので諦める。
             return
         }
 
@@ -175,7 +185,7 @@ final class DialogWindowPresenter {
             finish(controller)
         }
 
-        current = controller
+        stack.append(controller)
         presenter.presentAsModalWindow(controller)
     }
 
@@ -184,7 +194,7 @@ final class DialogWindowPresenter {
     /// **`presentingViewController?.dismiss(_:)` では閉じない** [実測]。
     /// 提示されている側の `dismiss(nil)` を呼ぶこと。
     private func dismissCurrent() {
-        guard let controller = current else { return }
+        guard let controller = stack.last else { return }
         // 先に状態を解く。ユーザー操作による閉じ方はすべてここを通るので、
         // これが後始末の主経路になる（`onDismissed` は保険）。
         finish(controller)
@@ -192,14 +202,18 @@ final class DialogWindowPresenter {
     }
 
     /// 後始末。同じダイアログについて何度呼ばれても 1 回だけ効く。
+    ///
+    /// **スタックの途中が閉じられることもある**（AppKit の都合で親ごと
+    /// 畳まれる等）ので、末尾決め打ちにせず同一性で取り除く。
     fileprivate func finish(_ controller: NSViewController) {
-        guard current === controller else { return }
-        current = nil
-        isPresenting = false
+        guard let index = stack.firstIndex(where: { $0 === controller }) else { return }
+        stack.remove(at: index)
     }
 
     /// 提示元。キーウインドウの内容ビューコントローラを使い、無ければ
     /// 表示中の適当なウインドウにフォールバックする。
+    /// 提示元。**キーウインドウを見るので、ダイアログが開いていればその上に
+    /// 重なる**——入れ子はこれで自然に成立する。
     private static func presentingViewController() -> NSViewController? {
         let window = NSApp.keyWindow
             ?? NSApp.mainWindow

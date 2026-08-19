@@ -4,6 +4,7 @@
 //  「テンプレートは雛形でしかない」を成立させる中心。テンプレートが与えるのは
 //  ここの初期値だけで、以後は自由に組み替えられる [LT-03]。
 //
+import AppKit
 import QooKit
 import SwiftUI
 
@@ -182,11 +183,28 @@ struct LibraryFilenameFormatsSettingsView: View {
             SettingsSectionHeader(title: "librarySettings.section.filenameFormats",
                                   explanation: "librarySettings.filenameFormats.explanation")
             formatList
-            if let index = selectedIndex {
-                Divider()
-                FormatEditor(source: $draft.filenameFormats[index].source,
-                             draft: draft,
-                             sample: $sampleFilename)
+        }
+    }
+
+    /// 選択中の 1 本を**別ダイアログ**で編集する [ユーザー指摘: プレビューに
+    /// 隠れて見つけづらい]。
+    ///
+    /// 以前は一覧の下にインラインで置いていたが、**縦に積む限りどこかで
+    /// 隠れる**——一覧の高さ・不備メッセージの行数・プレビューの取り分が
+    /// どれか変わるたびに押し出された（実機で 3 度作り直した）。編集を独立した
+    /// ウインドウへ出せば、予約語パレットもサンプル試行も一度に見える。
+    private func openEditor(for index: Int) {
+        let format = draft.filenameFormats[index]
+        let context = draft
+        DialogWindowPresenter.shared.present(
+            title: String(localized: "librarySettings.filenameFormats.editorTitle")
+        ) { _ in
+            FilenameFormatEditorDialog(source: format.source, draft: context) { edited in
+                // 添字ではなく id で引き直す。ダイアログを開いている間に
+                // 並べ替えや削除が起きても、別の行を書き換えない。
+                guard let current = draft.filenameFormats.firstIndex(where: { $0.id == format.id })
+                else { return }
+                draft.filenameFormats[current].source = edited
             }
         }
     }
@@ -227,6 +245,13 @@ struct LibraryFilenameFormatsSettingsView: View {
                         }
                     }
                     .tag(format.id)
+                    .contentShape(Rectangle())
+                    .onTapGesture(count: 2) {
+                        guard let index = draft.filenameFormats
+                            .firstIndex(where: { $0.id == format.id }) else { return }
+                        selectedFormatID = format.id
+                        openEditor(for: index)
+                    }
                 }
                 .onMove { source, destination in
                     draft.filenameFormats.move(fromOffsets: source, toOffset: destination)
@@ -240,12 +265,26 @@ struct LibraryFilenameFormatsSettingsView: View {
                     let new = FilenameFormatDraft(source: "")
                     draft.filenameFormats.append(new)
                     selectedFormatID = new.id
+                    // 空の行だけ増えても何もできない。そのまま編集へ入る。
+                    openEditor(for: draft.filenameFormats.count - 1)
                 }
                 ListEditButton(kind: .remove, help: "librarySettings.filenameFormats.remove") {
                     guard let index = selectedIndex else { return }
                     draft.filenameFormats.remove(at: index)
                     selectedFormatID = draft.filenameFormats.first?.id
                 }
+                .disabled(selectedIndex == nil)
+                // ダブルクリックでも開くが、**見えるボタンも要る**——
+                // 「編集する手段が見当たらない」という指摘の出発点がそこだった。
+                Button {
+                    guard let index = selectedIndex else { return }
+                    openEditor(for: index)
+                } label: {
+                    Image(systemName: "pencil")
+                        .frame(width: 20, height: 16)
+                        .contentShape(Rectangle())
+                }
+                .help(Text("librarySettings.filenameFormats.edit"))
                 .disabled(selectedIndex == nil)
             }
         }
@@ -268,10 +307,24 @@ struct LibraryFilenameFormatsSettingsView: View {
 /// **予約語パレットとサンプルプレビューを必ず添える。** 網羅的な文法説明は
 /// アプリ内に持たない方針 [HP-08] なので、「押せば入る」「打てば結果が出る」で
 /// 分かる形にしないと、そもそも書けない（要件定義書 R-04）。
-private struct FormatEditor: View {
-    @Binding var source: String
+struct FilenameFormatEditorDialog: View {
+    @Environment(\.locale) private var locale
+    @Environment(\.dialogDismiss) private var dismiss
+
+    /// **草案を直接書き換えない。** 手元で編集し、確定したときだけ返す
+    /// ——キャンセルで元に戻せる。
+    @State private var source: String
+    /// サンプルはダイアログ 1 回ぶん。開き直せば消える（打ち直しの手間より、
+    /// 前回の入力が残っている方が紛らわしい場面が多い）。
+    @State private var sample: String = ""
     let draft: LibrarySettingsDraft
-    @Binding var sample: String
+    let onCommit: (String) -> Void
+
+    init(source: String, draft: LibrarySettingsDraft, onCommit: @escaping (String) -> Void) {
+        _source = State(initialValue: source)
+        self.draft = draft
+        self.onCommit = onCommit
+    }
 
     private var compileFailure: String? {
         guard !source.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
@@ -284,9 +337,21 @@ private struct FormatEditor: View {
     }
 
     var body: some View {
+        DialogScaffold(
+            width: 560,
+            confirm: DialogButton(title: String(localized: "common.ok", locale: locale)) {
+                onCommit(source)
+                dismiss()
+            },
+            cancel: DialogButton(title: String(localized: "common.cancel", locale: locale),
+                                 role: .cancel) { dismiss() }
+        ) {
+            editorBody
+        }
+    }
+
+    private var editorBody: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.m) {
-            Text("librarySettings.filenameFormats.editing")
-                .font(.system(size: Tokens.fontSize.body, weight: .medium))
             TextField("", text: $source)
                 .labelsHidden()
                 .font(.system(size: Tokens.fontSize.body, design: .monospaced))
@@ -306,6 +371,29 @@ private struct FormatEditor: View {
     }
 
     // [HP-01][HP-02] ラベルグループに紐づく語には現在の名称を併記する。
+    /// パレットの予約語を挿し込む [ユーザー指摘: 挿入した予約語の前に
+    /// スペースが入る]。
+    ///
+    /// **スペースを勝手に足さない。** 以前は「直前がスペースでなければ 1 つ
+    /// 足す」造りだったが、`(@librarytype)` のように**括弧の直後へ置きたい**
+    /// 場合に `( @librarytype)` となって邪魔になる——実際に書きたい形は
+    /// プリセットを見れば分かるとおり括弧に密着したものが多い。
+    ///
+    /// **カーソル位置へ挿す。** 末尾へ足す造りだと、書き終えたフォーマットの
+    /// 途中に 1 つ足したいときに打ち直しになる。フィールドエディタが取れれば
+    /// そこへ、取れなければ末尾へ（`InlineRenameSupport` と同じ経路）。
+    private func insertReservedWord(_ word: String) {
+        guard let editor = NSApp.keyWindow?.firstResponder as? NSTextView else {
+            source += word
+            return
+        }
+        // フィールドエディタへ挿すと、`NSTextField` の変更通知を経由して
+        // SwiftUI の束縛にも伝わる。伝わらなかった場合に備えて、挿入後の
+        // 文字列で束縛を上書きしておく（二重に入ることはない——同じ値になる）。
+        editor.insertText(word, replacementRange: editor.selectedRange())
+        source = editor.string
+    }
+
     private var reservedWordPalette: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
             Text("librarySettings.filenameFormats.palette")
@@ -314,7 +402,7 @@ private struct FormatEditor: View {
             FlowRow(spacing: Tokens.spacing.xs) {
                 ForEach(paletteEntries, id: \.word) { entry in
                     Button {
-                        source += (source.isEmpty || source.hasSuffix(" ") ? "" : " ") + entry.word
+                        insertReservedWord(entry.word)
                     } label: {
                         VStack(spacing: 0) {
                             Text(verbatim: entry.word)
@@ -459,8 +547,12 @@ struct FormatMatchPreview: View {
     static func label(for field: FieldRef, draft: LibrarySettingsDraft) -> String {
         switch field {
         case .title:       String(localized: "librarySettings.word.title")
-        case .series:      "@series"
-        case .author:      "@author"
+        // **予約語の綴りではなく訳語を出す。** `@author` と書くと、
+        // 意味束縛でラベルにも流れたとき「@author: 著者値A ・ 著者: 著者値A」と
+        // 並び、同じ値が 2 回出ている理由が読み取れない。訳語なら
+        // 「著者名（＝ファイルの属性）」と「著者（＝ラベル）」の違いが分かる。
+        case .series:      String(localized: "librarySettings.word.series")
+        case .author:      String(localized: "librarySettings.word.author")
         case .volume:      String(localized: "librarySettings.word.volume")
         case .libraryType: String(localized: "librarySettings.word.libraryType")
         case .libraryName: String(localized: "librarySettings.word.libraryName")

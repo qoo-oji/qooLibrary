@@ -6,7 +6,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値0",
+          "@author" : "著者0",
           "@title" : "作品タイトル0 第01巻"
         },
         "formatIndex" : 0,
@@ -20,7 +20,7 @@
         }
       },
       "id" : "builtin.general-comic-b.p1",
-      "input" : "(一般コミック) [著者値0] 作品タイトル0 第01巻.cbz",
+      "input" : "(一般コミック) [著者0] 作品タイトル0 第01巻.cbz",
       "kind" : "positive"
     },
     {
@@ -29,7 +29,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値1",
+          "@author" : "著者1",
           "@title" : "作品 タイトル 1 vol.2"
         },
         "formatIndex" : 1,
@@ -43,7 +43,7 @@
         }
       },
       "id" : "builtin.general-comic-b.p2",
-      "input" : "[著者値1] 作品 タイトル 1 vol.2.cbz",
+      "input" : "[著者1] 作品 タイトル 1 vol.2.cbz",
       "kind" : "positive"
     },
     {
@@ -73,7 +73,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値3",
+          "@author" : "著者3",
           "@title" : "作品タイトル3"
         },
         "formatIndex" : 0,
@@ -84,7 +84,7 @@
         }
       },
       "id" : "builtin.general-comic-b.p4",
-      "input" : "(一般コミック) [著者値3] 作品タイトル3.cbz",
+      "input" : "(一般コミック) [著者3] 作品タイトル3.cbz",
       "kind" : "positive"
     },
     {
@@ -93,7 +93,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値4",
+          "@author" : "著者4",
           "@title" : "サブタイトル付き作品4 第05巻"
         },
         "formatIndex" : 1,
@@ -107,7 +107,7 @@
         }
       },
       "id" : "builtin.general-comic-b.p5",
-      "input" : "[著者値4] サブタイトル付き作品4 第05巻.cbz",
+      "input" : "[著者4] サブタイトル付き作品4 第05巻.cbz",
       "kind" : "positive"
     },
     {
@@ -138,7 +138,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値6",
+          "@author" : "著者6",
           "@title" : "作品 タイトル 6 上巻"
         },
         "formatIndex" : 0,
@@ -151,7 +151,7 @@
         }
       },
       "id" : "builtin.general-comic-b.p7",
-      "input" : "(一般コミック) [著者値6] 作品 タイトル 6 上巻.cbz",
+      "input" : "(一般コミック) [著者6] 作品 タイトル 6 上巻.cbz",
       "kind" : "positive"
     },
     {
@@ -160,7 +160,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値7",
+          "@author" : "著者7",
           "@title" : "作品タイトル7ー長音"
         },
         "formatIndex" : 1,
@@ -171,7 +171,7 @@
         }
       },
       "id" : "builtin.general-comic-b.p8",
-      "input" : "[著者値7] 作品タイトル7ー長音.cbz",
+      "input" : "[著者7] 作品タイトル7ー長音.cbz",
       "kind" : "positive"
     },
     {
@@ -202,7 +202,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値9",
+          "@author" : "著者9",
           "@title" : "サブタイトル付き作品9 vol.10"
         },
         "formatIndex" : 0,
@@ -216,7 +216,7 @@
         }
       },
       "id" : "builtin.general-comic-b.p10",
-      "input" : "(一般コミック) [著者値9] サブタイトル付き作品9 vol.10.cbz",
+      "input" : "(一般コミック) [著者9] サブタイトル付き作品9 vol.10.cbz",
       "kind" : "positive"
     },
     {
@@ -225,7 +225,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値10",
+          "@author" : "著者10",
           "@title" : "作品タイトル10 上巻"
         },
         "formatIndex" : 1,
@@ -238,7 +238,7 @@
         }
       },
       "id" : "builtin.general-comic-b.p11",
-      "input" : "[著者値10] 作品タイトル10 上巻.cbz",
+      "input" : "[著者10] 作品タイトル10 上巻.cbz",
       "kind" : "positive"
     },
     {
@@ -266,7 +266,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値12",
+          "@author" : "著者12",
           "@title" : "作品タイトル12ー長音 第13巻"
         },
         "formatIndex" : 0,
@@ -280,7 +280,7 @@
         }
       },
       "id" : "builtin.general-comic-b.p13",
-      "input" : "(一般コミック) [著者値12] 作品タイトル12ー長音 第13巻.cbz",
+      "input" : "(一般コミック) [著者12] 作品タイトル12ー長音 第13巻.cbz",
       "kind" : "positive"
     },
     {
@@ -289,7 +289,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値13",
+          "@author" : "著者13",
           "@title" : "作品タイトル13 vol.14"
         },
         "formatIndex" : 1,
@@ -303,7 +303,7 @@
         }
       },
       "id" : "builtin.general-comic-b.p14",
-      "input" : "[著者値13] 作品タイトル13 vol.14.cbz",
+      "input" : "[著者13] 作品タイトル13 vol.14.cbz",
       "kind" : "positive"
     },
     {
@@ -333,7 +333,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値15",
+          "@author" : "著者15",
           "@title" : "作品タイトル15"
         },
         "formatIndex" : 0,
@@ -344,7 +344,7 @@
         }
       },
       "id" : "builtin.general-comic-b.p16",
-      "input" : "(一般コミック) [著者値15] 作品タイトル15.cbz",
+      "input" : "(一般コミック) [著者15] 作品タイトル15.cbz",
       "kind" : "positive"
     },
     {
@@ -353,7 +353,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値16",
+          "@author" : "著者16",
           "@title" : "作品 タイトル 16 第17巻"
         },
         "formatIndex" : 1,
@@ -367,7 +367,7 @@
         }
       },
       "id" : "builtin.general-comic-b.p17",
-      "input" : "[著者値16] 作品 タイトル 16 第17巻.cbz",
+      "input" : "[著者16] 作品 タイトル 16 第17巻.cbz",
       "kind" : "positive"
     },
     {
@@ -398,7 +398,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値18",
+          "@author" : "著者18",
           "@title" : "作品タイトル18 上巻"
         },
         "formatIndex" : 0,
@@ -411,7 +411,7 @@
         }
       },
       "id" : "builtin.general-comic-b.p19",
-      "input" : "(一般コミック) [著者値18] 作品タイトル18 上巻.cbz",
+      "input" : "(一般コミック) [著者18] 作品タイトル18 上巻.cbz",
       "kind" : "positive"
     },
     {
@@ -420,7 +420,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値19",
+          "@author" : "著者19",
           "@title" : "サブタイトル付き作品19"
         },
         "formatIndex" : 1,
@@ -431,7 +431,7 @@
         }
       },
       "id" : "builtin.general-comic-b.p20",
-      "input" : "[著者値19] サブタイトル付き作品19.cbz",
+      "input" : "[著者19] サブタイトル付き作品19.cbz",
       "kind" : "positive"
     },
     {
@@ -462,7 +462,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "著者値21",
+          "@author" : "著者21",
           "@title" : "作品 タイトル 21 vol.22"
         },
         "formatIndex" : 0,
@@ -476,7 +476,7 @@
         }
       },
       "id" : "builtin.general-comic-b.p22",
-      "input" : "(一般コミック) [著者値21] 作品 タイトル 21 vol.22.cbz",
+      "input" : "(一般コミック) [著者21] 作品 タイトル 21 vol.22.cbz",
       "kind" : "positive"
     },
     {

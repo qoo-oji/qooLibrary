@@ -5514,6 +5514,23 @@
         }
       }
     },
+    "librarySettings.filenameFormats.edit" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "編集"
+          }
+        }
+      }
+    },
     "librarySettings.filenameFormats.editing" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -5527,6 +5544,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "選択中のフォーマット"
+          }
+        }
+      }
+    },
+    "librarySettings.filenameFormats.editorTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit Filename Format"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ファイル名フォーマットを編集"
           }
         }
       }
@@ -6615,6 +6649,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ライブラリの設定"
+          }
+        }
+      }
+    },
+    "librarySettings.word.author" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Author"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "著者名"
           }
         }
       }

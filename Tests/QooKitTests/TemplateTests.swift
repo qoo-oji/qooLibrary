@@ -61,8 +61,12 @@ struct BuiltInTemplateTests {
         guard case .format(let f) = s.folderLevelAssignments[1] else {
             Issue.record("第1階層がフォーマット割り当てでない"); return
         }
-        #expect(f.usedFields == [.labelGroup(1), .labelGroup(2)])
+        // 著者は `@author` で取り、意味束縛で著者グループへ流す [RW-13]
+        // ——`authorName` 列にも入るようにするため（束縛が無いと、
+        // `@author` で取った値はどのラベルグループにも付かない）。
+        #expect(f.usedFields == [.author, .labelGroup(2)])
         #expect(s.semanticBindings[.series] == 2)          // @series → シリーズ [SE-06]
+        #expect(s.semanticBindings[.author] == 1)          // @author → 著者 [RW-13]
     }
 
     @Test("VS-None のライブラリでは巻数を抽出しない [成年コミック]")

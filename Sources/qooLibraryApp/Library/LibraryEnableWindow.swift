@@ -38,7 +38,7 @@ struct LibraryEnableView: View {
             Divider()
             footer
         }
-        .frame(width: 980, height: 700)
+        .frame(width: 980, height: 860)
         .task { await model.loadSamples() }
     }
 
@@ -131,21 +131,41 @@ struct LibraryEnableView: View {
 
     // MARK: - 右: 編集とプレビュー
 
+    /// 編集側の実測高さ [ユーザー指摘: まだかなりの空きスペースがある]。
+    /// **固定値では必ずどれかのセクションが余る**——中身の量がセクションごとに
+    /// 違い、しかもラベルグループやフォーマットは件数で変わる。
+    @State private var editorContentHeight: CGFloat = 300
+
     private var detailPane: some View {
-        // **編集側を広く取る。** ここが狭いと、一覧の下にある編集欄が
-        // スクロールの外へ出て「編集する手段が見当たらない」ことになる
-        // （実機で報告された）。プレビューは 3 行も見えれば傾向が掴めるので、
-        // 既定の配り方は編集側へ寄せる（分割線で変えられる）。
+        // **編集側は中身のぶんだけ取り、残りをプレビューへ回す。**
+        // 固定値で上限を決めると、セクションごとに中身の量が違うぶん
+        // どれかが必ず余る——実機で「まだかなりの空きスペースがある」と
+        // 指摘された。実測して縮め、多すぎるときだけ上限で止める。
         VSplitView {
             ScrollView {
                 sectionEditor
                     .padding(Tokens.spacing.l)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    // 測定そのものがレイアウトへ影響しないよう `background` に置く。
+                    .background(
+                        GeometryReader { geo in
+                            Color.clear
+                                .onAppear { editorContentHeight = geo.size.height }
+                                .onChange(of: geo.size.height) { _, new in
+                                    editorContentHeight = new
+                                }
+                        }
+                    )
             }
-            .frame(minHeight: 340, idealHeight: 420)
+            .frame(minHeight: min(editorContentHeight, 180),
+                   idealHeight: min(editorContentHeight, 460),
+                   maxHeight: min(editorContentHeight, 460))
 
+            // **残りは全部プレビューへ** [ユーザー要望: 表示できるプレビューを
+            // 増やす]。ここが「その選択で何がどう変わるか」を答える場所なので、
+            // 数行しか見えないと傾向が掴めない。
             LibraryEnablePreviewPane(model: model)
-                .frame(minHeight: 150, idealHeight: 190)
+                .frame(minHeight: 220, maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity)
     }
@@ -307,8 +327,11 @@ struct LibraryEnablePreviewPane: View {
     private var itemList: some View {
         // **未解決が先頭に来る**（`LibraryPreview.run` が並べ替え済み）。
         // 調整が要るのはそこなので、探させない。
+        // 行の余白を詰めて件数を稼ぐ [ユーザー要望]。1 件 2 行（ファイル名と
+        // 分解）は変えない——分解が見えないと「どう解釈されたか」が分からず、
+        // 件数だけ増やしても意味が無い。
         List(model.preview.items) { item in
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: Tokens.spacing.xs) {
                     Image(systemName: icon(for: item))
                         .foregroundStyle(color(for: item))
@@ -328,9 +351,11 @@ struct LibraryEnablePreviewPane: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .padding(.vertical, 1)
+            .padding(.vertical, 0)
+            .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
         }
         .listStyle(.inset)
+        .environment(\.defaultMinListRowHeight, 8)
     }
 
     private func icon(for item: LibraryPreview.Item) -> String {

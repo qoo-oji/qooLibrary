@@ -24,12 +24,13 @@
         }
       ],
       "semanticBindings": {
-        "@series": 2
+        "@series": 2,
+        "@author": 1
       },
       "folderLevels": {},
       "filenameFormats": [
-        "(@librarytype) [@labelgroup1] @title",
-        "[@labelgroup1] @title"
+        "(@librarytype) [@author] @title",
+        "[@author] @title"
       ],
       "volumeSet": "VS-Full"
     },
@@ -49,12 +50,13 @@
         }
       ],
       "semanticBindings": {
-        "@series": 2
+        "@series": 2,
+        "@author": 1
       },
       "folderLevels": {
         "1": {
           "kind": "format",
-          "format": "[@labelgroup1] @labelgroup2"
+          "format": "[@author] @labelgroup2"
         },
         "2": {
           "kind": "format",
@@ -62,8 +64,8 @@
         }
       },
       "filenameFormats": [
-        "(@librarytype) [@labelgroup1] @title",
-        "[@labelgroup1] @title",
+        "(@librarytype) [@author] @title",
+        "[@author] @title",
         "@title"
       ],
       "volumeSet": "VS-Full"
@@ -84,11 +86,13 @@
           "autoAssign": false
         }
       ],
-      "semanticBindings": {},
+      "semanticBindings": {
+        "@author": 1
+      },
       "folderLevels": {},
       "filenameFormats": [
-        "(@librarytype) [@labelgroup1] @title",
-        "[@labelgroup1] @title"
+        "(@librarytype) [@author] @title",
+        "[@author] @title"
       ],
       "volumeSet": "VS-None"
     },
@@ -108,7 +112,9 @@
           "autoAssign": false
         }
       ],
-      "semanticBindings": {},
+      "semanticBindings": {
+        "@author": 1
+      },
       "folderLevels": {
         "1": {
           "kind": "singleLabelGroup",
@@ -116,8 +122,8 @@
         }
       },
       "filenameFormats": [
-        "(@librarytype) [@labelgroup1] @title",
-        "[@labelgroup1] @title",
+        "(@librarytype) [@author] @title",
+        "[@author] @title",
         "@title"
       ],
       "volumeSet": "VS-None"
@@ -154,21 +160,23 @@
           "autoAssign": false
         }
       ],
-      "semanticBindings": {},
+      "semanticBindings": {
+        "@author": 3
+      },
       "folderLevels": {},
       "filenameFormats": [
-        "(@librarytype) [@labelgroup2 (@labelgroup3)] @title (@labelgroup4) [@labelgroup5]",
-        "(@librarytype) [@labelgroup2 (@labelgroup3)] @title (@labelgroup4)",
-        "(@librarytype) [@labelgroup2 (@labelgroup3)] @title [@labelgroup5]",
-        "(@librarytype) [@labelgroup2 (@labelgroup3)] @title",
+        "(@librarytype) [@labelgroup2 (@author)] @title (@labelgroup4) [@labelgroup5]",
+        "(@librarytype) [@labelgroup2 (@author)] @title (@labelgroup4)",
+        "(@librarytype) [@labelgroup2 (@author)] @title [@labelgroup5]",
+        "(@librarytype) [@labelgroup2 (@author)] @title",
         "(@librarytype) [@labelgroup2] @title (@labelgroup4) [@labelgroup5]",
         "(@librarytype) [@labelgroup2] @title (@labelgroup4)",
         "(@librarytype) [@labelgroup2] @title [@labelgroup5]",
         "(@librarytype) [@labelgroup2] @title",
-        "(@labelgroup1) [@labelgroup2 (@labelgroup3)] @title (@labelgroup4) [@labelgroup5]",
-        "(@labelgroup1) [@labelgroup2 (@labelgroup3)] @title (@labelgroup4)",
-        "(@labelgroup1) [@labelgroup2 (@labelgroup3)] @title [@labelgroup5]",
-        "(@labelgroup1) [@labelgroup2 (@labelgroup3)] @title",
+        "(@labelgroup1) [@labelgroup2 (@author)] @title (@labelgroup4) [@labelgroup5]",
+        "(@labelgroup1) [@labelgroup2 (@author)] @title (@labelgroup4)",
+        "(@labelgroup1) [@labelgroup2 (@author)] @title [@labelgroup5]",
+        "(@labelgroup1) [@labelgroup2 (@author)] @title",
         "(@labelgroup1) [@labelgroup2] @title (@labelgroup4) [@labelgroup5]",
         "(@labelgroup1) [@labelgroup2] @title (@labelgroup4)",
         "(@labelgroup1) [@labelgroup2] @title [@labelgroup5]",
@@ -212,7 +220,9 @@
           "autoAssign": false
         }
       ],
-      "semanticBindings": {},
+      "semanticBindings": {
+        "@author": 3
+      },
       "folderLevels": {
         "1": {
           "kind": "singleLabelGroup",
@@ -220,18 +230,18 @@
         }
       },
       "filenameFormats": [
-        "(@librarytype) [@labelgroup2 (@labelgroup3)] @title (@labelgroup4) [@labelgroup5]",
-        "(@librarytype) [@labelgroup2 (@labelgroup3)] @title (@labelgroup4)",
-        "(@librarytype) [@labelgroup2 (@labelgroup3)] @title [@labelgroup5]",
-        "(@librarytype) [@labelgroup2 (@labelgroup3)] @title",
+        "(@librarytype) [@labelgroup2 (@author)] @title (@labelgroup4) [@labelgroup5]",
+        "(@librarytype) [@labelgroup2 (@author)] @title (@labelgroup4)",
+        "(@librarytype) [@labelgroup2 (@author)] @title [@labelgroup5]",
+        "(@librarytype) [@labelgroup2 (@author)] @title",
         "(@librarytype) [@labelgroup2] @title (@labelgroup4) [@labelgroup5]",
         "(@librarytype) [@labelgroup2] @title (@labelgroup4)",
         "(@librarytype) [@labelgroup2] @title [@labelgroup5]",
         "(@librarytype) [@labelgroup2] @title",
-        "(@labelgroup1) [@labelgroup2 (@labelgroup3)] @title (@labelgroup4) [@labelgroup5]",
-        "(@labelgroup1) [@labelgroup2 (@labelgroup3)] @title (@labelgroup4)",
-        "(@labelgroup1) [@labelgroup2 (@labelgroup3)] @title [@labelgroup5]",
-        "(@labelgroup1) [@labelgroup2 (@labelgroup3)] @title",
+        "(@labelgroup1) [@labelgroup2 (@author)] @title (@labelgroup4) [@labelgroup5]",
+        "(@labelgroup1) [@labelgroup2 (@author)] @title (@labelgroup4)",
+        "(@labelgroup1) [@labelgroup2 (@author)] @title [@labelgroup5]",
+        "(@labelgroup1) [@labelgroup2 (@author)] @title",
         "(@labelgroup1) [@labelgroup2] @title (@labelgroup4) [@labelgroup5]",
         "(@labelgroup1) [@labelgroup2] @title (@labelgroup4)",
         "(@labelgroup1) [@labelgroup2] @title [@labelgroup5]",
@@ -271,21 +281,23 @@
           "autoAssign": false
         }
       ],
-      "semanticBindings": {},
+      "semanticBindings": {
+        "@author": 2
+      },
       "folderLevels": {},
       "filenameFormats": [
-        "(@librarytype) [@labelgroup1 (@labelgroup2)] @title (@labelgroup3) [@labelgroup4]",
-        "(@librarytype) [@labelgroup1 (@labelgroup2)] @title (@labelgroup3)",
-        "(@librarytype) [@labelgroup1 (@labelgroup2)] @title [@labelgroup4]",
-        "(@librarytype) [@labelgroup1 (@labelgroup2)] @title",
+        "(@librarytype) [@labelgroup1 (@author)] @title (@labelgroup3) [@labelgroup4]",
+        "(@librarytype) [@labelgroup1 (@author)] @title (@labelgroup3)",
+        "(@librarytype) [@labelgroup1 (@author)] @title [@labelgroup4]",
+        "(@librarytype) [@labelgroup1 (@author)] @title",
         "(@librarytype) [@labelgroup1] @title (@labelgroup3) [@labelgroup4]",
         "(@librarytype) [@labelgroup1] @title (@labelgroup3)",
         "(@librarytype) [@labelgroup1] @title [@labelgroup4]",
         "(@librarytype) [@labelgroup1] @title",
-        "[@labelgroup1 (@labelgroup2)] @title (@labelgroup3) [@labelgroup4]",
-        "[@labelgroup1 (@labelgroup2)] @title (@labelgroup3)",
-        "[@labelgroup1 (@labelgroup2)] @title [@labelgroup4]",
-        "[@labelgroup1 (@labelgroup2)] @title",
+        "[@labelgroup1 (@author)] @title (@labelgroup3) [@labelgroup4]",
+        "[@labelgroup1 (@author)] @title (@labelgroup3)",
+        "[@labelgroup1 (@author)] @title [@labelgroup4]",
+        "[@labelgroup1 (@author)] @title",
         "[@labelgroup1] @title (@labelgroup3) [@labelgroup4]",
         "[@labelgroup1] @title (@labelgroup3)",
         "[@labelgroup1] @title [@labelgroup4]",
@@ -321,7 +333,9 @@
           "autoAssign": false
         }
       ],
-      "semanticBindings": {},
+      "semanticBindings": {
+        "@author": 2
+      },
       "folderLevels": {
         "1": {
           "kind": "singleLabelGroup",
@@ -329,18 +343,18 @@
         }
       },
       "filenameFormats": [
-        "(@librarytype) [@labelgroup1 (@labelgroup2)] @title (@labelgroup3) [@labelgroup4]",
-        "(@librarytype) [@labelgroup1 (@labelgroup2)] @title (@labelgroup3)",
-        "(@librarytype) [@labelgroup1 (@labelgroup2)] @title [@labelgroup4]",
-        "(@librarytype) [@labelgroup1 (@labelgroup2)] @title",
+        "(@librarytype) [@labelgroup1 (@author)] @title (@labelgroup3) [@labelgroup4]",
+        "(@librarytype) [@labelgroup1 (@author)] @title (@labelgroup3)",
+        "(@librarytype) [@labelgroup1 (@author)] @title [@labelgroup4]",
+        "(@librarytype) [@labelgroup1 (@author)] @title",
         "(@librarytype) [@labelgroup1] @title (@labelgroup3) [@labelgroup4]",
         "(@librarytype) [@labelgroup1] @title (@labelgroup3)",
         "(@librarytype) [@labelgroup1] @title [@labelgroup4]",
         "(@librarytype) [@labelgroup1] @title",
-        "[@labelgroup1 (@labelgroup2)] @title (@labelgroup3) [@labelgroup4]",
-        "[@labelgroup1 (@labelgroup2)] @title (@labelgroup3)",
-        "[@labelgroup1 (@labelgroup2)] @title [@labelgroup4]",
-        "[@labelgroup1 (@labelgroup2)] @title",
+        "[@labelgroup1 (@author)] @title (@labelgroup3) [@labelgroup4]",
+        "[@labelgroup1 (@author)] @title (@labelgroup3)",
+        "[@labelgroup1 (@author)] @title [@labelgroup4]",
+        "[@labelgroup1 (@author)] @title",
         "[@labelgroup1] @title (@labelgroup3) [@labelgroup4]",
         "[@labelgroup1] @title (@labelgroup3)",
         "[@labelgroup1] @title [@labelgroup4]",

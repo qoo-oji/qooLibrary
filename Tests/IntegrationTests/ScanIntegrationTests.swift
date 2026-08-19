@@ -50,16 +50,15 @@ final class ScanWorkspace {
                                 resolvedPath: root.path, volumeUUID: volumeUUID,
                                 libraryTypeID: LibraryTypeID(rawValue: 0)),
             template: template)
-        // 対象拡張子は settingsJSON に入っている。テンプレートは空なので上書きする。
-        let payload = LibrarySettingsPayload(
-            targetExtensions: Array(targetExtensions),
-            imageExtensions: Array(BookFolderDetector.defaultImageExtensions))
-        let payloadJSON = String(decoding: try JSONEncoder().encode(payload), as: UTF8.self)
-        let id = libraryID.rawValue
-        try await database.writer.write { db in
-            try db.execute(sql: "UPDATE library SET settingsJSON = ? WHERE id = ?",
-                           arguments: [payloadJSON, id])
-        }
+        // 画像拡張子だけを足す。**`settingsJSON` を丸ごと差し替えてはならない**
+        // ——以前はそうしており、テンプレート由来の意味束縛 [RW-13] や
+        // ラベルグループの並びを静かに落としていた（`@author` を束縛したときに
+        // 「著者ラベルだけが付かない」という形で発覚した）。草案を読んで必要な
+        // 部分だけ変え、製品と同じ `updateSettings` を通す。
+        var draft = try #require(try await libraries.settingsDraft(libraryID: libraryID))
+        draft.targetExtensions = Array(targetExtensions)
+        draft.imageExtensions = Array(BookFolderDetector.defaultImageExtensions)
+        try await libraries.updateSettings(draft, libraryID: libraryID)
         engine = ScanEngine(dependencies: .init(libraries: libraries, files: files, labels: labels))
     }
 
