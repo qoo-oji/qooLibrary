@@ -886,6 +886,329 @@
         }
       }
     },
+    "backup.exportFailed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The library data could not be exported."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリのデータを書き出せませんでした。"
+          }
+        }
+      }
+    },
+    "backup.exporting" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Exporting library data…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリのデータを書き出しています…"
+          }
+        }
+      }
+    },
+    "backup.exportPanelMessage" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose where to save the library data."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリのデータを保存する場所を選んでください。"
+          }
+        }
+      }
+    },
+    "backup.exportPanelPrompt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Export"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "書き出す"
+          }
+        }
+      }
+    },
+    "backup.importConfirm" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み込む"
+          }
+        }
+      }
+    },
+    "backup.importConfirmTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import Library Data"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリのデータを読み込む"
+          }
+        }
+      }
+    },
+    "backup.importFailed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The library data could not be imported."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリのデータを読み込めませんでした。"
+          }
+        }
+      }
+    },
+    "backup.importFootnote" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importing only adds and updates. It never deletes libraries, labels, or ratings. Files that have not been scanned yet are skipped — scan the library first, then import."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み込みは追加と更新だけを行います。ライブラリ・ラベル・評価を削除することはありません。まだスキャンしていないファイルは飛ばされるので、先にライブラリをスキャンしてから読み込んでください。"
+          }
+        }
+      }
+    },
+    "backup.importing" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importing library data…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリのデータを読み込んでいます…"
+          }
+        }
+      }
+    },
+    "backup.importPanelMessage" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose an exported library data file."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "書き出したライブラリのデータファイルを選んでください。"
+          }
+        }
+      }
+    },
+    "backup.importPanelPrompt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み込む"
+          }
+        }
+      }
+    },
+    "backup.importPlanEmpty" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This file contains no libraries."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このファイルにライブラリが含まれていません。"
+          }
+        }
+      }
+    },
+    "backup.importPlanMissing" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not in the database. Enable this folder as a library first, then import again."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "データベースにありません。先にこのフォルダをライブラリとして有効にしてから、もう一度読み込んでください。"
+          }
+        }
+      }
+    },
+    "backup.importPlanUpdate" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d file(s) will be updated · %d label(s) and %d label assignment(s) will be added · %d file(s) are not in this library yet"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d 件のファイルを更新 · ラベル %d 件と紐づけ %d 件を追加 · %d 件はこのライブラリにまだありません"
+          }
+        }
+      }
+    },
+    "backup.importResultBody" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d file(s) updated. %d label(s) and %d label assignment(s) added."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d 件のファイルを更新しました。ラベル %d 件と紐づけ %d 件を追加しました。"
+          }
+        }
+      }
+    },
+    "backup.importResultFilesMissing" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d file(s) in the file were skipped because they have not been scanned yet. Scan the library, then import again."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ファイル内の %d 件はまだスキャンされていないため飛ばしました。ライブラリをスキャンしてから、もう一度読み込んでください。"
+          }
+        }
+      }
+    },
+    "backup.importResultMissing" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d library(ies) were skipped because they are not in the database. Enable them as libraries first, then import again:"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d 件のライブラリはデータベースに無いため飛ばしました。先にライブラリとして有効にしてから、もう一度読み込んでください:"
+          }
+        }
+      }
+    },
+    "backup.importResultTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import Finished"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み込みが完了しました"
+          }
+        }
+      }
+    },
+    "backup.nothingToImportTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nothing to Import"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み込むものがありません"
+          }
+        }
+      }
+    },
     "bulkRename.column.new" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4205,23 +4528,6 @@
         }
       }
     },
-    "library.enable.explanation" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Choose a library type for “%@”. qooLibrary reads file and folder names with this type's formats and assigns labels automatically."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "「%@」のライブラリタイプを選んでください。qooLibrary はこのタイプのフォーマットでファイル名・フォルダ名を読み取り、ラベルを自動で付けます。"
-          }
-        }
-      }
-    },
     "library.enable.failed" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4235,23 +4541,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ライブラリを有効にできませんでした。"
-          }
-        }
-      }
-    },
-    "library.enable.footnote" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Files are only read, never modified. You can change the type later without losing labels you set by hand."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ファイルは読み取るだけで、変更しません。タイプは後から変更でき、手動で付けたラベルは失われません。"
           }
         }
       }
@@ -4286,23 +4575,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ライブラリとして有効にする"
-          }
-        }
-      }
-    },
-    "library.enable.typeLabel" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Library Type"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ライブラリタイプ"
           }
         }
       }
@@ -4626,6 +4898,261 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "手動で設定したラベル・評価・カバー画像は失われます。ファイル自体には手を加えません。"
+          }
+        }
+      }
+    },
+    "libraryEnable.blank" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Custom (empty)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カスタム（空）"
+          }
+        }
+      }
+    },
+    "libraryEnable.blankSummary" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No formats — build your own"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "フォーマットなし（自分で作る）"
+          }
+        }
+      }
+    },
+    "libraryEnable.defaultLabelGroupName" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Label"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ラベル"
+          }
+        }
+      }
+    },
+    "libraryEnable.headerExplanation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pick a starting point, adjust anything you like, and check the preview before enabling. You can change all of this later in Library Settings."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "起点を選び、必要なら設定を調整し、プレビューで結果を確かめてから有効にしてください。以下の設定はあとからライブラリの設定でも変更できます。"
+          }
+        }
+      }
+    },
+    "libraryEnable.headerTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable “%@” as a library"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」をライブラリとして有効にする"
+          }
+        }
+      }
+    },
+    "libraryEnable.preview.excluded" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d skipped (not a target extension)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d 件は対象拡張子でないため対象外"
+          }
+        }
+      }
+    },
+    "libraryEnable.preview.mismatch" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d have a different library type"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d 件はライブラリタイプが違います"
+          }
+        }
+      }
+    },
+    "libraryEnable.preview.noFiles" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No files found in this folder."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このフォルダにファイルが見つかりません。"
+          }
+        }
+      }
+    },
+    "libraryEnable.preview.sampling" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reading file names…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ファイル名を読んでいます…"
+          }
+        }
+      }
+    },
+    "libraryEnable.preview.summary" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d files tried · %d matched · %d unresolved"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d 件を試して %d 件が一致 · %d 件が未解決"
+          }
+        }
+      }
+    },
+    "libraryEnable.preview.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preview"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プレビュー"
+          }
+        }
+      }
+    },
+    "libraryEnable.preview.truncated" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "first %d files only"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "先頭 %d 件のみ"
+          }
+        }
+      }
+    },
+    "libraryEnable.preview.unresolvedHint" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No filename format matches. It will be imported without labels."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "どのファイル名フォーマットにも一致しません。ラベルが付かないまま取り込まれます。"
+          }
+        }
+      }
+    },
+    "libraryEnable.templatesHeader" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Start From"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "起点"
+          }
+        }
+      }
+    },
+    "libraryEnable.templateSummary" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d label groups · %d filename formats"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ラベルグループ %d 件 · ファイル名フォーマット %d 本"
           }
         }
       }
@@ -8512,34 +9039,359 @@
         }
       }
     },
-    "preferences.reset.notYetAvailable" : {
+    "preferences.reset.backupFooter" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Not available yet. A way to export and import your data will be added before any reset option is offered here."
+            "value" : "Labels, ratings, manually edited titles, and library settings are written to a JSON file. Thumbnails and other data that a scan can rebuild are not included. Export before deleting anything below."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "まだ利用できません。ここに削除系の機能を追加する前に、データのエクスポート/インポート機能を用意する予定です。"
+            "value" : "ラベル・評価・手動で編集したタイトル・ライブラリ設定を JSON ファイルへ書き出します。サムネイルなど、スキャンで作り直せるデータは含みません。下の削除を行う前に書き出しておいてください。"
           }
         }
       }
     },
-    "preferences.reset.title" : {
+    "preferences.reset.backupHeader" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Reset"
+            "value" : "Library Data"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "リセット"
+            "value" : "ライブラリのデータ"
+          }
+        }
+      }
+    },
+    "preferences.reset.clearThumbnails" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete All Thumbnails"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サムネイルをすべて削除"
+          }
+        }
+      }
+    },
+    "preferences.reset.deleteConfirmTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Library Data"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリのデータを削除"
+          }
+        }
+      }
+    },
+    "preferences.reset.deleteExplanation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete the library data for “%@”? It holds %d file record(s)."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」のライブラリデータを削除しますか？ %d 件のファイル記録があります。"
+          }
+        }
+      }
+    },
+    "preferences.reset.deleteFailed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The library data could not be deleted."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリのデータを削除できませんでした。"
+          }
+        }
+      }
+    },
+    "preferences.reset.deleteKeepsFiles" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your files and folders are not touched. The folder stays registered and can be enabled as a library again."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ファイルとフォルダには触れません。フォルダの登録は残るので、もう一度ライブラリとして有効にできます。"
+          }
+        }
+      }
+    },
+    "preferences.reset.deleteLibrary" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "削除…"
+          }
+        }
+      }
+    },
+    "preferences.reset.deleteLibraryConfirm" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "削除"
+          }
+        }
+      }
+    },
+    "preferences.reset.deleteWarning" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Labels, ratings, manually edited titles, and library settings are deleted with it. This cannot be undone — export first if you may want them back."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ラベル・評価・手動で編集したタイトル・ライブラリ設定も一緒に消えます。取り消せません。戻す可能性があるなら先に書き出してください。"
+          }
+        }
+      }
+    },
+    "preferences.reset.exportBackup" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Export…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "書き出す…"
+          }
+        }
+      }
+    },
+    "preferences.reset.fileCount" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d files"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d 件"
+          }
+        }
+      }
+    },
+    "preferences.reset.importBackup" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み込む…"
+          }
+        }
+      }
+    },
+    "preferences.reset.libraryFooter" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deleting removes the library from the database along with its labels, ratings, and settings. Your files are not touched. Libraries whose folder is offline, in the Trash, or missing can be deleted here too."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "削除すると、そのライブラリとラベル・評価・設定がデータベースから消えます。ファイル自体には触れません。フォルダが取り出し済み・ゴミ箱の中・見つからない状態のライブラリも、ここから削除できます。"
+          }
+        }
+      }
+    },
+    "preferences.reset.libraryHeader" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Library Data"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリのデータを削除"
+          }
+        }
+      }
+    },
+    "preferences.reset.libraryUnavailable" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The library database is unavailable."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリのデータベースを利用できません。"
+          }
+        }
+      }
+    },
+    "preferences.reset.loading" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み込んでいます…"
+          }
+        }
+      }
+    },
+    "preferences.reset.noLibraries" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No libraries in the database."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "データベースにライブラリがありません。"
+          }
+        }
+      }
+    },
+    "preferences.reset.orphanBadge" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "registration not found"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登録が見つかりません"
+          }
+        }
+      }
+    },
+    "preferences.reset.thumbnailFooter" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Removes every generated thumbnail and cover image. They are rebuilt as you browse, so nothing is lost."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成済みのサムネイルとカバー画像をすべて削除します。閲覧に応じて作り直されるので、失われるものはありません。"
+          }
+        }
+      }
+    },
+    "preferences.reset.thumbnailHeader" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thumbnails"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サムネイル"
           }
         }
       }

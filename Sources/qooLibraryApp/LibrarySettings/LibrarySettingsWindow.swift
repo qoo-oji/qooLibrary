@@ -162,7 +162,11 @@ struct LibrarySettingsWindow: View {
         case .basics:          LibraryBasicsSettingsView(draft: bound)
         case .extensions:      LibraryExtensionsSettingsView(draft: bound)
         case .labelGroups:     LibraryLabelGroupsSettingsView(draft: bound)
-        case .filenameFormats: LibraryFilenameFormatsSettingsView(draft: bound, model: model)
+        case .filenameFormats:
+            LibraryFilenameFormatsSettingsView(
+                draft: bound,
+                selectedFormatID: $model.selectedFilenameFormatID,
+                sampleFilename: $model.sampleFilename)
         case .folderLevels:    LibraryFolderLevelsSettingsView(draft: bound)
         case .volumeFormats:   LibraryVolumeFormatsSettingsView(draft: bound)
         case .delimiters:      LibraryDelimitersSettingsView(draft: bound)

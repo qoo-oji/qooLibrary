@@ -1,19 +1,26 @@
 #!/usr/bin/env swift
 //
-// CI static check B-13 [MG-23]: `@Model` の非再生成属性（`@Regenerable`
-// 未付与のプロパティ）はすべて JSON エクスポート DTO に含まれていなければ
-// ならない。再生成不可能なデータ（手動ラベル・評価・手動編集タイトル等、
-// 07章 §7.2「再生成可能性のマーキング」参照）が JSON 往復で失われることを
-// 防ぐための検査。
+// CI 静的検査 B-13 [MG-23][BK-05]: 再生成不可能なデータが JSON へ漏れなく
+// 出ることを守る仕掛けが、外れていないことを確かめる。
 //
-// 現状（フェーズ 0）では `@Model` 型も JSON DTO も存在しないため、本スクリプト
-// は「対象なし」として成功終了する。QooPersistence に `@Model` 型が追加され、
-// JSON 入出力（07章 §7.5）が実装されたら、以下を検証するロジックに拡張する:
-//   1. `@Model final class` 内の各 `public var` プロパティを列挙
-//   2. `@Regenerable` が付与されていないものを「要保全」としてマークする
-//   3. 対応する `<ModelName>DTO`（または JSON エンコード処理）が
-//      「要保全」プロパティをすべて含んでいるかを確認する
-//   4. 含まれていなければ失敗させる
+// ## この検査は何を見て、何を見ないか
+// **網羅性そのものは静的には確かめられない。** 「列」は実行時の SQLite の
+// スキーマからしか読めず、「JSON のキー」は実際に符号化しないと分からない
+// ためで、それを実際に突き合わせるのは
+// `Tests/QooPersistenceTests/BackupTests.swift` の
+// `exportCoversEveryNonRegenerableColumn` である（実 DB の列 × 実 JSON のキー）。
+//
+// ここで守るのは、**その仕掛けが成立するための前提** 2 つ:
+//
+//   1. `RegenerabilityDeclaring` に適合させた型が、`RegenerabilityRegistry
+//      .declaringTypes` に登録されている。登録を忘れた型は検証の対象外に
+//      なるので、**テストは通るのに漏れる**——最も危ない壊れ方。
+//   2. 網羅性を検証するテストが実在する。
+//
+// ## この検査はどんな実条件で落ちるか [CLAUDE.md の作法]
+//   - 新しいレコード型に `RegenerabilityDeclaring` を足し、`declaringTypes`
+//     への追加を忘れたとき（1）
+//   - 網羅性テストを消した・改名したとき（2）
 //
 // Usage: swift Scripts/check-json-completeness.swift
 
@@ -21,33 +28,89 @@ import Foundation
 
 let scriptURL = URL(fileURLWithPath: #filePath)
 let repoRoot = scriptURL.deletingLastPathComponent().deletingLastPathComponent()
-let persistenceRoot = repoRoot.appendingPathComponent("Sources").appendingPathComponent("QooPersistence")
 
-func containsModelDeclaration(_ root: URL) -> Bool {
-    guard let fm = FileManager.default.enumerator(
-        at: root, includingPropertiesForKeys: [.isRegularFileKey])
-    else { return false }
-    for case let fileURL as URL in fm {
-        guard fileURL.pathExtension == "swift" else { continue }
-        guard let contents = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
-        for line in contents.components(separatedBy: .newlines) {
-            // Only match an actual declaration (`@Model final class ...`),
-            // not the substring appearing inside a doc comment.
-            if line.trimmingCharacters(in: .whitespaces).hasPrefix("@Model") {
-                return true
-            }
+func read(_ relativePath: String) -> String? {
+    try? String(contentsOf: repoRoot.appendingPathComponent(relativePath), encoding: .utf8)
+}
+
+var failures: [String] = []
+
+// --- 1. 適合させた型がすべて登録されているか ---------------------------------
+
+let regenerabilityPath = "Sources/QooPersistence/Schema/Regenerability.swift"
+guard let regenerability = read(regenerabilityPath) else {
+    FileHandle.standardError.write(Data("==> FAIL: \(regenerabilityPath) が読めない\n".utf8))
+    exit(1)
+}
+
+// `extension <型名>: RegenerabilityDeclaring {`
+var conformingTypes: [String] = []
+for line in regenerability.components(separatedBy: .newlines) {
+    let trimmed = line.trimmingCharacters(in: .whitespaces)
+    guard trimmed.hasPrefix("extension "), trimmed.contains(": RegenerabilityDeclaring") else {
+        continue
+    }
+    let afterKeyword = trimmed.dropFirst("extension ".count)
+    let name = afterKeyword.prefix { $0 != ":" && !$0.isWhitespace }
+    if !name.isEmpty { conformingTypes.append(String(name)) }
+}
+
+guard !conformingTypes.isEmpty else {
+    FileHandle.standardError.write(Data(
+        "==> FAIL: RegenerabilityDeclaring に適合する型が 1 つも見つからない（検査が空振りしている）\n".utf8))
+    exit(1)
+}
+
+// `declaringTypes` の配列に並ぶ `X.self` を集める。
+var registered: Set<String> = []
+if let start = regenerability.range(of: "declaringTypes: [any RegenerabilityDeclaring.Type] = [") {
+    let rest = regenerability[start.upperBound...]
+    if let end = rest.range(of: "]") {
+        for entry in rest[..<end.lowerBound].components(separatedBy: ",") {
+            let token = entry.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard token.hasSuffix(".self") else { continue }
+            registered.insert(String(token.dropLast(".self".count)))
         }
     }
-    return false
 }
 
-guard FileManager.default.fileExists(atPath: persistenceRoot.path),
-      containsModelDeclaration(persistenceRoot)
-else {
-    print("==> OK: no @Model types yet, nothing to check [MG-23] (placeholder — see file header for the intended full check)")
+for type in conformingTypes where !registered.contains(type) {
+    failures.append("""
+        \(type) が RegenerabilityRegistry.declaringTypes に登録されていない [MG-23]。
+            登録しないと、この型の列は JSON 網羅性の検証対象から外れる
+            ——テストは通るのに、再生成不可能なデータが黙って漏れる。
+        """)
+}
+
+// --- 2. 網羅性を検証するテストが実在するか -----------------------------------
+
+let testPath = "Tests/QooPersistenceTests/BackupTests.swift"
+if let tests = read(testPath) {
+    if !tests.contains("func exportCoversEveryNonRegenerableColumn") {
+        failures.append("""
+            \(testPath) に exportCoversEveryNonRegenerableColumn が無い [MG-23][BK-05]。
+                実 DB の列と実 JSON のキーを突き合わせるのはこのテストだけで、
+                これが消えると網羅性を誰も確かめていない状態になる。
+            """)
+    }
+    if !tests.contains("RegenerabilityRegistry.declaringTypes") {
+        failures.append("""
+            \(testPath) の網羅性テストが RegenerabilityRegistry を見ていない。
+                宣言から導かずに列を手書きすると、列を足したときに漏れる。
+            """)
+    }
+} else {
+    failures.append("\(testPath) が無い [MG-23]。JSON 網羅性の検証が消えている。")
+}
+
+// --- 結果 -------------------------------------------------------------------
+
+if failures.isEmpty {
+    print("==> OK: 再生成可能性の宣言 \(conformingTypes.count) 型がすべて登録され、"
+          + "JSON 網羅性の検証が存在する [MG-23][B-13]")
     exit(0)
 }
-
-print("!! @Model types were found but check-json-completeness.swift has not been implemented yet.")
-print("   Implement the JSON DTO completeness check described in this file's header before merging JSON import/export work [MG-23][JS-02].")
+FileHandle.standardError.write(Data(
+    ("==> FAIL: JSON 網羅性の仕掛けが成立していない [MG-23][B-13]\n"
+     + failures.map { "  - " + $0 }.joined(separator: "\n") + "\n").utf8))
 exit(1)

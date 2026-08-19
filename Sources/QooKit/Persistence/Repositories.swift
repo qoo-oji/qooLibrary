@@ -76,6 +76,12 @@ public protocol LibraryRepository: Sendable {
     func updateSettings(_ draft: LibrarySettingsDraft, libraryID: LibraryID) async throws
     func register(_ registration: LibraryRegistration,
                   template: LibraryTypeTemplate) async throws -> LibraryID     // [RG-01][LT-03]
+    /// 草案から登録する [RG-01][LT-02][LS-01]。有効化の時点で設定を調整できる
+    /// ようにするための経路で、**`template` が `nil` なら白紙から作った
+    /// カスタム**（専用の非プリセット型を作る）。
+    func register(_ registration: LibraryRegistration,
+                  draft: LibrarySettingsDraft,
+                  template: LibraryTypeTemplate?) async throws -> LibraryID
     /// `keepLabels` はフェーズ 2 のラベル保管庫へ回すかどうか [RG-06]。
     func unregister(id: LibraryID, keepLabels: Bool) async throws
     func setOnline(_ online: Bool, libraryID: LibraryID) async throws          // [VD-03][VD-05]

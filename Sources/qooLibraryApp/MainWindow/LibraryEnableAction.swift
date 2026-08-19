@@ -8,80 +8,18 @@ import QooInfrastructure
 import QooKit
 import SwiftUI
 
-/// ライブラリタイプを選ぶダイアログ [LT-01]。
-///
-/// **有効化を自動で行わず、1 件ずつ明示的に選ばせる**［ユーザー判断］。
-/// フェーズ 1 の登録フォルダはライブラリタイプの概念を持たないため、
-/// 起動時に全件へ既定の型を当てて自動生成すると、**推測した型で実蔵書
-/// 数千件をいきなり走査する**ことになる。ここで 1 件ずつ選ばせれば、
-/// 使い捨てのボリュームで先に試してから実蔵書へ当てられる。
-struct LibraryTypeChooserDialog: View {
-    @Environment(\.locale) private var locale
-    @Environment(\.dialogDismiss) private var dismiss
-
-    let folderName: String
-    let templates: [LibraryTypeTemplate]
-    let onCommit: (LibraryTypeTemplate) -> Void
-
-    @State private var selectedKey: String
-
-    init(folderName: String,
-         templates: [LibraryTypeTemplate],
-         onCommit: @escaping (LibraryTypeTemplate) -> Void) {
-        self.folderName = folderName
-        self.templates = templates
-        self.onCommit = onCommit
-        _selectedKey = State(initialValue: templates.first?.key ?? "")
-    }
-
-    private var selected: LibraryTypeTemplate? {
-        templates.first { $0.key == selectedKey }
-    }
-
-    var body: some View {
-        DialogScaffold(
-            width: 420,
-            confirm: DialogButton(title: String(localized: "library.enable.confirm", locale: locale)) {
-                if let selected { onCommit(selected) }
-                dismiss()
-            },
-            cancel: DialogButton(
-                title: String(localized: "common.cancel", locale: locale), role: .cancel
-            ) { dismiss() },
-            confirmDisabled: selected == nil
-        ) {
-            VStack(alignment: .leading, spacing: Tokens.spacing.m) {
-                Text(String(
-                    format: String(localized: "library.enable.explanation", locale: locale),
-                    folderName))
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Picker(selection: $selectedKey) {
-                    ForEach(templates) { template in
-                        Text(template.displayName).tag(template.key)
-                    }
-                } label: {
-                    Text("library.enable.typeLabel")
-                }
-                .pickerStyle(.inline)
-                .labelsHidden()
-
-                Text("library.enable.footnote")
-                    .font(.system(size: Tokens.fontSize.caption))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-}
-
 /// 有効化と初回スキャンの実処理。**フォルダツリーとメニューの両方から
 /// 同じ実装を呼ぶ**——同じに見える操作に独立した経路を作ると、片方だけ
 /// 直して取り残す（1-12 のアプリ関連付けで実際に踏んだ形）。
 @MainActor
 enum LibraryEnableAction {
 
-    /// ライブラリタイプを選ばせてから有効化し、続けて初回スキャンを走らせる。
+    /// 設定を確認・調整させてから有効化し、続けて初回スキャンを走らせる
+    /// [LT-01〜LT-03][LS-01][HP-05]。
+    ///
+    /// **テンプレートを選ぶだけの画面ではない**［ユーザー指摘: 「その選択肢で
+    /// 何がどう変化するのかわからない」］。中身を見て、その場で直して、
+    /// 実ファイル名に当てた結果まで確かめてから決められる。
     static func begin(folder: RegisteredFolder, url: URL, locale: Locale) {
         let services = LibraryServices.shared
         guard services.isReady else {
@@ -89,13 +27,24 @@ enum LibraryEnableAction {
             return
         }
         let templates = services.presetTemplates
-        guard !templates.isEmpty else { return }
+        guard let volumeSets = services.volumeSetDefinition else { return }
+
+        let model = LibraryEnableModel(
+            folderName: folder.displayName, folderURL: url,
+            templates: templates, volumeSets: volumeSets,
+            // 型付き照合 [TY-01] の候補は他ライブラリの型名も含む。渡さないと
+            // プレビューの結果が実際の走査とずれる。
+            otherTypeNames: services.libraries.map(\.libraryTypeName),
+            otherDisplayNames: services.libraries.map(\.displayName))
 
         DialogWindowPresenter.shared.present(
             title: String(localized: "library.enable.title", locale: locale)
         ) { _ in
-            LibraryTypeChooserDialog(folderName: folder.displayName, templates: templates) { template in
-                Task { await enable(folder: folder, url: url, template: template, locale: locale) }
+            LibraryEnableView(model: model) { draft, template in
+                Task {
+                    await enable(folder: folder, url: url, draft: draft,
+                                 template: template, locale: locale)
+                }
             }
         }
     }
@@ -143,13 +92,15 @@ enum LibraryEnableAction {
     // MARK: - 実処理
 
     private static func enable(folder: RegisteredFolder, url: URL,
-                               template: LibraryTypeTemplate, locale: Locale) async {
+                               draft: LibrarySettingsDraft,
+                               template: LibraryTypeTemplate?, locale: Locale) async {
         do {
             let id = try await LibraryServices.shared.enable(
                 registrationUUID: folder.id,
                 displayName: folder.displayName,
                 url: url,
                 bookmarkData: folder.bookmarkData,
+                draft: draft,
                 template: template)
             await scan(libraryID: id, displayName: folder.displayName, url: url, locale: locale)
         } catch {

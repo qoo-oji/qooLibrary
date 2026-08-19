@@ -204,3 +204,133 @@ public enum TemplateInstantiation {
             normalization: normalization)
     }
 }
+
+// MARK: - テンプレート → 編集草案 [LT-03][LS-01]
+
+extension TemplateInstantiation {
+
+    /// テンプレートから**編集できる草案**を組み立てる [LT-03][LS-01]。
+    ///
+    /// ## `snapshot(from:)` との違い
+    /// あちらはパーサ用に**コンパイル済み**の設定を返すので、そこから元の
+    /// ソース文字列は復元できない——編集には使えない（`LibrarySettingsDraft`
+    /// の型コメント参照）。こちらはソース文字列のまま返す。
+    ///
+    /// ## ここが返す値は「登録される内容そのもの」でなければならない
+    /// 有効化ダイアログはこの草案を見せて編集させ、**同じ草案が
+    /// `LibraryRepository.register(_:draft:template:)` へ渡って DB になる**。
+    /// テンプレート由来の既定値をここと登録側の 2 箇所に書くと、片方だけ
+    /// 直したときに「見たものと登録されたものが違う」という、最も気づき
+    /// にくい壊れ方をする。**既定値の出どころはこの関数 1 つに閉じること。**
+    ///
+    /// - Parameter colors: ラベルグループの配色 [MT-13]。件数ぶん渡す。
+    ///   `QooKit` は配色の決め方を知っているが（`LabelColorPalette`）、
+    ///   呼び出し側が別の割り当てを持つ場合に差し替えられるようにしておく。
+    public static func draft(from template: LibraryTypeTemplate,
+                             volumeSets: VolumeSetDefinition,
+                             displayName: String,
+                             otherLibraryTypeNames: [String] = [],
+                             otherLibraryDisplayNames: [String] = []) -> LibrarySettingsDraft {
+        let colors = LabelColorPalette.palette(count: max(template.labelGroups.count, 1))
+        let groups = template.labelGroups
+            .sorted { $0.index < $1.index }
+            .enumerated()
+            .map { offset, spec in
+                let color = colors[min(offset, colors.count - 1)]
+                return LabelGroupDraft(
+                    index: spec.index, name: spec.name,
+                    colorHexLight: color.hexLight, colorHexDark: color.hexDark,
+                    assignsAutomatically: spec.assignsAutomatically)
+            }
+
+        let volumes = (volumeSets.patterns(named: template.volumeSet) ?? [])
+            .map { VolumeFormatDraft(source: $0.source, isEnabled: true,
+                                     ordinalRank: $0.ordinalRank) }
+
+        // 階層は**番号順に並べる**。辞書の列挙順は不定で、そのまま渡すと
+        // 開くたびに行の並びが変わる。
+        let levels = template.folderLevels
+            .compactMap { rawLevel, spec -> FolderLevelDraft? in
+                guard let level = Int(rawLevel) else { return nil }
+                let assignment: FolderLevelDraft.Assignment
+                switch spec.kind {
+                case .none:
+                    assignment = FolderLevelDraft.Assignment.none
+                case .singleLabelGroup:
+                    guard let group = spec.labelGroup else { return nil }
+                    assignment = .singleLabelGroup(index: group)
+                case .format:
+                    guard let source = spec.format else { return nil }
+                    assignment = .format(source: source)
+                }
+                return FolderLevelDraft(level: level, assignment: assignment)
+            }
+            .sorted { $0.level < $1.level }
+
+        return LibrarySettingsDraft(
+            displayName: displayName,
+            libraryTypeName: template.libraryTypeName,
+            caseSensitive: false,
+            thumbnailsAlwaysHidden: false,
+            // **テンプレートは対象拡張子を持たない** [要件定義書 11.4 節:
+            // 「対象拡張子は全テンプレート共通」]。空で登録すると走査が
+            // `.DS_Store` まで拾うので、ここで既定を入れるのが正しい場所。
+            targetExtensions: AppDefaults.Library.targetExtensions.sorted(),
+            imageExtensions: [],
+            delimiters: .default,
+            protectedTokens: [],
+            labelGroups: groups,
+            semanticBindings: template.semanticKeywordBindings,
+            filenameFormats: template.filenameFormats.map {
+                FilenameFormatDraft(source: $0, isEnabled: true)
+            },
+            volumeFormats: volumes,
+            folderLevels: levels,
+            seriesTitleCompositionFormat: "@series @volume",
+            otherLibraryTypeNames: otherLibraryTypeNames,
+            otherLibraryDisplayNames: otherLibraryDisplayNames)
+    }
+
+    /// 白紙から始める草案 [LT-02、ユーザー要望]。
+    ///
+    /// **フォーマットを 1 本も持たない。** どのファイル名にも一致しないので、
+    /// この状態で走査すると全件が未解決になる [AL-31]——それが正しい
+    /// （「まだ何も決めていない」を素直に表す）。有効化ダイアログの
+    /// プレビューがその結果をそのまま見せるので、利用者は自分で足しながら
+    /// 一致していく様子を確かめられる。
+    ///
+    /// 巻数フォーマットだけは既定のセットを入れる——巻数の読み取りは
+    /// ライブラリタイプに依らずほぼ共通で、空から手で書かせる意味が薄い。
+    /// - Parameters:
+    ///   - defaultLabelGroupName: 最初のラベルグループに付ける名前。
+    ///     **`QooKit` は表示文字列を持たない** [A-01] ので、UI 層が訳語を渡す。
+    ///   - volumeSetName: `volume-sets.json` にある名前（`VS-Full` /
+    ///     `VS-Doujin` / `VS-None`）。存在しない名前を渡すと巻数フォーマットが
+    ///     空になる——**巻数を一切読まない**状態になるので、名前は実在を確かめて渡す。
+    public static func blankDraft(volumeSets: VolumeSetDefinition,
+                                  displayName: String,
+                                  defaultLabelGroupName: String,
+                                  libraryTypeName: String = "",
+                                  volumeSetName: String = "VS-Full",
+                                  otherLibraryTypeNames: [String] = [],
+                                  otherLibraryDisplayNames: [String] = []) -> LibrarySettingsDraft {
+        let color = LabelColorPalette.palette(count: 1)[0]
+        let volumes = (volumeSets.patterns(named: volumeSetName) ?? [])
+            .map { VolumeFormatDraft(source: $0.source, isEnabled: true,
+                                     ordinalRank: $0.ordinalRank) }
+        return LibrarySettingsDraft(
+            displayName: displayName,
+            libraryTypeName: libraryTypeName,
+            targetExtensions: AppDefaults.Library.targetExtensions.sorted(),
+            delimiters: .default,
+            // **ラベルグループを 1 つだけ置く。** 0 個だとフォーマットに
+            // `@labelgroup1` を書いた瞬間に不備になり、「何から始めれば
+            // よいか」が分からない。
+            labelGroups: [LabelGroupDraft(index: 1, name: defaultLabelGroupName,
+                                          colorHexLight: color.hexLight,
+                                          colorHexDark: color.hexDark)],
+            volumeFormats: volumes,
+            otherLibraryTypeNames: otherLibraryTypeNames,
+            otherLibraryDisplayNames: otherLibraryDisplayNames)
+    }
+}

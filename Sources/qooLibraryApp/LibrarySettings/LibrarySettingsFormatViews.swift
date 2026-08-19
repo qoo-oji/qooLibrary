@@ -170,7 +170,12 @@ private struct RemoveLabelGroupDialog: View {
 
 struct LibraryFilenameFormatsSettingsView: View {
     @Binding var draft: LibrarySettingsDraft
-    @Bindable var model: LibrarySettingsModel
+    /// 選択中の行とサンプル入力は**束縛として受け取る**。以前は
+    /// `LibrarySettingsModel` を丸ごと要求していたが、それだと DB 上の
+    /// ライブラリを前提とする型に縛られ、**有効化前（まだ行が無い）の
+    /// 編集画面で再利用できない**。必要なのはこの 2 つだけ。
+    @Binding var selectedFormatID: UUID?
+    @Binding var sampleFilename: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.l) {
@@ -181,13 +186,13 @@ struct LibraryFilenameFormatsSettingsView: View {
                 Divider()
                 FormatEditor(source: $draft.filenameFormats[index].source,
                              draft: draft,
-                             sample: $model.sampleFilename)
+                             sample: $sampleFilename)
             }
         }
     }
 
     private var selectedIndex: Int? {
-        guard let id = model.selectedFilenameFormatID else { return nil }
+        guard let id = selectedFormatID else { return nil }
         return draft.filenameFormats.firstIndex { $0.id == id }
     }
 
@@ -197,7 +202,7 @@ struct LibraryFilenameFormatsSettingsView: View {
             Text("librarySettings.filenameFormats.orderHint")
                 .font(.system(size: Tokens.fontSize.caption))
                 .foregroundStyle(.secondary)
-            List(selection: $model.selectedFilenameFormatID) {
+            List(selection: $selectedFormatID) {
                 ForEach($draft.filenameFormats) { $format in
                     HStack(spacing: Tokens.spacing.s) {
                         Toggle("", isOn: $format.isEnabled)
@@ -231,12 +236,12 @@ struct LibraryFilenameFormatsSettingsView: View {
                 Button("librarySettings.filenameFormats.add") {
                     let new = FilenameFormatDraft(source: "")
                     draft.filenameFormats.append(new)
-                    model.selectedFilenameFormatID = new.id
+                    selectedFormatID = new.id
                 }
                 Button("librarySettings.filenameFormats.remove") {
                     guard let index = selectedIndex else { return }
                     draft.filenameFormats.remove(at: index)
-                    model.selectedFilenameFormatID = draft.filenameFormats.first?.id
+                    selectedFormatID = draft.filenameFormats.first?.id
                 }
                 .disabled(selectedIndex == nil)
             }

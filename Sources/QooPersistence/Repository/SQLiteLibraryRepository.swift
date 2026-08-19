@@ -180,92 +180,108 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
     /// ライブラリを登録し、テンプレートの内容をコピーする [RG-01][LT-03]。
     ///
     /// **以後の設定変更はライブラリ側に閉じる**——テンプレート本体には影響しない [LT-03]。
+    /// テンプレートから登録する [RG-01][LT-03]。
+    ///
+    /// **既定値を持たず、`TemplateInstantiation.draft(from:)` へ委譲する。**
+    /// 有効化ダイアログが見せるのも同じ関数の結果なので、**利用者が見た内容が
+    /// そのまま登録される**ことが構造的に保証される——ここに独自の既定値を
+    /// 書き足すと、その保証が静かに壊れる。
     public func register(_ registration: LibraryRegistration,
                          template: LibraryTypeTemplate) async throws -> LibraryID {
-        // **空集合で登録してはならない** [AL-11][IF-01]。`LibraryEnumerator` は
-        // 空を「すべてのファイルが対象」と読むため、空のまま登録すると初回
-        // スキャンが `.DS_Store` まで取り込む。要件定義書 11.4 節は
-        // 「対象拡張子は全テンプレート共通」と定めており、テンプレート側は
-        // この値を持たないので、ここで既定を入れるのが正しい場所になる。
-        // 以後の変更はライブラリ設定ウインドウ（2-12）が担う。
-        let payload = LibrarySettingsPayload(
-            targetExtensions: AppDefaults.Library.targetExtensions.sorted(),
-            imageExtensions: [],
-            delimiters: .default,
-            semanticBindings: template.semanticBindings,
-            seriesTitleCompositionFormat: "@series @volume",
-            labelGroupOrder: template.labelGroups.map(\.index).sorted())
-        let payloadJSON = String(decoding: try JSONEncoder().encode(payload), as: UTF8.self)
-        let volumePatterns = volumeSets.patterns(named: template.volumeSet) ?? []
-        let colors = LabelColorPalette.palette(count: max(template.labelGroups.count, 1))
+        let draft = TemplateInstantiation.draft(
+            from: template, volumeSets: volumeSets, displayName: registration.displayName)
+        return try await register(registration, draft: draft, template: template)
+    }
+
+    /// 草案から登録する [RG-01][LT-02][LS-01]。
+    ///
+    /// - Parameter template: プリセット由来なら渡す。`libraryType` の行を
+    ///   `presetKey` で同定し、改訂されていれば版だけ上げる [LT-10][LT-11]。
+    ///   **`nil` は「白紙から作ったカスタム」**で、専用の非プリセット型を作る。
+    public func register(_ registration: LibraryRegistration,
+                         draft: LibrarySettingsDraft,
+                         template: LibraryTypeTemplate?) async throws -> LibraryID {
+        // **登録の時点で検証する。** 不備のある設定で走査を始めると、
+        // 全件が未解決になってから初めて気づくことになる。
+        let errors = draft.validationErrors
+        guard errors.isEmpty else { throw RepositoryError.settingsInvalid(errors) }
+        let payloadJSON = try Self.payloadJSON(draft)
 
         return try await database.writer.write { db in
-            // ライブラリタイプ（プリセットは presetKey で同定）[LT-10]
-            let typeID: Int64
-            if var existing = try LibraryTypeRecord
-                .filter(sql: "presetKey = ?", arguments: [template.key]).fetchOne(db) {
-                // 改訂されていたら version だけ上げる。**設定は自動反映しない** [LT-11]
-                if existing.version != template.version {
-                    existing.version = template.version
-                    try existing.update(db)
-                }
-                typeID = existing.id ?? 0
-            } else {
-                var record = LibraryTypeRecord(
-                    id: nil, presetKey: template.key, name: template.displayName,
-                    libraryTypeName: template.libraryTypeName, isPreset: true,
-                    version: template.version,
-                    definitionJSON: String(decoding: try JSONEncoder().encode(template), as: UTF8.self))
-                try record.insert(db)
-                typeID = record.id ?? 0
-            }
-
+            let typeID = try Self.resolveTypeIDForRegistration(db, template: template, draft: draft)
             var library = LibraryRecord(
                 id: nil, uuid: registration.uuid.uuidString,
-                displayName: registration.displayName,
+                displayName: draft.displayName.isEmpty
+                    ? registration.displayName : draft.displayName,
                 bookmarkData: registration.bookmarkData,
                 resolvedPath: registration.resolvedPath,
                 volumeUUID: registration.volumeUUID,
                 libraryTypeId: typeID,
-                libraryTypeVersion: template.version,
+                libraryTypeVersion: template?.version ?? 1,
                 settingsJSON: payloadJSON,
-                caseSensitive: false,
+                caseSensitive: draft.caseSensitive,
                 duplicateGrouping: "off",
-                thumbnailsAlwaysHidden: false,
+                thumbnailsAlwaysHidden: draft.thumbnailsAlwaysHidden,
                 lastFSEventID: 0, lastFullScanAt: nil,
                 isOnline: true, isReadOnlyDueToFS: false, settingsRevision: 0)
             try library.insert(db)
             let libraryID = library.id ?? 0
-
-            for (offset, group) in template.labelGroups.sorted(by: { $0.index < $1.index }).enumerated() {
-                let color = colors[min(offset, colors.count - 1)]
-                var record = LabelGroupRecord(
-                    id: nil, libraryId: libraryID, groupIndex: group.index, name: group.name,
-                    colorHexLight: color.hexLight, colorHexDark: color.hexDark,
-                    displayOrder: offset, assignsAutomatically: group.assignsAutomatically)
-                try record.insert(db)
-            }
-            for (priority, source) in template.filenameFormats.enumerated() {
-                var record = FilenameFormatRecord(id: nil, libraryId: libraryID, source: source,
-                                                  priority: priority, isEnabled: true)
-                try record.insert(db)
-            }
-            for pattern in volumePatterns {
-                var record = VolumeFormatRecord(id: nil, libraryId: libraryID, source: pattern.source,
-                                                priority: pattern.priority, isEnabled: true,
-                                                ordinalRank: pattern.ordinalRank)
-                try record.insert(db)
-            }
-            for (rawLevel, spec) in template.folderLevels {
-                guard let level = Int(rawLevel) else { continue }
-                var record = FolderLevelMappingRecord(
-                    id: nil, libraryId: libraryID, level: level,
-                    assignmentKind: spec.kind.rawValue,
-                    labelGroupIndex: spec.labelGroup, formatSource: spec.format)
-                try record.insert(db)
-            }
+            try Self.writeSettingsTables(db, draft, libraryID: libraryID)
             return LibraryID(rawValue: libraryID)
         }
+    }
+
+    /// 登録時のライブラリタイプを決める [LT-01][LT-05][LT-10][LT-11]。
+    private static func resolveTypeIDForRegistration(
+        _ db: Database, template: LibraryTypeTemplate?, draft: LibrarySettingsDraft
+    ) throws -> Int64 {
+        if let template {
+            if var existing = try LibraryTypeRecord
+                .filter(sql: "presetKey = ?", arguments: [template.key]).fetchOne(db) {
+                // 改訂されていたら版だけ上げる。**設定は自動反映しない** [LT-11]
+                if existing.version != template.version {
+                    existing.version = template.version
+                    try existing.update(db)
+                }
+                // 型名を編集して登録した場合、プリセット行は共有物なので
+                // 書き換えられない [LT-05]。専用の型へ分岐させる。
+                if existing.libraryTypeName != draft.libraryTypeName {
+                    return try makeCustomType(db, draft: draft, basedOn: template)
+                }
+                return existing.id ?? 0
+            }
+            var record = LibraryTypeRecord(
+                id: nil, presetKey: template.key, name: template.displayName,
+                libraryTypeName: template.libraryTypeName, isPreset: true,
+                version: template.version,
+                definitionJSON: String(decoding: try JSONEncoder().encode(template), as: UTF8.self))
+            try record.insert(db)
+            // 型名を編集済みなら、作ったプリセット行はそのままに専用型を作る。
+            if record.libraryTypeName != draft.libraryTypeName {
+                return try makeCustomType(db, draft: draft, basedOn: template)
+            }
+            return record.id ?? 0
+        }
+        return try makeCustomType(db, draft: draft, basedOn: nil)
+    }
+
+    /// このライブラリ専用の非プリセット型を作る [LT-02][LT-05]。
+    ///
+    /// **`presetKey` を持たせない。** 持たせると次に同じプリセットから
+    /// 登録したライブラリがこの行を共有し、型名の編集が他へ波及する。
+    private static func makeCustomType(_ db: Database, draft: LibrarySettingsDraft,
+                                       basedOn template: LibraryTypeTemplate?) throws -> Int64 {
+        var record = LibraryTypeRecord(
+            id: nil, presetKey: nil,
+            name: draft.libraryTypeName.isEmpty ? draft.displayName : draft.libraryTypeName,
+            libraryTypeName: draft.libraryTypeName,
+            isPreset: false,
+            version: template?.version ?? 1,
+            definitionJSON: template.map {
+                String(decoding: (try? JSONEncoder().encode($0)) ?? Data(), as: UTF8.self)
+            } ?? "{}")
+        try record.insert(db)
+        return record.id ?? 0
     }
 
     /// 登録解除 [RG-06]。
@@ -416,14 +432,7 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
         let errors = draft.validationErrors
         guard errors.isEmpty else { throw RepositoryError.settingsInvalid(errors) }
 
-        let payload = LibrarySettingsPayload(
-            targetExtensions: draft.targetExtensions.sorted(),
-            imageExtensions: draft.imageExtensions.sorted(),
-            delimiters: draft.delimiters,
-            semanticBindings: draft.semanticBindings.reduce(into: [:]) { $0[$1.key.rawValue] = $1.value },
-            seriesTitleCompositionFormat: draft.seriesTitleCompositionFormat,
-            labelGroupOrder: draft.labelGroups.map(\.index))
-        let payloadJSON = String(decoding: try JSONEncoder().encode(payload), as: UTF8.self)
+        let payloadJSON = try Self.payloadJSON(draft)
 
         try await database.writer.write { db in
             guard var library = try LibraryRecord.fetchOne(db, key: libraryID.rawValue) else {
@@ -439,53 +448,78 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
             library.settingsRevision += 1        // [VT-02] ここでしか上げない
             try library.update(db)
 
-            try Self.writeLabelGroups(db, draft.labelGroups, libraryID: libraryID.rawValue)
+            try Self.writeSettingsTables(db, draft, libraryID: libraryID.rawValue)
+        }
+    }
 
-            try db.execute(sql: "DELETE FROM filenameFormat WHERE libraryId = ?",
-                           arguments: [libraryID.rawValue])
-            for (priority, format) in draft.filenameFormats.enumerated() {
-                var record = FilenameFormatRecord(id: nil, libraryId: libraryID.rawValue,
-                                                  source: format.source, priority: priority,
-                                                  isEnabled: format.isEnabled)
-                try record.insert(db)
-            }
+    // MARK: - 草案の書き込み（登録と更新で共有）
 
-            try db.execute(sql: "DELETE FROM volumeFormat WHERE libraryId = ?",
-                           arguments: [libraryID.rawValue])
-            for (priority, pattern) in draft.volumeFormats.enumerated() {
-                var record = VolumeFormatRecord(id: nil, libraryId: libraryID.rawValue,
-                                                source: pattern.source, priority: priority,
-                                                isEnabled: pattern.isEnabled,
-                                                ordinalRank: pattern.ordinalRank)
-                try record.insert(db)
-            }
+    /// 草案から `library.settingsJSON` を組み立てる。
+    ///
+    /// **登録と更新で同じ関数を通す。** 別々に書くと、片方だけ直したときに
+    /// 「有効化した直後の設定」と「設定を開いて保存し直した設定」が食い違う。
+    static func payloadJSON(_ draft: LibrarySettingsDraft) throws -> String {
+        let payload = LibrarySettingsPayload(
+            targetExtensions: draft.targetExtensions.sorted(),
+            imageExtensions: draft.imageExtensions.sorted(),
+            delimiters: draft.delimiters,
+            semanticBindings: draft.semanticBindings.reduce(into: [:]) { $0[$1.key.rawValue] = $1.value },
+            seriesTitleCompositionFormat: draft.seriesTitleCompositionFormat,
+            labelGroupOrder: draft.labelGroups.map(\.index))
+        return String(decoding: try JSONEncoder().encode(payload), as: UTF8.self)
+    }
 
-            try db.execute(sql: "DELETE FROM folderLevelMapping WHERE libraryId = ?",
-                           arguments: [libraryID.rawValue])
-            for level in draft.folderLevels {
-                let kind: String
-                var groupIndex: Int?
-                var source: String?
-                switch level.assignment {
-                case .none:                        kind = "none"
-                case .singleLabelGroup(let index): kind = "singleLabelGroup"; groupIndex = index
-                case .format(let text):            kind = "format"; source = text
-                }
-                var record = FolderLevelMappingRecord(
-                    id: nil, libraryId: libraryID.rawValue, level: level.level,
-                    assignmentKind: kind, labelGroupIndex: groupIndex, formatSource: source)
-                try record.insert(db)
-            }
+    /// 草案の内容を付随テーブルへ書く。**登録と更新で共有する。**
+    ///
+    /// ラベルグループだけは作り直さず差分適用する（`writeLabelGroups`）
+    /// ——ラベルが `labelGroup` へ連鎖削除で紐づくため、消して入れ直すと
+    /// 蓄積したラベルと紐づけが全部消える。フォーマット・階層・保護文字列は
+    /// 付随データを持たないのでまとめて入れ替えてよい。
+    static func writeSettingsTables(_ db: Database, _ draft: LibrarySettingsDraft,
+                                    libraryID: Int64) throws {
+        try writeLabelGroups(db, draft.labelGroups, libraryID: libraryID)
 
-            try db.execute(sql: "DELETE FROM protectedToken WHERE ownerKind = 'library' AND ownerID = ?",
-                           arguments: [libraryID.rawValue])
-            for token in draft.protectedTokens {
-                var record = ProtectedTokenRecord(id: nil, ownerKind: "library",
-                                                  ownerID: libraryID.rawValue, text: token.text,
-                                                  position: token.position.rawValue,
-                                                  isEnabled: token.isEnabled)
-                try record.insert(db)
+        try db.execute(sql: "DELETE FROM filenameFormat WHERE libraryId = ?", arguments: [libraryID])
+        for (priority, format) in draft.filenameFormats.enumerated() {
+            var record = FilenameFormatRecord(id: nil, libraryId: libraryID,
+                                              source: format.source, priority: priority,
+                                              isEnabled: format.isEnabled)
+            try record.insert(db)
+        }
+
+        try db.execute(sql: "DELETE FROM volumeFormat WHERE libraryId = ?", arguments: [libraryID])
+        for (priority, pattern) in draft.volumeFormats.enumerated() {
+            var record = VolumeFormatRecord(id: nil, libraryId: libraryID,
+                                            source: pattern.source, priority: priority,
+                                            isEnabled: pattern.isEnabled,
+                                            ordinalRank: pattern.ordinalRank)
+            try record.insert(db)
+        }
+
+        try db.execute(sql: "DELETE FROM folderLevelMapping WHERE libraryId = ?", arguments: [libraryID])
+        for level in draft.folderLevels {
+            let kind: String
+            var groupIndex: Int?
+            var source: String?
+            switch level.assignment {
+            case .none:                        kind = "none"
+            case .singleLabelGroup(let index): kind = "singleLabelGroup"; groupIndex = index
+            case .format(let text):            kind = "format"; source = text
             }
+            var record = FolderLevelMappingRecord(
+                id: nil, libraryId: libraryID, level: level.level,
+                assignmentKind: kind, labelGroupIndex: groupIndex, formatSource: source)
+            try record.insert(db)
+        }
+
+        try db.execute(sql: "DELETE FROM protectedToken WHERE ownerKind = 'library' AND ownerID = ?",
+                       arguments: [libraryID])
+        for token in draft.protectedTokens {
+            var record = ProtectedTokenRecord(id: nil, ownerKind: "library",
+                                              ownerID: libraryID, text: token.text,
+                                              position: token.position.rawValue,
+                                              isEnabled: token.isEnabled)
+            try record.insert(db)
         }
     }
 

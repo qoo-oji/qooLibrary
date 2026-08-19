@@ -258,3 +258,101 @@ struct DisableDegradedLibraryTests {
         #expect(summary.updated == 0)
     }
 }
+
+//
+//  バックアップと削除 [IE-01〜IE-14][MG-24][RG-06]。
+//
+//  **ここが「削除しても戻せる」ことの担保**。リセットタブはこの 2 つの口
+//  （`exportBackup` / `deleteLibrary`）しか呼ばないので、合成根で往復が
+//  通れば、UI に残るのはパネルの提示とボタンの結線だけになる。
+//
+@Suite("バックアップと削除 [IE-01][MG-24][RG-06]", .serialized)
+struct LibraryBackupServicesTests {
+
+    @Test("書き出した JSON を読み戻せる [IE-01][IE-03]")
+    @MainActor
+    func exportProducesReadableJSON() async throws {
+        let w = try ServicesWorkspace()
+        await w.bootstrap()
+        try await w.enable()
+
+        let document = try await w.services.exportBackup()
+        #expect(document.libraries.count == 1)
+        #expect(document.schemaVersion == BackupDocument.currentSchemaVersion)
+
+        let data = try BackupCoding.encode(document)
+        let decoded = try BackupCoding.decode(data)
+        #expect(decoded.libraries.first?.displayName == "テストライブラリ")
+        // ラベルグループはテンプレートから展開済み [LT-03]。設定が
+        // 書き出しに乗っていることの確認。
+        #expect((decoded.libraries.first?.labelGroups.count ?? 0) > 0)
+        #expect((decoded.libraries.first?.filenameFormats.count ?? 0) > 0)
+    }
+
+    @Test("削除はライブラリの行を消す [RG-06]")
+    @MainActor
+    func deleteRemovesTheLibrary() async throws {
+        let w = try ServicesWorkspace()
+        await w.bootstrap()
+        let id = try await w.enable()
+        #expect(w.services.libraries.count == 1)
+
+        try await w.services.deleteLibrary(id: id)
+        #expect(w.services.libraries.isEmpty)
+        #expect(w.services.library(registrationUUID: w.registrationUUID) == nil)
+    }
+
+    /// **これが MG-24 の復旧手順そのもの**：書き出す → 消す → 有効化し直す →
+    /// 取り込む。ここが通らないなら、リセットタブの削除ボタンを出しては
+    /// いけない［ユーザーからの制約: 一括削除より先にエクスポート/インポート］。
+    @Test("削除したライブラリの設定を、有効化し直して取り込むと戻せる [MG-24]")
+    @MainActor
+    func settingsSurviveDeleteAndReimport() async throws {
+        let w = try ServicesWorkspace()
+        await w.bootstrap()
+        let id = try await w.enable()
+
+        // ユーザーが手を入れた設定を作る [LS-01]。テンプレートの雛形から
+        // ずらしておかないと、再有効化しただけで同じ状態に戻ってしまい、
+        // 取り込みが効いたのかどうか区別できない。
+        var draft = try #require(try await w.services.settingsDraft(libraryID: id))
+        draft.labelGroups[0].name = "自分で付けた名前"
+        draft.labelGroups[0].colorHexLight = "#123456"
+        draft.filenameFormats.append(FilenameFormatDraft(source: "@title", isEnabled: true))
+        let formatCount = draft.filenameFormats.count
+        try await w.services.updateSettings(draft, libraryID: id)
+
+        let document = try await w.services.exportBackup()
+
+        // 消す。
+        try await w.services.deleteLibrary(id: id)
+        #expect(w.services.libraries.isEmpty)
+
+        // 取り込みはライブラリを作らない——**まず有効化し直す**のが正しい
+        // 手順であることを、ここで固定する。
+        let planBefore = try await w.services.planImport(document)
+        #expect(planBefore.libraries.first?.kind == .missing)
+
+        let restoredID = try await w.enable()
+        let applied = try await w.services.importBackup(document)
+        #expect(applied.libraries.first?.kind == .update)
+
+        let restored = try #require(try await w.services.settingsDraft(libraryID: restoredID))
+        #expect(restored.labelGroups[0].name == "自分で付けた名前")
+        #expect(restored.labelGroups[0].colorHexLight == "#123456")
+        #expect(restored.filenameFormats.count == formatCount)
+        #expect(restored.filenameFormats.contains { $0.source == "@title" })
+    }
+
+    @Test("ストアを開けていなければ書き出しも削除も断る [ER-03]")
+    @MainActor
+    func refusesWhenTheStoreIsNotReady() async throws {
+        let services = LibraryServices()   // bootstrap しない
+        await #expect(throws: LibraryServices.ServiceError.notReady) {
+            _ = try await services.exportBackup()
+        }
+        await #expect(throws: LibraryServices.ServiceError.notReady) {
+            try await services.deleteLibrary(id: LibraryID(rawValue: 1))
+        }
+    }
+}

@@ -41,6 +41,10 @@ public final class LibraryServices {
     /// プリセットのライブラリタイプ [11.4][LT-01]。有効化の選択肢に使う。
     public private(set) var presetTemplates: [LibraryTypeTemplate] = []
 
+    /// 巻数フォーマットセットの定義 [11.3]。有効化画面がテンプレートから
+    /// 草案を組み立てるのに要る（巻数はテンプレートが名前で参照する）。
+    public var volumeSetDefinition: VolumeSetDefinition? { volumeSets }
+
     /// ストアを開けなかった理由。`nil` なら正常。
     public private(set) var startupFailure: StoreStartupFailure?
 
@@ -54,6 +58,7 @@ public final class LibraryServices {
     private var libraryRepository: (any LibraryRepository)?
     private var fileRepository: (any ManagedFileRepository)?
     private var labelRepository: (any LabelRepository)?
+    private var backupRepository: (any BackupRepository)?
     private var scanEngine: ScanEngine?
     private var didBootstrap = false
 
@@ -98,6 +103,7 @@ public final class LibraryServices {
                 database: opened, volumeSets: volumeSets ?? .empty)
             fileRepository = SQLiteManagedFileRepository(database: opened)
             labelRepository = SQLiteLabelRepository(database: opened)
+            backupRepository = SQLiteBackupRepository(database: opened)
             Log.app.info("ライブラリストアを開いた: \(Log.path(storeURL))")
         } catch let error as QooDatabase.StoreError {
             startupFailure = StoreStartupFailure(error)
@@ -161,6 +167,31 @@ public final class LibraryServices {
         bookmarkData: Data,
         template: LibraryTypeTemplate
     ) async throws -> LibraryID {
+        // 既定の草案を作って委譲する。**有効化画面が見せるのと同じ関数**なので、
+        // 「見たものが登録される」が経路によらず成り立つ。
+        let draft = TemplateInstantiation.draft(
+            from: template, volumeSets: volumeSets ?? .empty, displayName: displayName,
+            otherLibraryTypeNames: libraries.map(\.libraryTypeName),
+            otherLibraryDisplayNames: libraries.map(\.displayName))
+        return try await enable(registrationUUID: uuid, displayName: displayName, url: url,
+                                bookmarkData: bookmarkData, draft: draft, template: template)
+    }
+
+    /// 草案を指定して有効化する [LT-02][LS-01、ユーザー要望]。
+    ///
+    /// **有効化の時点で設定を調整できるようにするための経路。** 選ぶだけでは
+    /// 「その選択で何がどう変わるか」が分からない、という指摘への答えで、
+    /// 画面で編集した草案がそのまま登録される。`template` が `nil` なら
+    /// 白紙から作ったカスタム [LT-02]。
+    @discardableResult
+    public func enable(
+        registrationUUID uuid: UUID,
+        displayName: String,
+        url: URL,
+        bookmarkData: Data,
+        draft: LibrarySettingsDraft,
+        template: LibraryTypeTemplate?
+    ) async throws -> LibraryID {
         guard let repository = libraryRepository else { throw ServiceError.notReady }
         if let existing = try await repository.library(uuid: uuid) {
             return existing.id                                   // 冪等
@@ -185,10 +216,11 @@ public final class LibraryServices {
             volumeUUID: resolved.1,
             libraryTypeID: LibraryTypeID(rawValue: 0)   // 実装側が presetKey で解決する
         )
-        let id = try await repository.register(registration, template: template)
+        let id = try await repository.register(registration, draft: draft, template: template)
         Log.app.info("""
             ライブラリを有効化: \(Log.redactable(displayName)) \
-            / タイプ \(template.displayName) → \(Log.path(url))
+            / タイプ \(template?.displayName ?? "カスタム") \
+            / フォーマット \(draft.filenameFormats.count) 本 → \(Log.path(url))
             """)
         await refreshLibraries()
         return id
@@ -222,6 +254,62 @@ public final class LibraryServices {
         guard let repository = libraryRepository else { throw ServiceError.notReady }
         try await repository.updateSettings(draft, libraryID: libraryID)
         Log.app.info("ライブラリ設定を保存: \(Log.redactable(draft.displayName))")
+        await refreshLibraries()
+    }
+
+    // MARK: - バックアップ [IE-01〜IE-14][BK-05]
+
+    /// DB を JSON へ写す [IE-01][IE-02]。
+    ///
+    /// 何を出し、何を出さないかは `BackupDocument`（`QooKit`）の型コメントが正。
+    public func exportBackup(scope: BackupScope = .everything) async throws -> BackupDocument {
+        guard let repository = backupRepository else { throw ServiceError.notReady }
+        return try await repository.export(scope: scope, appVersion: Self.appVersion())
+    }
+
+    /// 取り込んだら何が起きるかを数える。**DB は変えない** [IE-11]。
+    public func planImport(_ document: BackupDocument) async throws -> ImportPlan {
+        guard let repository = backupRepository else { throw ServiceError.notReady }
+        return try await repository.plan(document)
+    }
+
+    /// 取り込む [JS-08]。承認を得てから呼ぶこと——`planImport` の結果を
+    /// 見せずに実行してはならない [IE-11]。
+    @discardableResult
+    public func importBackup(_ document: BackupDocument) async throws -> ImportPlan {
+        guard let repository = backupRepository else { throw ServiceError.notReady }
+        let plan = try await repository.import(document)
+        Log.app.info("""
+            バックアップを取り込んだ: ライブラリ \(plan.libraries.count) 件 \
+            / ファイル更新 \(plan.filesUpdated) 件 / ラベル追加 \(plan.labelsAdded) 件 \
+            / 取り込めないライブラリ \(plan.missingLibraries.count) 件
+            """)
+        await refreshLibraries()
+        return plan
+    }
+
+    static func appVersion() -> String? {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+    }
+
+    // MARK: - 削除 [RG-06]
+
+    /// ライブラリを DB から消す [RG-06]。
+    ///
+    /// **`disable(registrationUUID:)` との違いは入口だけ**——あちらは
+    /// フォルダツリーの登録行から、こちらは環境設定の一覧から呼ぶ。
+    /// 消す範囲は同じ（`library` 行と、そこへ連鎖するファイル・ラベル）。
+    ///
+    /// 登録フォルダ側の状態（オフライン・ゴミ箱・消失 [1-17]）に依存しない。
+    /// DB の行を消すだけでボリュームにも実ファイルにも触れないので、
+    /// **縮退状態こそ片付けたい場面**で手段が消えてはならない
+    /// ——実際に一度、無効化をオンライン条件で囲って「外付けを失うと
+    /// 二度と片付けられない」欠陥を作った前例がある [LibraryMenuVisibility]。
+    public func deleteLibrary(id: LibraryID, keepLabels: Bool = false) async throws {
+        guard let repository = libraryRepository else { throw ServiceError.notReady }
+        let name = try await repository.library(id: id)?.displayName
+        try await repository.unregister(id: id, keepLabels: keepLabels)
+        Log.app.info("ライブラリを削除: \(Log.redactable(name ?? "?"))")
         await refreshLibraries()
     }
 

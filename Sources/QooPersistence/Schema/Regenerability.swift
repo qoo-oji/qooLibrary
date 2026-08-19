@@ -21,6 +21,9 @@ public protocol RegenerabilityDeclaring: Sendable {
 
 extension ManagedFileRecord: RegenerabilityDeclaring {
     public static let regenerableColumns: Set<String> = [
+        // 実体から読み直せるもの。走査が必ず上書きするので、JSON に持つと
+        // **古い値で正しい観測を上書きする**危険だけが残る [MG-21]。
+        "fileSize", "createdAt", "modifiedAt",
         "normalizedName", "searchKey",
         "seriesName", "seriesKey",
         "volumeNumber", "volumeKind", "volumeRaw",

@@ -29,6 +29,15 @@ let defined = Set(strings.keys)
 // これを使って「本アプリの鍵らしい文字列」だけを検査対象にする。
 // bundle ID（`com.apple.Terminal`）や UTI（`public.folder`）のような、
 // 見た目の似た別物を巻き込まないため。
+// **既に使われている接頭辞。** 文脈から鍵と断定できない場所（素の文字列
+// リテラル）では、この一覧に載っている接頭辞だけを鍵候補として扱う——
+// SF Symbol 名やファイル名が同じ形をしているため。
+//
+// ⚠ **これだけに頼ると、新しい接頭辞の鍵を丸ごと見落とす。** カタログから
+// 導出している以上、まだ 1 つも定義していない接頭辞は候補にすら挙がらない
+// ——「鍵を足し忘れた」という、この検査が本来いちばん捕まえるべき状況で
+// 沈黙することになる（実際に `libraryEnable.*` を追加したとき素通りした）。
+// そのため下記の `isDefinitelyAKey` を併用する。
 let knownPrefixes = Set(defined.compactMap { $0.split(separator: ".").first.map(String.init) })
 
 let keyPattern = try! NSRegularExpression(pattern: #""([a-z][A-Za-z0-9]*(?:\.[A-Za-z][A-Za-z0-9]*)+)""#)
@@ -67,13 +76,21 @@ while let relative = enumerator?.nextObject() as? String {
         for match in keyPattern.matches(in: text, range: range) {
             guard let keyRange = Range(match.range(at: 1), in: text) else { continue }
             let key = String(text[keyRange])
-            guard let prefix = key.split(separator: ".").first.map(String.init),
-                  knownPrefixes.contains(prefix),
-                  !defined.contains(key)
-            else { continue }
+            guard !defined.contains(key) else { continue }
+            let before = String(text[text.startIndex..<keyRange.lowerBound])
+            // **文脈から鍵と断定できる形。** ここに当たるものは接頭辞に
+            // 関わらず検査する——新しい機能が新しい接頭辞で鍵を使い始めた
+            // ときに見落とさないため。
+            let isDefinitelyAKey = ["String(localized: \"", "String(localized:\"",
+                                    "LocalizedStringKey(\"", "titleKey: \""]
+                .contains { before.hasSuffix($0) }
+            if !isDefinitelyAKey {
+                guard let prefix = key.split(separator: ".").first.map(String.init),
+                      knownPrefixes.contains(prefix)
+                else { continue }
+            }
             // **鍵に見えるだけの別物を除く。** SF Symbol 名（`folder.badge.plus`）
             // やファイル名（`diagnostics.json`）は、たまたま同じ形をしている。
-            let before = String(text[text.startIndex..<keyRange.lowerBound])
             // `before` は開き引用符まで含む（捕捉は引用符の内側のため）。
             let isSymbolArgument = ["systemImage: \"", "systemName: \"", "systemImage:\"", "systemName:\""]
                 .contains { before.hasSuffix($0) }
