@@ -34,11 +34,25 @@ struct LibraryBasicsSettingsView: View {
         VStack(alignment: .leading, spacing: Tokens.spacing.l) {
             SettingsSectionHeader(title: "librarySettings.section.basics",
                                   explanation: "librarySettings.basics.explanation")
+            // **入力欄には必ず `.editableFieldChrome()` を付ける** [ユーザー指摘、
+            // 2 度目]。`Form` の中の素の `TextField` は、値が右端に寄った
+            // ただのテキストにしか見えず、**そこが入力できる場所だと気づけない**
+            // ——実機で「ライブラリタイプ名を入力するボックスがわからなかった」と
+            // 報告された。地の色が付いて初めて欄だと分かる（`EditableFieldChrome`
+            // の型コメント参照）。
             Form {
-                TextField("librarySettings.basics.displayName", text: $draft.displayName)
+                LabeledContent {
+                    TextField("", text: $draft.displayName)
+                        .labelsHidden()
+                        .editableFieldChrome()
+                } label: {
+                    Text("librarySettings.basics.displayName")
+                }
                 LabeledContent {
                     VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
-                        TextField("", text: $draft.libraryTypeName).labelsHidden()
+                        TextField("", text: $draft.libraryTypeName)
+                            .labelsHidden()
+                            .editableFieldChrome()
                         // 実蔵書との突き合わせで、ここの食い違いが 146 件の未解決を
                         // 生んだ実例がある（同人CG の印は `(同人CG集)` だった）。
                         Text("librarySettings.basics.typeNameHint")
@@ -52,8 +66,14 @@ struct LibraryBasicsSettingsView: View {
                 Toggle("librarySettings.basics.caseSensitive", isOn: $draft.caseSensitive)
                 Toggle("librarySettings.basics.thumbnailsAlwaysHidden",
                        isOn: $draft.thumbnailsAlwaysHidden)
-                TextField("librarySettings.basics.seriesComposition",
-                          text: $draft.seriesTitleCompositionFormat)
+                LabeledContent {
+                    TextField("", text: $draft.seriesTitleCompositionFormat)
+                        .labelsHidden()
+                        .font(.system(size: Tokens.fontSize.body, design: .monospaced))
+                        .editableFieldChrome()
+                } label: {
+                    Text("librarySettings.basics.seriesComposition")
+                }
             }
             .formStyle(.grouped)
             .frame(maxWidth: 560)

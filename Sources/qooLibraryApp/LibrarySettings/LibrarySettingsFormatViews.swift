@@ -202,6 +202,10 @@ struct LibraryFilenameFormatsSettingsView: View {
             Text("librarySettings.filenameFormats.orderHint")
                 .font(.system(size: Tokens.fontSize.caption))
                 .foregroundStyle(.secondary)
+            // **高さを内容にあわせて伸ばさない。** 伸ばすと、下にある
+            // 「選択中のフォーマット」の編集欄が `ScrollView` の外へ押し出され、
+            // 「編集する手段が見当たらない」状態になる（実機で報告された）。
+            EditableListChrome(height: 132) {
             List(selection: $selectedFormatID) {
                 ForEach($draft.filenameFormats) { $format in
                     HStack(spacing: Tokens.spacing.s) {
@@ -231,14 +235,13 @@ struct LibraryFilenameFormatsSettingsView: View {
                     draft.filenameFormats.remove(atOffsets: offsets)
                 }
             }
-            .frame(minHeight: 150, maxHeight: 240)
-            HStack {
-                Button("librarySettings.filenameFormats.add") {
+            } buttons: {
+                ListEditButton(kind: .add, help: "librarySettings.filenameFormats.add") {
                     let new = FilenameFormatDraft(source: "")
                     draft.filenameFormats.append(new)
                     selectedFormatID = new.id
                 }
-                Button("librarySettings.filenameFormats.remove") {
+                ListEditButton(kind: .remove, help: "librarySettings.filenameFormats.remove") {
                     guard let index = selectedIndex else { return }
                     draft.filenameFormats.remove(at: index)
                     selectedFormatID = draft.filenameFormats.first?.id

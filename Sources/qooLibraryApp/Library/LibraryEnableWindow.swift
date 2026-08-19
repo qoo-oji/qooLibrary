@@ -38,7 +38,7 @@ struct LibraryEnableView: View {
             Divider()
             footer
         }
-        .frame(width: 980, height: 620)
+        .frame(width: 980, height: 700)
         .task { await model.loadSamples() }
     }
 
@@ -132,16 +132,20 @@ struct LibraryEnableView: View {
     // MARK: - 右: 編集とプレビュー
 
     private var detailPane: some View {
+        // **編集側を広く取る。** ここが狭いと、一覧の下にある編集欄が
+        // スクロールの外へ出て「編集する手段が見当たらない」ことになる
+        // （実機で報告された）。プレビューは 3 行も見えれば傾向が掴めるので、
+        // 既定の配り方は編集側へ寄せる（分割線で変えられる）。
         VSplitView {
             ScrollView {
                 sectionEditor
                     .padding(Tokens.spacing.l)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(minHeight: 220)
+            .frame(minHeight: 340, idealHeight: 420)
 
             LibraryEnablePreviewPane(model: model)
-                .frame(minHeight: 180)
+                .frame(minHeight: 150, idealHeight: 190)
         }
         .frame(maxWidth: .infinity)
     }
@@ -171,8 +175,37 @@ struct LibraryEnableView: View {
     private var footer: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.s) {
             if !model.issues.isEmpty {
-                // 不備は全件出す。クリックでその設定項目へ移動できる。
-                ForEach(model.issues) { issue in
+                // **高さを固定する。** ウインドウが固定サイズなので、ここが
+                // 内容に応じて伸びると上の編集ペインを押し潰す——実機で、
+                // フォーマットを 1 本足して不備が 1 件出た瞬間に、編集欄が
+                // 画面外へ消えた。不備は全件出す（1 件ずつしか分からないと
+                // 直すたびに試す往復になる）が、はみ出す分は中でスクロールさせる。
+                ScrollView {
+                    VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
+                        issueRows
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 52)
+            }
+            QooDialogFooter(
+                confirm: DialogButton(
+                    title: String(localized: "library.enable.confirm", locale: locale)
+                ) {
+                    onCommit(model.draft, model.selectedTemplate)
+                    dismiss()
+                },
+                cancel: DialogButton(title: String(localized: "common.cancel", locale: locale),
+                                     role: .cancel) { dismiss() },
+                confirmDisabled: !model.canEnable)
+        }
+        .padding(Tokens.spacing.m)
+    }
+
+    /// 不備の一覧。クリックでその設定項目へ移動できる。
+    @ViewBuilder
+    private var issueRows: some View {
+        ForEach(model.issues) { issue in
                     Button {
                         model.reveal(issue)
                     } label: {
@@ -189,20 +222,7 @@ struct LibraryEnableView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                }
-            }
-            QooDialogFooter(
-                confirm: DialogButton(
-                    title: String(localized: "library.enable.confirm", locale: locale)
-                ) {
-                    onCommit(model.draft, model.selectedTemplate)
-                    dismiss()
-                },
-                cancel: DialogButton(title: String(localized: "common.cancel", locale: locale),
-                                     role: .cancel) { dismiss() },
-                confirmDisabled: !model.canEnable)
         }
-        .padding(Tokens.spacing.m)
     }
 }
 
