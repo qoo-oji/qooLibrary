@@ -134,7 +134,7 @@ struct SchemaTests {
         let beforeCalled = Counter()
         let first = try QooDatabase.open(at: url) { _ in beforeCalled.increment() }
         #expect(beforeCalled.value == 1, "新規ストアで移行前フックが呼ばれていない [MG-10]")
-        try first.writer.write { try $0.execute(sql: "INSERT INTO volumeOutputStyle (name, numericTemplate, digits, numeralWidth, ordinalTemplate, noneOutput) VALUES ('x','{n}',2,'halfwidth','{s}','')") }
+        try first.writer.write { try $0.execute(sql: "INSERT INTO volumeOutputStyle (name, numericTemplate, digits, numeralWidth, noneOutput) VALUES ('x','{n}',2,'halfwidth','')") }
         _ = try first.writer.close()
 
         let second = try QooDatabase.open(at: url) { _ in beforeCalled.increment() }

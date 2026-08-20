@@ -69,7 +69,7 @@ struct TemplateDraftTests {
         #expect(stored.filenameFormats.map(\.source) == shown.filenameFormats.map(\.source))
         #expect(stored.filenameFormats.map(\.isEnabled) == shown.filenameFormats.map(\.isEnabled))
         #expect(stored.volumeFormats.map(\.source) == shown.volumeFormats.map(\.source))
-        #expect(stored.volumeFormats.map(\.ordinalRank) == shown.volumeFormats.map(\.ordinalRank))
+        #expect(stored.volumeFormats.map(\.kind) == shown.volumeFormats.map(\.kind))
         #expect(stored.folderLevels.map(\.level) == shown.folderLevels.map(\.level))
         #expect(stored.folderLevels.map(\.assignment) == shown.folderLevels.map(\.assignment))
     }

@@ -9,15 +9,17 @@
 //
 import Foundation
 import GRDB
+import QooKit
 
 public enum QooMigrations {
     /// 登録順の識別子。`v<連番>_<内容>` 形式で時系列に並ぶこと [SC-03]。
-    public static let identifiers: [String] = ["v1_initial"]
+    public static let identifiers: [String] = ["v1_initial", "v2_regexPatterns"]
 
     public static var migrator: DatabaseMigrator {
         var m = DatabaseMigrator()
         // eraseDatabaseOnSchemaChange は**決して**有効にしない（データを消すため）。
         m.registerMigration(identifiers[0], migrate: v1Initial)
+        m.registerMigration(identifiers[1], migrate: v2RegexPatterns)
         return m
     }
 
@@ -33,6 +35,51 @@ public enum QooMigrations {
             INSERT INTO storeMetadata (id, schemaVersion, appBuildAtLastWrite)
             VALUES (1, ?, '')
             """, arguments: [identifiers[0]])
+    }
+
+    // MARK: - v2
+
+    /// 巻数フォーマットと保護文字列を正規表現へ移す [2026-08 の仕様変更]。
+    ///
+    /// - `volumeFormat.source`: `??` / `<space>` の独自記法 → 正規表現
+    /// - `volumeFormat.ordinalRank` → `kind`（序列巻数を廃止し「区切り専用」へ）
+    /// - `protectedToken.text` → `pattern`（完全一致のリテラル → 正規表現）
+    /// - `volumeOutputStyle.ordinalTemplate`: 出力すべき序列が無くなったので削除
+    /// - `managedFile.volumeKind`: `ordinal` は取りうる値でなくなったので `none` へ
+    ///
+    /// 変換は `LegacyVolumeNotation`（`QooKit`）が行う。**JSON バックアップの
+    /// 取り込みと同じ関数を使う**——片方だけ直すと、以前書き出した文書と DB とで
+    /// 変換結果が食い違う。
+    static func v2RegexPatterns(_ db: Database) throws {
+        try db.alter(table: "volumeFormat") { t in
+            t.add(column: "kind", .text).notNull()
+                .defaults(to: VolumePatternKind.volume.rawValue)
+        }
+        for row in try Row.fetchAll(db, sql: "SELECT id, source, ordinalRank FROM volumeFormat") {
+            let id: Int64 = row["id"]
+            let source: String = row["source"]
+            let ordinalRank: Int? = row["ordinalRank"]
+            // 序列巻数だったものは、巻数を持たない「区切り専用」になる。
+            let kind = (ordinalRank == nil ? VolumePatternKind.volume : .separator).rawValue
+            try db.execute(sql: "UPDATE volumeFormat SET source = ?, kind = ? WHERE id = ?",
+                           arguments: [LegacyVolumeNotation.regex(fromVolumeSource: source), kind, id])
+        }
+        try db.alter(table: "volumeFormat") { t in t.drop(column: "ordinalRank") }
+
+        try db.alter(table: "protectedToken") { t in t.rename(column: "text", to: "pattern") }
+        for row in try Row.fetchAll(db, sql: "SELECT id, pattern FROM protectedToken") {
+            let id: Int64 = row["id"]
+            let literal: String = row["pattern"]
+            try db.execute(sql: "UPDATE protectedToken SET pattern = ? WHERE id = ?",
+                           arguments: [LegacyVolumeNotation.regex(fromProtectedLiteral: literal), id])
+        }
+
+        try db.alter(table: "volumeOutputStyle") { t in t.drop(column: "ordinalTemplate") }
+        try db.execute(sql: "UPDATE managedFile SET volumeKind = 'none' WHERE volumeKind = 'ordinal'")
+        // 適用済みの版を記録する [MG-03]。忘れると「どこまで移行したか」を
+        // ストア自身に尋ねられなくなる。
+        try db.execute(sql: "UPDATE storeMetadata SET schemaVersion = ? WHERE id = 1",
+                       arguments: [identifiers[1]])
     }
 
     // MARK: - ライブラリ

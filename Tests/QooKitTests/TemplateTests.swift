@@ -90,34 +90,45 @@ struct BuiltInTemplateTests {
         let sets = try BuiltInTemplates.volumeSets()
         let patterns = VolumePatternCompiler.compileAll(
             try #require(sets.patterns(named: "VS-Full")))
+        // 巻数を取り出すもの。`raw` には**原文の表記**が残る。
         for (title, expectedSeries, expectedRaw) in [
             ("ブラックジャックによろしく 第01巻", "ブラックジャックによろしく", "第01巻"),
             ("作品名 12巻", "作品名", "12巻"),
             ("作品名 vol.7", "作品名", "vol.7"),
-            ("作品名 上巻", "作品名", "上巻"),
-            ("作品名 最終巻", "作品名", "最終巻"),
+            ("作品名 Vol.7", "作品名", "Vol.7"),      // 大文字小文字を問わない
+            ("作品名 VOLUME 7", "作品名", "VOLUME 7"),
         ] {
             let out = SeriesExtractor.extract(fromTitle: title, patterns: patterns)
             #expect(out.seriesName == expectedSeries, "\(title)")
             #expect(out.volume.raw == expectedRaw, "\(title)")
         }
+        // 区切り専用のもの。**シリーズ名は切るが巻数は持たない** [2026-08 の仕様変更]。
+        for (title, expectedSeries) in [
+            ("作品名 上巻", "作品名"),
+            ("作品名 最終巻", "作品名"),
+        ] {
+            let out = SeriesExtractor.extract(fromTitle: title, patterns: patterns)
+            #expect(out.seriesName == expectedSeries, "\(title)")
+            #expect(out.volume.kind == VolumeValue.Kind.none, "\(title)")
+        }
     }
 
-    @Test("VS-Doujin の序列語が揃っている（実データで出現する形）")
-    func doujinOrdinals() throws {
+    @Test("VS-Doujin の区切り語が揃っている（実データで出現する形）")
+    func doujinSeparators() throws {
         let sets = try BuiltInTemplates.volumeSets()
         let patterns = VolumePatternCompiler.compileAll(
             try #require(sets.patterns(named: "VS-Doujin")))
         // 実コーパスの同人誌に現れた: 総集編(81) 前編(13) 中編(4) 後編(11) 完結編(5)
-        for word in ["総集編", "前編", "中編", "後編", "完結編"] {
+        // これらは**シリーズ名を切るだけ**で巻数を持たない [2026-08 の仕様変更]。
+        for word in ["総集編", "前編", "中編", "後編", "完結編", "上巻", "中巻", "下巻", "最終巻"] {
             let out = SeriesExtractor.extract(fromTitle: "作品名 \(word)", patterns: patterns)
-            #expect(out.volume.kind == .ordinal, "\(word)")
             #expect(out.seriesName == "作品名", "\(word)")
+            #expect(out.volume.kind == VolumeValue.Kind.none, "\(word)")
         }
-        // `総集編2` のような混在も序列として扱う [VM2-03]
+        // `総集編2` のように数字が続く形もまとめて切る。
         let mixed = SeriesExtractor.extract(fromTitle: "作品名 総集編2", patterns: patterns)
-        #expect(mixed.volume.kind == .ordinal)
-        #expect(mixed.volume.raw == "総集編2")
+        #expect(mixed.seriesName == "作品名")
+        #expect(mixed.volume.kind == VolumeValue.Kind.none)
     }
 }
 

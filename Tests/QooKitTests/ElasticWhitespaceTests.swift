@@ -73,11 +73,11 @@ struct ElasticWhitespaceTests {
         }
     }
 
-    /// 巻数フォーマットの `<space>` は **1 個以上**を必須とする [SE-23][WS-07]。
+    /// 巻数フォーマットの `\s+` は **1 個以上**を必須とする [SE-23][WS-07]。
     /// フォーマットのリテラル空白（0 個以上）とは別物であることを固定する。
-    @Test("巻数の <space> だけは空白 1 個以上を必須とする [SE-23][WS-07]")
+    @Test("巻数の \\s+ だけは空白 1 個以上を必須とする [SE-23][WS-07]")
     func volumeRequiredSpaceIsNotElastic() throws {
-        let only = VolumePatternCompiler.compileAll([VolumePattern(source: "vol<space>??")])
+        let only = VolumePatternCompiler.compileAll([VolumePattern(source: #"vol\s+([0-9]+)"#)])
         #expect(VolumeMatcher.matchAtEnd(Array("作品 vol 3"), patterns: only) != nil)
         #expect(VolumeMatcher.matchAtEnd(Array("作品 vol3"), patterns: only) == nil)
     }

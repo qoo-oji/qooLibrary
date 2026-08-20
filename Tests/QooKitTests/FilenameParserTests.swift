@@ -7,25 +7,25 @@ import Foundation
 /// 05章 §5.4 の VS-Full 相当（テストで使う最小限）。
 func vsFull() -> [CompiledVolumePattern] {
     VolumePatternCompiler.compileAll([
-        VolumePattern(source: "第??巻", priority: 0),
-        VolumePattern(source: "??巻", priority: 1),
-        VolumePattern(source: "vol.??", priority: 2),
-        VolumePattern(source: "vol<space>??", priority: 3),
-        VolumePattern(source: "v??", priority: 4),
-        VolumePattern(source: "上巻", priority: 10, ordinalRank: 1),
-        VolumePattern(source: "中巻", priority: 11, ordinalRank: 2),
-        VolumePattern(source: "下巻", priority: 12, ordinalRank: 3),
-        VolumePattern(source: "最終巻", priority: 13, ordinalRank: 9999),
+        VolumePattern(source: #"第([0-9]+(?:\.[0-9]+)?)巻"#, priority: 0),
+        VolumePattern(source: #"([0-9]+(?:\.[0-9]+)?)巻"#, priority: 1),
+        VolumePattern(source: #"vol\.([0-9]+)"#, priority: 2),
+        VolumePattern(source: #"vol\s+([0-9]+)"#, priority: 3),
+        VolumePattern(source: #"v([0-9]+)"#, priority: 4),
+        VolumePattern(source: "上巻", priority: 10, kind: .separator),
+        VolumePattern(source: "中巻", priority: 11, kind: .separator),
+        VolumePattern(source: "下巻", priority: 12, kind: .separator),
+        VolumePattern(source: "最終巻", priority: 13, kind: .separator),
     ])
 }
 
 func vsDoujin() -> [CompiledVolumePattern] {
     VolumePatternCompiler.compileAll([
-        VolumePattern(source: "総集編", priority: 0, ordinalRank: 10000),
-        VolumePattern(source: "前編", priority: 1, ordinalRank: 1),
-        VolumePattern(source: "中編", priority: 2, ordinalRank: 2),
-        VolumePattern(source: "後編", priority: 3, ordinalRank: 3),
-        VolumePattern(source: "完結編", priority: 4, ordinalRank: 4),
+        VolumePattern(source: "総集編", priority: 0, kind: .separator),
+        VolumePattern(source: "前編", priority: 1, kind: .separator),
+        VolumePattern(source: "中編", priority: 2, kind: .separator),
+        VolumePattern(source: "後編", priority: 3, kind: .separator),
+        VolumePattern(source: "完結編", priority: 4, kind: .separator),
     ])
 }
 
@@ -47,7 +47,7 @@ func settings(formats: [String],
         libraryTypeName: typeName,
         allLibraryTypeNames: types,
         delimiters: delimiters,
-        protectedTokens: protectedTokens,
+        protectedTokens: ProtectedTokenCompiler.compileAll(protectedTokens),
         filenameFormats: compiled,
         volumeFormats: volume,
         semanticBindings: semantic)
@@ -270,7 +270,7 @@ struct ProtectedTokenTests {
     /// 仕様書 §4.7.3 の検証例をそのまま固定する。
     @Test("§4.7.3 の例: 事件記者コナン (仮) (01) - 著者")
     func specExample() throws {
-        let token = ProtectedToken(text: "(仮)")
+        let token = ProtectedToken(pattern: #"\(仮\)"#)
         let s = try settings(formats: ["@series (@volume) - @labelgroup1"],
                              volume: vsFull(), protectedTokens: [token])
         let r = try #require(parser.parse("事件記者コナン (仮) (01) - 著者",
@@ -283,7 +283,7 @@ struct ProtectedTokenTests {
 
     @Test("保護文字列の位置指定 [PT-05]")
     func positionConstraint() throws {
-        let suffixOnly = ProtectedToken(text: "(完全版)", position: .suffix)
+        let suffixOnly = ProtectedToken(pattern: #"\(完全版\)"#, position: .suffix)
         let s = try settings(formats: ["[@labelgroup1] @title"], protectedTokens: [suffixOnly])
         // 末尾にあるのでマスクされ、@title に吸収される
         let r = try #require(parser.parse("[著者] タイトル (完全版)", settings: s, purpose: .libraryScan))
@@ -292,9 +292,9 @@ struct ProtectedTokenTests {
 
     @Test("最長一致・左優先でマスクする [PT-06]")
     func longestMatchWins() {
-        let short = ProtectedToken(text: "(完全)")
-        let long = ProtectedToken(text: "(完全版)")
-        let input = ProtectedTokenMasker.mask("A (完全版) B", tokens: [short, long])
+        let short = ProtectedToken(pattern: #"\(完全\)"#)
+        let long = ProtectedToken(pattern: #"\(完全版\)"#)
+        let input = ProtectedTokenMasker.mask("A (完全版) B", tokens: ProtectedTokenCompiler.compileAll([short, long]))
         #expect(input.maskedChars.count == 5)     // A, 空白, PUA, 空白, B
         #expect(ProtectedTokenMasker.isPlaceholder(input.maskedChars[2]))
         #expect(input.originalText(of: 2..<3) == "(完全版)")
@@ -302,9 +302,9 @@ struct ProtectedTokenTests {
 
     @Test("全角半角・空白の揺れを吸収する [PT-04]")
     func normalizationInMatching() {
-        let token = ProtectedToken(text: "(完全 版)")
+        let token = ProtectedToken(pattern: #"\(完全\s+版\)"#)
         // 全角括弧 + 全角スペース 2 つ
-        let input = ProtectedTokenMasker.mask("A （完全　　版） B", tokens: [token])
+        let input = ProtectedTokenMasker.mask("A （完全　　版） B", tokens: ProtectedTokenCompiler.compileAll([token]))
         #expect(input.maskedChars.contains { ProtectedTokenMasker.isPlaceholder($0) })
     }
 
@@ -317,17 +317,17 @@ struct ProtectedTokenTests {
 
     @Test("無効なトークンはマスクしない")
     func disabledTokenIgnored() {
-        let token = ProtectedToken(text: "(仮)", isEnabled: false)
-        let input = ProtectedTokenMasker.mask("A (仮) B", tokens: [token])
+        let token = ProtectedToken(pattern: #"\(仮\)"#, isEnabled: false)
+        let input = ProtectedTokenMasker.mask("A (仮) B", tokens: ProtectedTokenCompiler.compileAll([token]))
         #expect(!input.maskedChars.contains { ProtectedTokenMasker.isPlaceholder($0) })
     }
 
     /// PUA は 256 個しかない [PTI-05]。超過分はマスクせず、印を立てる。
     @Test("PUA の上限を超えたら打ち切って知らせる [PTI-05]")
     func placeholderCapacity() {
-        let token = ProtectedToken(text: "(x)")
+        let token = ProtectedToken(pattern: #"\(x\)"#)
         let text = String(repeating: "(x)", count: 300)
-        let input = ProtectedTokenMasker.mask(text, tokens: [token])
+        let input = ProtectedTokenMasker.mask(text, tokens: ProtectedTokenCompiler.compileAll([token]))
         #expect(input.maskTruncated == true)
         let placeholders = input.maskedChars.filter { ProtectedTokenMasker.isPlaceholder($0) }
         #expect(placeholders.count == AppLimits.Format.maskPlaceholderCapacity)

@@ -9,8 +9,10 @@ import Foundation
 
 public struct VolumeSetDefinition: Sendable, Codable, Hashable {
     public struct Entry: Sendable, Codable, Hashable {
+        /// 正規表現。巻数は `(?<volume>…)` か唯一のキャプチャグループから取る。
         public let source: String
-        public let ordinalRank: Int?
+        /// 省略時は `.volume`。`separator` はシリーズ名を切るだけで巻数を持たない。
+        public let kind: VolumePatternKind?
     }
     public let sets: [String: [Entry]]
 
@@ -26,7 +28,7 @@ public struct VolumeSetDefinition: Sendable, Codable, Hashable {
     public func patterns(named name: String) -> [VolumePattern]? {
         guard let entries = sets[name] else { return nil }
         return entries.enumerated().map { i, e in
-            VolumePattern(source: e.source, priority: i, ordinalRank: e.ordinalRank)
+            VolumePattern(source: e.source, priority: i, kind: e.kind ?? .volume)
         }
     }
 }
@@ -134,7 +136,13 @@ public enum TemplateInstantiation {
                                allLibraryTypeNames: [String] = [],
                                allLibraryDisplayNames: [String] = [],
                                delimiters: DelimiterSet = .default,
-                               protectedTokens: [ProtectedToken] = [],
+                               /// 省略すると `draft(from:)` と**同じ既定**が入る。
+                               /// 揃えないと、ここで測った結果が実際に登録された
+                               /// ライブラリの挙動と食い違う。
+                               protectedTokens: [ProtectedToken]
+                                   = AppDefaults.Library.protectedTokenPatterns.map {
+                                       ProtectedToken(pattern: $0)
+                                   },
                                normalization: NormalizationOptions = .default)
         throws(Error) -> LibrarySettingsSnapshot
     {
@@ -196,7 +204,7 @@ public enum TemplateInstantiation {
             allLibraryTypeNames: context.allLibraryTypeNames,
             allLibraryDisplayNames: allLibraryDisplayNames,
             delimiters: delimiters,
-            protectedTokens: protectedTokens,
+            protectedTokens: ProtectedTokenCompiler.compileAll(protectedTokens),
             filenameFormats: formats,
             folderLevelAssignments: levels,
             volumeFormats: VolumePatternCompiler.compileAll(volumePatterns),
@@ -244,8 +252,7 @@ extension TemplateInstantiation {
             }
 
         let volumes = (volumeSets.patterns(named: template.volumeSet) ?? [])
-            .map { VolumeFormatDraft(source: $0.source, isEnabled: true,
-                                     ordinalRank: $0.ordinalRank) }
+            .map { VolumeFormatDraft(source: $0.source, isEnabled: true, kind: $0.kind) }
 
         // 階層は**番号順に並べる**。辞書の列挙順は不定で、そのまま渡すと
         // 開くたびに行の並びが変わる。
@@ -278,7 +285,11 @@ extension TemplateInstantiation {
             targetExtensions: AppDefaults.Library.targetExtensions.sorted(),
             imageExtensions: [],
             delimiters: .default,
-            protectedTokens: [],
+            // テンプレートは保護文字列を持たないので、ここで既定を入れる
+            // （対象拡張子と同じ理由・同じ場所）[2026-08 のユーザー要望]。
+            protectedTokens: AppDefaults.Library.protectedTokenPatterns.map {
+                ProtectedToken(pattern: $0)
+            },
             labelGroups: groups,
             semanticBindings: template.semanticKeywordBindings,
             filenameFormats: template.filenameFormats.map {
@@ -316,13 +327,15 @@ extension TemplateInstantiation {
                                   otherLibraryDisplayNames: [String] = []) -> LibrarySettingsDraft {
         let color = LabelColorPalette.palette(count: 1)[0]
         let volumes = (volumeSets.patterns(named: volumeSetName) ?? [])
-            .map { VolumeFormatDraft(source: $0.source, isEnabled: true,
-                                     ordinalRank: $0.ordinalRank) }
+            .map { VolumeFormatDraft(source: $0.source, isEnabled: true, kind: $0.kind) }
         return LibrarySettingsDraft(
             displayName: displayName,
             libraryTypeName: libraryTypeName,
             targetExtensions: AppDefaults.Library.targetExtensions.sorted(),
             delimiters: .default,
+            protectedTokens: AppDefaults.Library.protectedTokenPatterns.map {
+                ProtectedToken(pattern: $0)
+            },
             // **ラベルグループを 1 つだけ置く。** 0 個だとフォーマットに
             // `@labelgroup1` を書いた瞬間に不備になり、「何から始めれば
             // よいか」が分からない。

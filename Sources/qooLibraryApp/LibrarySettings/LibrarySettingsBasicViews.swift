@@ -244,8 +244,18 @@ struct LibraryProtectedTokensSettingsView: View {
                 ForEach($draft.protectedTokens) { $token in
                     HStack(spacing: Tokens.spacing.s) {
                         Toggle("", isOn: $token.isEnabled).labelsHidden()
-                        Text(verbatim: token.text)
+                        // **編集できるようにする。** 正規表現になった以上、
+                        // 打ち間違いを消して入れ直すしかないのは辛い。
+                        TextField("", text: $token.pattern)
+                            .labelsHidden()
                             .font(.system(size: Tokens.fontSize.body, design: .monospaced))
+                            .editableFieldChrome()
+                        if let finding = Self.firstFinding(for: token) {
+                            Image(systemName: finding.isError
+                                  ? "exclamationmark.circle.fill" : "exclamationmark.triangle.fill")
+                                .foregroundStyle(finding.isError ? .red : .orange)
+                                .help(Text(verbatim: finding.message))
+                        }
                         Spacer(minLength: Tokens.spacing.m)
                         FixedWidthPopUp(items: ProtectedToken.Position.popUpItems,
                                         selection: $token.position)
@@ -277,12 +287,19 @@ struct LibraryProtectedTokensSettingsView: View {
     private func add() {
         let text = newText.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { return }
-        guard !draft.protectedTokens.contains(where: { $0.text == text }) else {
+        guard !draft.protectedTokens.contains(where: { $0.pattern == text }) else {
             newText = ""
             return
         }
-        draft.protectedTokens.append(ProtectedToken(text: text))
+        draft.protectedTokens.append(ProtectedToken(pattern: text))
         newText = ""
+    }
+
+    /// 行に出す 1 件。**静的検査だけ**を使う（`body` は入力のたびに評価される）。
+    static func firstFinding(for token: ProtectedToken) -> RegexSafetyFinding? {
+        guard !token.pattern.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        let findings = RegexSafety.staticFindings(token.pattern)
+        return findings.first(where: \.isError) ?? findings.first
     }
 }
 

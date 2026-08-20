@@ -162,8 +162,8 @@ struct VolumeFormatterTests {
         #expect(VolumeFormatter.render(.numeric(1, raw: "(01)"), style: style) == "第01巻")
         #expect(VolumeFormatter.render(.numeric(3, raw: "(3)"), style: style) == "第03巻")
         #expect(VolumeFormatter.render(.numeric(12, raw: "(vol.12)"), style: style) == "第12巻")
-        #expect(VolumeFormatter.render(.ordinal(rank: 1, raw: "上巻"), style: style) == "上巻")
-        #expect(VolumeFormatter.render(.ordinal(rank: 1, raw: "前編"), style: style) == "前編")
+        // `上巻` `前編` のような表記は巻数ではなく**区切り**になったので、巻数としては
+        // `.none` になり `noneOutput` が使われる [2026-08 の仕様変更]。
         #expect(VolumeFormatter.render(.none, style: style) == "")
     }
 
@@ -183,13 +183,15 @@ struct VolumeFormatterTests {
         #expect(VolumeFormatter.render(.numeric(12, raw: "12"), style: style) == "第１２巻")
     }
 
-    @Test("種別ごとにテンプレートが分かれているので破綻しない [CR-23][VO-01]")
-    func ordinalNeverGetsNumericTemplate() {
+    /// **`第上巻巻` のような出力は構造的に起こらない。** 以前は序列専用の
+    /// テンプレートを分けることで防いでいたが、序列巻数そのものを廃止したので
+    /// 巻数の書式に当てはまるのは数値だけになった [VO-01 の趣旨は保たれる]。
+    @Test("数値テンプレートに当たるのは数値巻数だけ [CR-23][VO-01]")
+    func numericTemplateOnlyAppliesToNumbers() {
         var style = VolumeOutputStyle()
         style.numericTemplate = "第{n}巻"
-        style.ordinalTemplate = "{s}"
-        // `第上巻巻` のような出力は構造的に起こらない
-        #expect(VolumeFormatter.render(.ordinal(rank: 3, raw: "下巻"), style: style) == "下巻")
+        style.noneOutput = ""
+        #expect(VolumeFormatter.render(.none, style: style) == "")
     }
 
     @Test("none の出力を差し替えられる")
@@ -199,10 +201,10 @@ struct VolumeFormatterTests {
         #expect(VolumeFormatter.render(.none, style: style) == "（単巻）")
     }
 
-    @Test("序列テンプレートに装飾を足せる [CR-22]")
-    func decoratedOrdinal() {
+    @Test("数値テンプレートに装飾を足せる [CR-22]")
+    func decoratedNumeric() {
         var style = VolumeOutputStyle()
-        style.ordinalTemplate = "（{s}）"
-        #expect(VolumeFormatter.render(.ordinal(rank: 2, raw: "中巻"), style: style) == "（中巻）")
+        style.numericTemplate = "（{n}）"
+        #expect(VolumeFormatter.render(.numeric(2, raw: "02"), style: style) == "（02）")
     }
 }

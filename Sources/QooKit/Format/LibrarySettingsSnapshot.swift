@@ -23,7 +23,7 @@ public struct LibrarySettingsSnapshot: Sendable {
     public let targetExtensions: Set<String>
     public let imageExtensions: Set<String>          // [IF-02]
     public let delimiters: DelimiterSet              // [9.3]
-    public let protectedTokens: [ProtectedToken]     // [9.2.3]
+    public let protectedTokens: [CompiledProtectedToken]   // [9.2.3]
 
     /// 優先順に並んだファイル名フォーマット [FF-03]。
     public let filenameFormats: [CompiledFormat]
@@ -48,7 +48,7 @@ public struct LibrarySettingsSnapshot: Sendable {
                 targetExtensions: Set<String> = [],
                 imageExtensions: Set<String> = [],
                 delimiters: DelimiterSet = .default,
-                protectedTokens: [ProtectedToken] = [],
+                protectedTokens: [CompiledProtectedToken] = [],
                 filenameFormats: [CompiledFormat] = [],
                 folderLevelAssignments: [Int: FolderLevelMappingSpec.Assignment] = [:],
                 volumeFormats: [CompiledVolumePattern] = [],

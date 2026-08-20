@@ -14,21 +14,21 @@ public struct VolumeOutputStyle: Sendable, Hashable, Codable, Identifiable {
     /// 0 = ゼロ埋めしない [CR-22]。
     public var digits: Int
     public var numeralWidth: NumeralWidth
-    /// `{s}` は原文 [CR-22][CR-23]。**種別ごとにテンプレートを分けることで
-    /// `第上巻巻` のような破綻を構造的に防ぐ** [VO-01]。
-    public var ordinalTemplate: String
     public var noneOutput: String
+
+    // `ordinalTemplate` は 2026-08 の仕様変更で削除した。序列巻数（`上巻` = 1 の
+    // ような順序値を持つ種別）を廃止し、`上巻` は巻数ではなく「シリーズ名を切る
+    // 区切り」として扱うようにしたため、出力すべき序列の値が存在しなくなった。
 
     public init(id: UUID = UUID(), name: String = "既定",
                 numericTemplate: String = "第{n}巻", digits: Int = 2,
                 numeralWidth: NumeralWidth = .halfwidth,
-                ordinalTemplate: String = "{s}", noneOutput: String = "") {
+                noneOutput: String = "") {
         self.id = id
         self.name = name
         self.numericTemplate = numericTemplate
         self.digits = digits
         self.numeralWidth = numeralWidth
-        self.ordinalTemplate = ordinalTemplate
         self.noneOutput = noneOutput
     }
 
@@ -40,8 +40,6 @@ public enum VolumeFormatter {
         switch v.kind {
         case .none:
             return style.noneOutput                                        // [CR-30 で周囲ごと削除]
-        case .ordinal:
-            return style.ordinalTemplate.replacingOccurrences(of: "{s}", with: v.raw ?? "")
         case .numeric:
             guard let n = v.number else { return style.noneOutput }
             var s = (n == n.rounded() && n.magnitude < 1e15)

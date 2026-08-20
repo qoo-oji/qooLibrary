@@ -171,12 +171,14 @@ struct QueryTests {
         #expect(try await f.files.query(q).rows.map(\.filename) == ["10.cbz"])
     }
 
-    @Test("巻数のソートは numeric < ordinal < none [SE-10][VM-15]")
+    @Test("巻数のソートは numeric < none。同点はファイル名順 [VM-15]")
     func volumeSorting() async throws {
         let f = try await Fixture.make()
         let plan: [(String, VolumeValue)] = [
             ("c.cbz", .none),
-            ("b.cbz", .ordinal(rank: 1, raw: "上巻")),
+            // 区切り専用パターン（`上巻` など）に一致したファイルは巻数を持たない
+            // [2026-08 の仕様変更で序列巻数を廃止]。
+            ("b.cbz", .none),
             ("a.cbz", .numeric(3, raw: "第03巻")),
             ("d.cbz", .numeric(1, raw: "第01巻")),
         ]

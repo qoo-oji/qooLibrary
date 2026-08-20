@@ -29,6 +29,29 @@ public enum AppLimits {
         /// これを超える出現は、超過分をマスクせず警告する。
         public static let maskPlaceholderCapacity = 256
         public static let maskPlaceholderBase: UInt32 = 0xE000
+
+        /// 正規表現 1 回の照合に許す時間（秒）。
+        ///
+        /// ユーザーが書いた正規表現は指数時間になりうる（実測: `(a+)+$` は 2 文字
+        /// ごとに約 4 倍）。`SafeRegex` はこの上限を超えた照合を打ち切る。
+        /// 20ms は「通常のパターンは 0.003ms 程度で終わる」実測に対して 3 桁以上の
+        /// 余裕があり、かつ 5 万ファイルの走査で踏んでも 1 件あたりの遅延として
+        /// 体感できる範囲に収まる値。
+        public static let regexMatchBudget: TimeInterval = 0.02
+
+        /// 保存時に危険な正規表現を実測するとき、1 本の標本に許す時間（秒）。
+        /// 検査自体が固まらないよう、照合と同じウォッチドッグの下で走らせる。
+        public static let regexProbeBudget: TimeInterval = 0.02
+
+        /// 保存時の実測で当てる敵対的標本の上限。
+        public static let maxRegexProbeSamples = 48
+
+        /// 保存時の実測 1 本ぶんの総予算（秒）。
+        ///
+        /// `validate()` は設定画面の入力のたびに走る。**「打ち切られはしないが遅い」
+        /// パターン**（1 標本 5ms 程度）だと標本を全部当てるだけで 0.5 秒かかり、
+        /// 入力が重くなる。総量でも頭打ちにする。
+        public static let regexProbeTotalBudget: TimeInterval = 0.1
     }
 
     /// 展開時の安全上限 [EX-20〜EX-22]。環境設定で変更できる想定のため、

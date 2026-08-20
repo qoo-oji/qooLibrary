@@ -135,7 +135,9 @@ struct ScanIntegrationTests {
         let row = try #require(try await w.rows().first)
         #expect(row.title == "作品タイトル 総集編")
         #expect(row.seriesName == "作品タイトル")
-        #expect(row.volume.kind == .ordinal)       // VS-Doujin の「総集編」
+        // VS-Doujin の「総集編」は**区切り専用**。シリーズ名は切るが巻数は持たない
+        // [2026-08 の仕様変更で序列巻数を廃止]。
+        #expect(row.volume.kind == VolumeValue.Kind.none)
     }
 
     @Test("ラベルが付与される [RC-01]")

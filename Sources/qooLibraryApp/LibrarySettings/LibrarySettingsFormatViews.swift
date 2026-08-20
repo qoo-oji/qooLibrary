@@ -673,6 +673,7 @@ struct LibraryFolderLevelsSettingsView: View {
 
 struct LibraryVolumeFormatsSettingsView: View {
     @Binding var draft: LibrarySettingsDraft
+    @State private var selectedID: UUID?
 
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.l) {
@@ -685,38 +686,84 @@ struct LibraryVolumeFormatsSettingsView: View {
                 .font(.system(size: Tokens.fontSize.caption))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            Text("librarySettings.volumeFormats.regexHint")
+                .font(.system(size: Tokens.fontSize.caption))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
-            VStack(spacing: 0) {
-                ForEach($draft.volumeFormats) { $pattern in
-                    HStack(spacing: Tokens.spacing.s) {
-                        Toggle("", isOn: $pattern.isEnabled).labelsHidden()
-                        TextField("", text: $pattern.source)
-                            .labelsHidden()
-                            .font(.system(size: Tokens.fontSize.body, design: .monospaced))
-                            .editableFieldChrome()
-                        if let rank = pattern.ordinalRank {
-                            Text(String(format: String(localized: "librarySettings.volumeFormats.ordinal"),
-                                        rank))
-                                .font(.system(size: Tokens.fontSize.caption))
-                                .foregroundStyle(.secondary)
+            EditableListChrome(height: 200) {
+                List(selection: $selectedID) {
+                    ForEach($draft.volumeFormats) { $pattern in
+                        HStack(spacing: Tokens.spacing.s) {
+                            Toggle("", isOn: $pattern.isEnabled).labelsHidden()
+                            TextField("", text: $pattern.source)
+                                .labelsHidden()
+                                .font(.system(size: Tokens.fontSize.body, design: .monospaced))
+                                .editableFieldChrome()
+                            FixedWidthPopUp(items: VolumePatternKind.popUpItems,
+                                            selection: $pattern.kind)
+                                .frame(width: 100)
+                            if let warning = firstFinding(for: pattern) {
+                                Image(systemName: warning.isError
+                                      ? "exclamationmark.circle.fill" : "exclamationmark.triangle.fill")
+                                    .foregroundStyle(warning.isError ? .red : .orange)
+                                    .help(Text(verbatim: warning.message))
+                            }
                         }
-                        Button {
-                            draft.volumeFormats.removeAll { $0.id == pattern.id }
-                        } label: {
-                            Image(systemName: "minus.circle")
-                        }
-                        .buttonStyle(.borderless)
+                        .tag(pattern.id)
+                        .padding(.vertical, Tokens.spacing.xs)
                     }
-                    .padding(.vertical, Tokens.spacing.xs)
-                    Divider()
+                    .onMove { source, destination in
+                        draft.volumeFormats.move(fromOffsets: source, toOffset: destination)
+                    }
+                    .onDelete { offsets in
+                        draft.volumeFormats.remove(atOffsets: offsets)
+                    }
                 }
+            } buttons: {
+                ListEditButton(kind: .add, help: "librarySettings.volumeFormats.add") {
+                    let new = VolumeFormatDraft(source: "")
+                    draft.volumeFormats.append(new)
+                    selectedID = new.id
+                }
+                ListEditButton(kind: .remove, help: "librarySettings.volumeFormats.remove") {
+                    guard let selectedID else { return }
+                    draft.volumeFormats.removeAll { $0.id == selectedID }
+                    self.selectedID = nil
+                }
+                .disabled(selectedID == nil)
             }
             .frame(maxWidth: 620, alignment: .leading)
+        }
+    }
 
-            Button("librarySettings.volumeFormats.add") {
-                draft.volumeFormats.append(VolumeFormatDraft(source: ""))
+    /// 行に出す 1 件。**静的検査だけ**を使う——`body` は入力のたびに評価されるので、
+    /// 実測（`measuredIssues`）をここへ持ち込むと画面が重くなる。
+    private func firstFinding(for pattern: VolumeFormatDraft) -> RegexSafetyFinding? {
+        let source = pattern.source.trimmingCharacters(in: .whitespaces)
+        guard !source.isEmpty else { return nil }
+        let findings = RegexSafety.staticFindings(pattern.source)
+        if let error = findings.first(where: \.isError) { return error }
+        // 巻数種別はキャプチャグループが 1 つ必要。どこから値を取るか決まらないため。
+        if pattern.kind == .volume, let regex = try? SafeRegex(pattern.source) {
+            if regex.captureGroupCount == 0 {
+                return RegexSafetyFinding(kind: .invalidSyntax(
+                    String(localized: "librarySettings.volumeFormats.noCaptureGroup")))
+            }
+            if regex.captureGroupCount > 1, !regex.hasNamedVolumeGroup {
+                return RegexSafetyFinding(kind: .invalidSyntax(
+                    String(localized: "librarySettings.volumeFormats.ambiguousCaptureGroup")))
             }
         }
+        return findings.first
+    }
+}
+
+extension VolumePatternKind {
+    /// 種別の選択肢。**序列巻数は廃止した**ので、巻数か区切りかの 2 択になる。
+    static var popUpItems: [FixedWidthPopUp<VolumePatternKind>.Item] {
+        [.init(title: String(localized: "librarySettings.volumeFormats.kindVolume"), tag: .volume),
+         .init(title: String(localized: "librarySettings.volumeFormats.kindSeparator"), tag: .separator)]
     }
 }
 

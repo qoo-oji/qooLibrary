@@ -25,7 +25,13 @@ import Foundation
 /// バックアップ文書の根 [IE-03]。
 public struct BackupDocument: Codable, Sendable, Equatable {
     /// この実装が書き出す版。**読み込みは `<=` で判定する** [IE-14][JS-09]。
-    public static let currentSchemaVersion = 1
+    ///
+    /// - 1: 巻数フォーマットは `??` / `<space>` の独自記法。序列巻数を `ordinalRank`
+    ///      で表した。保護文字列は完全一致のリテラル（`text`）。
+    /// - 2: どちらも正規表現。巻数フォーマットは `kind`（volume / separator）を持つ。
+    ///      **版 1 の文書は DTO のデコード時にその場で変換する**ので、以前書き出した
+    ///      バックアップはそのまま読める。
+    public static let currentSchemaVersion = 2
 
     public var schemaVersion: Int
     public var exportedAt: Date
@@ -180,16 +186,52 @@ public struct FormatBackup: Codable, Sendable, Equatable {
 }
 
 public struct VolumeFormatBackup: Codable, Sendable, Equatable {
+    /// 正規表現。
     public var source: String
     public var priority: Int
     public var isEnabled: Bool
-    public var ordinalRank: Int?
+    /// `VolumePatternKind` の生値（`volume` / `separator`）。
+    public var kind: String
 
-    public init(source: String, priority: Int, isEnabled: Bool, ordinalRank: Int?) {
+    public init(source: String, priority: Int, isEnabled: Bool, kind: String) {
         self.source = source
         self.priority = priority
         self.isEnabled = isEnabled
-        self.ordinalRank = ordinalRank
+        self.kind = kind
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case source, priority, isEnabled, kind
+        /// 版 1 の遺物。読み込みの判別にだけ使い、書き出しはしない。
+        case ordinalRank
+    }
+
+    /// **`kind` が無い＝版 1 の文書**とみなし、記法と種別をその場で変換する。
+    /// 版の番号ではなくキーの有無で判別するのは、文書全体の版に依存せず
+    /// この型だけで完結させるため。書き出し側は必ず `kind` を書く。
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        priority = try c.decode(Int.self, forKey: .priority)
+        isEnabled = try c.decode(Bool.self, forKey: .isEnabled)
+        let rawSource = try c.decode(String.self, forKey: .source)
+
+        if let kind = try c.decodeIfPresent(String.self, forKey: .kind) {
+            self.kind = kind
+            source = rawSource
+        } else {
+            let ordinalRank = try c.decodeIfPresent(Int.self, forKey: .ordinalRank)
+            // 序列巻数だったものは「シリーズ名を切るだけ」の種別へ移す。
+            self.kind = (ordinalRank == nil ? VolumePatternKind.volume : .separator).rawValue
+            source = LegacyVolumeNotation.regex(fromVolumeSource: rawSource)
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(source, forKey: .source)
+        try c.encode(priority, forKey: .priority)
+        try c.encode(isEnabled, forKey: .isEnabled)
+        try c.encode(kind, forKey: .kind)
     }
 }
 
@@ -208,14 +250,42 @@ public struct FolderLevelMappingBackup: Codable, Sendable, Equatable {
 }
 
 public struct ProtectedTokenBackup: Codable, Sendable, Equatable {
-    public var text: String
+    /// 正規表現。
+    public var pattern: String
     public var position: String
     public var isEnabled: Bool
 
-    public init(text: String, position: String, isEnabled: Bool) {
-        self.text = text
+    public init(pattern: String, position: String, isEnabled: Bool) {
+        self.pattern = pattern
         self.position = position
         self.isEnabled = isEnabled
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case pattern, position, isEnabled
+        /// 版 1 の遺物（完全一致のリテラル）。読み込みの判別にだけ使う。
+        case text
+    }
+
+    /// **`pattern` が無い＝版 1 の文書**とみなし、リテラルを正規表現へ変換する。
+    /// 空白の連なりは `\s+` にする——旧実装の弾力的な空白照合 [PT-04] を保つため。
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        position = try c.decode(String.self, forKey: .position)
+        isEnabled = try c.decode(Bool.self, forKey: .isEnabled)
+        if let pattern = try c.decodeIfPresent(String.self, forKey: .pattern) {
+            self.pattern = pattern
+        } else {
+            let literal = try c.decode(String.self, forKey: .text)
+            pattern = LegacyVolumeNotation.regex(fromProtectedLiteral: literal)
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(pattern, forKey: .pattern)
+        try c.encode(position, forKey: .position)
+        try c.encode(isEnabled, forKey: .isEnabled)
     }
 }
 

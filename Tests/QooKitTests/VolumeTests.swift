@@ -4,24 +4,30 @@ import Foundation
 
 @Suite("VolumePattern のコンパイル [5.1]")
 struct VolumePatternCompilerTests {
-    @Test("?? と <space> がメタ記号として読まれる")
-    func metaTokens() {
-        let p = VolumePatternCompiler.compile(VolumePattern(source: "vol<space>??"))
-        #expect(p.tokens == [.literal(Array("vol")), .requiredSpace, .digits])
+    @Test("正規表現としてコンパイルされる")
+    func compilesRegex() throws {
+        let health = RegexPatternHealth()
+        let p = try #require(VolumePatternCompiler.compile(
+            VolumePattern(source: #"vol\s+([0-9]+)"#), health: health))
+        #expect(p.kind == .volume)
+        #expect(p.regex.captureGroupCount == 1)
     }
 
-    @Test("メタ記号を含まないパターンは全部リテラル（序列表記）[VM2-02]")
-    func ordinalPattern() {
-        let p = VolumePatternCompiler.compile(VolumePattern(source: "上巻", ordinalRank: 1))
-        #expect(p.tokens == [.literal(Array("上巻"))])
-        #expect(p.isOrdinal)
-        #expect(!p.hasDigits)
+    @Test("読めない正規表現は落とされる")
+    func invalidRegexIsDropped() {
+        let health = RegexPatternHealth()
+        #expect(VolumePatternCompiler.compile(VolumePattern(source: "("), health: health) == nil)
+        // 一括コンパイルでも同じ。ここで落とすのは最後の砦で、通常は保存時に弾かれる。
+        #expect(VolumePatternCompiler.compileAll([VolumePattern(source: "(")]).isEmpty)
     }
 
-    @Test("リテラルはコンパイル時に正準化される [SE-03]")
-    func literalsCanonicalized() {
-        let p = VolumePatternCompiler.compile(VolumePattern(source: "Ｖｏｌ．??"))
-        #expect(p.tokens.first == .literal(Array("Vol.")))
+    @Test("区切り専用の種別が保たれる")
+    func separatorKindIsKept() throws {
+        let out = VolumePatternCompiler.compileAll([
+            VolumePattern(source: "上巻", kind: .separator),
+        ])
+        #expect(out.first?.kind == .separator)
+        #expect(out.first?.isSeparator == true)
     }
 
     @Test("無効なパターンは除外され、優先順に並ぶ [SE-21]")
@@ -51,9 +57,9 @@ struct VolumeMatcherTests {
         #expect(matchEnd("作品 v3")?.value.number == 3)
     }
 
-    @Test("<space> は空白 1 個以上を必須とする [SE-23][WS-07]")
+    @Test("`\\s+` は空白 1 個以上を必須とする [SE-23][WS-07]")
     func requiredSpace() {
-        let only = VolumePatternCompiler.compileAll([VolumePattern(source: "vol<space>??")])
+        let only = VolumePatternCompiler.compileAll([VolumePattern(source: #"vol\s+([0-9]+)"#)])
         #expect(VolumeMatcher.matchAtEnd(Array("作品 vol 12"), patterns: only)?.value.number == 12)
         #expect(VolumeMatcher.matchAtEnd(Array("作品 vol　12"), patterns: only)?.value.number == 12) // 全角
         #expect(VolumeMatcher.matchAtEnd(Array("作品 vol12"), patterns: only) == nil)                // 空白なし
@@ -74,18 +80,18 @@ struct VolumeMatcherTests {
 
     @Test("末尾のピリオドは小数として読まない")
     func trailingDotIsNotDecimal() throws {
-        let only = VolumePatternCompiler.compileAll([VolumePattern(source: "v??")])
+        let only = VolumePatternCompiler.compileAll([VolumePattern(source: #"v([0-9]+)"#)])
         let m = try #require(VolumeMatcher.matchAtEnd(Array("作品 v3"), patterns: only))
         #expect(m.value.number == 3)
     }
 
-    @Test("序列表記は ordinalRank を持つ [SE-10][VM2-02]")
-    func ordinalMatching() throws {
+    /// 区切り専用は**範囲は返すが巻数は持たない** [2026-08 の仕様変更で序列巻数を廃止]。
+    @Test("区切り専用のパターンは巻数を持たない")
+    func separatorHasNoVolume() throws {
         let m = try #require(matchEnd("作品 上巻"))
-        #expect(m.value.kind == .ordinal)
-        #expect(m.value.ordinalRank == 1)
-        #expect(m.value.raw == "上巻")
+        #expect(m.value.kind == VolumeValue.Kind.none)
         #expect(m.value.number == nil)
+        #expect(m.range.count == 2)          // 「上巻」の 2 文字ぶんを切る
     }
 
     @Test("末尾に届く一致のうち最長を採る [SE-21 の解釈、2026-08]")
@@ -101,12 +107,12 @@ struct VolumeMatcherTests {
     @Test("パターンの登録順が逆でも同じ結果になる")
     func robustAgainstRegistrationOrder() throws {
         let specOrder = VolumePatternCompiler.compileAll([
-            VolumePattern(source: "??巻", priority: 0),
-            VolumePattern(source: "第??巻", priority: 1),
+            VolumePattern(source: #"([0-9]+)巻"#, priority: 0),
+            VolumePattern(source: #"第([0-9]+)巻"#, priority: 1),
         ])
         let reversed = VolumePatternCompiler.compileAll([
-            VolumePattern(source: "第??巻", priority: 0),
-            VolumePattern(source: "??巻", priority: 1),
+            VolumePattern(source: #"第([0-9]+)巻"#, priority: 0),
+            VolumePattern(source: #"([0-9]+)巻"#, priority: 1),
         ])
         for patterns in [specOrder, reversed] {
             let out = SeriesExtractor.extract(fromTitle: "作品 第01巻", patterns: patterns)
@@ -118,8 +124,8 @@ struct VolumeMatcherTests {
     @Test("同じ長さなら登録順が先のものを採る [SE-21]")
     func tieBreakByRegistrationOrder() throws {
         let p = VolumePatternCompiler.compileAll([
-            VolumePattern(source: "v??", priority: 0),
-            VolumePattern(source: "V??", priority: 1),
+            VolumePattern(source: #"v([0-9]+)"#, priority: 0),
+            VolumePattern(source: #"V([0-9]+)"#, priority: 1),
         ])
         let m = try #require(VolumeMatcher.matchAtEnd(Array("作品 v3"), patterns: p))
         #expect(m.value.number == 3)
@@ -142,10 +148,19 @@ struct VolumeMatcherTests {
         #expect(cands.first?.length ?? 0 >= cands.last?.length ?? 0)
     }
 
-    @Test("巻数として意味を持たないパターン（数値も序列も無い）は候補にしない")
-    func meaninglessPatternIsRejected() {
+    /// キャプチャグループが無い巻数パターンは、値をどこから取るか決まらない。
+    /// **巻数 0 と誤って扱うより、一致しなかったことにするほうが害が小さい。**
+    @Test("キャプチャの無い巻数パターンは候補にしない")
+    func patternWithoutCaptureIsRejected() {
         let junk = VolumePatternCompiler.compileAll([VolumePattern(source: "巻")])
         #expect(VolumeMatcher.matchAtEnd(Array("作品 巻"), patterns: junk) == nil)
+    }
+
+    /// キャプチャが数値として読めない場合も同じ。
+    @Test("数値にならないキャプチャは候補にしない")
+    func nonNumericCaptureIsRejected() {
+        let junk = VolumePatternCompiler.compileAll([VolumePattern(source: "第(.)巻")])
+        #expect(VolumeMatcher.matchAtEnd(Array("作品 第一巻"), patterns: junk) == nil)
     }
 }
 
@@ -180,33 +195,32 @@ struct SeriesExtractorTests {
         #expect(out.volume.number == 1)
     }
 
-    @Test("序列巻数でも切り離せる")
-    func ordinalSeries() {
+    /// 区切り専用の役目はこれ——**巻数は持たないがシリーズ名は切れる**。
+    @Test("区切り専用のパターンでもシリーズ名を切り離せる")
+    func separatorSeries() {
         let out = SeriesExtractor.extract(fromTitle: "作品名 上巻", patterns: patterns)
         #expect(out.seriesName == "作品名")
-        #expect(out.volume.ordinalRank == 1)
+        #expect(out.volume.kind == VolumeValue.Kind.none)
     }
 }
 
-@Suite("VolumeValue のソート順 [SE-10]")
+@Suite("VolumeValue のソート順 [VM-15]")
 struct VolumeValueSortTests {
-    @Test("numeric < ordinal < none の順で安定する")
+    /// 序列巻数を廃止したので numeric と none の 2 段だけになる。
+    @Test("numeric < none の順で安定する")
     func sortOrder() {
         let values: [VolumeValue] = [
             .none,
-            .ordinal(rank: 9999, raw: "最終巻"),
             .numeric(3, raw: "第03巻"),
-            .ordinal(rank: 1, raw: "上巻"),
             .numeric(1, raw: "第01巻"),
         ]
         let sorted = values.sorted { $0.sortKey < $1.sortKey }
-        #expect(sorted.map(\.raw) == ["第01巻", "第03巻", "上巻", "最終巻", nil])
+        #expect(sorted.map(\.raw) == ["第01巻", "第03巻", nil])
     }
 
-    @Test("大きな数値巻数でも序列より前に来る")
-    func largeNumericStillBeforeOrdinal() {
-        #expect(VolumeValue.numeric(999, raw: "999").sortKey
-                < VolumeValue.ordinal(rank: 1, raw: "上巻").sortKey)
+    @Test("巻数を持たないものは必ず末尾へ")
+    func noneSortsLast() {
+        #expect(VolumeValue.numeric(999, raw: "999").sortKey < VolumeValue.none.sortKey)
     }
 }
 

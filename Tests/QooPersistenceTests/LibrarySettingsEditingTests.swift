@@ -137,13 +137,13 @@ struct LibrarySettingsEditingTests {
         let f = try await Fixture.make(preset: "builtin.general-comic-a")
         var draft = try #require(try await f.libraries.settingsDraft(libraryID: f.libraryID))
         draft.delimiters.pairs.append(PairDelimiter(open: "【", close: "】"))
-        draft.protectedTokens.append(ProtectedToken(text: "(完全版)", position: .suffix))
+        draft.protectedTokens.append(ProtectedToken(pattern: #"\(完全版\)"#, position: .suffix))
         draft.folderLevels = [FolderLevelDraft(level: 1, assignment: .singleLabelGroup(index: 1))]
         try await f.libraries.updateSettings(draft, libraryID: f.libraryID)
 
         let reloaded = try #require(try await f.libraries.settingsDraft(libraryID: f.libraryID))
         #expect(reloaded.delimiters.pairs.contains { $0.open == "【" })
-        #expect(reloaded.protectedTokens.contains { $0.text == "(完全版)" })
+        #expect(reloaded.protectedTokens.contains { $0.pattern == #"\(完全版\)"# })
         #expect(reloaded.folderLevels == [FolderLevelDraft(id: reloaded.folderLevels[0].id,
                                                           level: 1,
                                                           assignment: .singleLabelGroup(index: 1))])

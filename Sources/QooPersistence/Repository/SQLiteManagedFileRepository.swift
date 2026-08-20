@@ -382,8 +382,9 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
         case .title:      column = "COALESCE(title, filename)"
         case .series:     column = "COALESCE(seriesKey, '')"
         case .volume:
-            // numeric < ordinal < none [SE-10]。none は末尾へ。
-            return "CASE volumeKind WHEN 'numeric' THEN 0 WHEN 'ordinal' THEN 1 ELSE 2 END \(direction), "
+            // numeric < none。巻数を持たないものは末尾へ [VM-15]。
+            // （序列巻数は 2026-08 の仕様変更で廃止したので 2 段しかない。）
+            return "CASE volumeKind WHEN 'numeric' THEN 0 ELSE 1 END \(direction), "
                 + "COALESCE(volumeNumber, 0) \(direction), filename ASC"
         case .fileSize:   column = "fileSize"
         case .createdAt:  column = "createdAt"

@@ -55,20 +55,21 @@ public struct FilenameFormatDraft: Sendable, Hashable, Identifiable {
     }
 }
 
-/// 巻数フォーマット 1 件 [SE-05][SE-21]。
+/// 巻数フォーマット 1 件 [SE-05][SE-21]。`source` は正規表現。
 public struct VolumeFormatDraft: Sendable, Hashable, Identifiable {
     public let id: UUID
+    /// 正規表現。巻数は `(?<volume>…)` か唯一のキャプチャグループから取る。
     public var source: String
     public var isEnabled: Bool
-    /// 序数（上巻・下巻など）の順位 [SE-11]。数値巻ではない場合に使う。
-    public var ordinalRank: Int?
+    /// 巻数を取り出すのか、シリーズ名を切るだけなのか [VolumePatternKind]。
+    public var kind: VolumePatternKind
 
     public init(id: UUID = UUID(), source: String, isEnabled: Bool = true,
-                ordinalRank: Int? = nil) {
+                kind: VolumePatternKind = .volume) {
         self.id = id
         self.source = source
         self.isEnabled = isEnabled
-        self.ordinalRank = ordinalRank
+        self.kind = kind
     }
 }
 
@@ -377,18 +378,82 @@ extension LibrarySettingsDraft {
         }
 
         // --- 巻数フォーマット [SE-05][SE-21] ---
-        for (i, pattern) in volumeFormats.enumerated()
-        where pattern.source.trimmingCharacters(in: .whitespaces).isEmpty {
-            let message = "\(i + 1) 番目の巻数フォーマットが空です。"
-            if pattern.isEnabled { addError(.volumeFormats, message) } else { addWarning(.volumeFormats, message) }
+        //
+        // 記法は正規表現。読めないものはエラー、遅くなりうるものは警告にする。
+        // **拒否ではなく警告で足りる**のは、実行時に `SafeRegex` のウォッチドッグが
+        // 必ず時間の上限で打ち切るため [三層防御の ①]。
+        for (i, pattern) in volumeFormats.enumerated() {
+            let label = "\(i + 1) 番目の巻数フォーマット"
+            if pattern.source.trimmingCharacters(in: .whitespaces).isEmpty {
+                let message = "\(label)が空です。"
+                if pattern.isEnabled { addError(.volumeFormats, message) } else { addWarning(.volumeFormats, message) }
+                continue
+            }
+            guard pattern.isEnabled else { continue }
+
+            for finding in RegexSafety.staticFindings(pattern.source) {
+                let message = "\(label): \(finding.message)"
+                if finding.isError { addError(.volumeFormats, message) }
+                else { addWarning(.volumeFormats, message) }
+            }
+
+            // 巻数の値をどこから取るかが一意に決まらないと読めない。
+            guard pattern.kind == .volume, let regex = try? SafeRegex(pattern.source) else { continue }
+            if regex.captureGroupCount == 0 {
+                addError(.volumeFormats,
+                         "\(label): 巻数を取り出すキャプチャグループがありません。"
+                         + "巻数にあたる部分を `(` `)` で囲んでください（例: `第([0-9]+)巻`）。"
+                         + "シリーズ名を切るだけなら種別を「区切り」にしてください。")
+            } else if regex.captureGroupCount > 1, !regex.hasNamedVolumeGroup {
+                addError(.volumeFormats,
+                         "\(label): キャプチャグループが \(regex.captureGroupCount) 個あり、"
+                         + "どれが巻数か決まりません。巻数以外は `(?:…)` にするか、"
+                         + "巻数を `(?<\(volumeCaptureGroupName)>…)` と名前付きにしてください。")
+            }
         }
 
         // --- 保護文字列 [PT-01] ---
-        for token in protectedTokens
-        where token.text.trimmingCharacters(in: .whitespaces).isEmpty {
-            addError(.protectedTokens, "空の保護文字列があります。")
+        for (i, token) in protectedTokens.enumerated() {
+            let label = "\(i + 1) 番目の保護文字列"
+            if token.pattern.trimmingCharacters(in: .whitespaces).isEmpty {
+                addError(.protectedTokens, "空の保護文字列があります。")
+                continue
+            }
+            guard token.isEnabled else { continue }
+            for finding in RegexSafety.staticFindings(token.pattern) {
+                let message = "\(label): \(finding.message)"
+                if finding.isError { addError(.protectedTokens, message) }
+                else { addWarning(.protectedTokens, message) }
+            }
         }
 
+        return issues
+    }
+
+    /// 実際に正規表現を走らせて時間を測る検査 [三層防御の ③]。
+    ///
+    /// **`validate()` とは別にしてある。** あちらは描画のたびに何度も呼ばれるので、
+    /// 実測を混ぜると危険な正規表現を直している最中に画面が重くなる。こちらは
+    /// 保存のような明示的な区切りでだけ呼ぶこと。
+    ///
+    /// 見つかるのは警告だけ——実行時は `SafeRegex` のウォッチドッグが必ず打ち切る
+    /// ので、保存を妨げる理由が無い [三層防御の ①]。
+    ///
+    /// - Parameter samples: そのライブラリの実ファイル名。敵対的な合成標本に加える。
+    public func measuredIssues(samples: [String] = []) -> [LibrarySettingsIssue] {
+        var issues: [LibrarySettingsIssue] = []
+        for (i, pattern) in volumeFormats.enumerated() where pattern.isEnabled {
+            for finding in RegexSafety.measuredFindings(pattern.source, samples: samples) {
+                issues.append(.init(severity: .warning, section: .volumeFormats,
+                                    message: "\(i + 1) 番目の巻数フォーマット: \(finding.message)"))
+            }
+        }
+        for (i, token) in protectedTokens.enumerated() where token.isEnabled {
+            for finding in RegexSafety.measuredFindings(token.pattern, samples: samples) {
+                issues.append(.init(severity: .warning, section: .protectedTokens,
+                                    message: "\(i + 1) 番目の保護文字列: \(finding.message)"))
+            }
+        }
         return issues
     }
 
@@ -465,7 +530,7 @@ extension LibrarySettingsDraft {
         let patterns = volumeFormats.enumerated().compactMap { priority, pattern -> VolumePattern? in
             guard pattern.isEnabled, !pattern.source.isEmpty else { return nil }
             return VolumePattern(source: pattern.source, isEnabled: true,
-                                 priority: priority, ordinalRank: pattern.ordinalRank)
+                                 priority: priority, kind: pattern.kind)
         }
 
         return LibrarySettingsSnapshot(
@@ -478,7 +543,7 @@ extension LibrarySettingsDraft {
             targetExtensions: Set(targetExtensions),
             imageExtensions: Set(imageExtensions),
             delimiters: delimiters,
-            protectedTokens: protectedTokens,
+            protectedTokens: ProtectedTokenCompiler.compileAll(protectedTokens),
             filenameFormats: formats,
             folderLevelAssignments: levels,
             volumeFormats: VolumePatternCompiler.compileAll(patterns),

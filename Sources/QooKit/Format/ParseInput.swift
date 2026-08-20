@@ -24,6 +24,9 @@ public struct ParseInput: Sendable {
     public let originRanges: [Range<Int>]
     /// マスクが上限（PUA 256 個）を超えて打ち切られたか [PTI-05]。
     public let maskTruncated: Bool
+    /// `maskedChars` を全角半角・NFC の差を畳んだ射影。**正規表現の照合はこれに
+    /// 対して行う**（巻数フォーマット）。1 ファイルにつき 1 回だけ作る。
+    public let folded: FoldedSubject
 
     public var count: Int { maskedChars.count }
     public var isEmpty: Bool { maskedChars.isEmpty }
@@ -38,6 +41,7 @@ public struct ParseInput: Sendable {
         self.canonicalChars = canonicalChars
         self.originRanges = originRanges
         self.maskTruncated = maskTruncated
+        self.folded = FoldedSubject(maskedChars)
     }
 
     /// マスクを行わない入力（保護文字列が 1 つも無い場合の速い経路）。

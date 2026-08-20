@@ -69,7 +69,7 @@ public struct SQLiteBackupRepository: BackupRepository, Sendable {
                 .filter(sql: "libraryId = ?", arguments: [libraryID])
                 .order(sql: "priority").fetchAll(db)
                 .map { VolumeFormatBackup(source: $0.source, priority: $0.priority,
-                                          isEnabled: $0.isEnabled, ordinalRank: $0.ordinalRank) },
+                                          isEnabled: $0.isEnabled, kind: $0.kind) },
             folderLevelMappings: try FolderLevelMappingRecord
                 .filter(sql: "libraryId = ?", arguments: [libraryID])
                 .order(sql: "level").fetchAll(db)
@@ -80,7 +80,7 @@ public struct SQLiteBackupRepository: BackupRepository, Sendable {
             protectedTokens: try ProtectedTokenRecord
                 .filter(sql: "ownerKind = 'library' AND ownerID = ?", arguments: [libraryID])
                 .order(sql: "id").fetchAll(db)
-                .map { ProtectedTokenBackup(text: $0.text, position: $0.position,
+                .map { ProtectedTokenBackup(pattern: $0.pattern, position: $0.position,
                                             isEnabled: $0.isEnabled) },
             files: try exportFiles(db, libraryID: libraryID))
     }
@@ -427,7 +427,7 @@ extension SQLiteBackupRepository {
         for format in backup.volumeFormats {
             var record = VolumeFormatRecord(id: nil, libraryId: libraryID, source: format.source,
                                             priority: format.priority, isEnabled: format.isEnabled,
-                                            ordinalRank: format.ordinalRank)
+                                            kind: format.kind)
             try record.insert(db)
         }
         try db.execute(sql: "DELETE FROM folderLevelMapping WHERE libraryId = ?",
@@ -443,7 +443,7 @@ extension SQLiteBackupRepository {
                        arguments: [libraryID])
         for token in backup.protectedTokens {
             var record = ProtectedTokenRecord(id: nil, ownerKind: "library", ownerID: libraryID,
-                                              text: token.text, position: token.position,
+                                              pattern: token.pattern, position: token.position,
                                               isEnabled: token.isEnabled)
             try record.insert(db)
         }

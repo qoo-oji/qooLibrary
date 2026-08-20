@@ -124,7 +124,8 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                 .order(sql: "priority")
                 .fetchAll(db)
                 .map { VolumePattern(source: $0.source, isEnabled: true,
-                                     priority: $0.priority, ordinalRank: $0.ordinalRank) }
+                                     priority: $0.priority,
+                                     kind: VolumePatternKind(rawValue: $0.kind) ?? .volume) }
 
             var levels: [Int: FolderLevelMappingSpec.Assignment] = [:]
             for record in try FolderLevelMappingRecord
@@ -145,7 +146,7 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
             let tokens = try ProtectedTokenRecord
                 .filter(sql: "ownerKind = 'library' AND ownerID = ?", arguments: [libraryID.rawValue])
                 .fetchAll(db)
-                .map { ProtectedToken(text: $0.text,
+                .map { ProtectedToken(pattern: $0.pattern,
                                       position: ProtectedToken.Position(rawValue: $0.position) ?? .anywhere,
                                       isEnabled: $0.isEnabled) }
 
@@ -159,7 +160,7 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                 targetExtensions: Set(payload.targetExtensions),
                 imageExtensions: Set(payload.imageExtensions),
                 delimiters: payload.delimiters,
-                protectedTokens: tokens,
+                protectedTokens: ProtectedTokenCompiler.compileAll(tokens),
                 filenameFormats: formats,
                 folderLevelAssignments: levels,
                 volumeFormats: VolumePatternCompiler.compileAll(volumePatterns),
@@ -361,7 +362,7 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                 .order(sql: "priority")
                 .fetchAll(db)
                 .map { VolumeFormatDraft(source: $0.source, isEnabled: $0.isEnabled,
-                                         ordinalRank: $0.ordinalRank) }
+                                         kind: VolumePatternKind(rawValue: $0.kind) ?? .volume) }
 
             let levels = try FolderLevelMappingRecord
                 .filter(sql: "libraryId = ?", arguments: [libraryID.rawValue])
@@ -386,7 +387,7 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                 .filter(sql: "ownerKind = 'library' AND ownerID = ?", arguments: [libraryID.rawValue])
                 .order(sql: "id")
                 .fetchAll(db)
-                .map { ProtectedToken(text: $0.text,
+                .map { ProtectedToken(pattern: $0.pattern,
                                       position: ProtectedToken.Position(rawValue: $0.position) ?? .anywhere,
                                       isEnabled: $0.isEnabled) }
 
@@ -492,7 +493,7 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
             var record = VolumeFormatRecord(id: nil, libraryId: libraryID,
                                             source: pattern.source, priority: priority,
                                             isEnabled: pattern.isEnabled,
-                                            ordinalRank: pattern.ordinalRank)
+                                            kind: pattern.kind.rawValue)
             try record.insert(db)
         }
 
@@ -516,7 +517,7 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                        arguments: [libraryID])
         for token in draft.protectedTokens {
             var record = ProtectedTokenRecord(id: nil, ownerKind: "library",
-                                              ownerID: libraryID, text: token.text,
+                                              ownerID: libraryID, pattern: token.pattern,
                                               position: token.position.rawValue,
                                               isEnabled: token.isEnabled)
             try record.insert(db)

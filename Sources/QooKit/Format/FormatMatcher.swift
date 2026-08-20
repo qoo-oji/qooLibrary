@@ -111,7 +111,7 @@ public enum FormatMatcher {
 
         case .field(let ref, .volume):
             // 型付き照合: 巻数フォーマットにマッチする候補を長い順に試す [TY-01][SE-24]。
-            for candidate in VolumeMatcher.matches(in: ctx.input.maskedChars, at: ii,
+            for candidate in VolumeMatcher.matches(in: ctx.input.folded, at: ii,
                                                    patterns: ctx.volumePatterns)
             where candidate.range.upperBound <= hi {
                 ctx.bindings.append((ref, candidate.range, candidate.value))

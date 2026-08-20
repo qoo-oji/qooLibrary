@@ -170,7 +170,7 @@ extension ManagedFileRecord {
             title: title,
             seriesName: seriesName,
             volume: VolumeValue(kind: VolumeValue.Kind(rawValue: volumeKind) ?? .none,
-                                number: volumeNumber, ordinalRank: nil, raw: volumeRaw),
+                                number: volumeNumber, raw: volumeRaw),
             rating: rating,
             state: FileState(rawValue: state) ?? .active,
             isArchived: isArchived,
@@ -194,10 +194,12 @@ struct VolumeFormatRecord: Codable, FetchableRecord, MutablePersistableRecord, S
     static let databaseTableName = "volumeFormat"
     var id: Int64?
     var libraryId: Int64
+    /// 正規表現 [2026-08 の仕様変更]。
     var source: String
     var priority: Int
     var isEnabled: Bool
-    var ordinalRank: Int?
+    /// `VolumePatternKind` の生値（`volume` / `separator`）。
+    var kind: String
     mutating func didInsert(_ inserted: InsertionSuccess) { id = inserted.rowID }
 }
 
@@ -217,7 +219,8 @@ struct ProtectedTokenRecord: Codable, FetchableRecord, MutablePersistableRecord,
     var id: Int64?
     var ownerKind: String
     var ownerID: Int64
-    var text: String
+    /// 正規表現 [2026-08 の仕様変更]。
+    var pattern: String
     var position: String
     var isEnabled: Bool
     mutating func didInsert(_ inserted: InsertionSuccess) { id = inserted.rowID }

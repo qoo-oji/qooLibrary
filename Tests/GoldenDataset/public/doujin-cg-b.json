@@ -67,8 +67,7 @@
         "matched" : true,
         "series" : "作品タイトル2ー長音",
         "volume" : {
-          "kind" : "ordinal",
-          "raw" : "上巻"
+          "kind" : "none"
         }
       },
       "id" : "builtin.doujin-cg-b.p3",
@@ -160,8 +159,7 @@
         "matched" : true,
         "series" : "作品 タイトル 6",
         "volume" : {
-          "kind" : "ordinal",
-          "raw" : "上巻"
+          "kind" : "none"
         }
       },
       "id" : "builtin.doujin-cg-b.p7",
@@ -255,8 +253,7 @@
         "matched" : true,
         "series" : "作品タイトル10",
         "volume" : {
-          "kind" : "ordinal",
-          "raw" : "上巻"
+          "kind" : "none"
         }
       },
       "id" : "builtin.doujin-cg-b.p11",
@@ -348,8 +345,7 @@
         "matched" : true,
         "series" : "サブタイトル付き作品14",
         "volume" : {
-          "kind" : "ordinal",
-          "raw" : "上巻"
+          "kind" : "none"
         }
       },
       "id" : "builtin.doujin-cg-b.p15",
@@ -443,8 +439,7 @@
         "matched" : true,
         "series" : "作品タイトル18",
         "volume" : {
-          "kind" : "ordinal",
-          "raw" : "上巻"
+          "kind" : "none"
         }
       },
       "id" : "builtin.doujin-cg-b.p19",
