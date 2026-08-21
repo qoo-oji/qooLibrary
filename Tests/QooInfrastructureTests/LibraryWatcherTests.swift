@@ -34,8 +34,8 @@ struct LibraryWatcherTests {
     @Test("パスは最長一致でライブラリへ振り分ける")
     func longestMatchWins() {
         let (watcher, _) = makeWatcher([
-            WatchedLibrary(id: LibraryID(rawValue: 1), rootPath: "/lib", lastEventID: 0),
-            WatchedLibrary(id: LibraryID(rawValue: 2), rootPath: "/lib/inner", lastEventID: 0),
+            WatchedLibrary(id: LibraryID(rawValue: 1), rootPath: "/lib"),
+            WatchedLibrary(id: LibraryID(rawValue: 2), rootPath: "/lib/inner"),
         ])
         #expect(watcher.library(containing: "/lib/inner/a.cbz")?.id == LibraryID(rawValue: 2))
         #expect(watcher.library(containing: "/lib/a.cbz")?.id == LibraryID(rawValue: 1))
@@ -47,7 +47,7 @@ struct LibraryWatcherTests {
     @Test("外部変更はスキャン要求になる")
     func externalChangeEmitsRequest() async throws {
         let (watcher, _) = makeWatcher([
-            WatchedLibrary(id: LibraryID(rawValue: 1), rootPath: "/lib", lastEventID: 0)])
+            WatchedLibrary(id: LibraryID(rawValue: 1), rootPath: "/lib")])
         var iterator = watcher.requests.makeAsyncIterator()
         watcher.handle([change("/lib/フォルダ/作品.cbz")])
         let request = try #require(await iterator.next())
@@ -60,7 +60,7 @@ struct LibraryWatcherTests {
     @Test("台帳に一致する変更はスキャン要求にならない [FO-12]")
     func selfChangeIsFiltered() async throws {
         let (watcher, ledger) = makeWatcher([
-            WatchedLibrary(id: LibraryID(rawValue: 1), rootPath: "/lib", lastEventID: 0)])
+            WatchedLibrary(id: LibraryID(rawValue: 1), rootPath: "/lib")])
         ledger.expect([URL(fileURLWithPath: "/lib/自分で作った.cbz")], kind: .createDirectory)
 
         var iterator = watcher.requests.makeAsyncIterator()
@@ -73,7 +73,7 @@ struct LibraryWatcherTests {
     @Test("MustScanSubDirs はフルスキャンへ落とす [SY-04][WA-04]")
     func mustScanSubDirsFallsBackToFullScan() async throws {
         let (watcher, _) = makeWatcher([
-            WatchedLibrary(id: LibraryID(rawValue: 1), rootPath: "/lib", lastEventID: 0)])
+            WatchedLibrary(id: LibraryID(rawValue: 1), rootPath: "/lib")])
         var iterator = watcher.requests.makeAsyncIterator()
         watcher.handle([change("/lib/x", flags: kFSEventStreamEventFlagMustScanSubDirs)])
         let request = try #require(await iterator.next())
@@ -84,7 +84,7 @@ struct LibraryWatcherTests {
     @Test("ルート自身の変更もフルスキャンへ落とす")
     func rootChangedFallsBackToFullScan() async throws {
         let (watcher, _) = makeWatcher([
-            WatchedLibrary(id: LibraryID(rawValue: 1), rootPath: "/lib", lastEventID: 0)])
+            WatchedLibrary(id: LibraryID(rawValue: 1), rootPath: "/lib")])
         var iterator = watcher.requests.makeAsyncIterator()
         watcher.handle([change("/lib", flags: kFSEventStreamEventFlagRootChanged)])
         #expect(try #require(await iterator.next()).needsFullScan)
@@ -96,7 +96,7 @@ struct LibraryWatcherTests {
     func suspendCoalescesIntoOneRequest() async throws {
         let id = LibraryID(rawValue: 1)
         let (watcher, _) = makeWatcher([
-            WatchedLibrary(id: id, rootPath: "/lib", lastEventID: 0)])
+            WatchedLibrary(id: id, rootPath: "/lib")])
         var iterator = watcher.requests.makeAsyncIterator()
 
         watcher.suspend(id)
@@ -113,7 +113,7 @@ struct LibraryWatcherTests {
     func resumeWithoutChangesEmitsNothing() async {
         let id = LibraryID(rawValue: 1)
         let (watcher, _) = makeWatcher([
-            WatchedLibrary(id: id, rootPath: "/lib", lastEventID: 0)])
+            WatchedLibrary(id: id, rootPath: "/lib")])
         var emitted = 0
         let task = Task { @MainActor in
             for await _ in watcher.requests { emitted += 1 }
@@ -125,10 +125,127 @@ struct LibraryWatcherTests {
         #expect(emitted == 0)
     }
 
+    // MARK: - 自プロセスの変更 [FO-01][FO-10][FO-12]
+
+    /// **FSEvents は自分の変更を落とす** [FO-10]し、台帳も落とす [FO-12]。
+    /// 二重に落ちるので、アプリがライブラリへ入れたファイルは DB に載らない
+    /// ——ファイルマネージャーからドラッグしたものが蔵書に現れない、という形。
+    @Test("自プロセスの変更もスキャン要求になる [FO-01]")
+    func localChangesAlsoProduceScanRequests() async throws {
+        let (watcher, _) = makeWatcher([
+            WatchedLibrary(id: LibraryID(rawValue: 1), rootPath: "/lib")])
+        var iterator = watcher.requests.makeAsyncIterator()
+
+        watcher.noteLocalChanges(at: [URL(fileURLWithPath: "/lib/フォルダ/自分で入れた.cbz")])
+        let request = try #require(await iterator.next())
+        #expect(request.libraryID == LibraryID(rawValue: 1))
+        #expect(request.relativePaths == ["フォルダ/自分で入れた.cbz"])
+        #expect(!request.needsFullScan)
+    }
+
+    /// **台帳は引かない。** 台帳の目的は自動リネームの無限ループを防ぐこと
+    /// [R-13][FO-24] であって、収束型のスキャン [FO-20] にとっては
+    /// 「自分の変更こそ DB に反映すべきもの」。
+    @Test("台帳に載っていても、自プロセスの変更はスキャン要求になる")
+    func theLedgerDoesNotSuppressTheLocalChannel() async throws {
+        let (watcher, ledger) = makeWatcher([
+            WatchedLibrary(id: LibraryID(rawValue: 1), rootPath: "/lib")])
+        let url = URL(fileURLWithPath: "/lib/自分で作った.cbz")
+        ledger.expect([url], kind: .createDirectory)
+
+        var iterator = watcher.requests.makeAsyncIterator()
+        watcher.noteLocalChanges(at: [url])
+        #expect(try #require(await iterator.next()).relativePaths == ["自分で作った.cbz"])
+    }
+
+    @Test("ライブラリの外の変更は無視する")
+    func localChangesOutsideAnyLibraryAreIgnored() async {
+        let (watcher, _) = makeWatcher([
+            WatchedLibrary(id: LibraryID(rawValue: 1), rootPath: "/lib")])
+        var emitted = 0
+        let task = Task { @MainActor in
+            for await _ in watcher.requests { emitted += 1 }
+        }
+        watcher.noteLocalChanges(at: [URL(fileURLWithPath: "/どこか/x.cbz")])
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        task.cancel()
+        #expect(emitted == 0)
+    }
+
+    /// 一括処理中は保留する [FO-14][EV-02]。自己変更の経路も同じ扱い。
+    @Test("一括処理中は自プロセスの変更も保留する [FO-14]")
+    func localChangesAreHeldWhileSuspended() async throws {
+        let id = LibraryID(rawValue: 1)
+        let (watcher, _) = makeWatcher([WatchedLibrary(id: id, rootPath: "/lib")])
+        var iterator = watcher.requests.makeAsyncIterator()
+
+        watcher.suspend(id)
+        watcher.noteLocalChanges(at: [URL(fileURLWithPath: "/lib/a.cbz")])
+        watcher.noteLocalChanges(at: [URL(fileURLWithPath: "/lib/b.cbz")])
+        watcher.resume(id)
+
+        #expect(try #require(await iterator.next()).relativePaths == ["a.cbz", "b.cbz"])
+    }
+
+    // MARK: - 差分の起点をストリームへ渡す [SY-03][WA-11][WA-12]
+
+    /// **検証できていない起点を渡してはならない** [WA-12]。渡しても
+    /// そのボリュームには履歴が無いので再生されず（§10.1.0 の実測）、
+    /// 他のボリュームの履歴を無用に遡らせるだけになる。
+    @Test("検証済みの起点が 1 つも無ければ「今から」にする [WA-12]")
+    func withoutAnyUsableCheckpointTheStreamStartsFromNow() {
+        let libraries = [
+            WatchedLibrary(id: LibraryID(rawValue: 1), rootPath: "/a"),
+            WatchedLibrary(id: LibraryID(rawValue: 2), rootPath: "/b", usableCheckpoint: nil),
+        ]
+        #expect(LibraryWatcher.sinceWhen(for: libraries)
+            == FSEventStreamEventId(kFSEventStreamEventIdSinceNow))
+    }
+
+    /// イベント ID はシステム全体で単調なので、最小値なら取りこぼさない。
+    /// 余分に届く分はスキャンが冪等 [FO-20] なので害が無い。
+    @Test("検証済みの起点の最小値を使う [SY-03]")
+    func theStreamStartsFromTheEarliestUsableCheckpoint() {
+        let libraries = [
+            WatchedLibrary(id: LibraryID(rawValue: 1), rootPath: "/a",
+                           usableCheckpoint: FSEventsCheckpoint(eventID: 900, deviceUUID: "A")),
+            WatchedLibrary(id: LibraryID(rawValue: 2), rootPath: "/b",
+                           usableCheckpoint: FSEventsCheckpoint(eventID: 100, deviceUUID: "B")),
+            WatchedLibrary(id: LibraryID(rawValue: 3), rootPath: "/c"),   // 検証できていない
+        ]
+        #expect(LibraryWatcher.sinceWhen(for: libraries) == FSEventStreamEventId(100))
+    }
+
+    // MARK: - 起点の検証そのもの [SY-04][WA-11]
+
+    @Test("起点は保存した UUID が現在のものと一致するときだけ使える [WA-11]")
+    func aCheckpointIsUsableOnlyWhenTheDeviceUUIDMatches() {
+        let checkpoint = FSEventsCheckpoint(eventID: 42, deviceUUID: "SAME")
+        #expect(checkpoint.isUsable(currentDeviceUUID: "SAME"))
+        #expect(!checkpoint.isUsable(currentDeviceUUID: "OTHER"), "履歴が別物に差し替わった")
+        #expect(!checkpoint.isUsable(currentDeviceUUID: nil), "履歴を持たないボリューム")
+    }
+
+    @Test("まだ一度も保存していない起点は使えない")
+    func anUnsavedCheckpointIsNeverUsable() {
+        #expect(!FSEventsCheckpoint.unusable.isUsable(currentDeviceUUID: "ANY"))
+        #expect(!FSEventsCheckpoint(eventID: 0, deviceUUID: "ANY").isUsable(currentDeviceUUID: "ANY"))
+    }
+
+    // MARK: - 差分の起点 [SY-02][WA-10]
+
+    /// **保存する起点は「まだ無い」を表す 0 にしない。** 0 で保存すると次回に
+    /// 履歴を要求できず、非起動中の変更を丸ごと取りこぼす。
+    @Test("監視していなくてもシステム全体の現在値を返す [SY-02]")
+    func theLatestEventIDIsNeverZero() {
+        let (watcher, _) = makeWatcher([])
+        #expect(watcher.latestEventID > 0)
+    }
+
     @Test("監視していないパスの変更は無視する")
     func unwatchedPathIsIgnored() async {
         let (watcher, _) = makeWatcher([
-            WatchedLibrary(id: LibraryID(rawValue: 1), rootPath: "/lib", lastEventID: 0)])
+            WatchedLibrary(id: LibraryID(rawValue: 1), rootPath: "/lib")])
         var emitted = 0
         let task = Task { @MainActor in
             for await _ in watcher.requests { emitted += 1 }
@@ -182,4 +299,62 @@ struct VolumeMonitorTests {
         await monitor.start()
         await monitor.stop()
     }
+}
+
+//
+//  `FileOperationService` からライブラリ監視へ届く経路 [FO-01]。
+//
+//  **上の suite だけでは足りない。** あちらは `LibraryWatcher` の振る舞いを
+//  直に試すので、`announce` が `LibraryWatcher.noteLocalChanges` を呼ぶことを
+//  誰も確かめていなかった——実際、その 1 行を消す変異が空振りした。
+//
+@Suite("自プロセスの変更がライブラリ監視へ届く [FO-01]", .serialized)
+@MainActor
+struct LibraryWatcherLocalChannelTests {
+
+    /// **共有インスタンスを使う。** `FileOperationService` の通知先は
+    /// `LibraryWatcher.shared` 固定なので、ここだけは共有で試すしかない。
+    /// `setWatchedForTesting` は FSEvents のストリームを張らないので、
+    /// 開発機の実フォルダを監視してしまうことはない。
+    @Test func localChangesReachTheSharedWatcherThroughFileOperationService() async throws {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("qoo-local-channel-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let watcher = LibraryWatcher.shared
+        let id = LibraryID(rawValue: 4242)
+        // FSEvents はシンボリックリンクを解決した実体のパスを返すので、
+        // 監視ルートも同じ正規化を経ておく（`/tmp` は `/private/tmp`）。
+        let rootPath = root.resolvingSymlinksInPath().path
+        watcher.setWatchedForTesting([WatchedLibrary(id: id, rootPath: rootPath)])
+        defer { watcher.setWatchedForTesting([]) }
+
+        // **上限時間つきで待つ。** 素の `await iterator.next()` は、経路が
+        // 切れているとき**失敗せずハングする**——変異を当てて実際にそうなった。
+        // 壊れているときに落ちないテストは、何も守っていない。
+        let received = Received()
+        let collector = Task { @MainActor in
+            for await request in watcher.requests { received.append(request); return }
+        }
+        defer { collector.cancel() }
+
+        _ = try await FileOperationService()
+            .createDirectory(at: root.appendingPathComponent("作者A"))
+
+        let deadline = Date().addingTimeInterval(3)
+        while received.value == nil, Date() < deadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        let request = try #require(received.value, "自プロセスの変更が届かなかった")
+        #expect(request.libraryID == id)
+        #expect(request.relativePaths == ["作者A"])
+    }
+}
+
+/// 到着した要求を 1 件だけ控える箱。
+@MainActor
+final class Received {
+    private(set) var value: ScanRequest?
+    func append(_ request: ScanRequest) { if value == nil { value = request } }
 }

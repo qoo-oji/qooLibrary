@@ -1,7 +1,7 @@
 import Foundation
 
 /// プロセスの実行環境についての判定を 1 箇所に集める。
-enum RuntimeEnvironment {
+public enum RuntimeEnvironment {
     /// 実行中のプロセスがテストランナーかどうか。
     ///
     /// SwiftPM の Swift Testing（`swiftpm-testing-helper`）は `XCTest` の
@@ -13,7 +13,10 @@ enum RuntimeEnvironment {
     ///   ログがテストのノイズで押し流されないように）
     /// - `SystemSoundPlayer` … 音を鳴らさない（テストのたびにゴミ箱音が
     ///   鳴るのを防ぐ）
-    static var isRunningTests: Bool {
+    /// - `BackgroundThumbnailWarmer` … 共有インスタンスの掃引を止める
+    /// - `LibraryServices` … 実体への追随を組み立てない（**開発機の実際の
+    ///   登録フォルダに FSEvents を張ってしまう**ため）
+    public static var isRunningTests: Bool {
         let info = ProcessInfo.processInfo
         if info.environment["XCTestConfigurationFilePath"] != nil { return true }
         if ["xctest", "swiftpm-testing-helper"].contains(info.processName) { return true }

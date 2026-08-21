@@ -17,6 +17,14 @@ public struct ScanRequest: Sendable, Equatable {
     public let needsFullScan: Bool
     /// このバッチで最後に見たイベント ID。保存して次回の `sinceWhen` にする [SY-02]。
     public let lastEventID: UInt64
+
+    public init(libraryID: LibraryID, relativePaths: [String],
+                needsFullScan: Bool, lastEventID: UInt64) {
+        self.libraryID = libraryID
+        self.relativePaths = relativePaths
+        self.needsFullScan = needsFullScan
+        self.lastEventID = lastEventID
+    }
 }
 
 /// 監視対象のライブラリ。
@@ -24,13 +32,18 @@ public struct WatchedLibrary: Sendable, Equatable {
     public let id: LibraryID
     /// 解決済みの根（物理パス）。
     public let rootPath: String
-    /// 前回保存したイベント ID [SY-02]。
-    public let lastEventID: UInt64
+    /// **使えると検証済みの**差分の起点 [SY-02][WA-11]。`nil` は
+    /// 「履歴を要求してはいけない」——渡すと**黙って 0 件になる**（§10.1.0）。
+    ///
+    /// 検証は呼び出し側（調整役）が `FSEventsHistory.usableCheckpoint` で
+    /// 済ませてから渡す。**ここで検証しないのは、検証が I/O を伴うため**
+    /// （この型はメインアクタ上で組み立てられる）。
+    public let usableCheckpoint: FSEventsCheckpoint?
 
-    public init(id: LibraryID, rootPath: String, lastEventID: UInt64) {
+    public init(id: LibraryID, rootPath: String, usableCheckpoint: FSEventsCheckpoint? = nil) {
         self.id = id
         self.rootPath = rootPath
-        self.lastEventID = lastEventID
+        self.usableCheckpoint = usableCheckpoint
     }
 }
 
@@ -39,6 +52,10 @@ public struct WatchedLibrary: Sendable, Equatable {
 /// 台帳の照合（ロック 1 回）と振り分けだけで、I/O をしない。
 @MainActor
 public final class LibraryWatcher {
+    /// アプリ全体で 1 つ [ST-01]。`FileOperationService` の 1 箇所から
+    /// 自己変更を届けるための固定の宛先が要る（``noteLocalChanges(at:)`` 参照）。
+    public static let shared = LibraryWatcher()
+
     private var stream: FileSystemEventStream?
     var watched: [WatchedLibrary] = []
     var continuations: [UUID: AsyncStream<ScanRequest>.Continuation] = [:]
@@ -63,27 +80,98 @@ public final class LibraryWatcher {
 
     /// 監視対象を差し替える。**オフラインのライブラリには張らない** [SY-08][WA-06]。
     ///
-    /// ストリームは 1 本で足りる。FSEvents のイベント ID はシステム全体で単調なので、
-    /// `sinceWhen` は**全ライブラリの最小値**にしておけば取りこぼさない。新しい ID を
-    /// 持つライブラリには余分なイベントが届くが、スキャンは冪等なので害が無い [FO-20]。
+    /// ストリームは 1 本で足りる。FSEvents のイベント ID はシステム全体で単調
+    /// （SDK いわく「global, system-wide clock のように振る舞う」）なので、
+    /// `sinceWhen` は**検証済みの起点の最小値**にしておけば取りこぼさない。
+    /// 新しい起点を持つライブラリには余分なイベントが届くが、スキャンは冪等
+    /// なので害が無い [FO-20]。
+    ///
+    /// **検証できなかったライブラリの起点は混ぜない** [WA-12]。混ぜても
+    /// そのボリュームには履歴が無いので再生されず（§10.1.0 の実測）、
+    /// 代わりに他のボリュームの履歴を無用に遡らせるだけになる。
+    /// そういうライブラリは呼び出し側がフルスキャンへ落とす。
     public func setLibraries(_ libraries: [WatchedLibrary]) async {
         watched = libraries
         guard !libraries.isEmpty else {
             stream = nil
             return
         }
-        let sinceWhen = libraries.map(\.lastEventID).min() ?? 0
         if stream == nil {
             let box = WeakBox(self)
             stream = FileSystemEventStream(
-                sinceWhen: sinceWhen == 0
-                    ? FSEventStreamEventId(kFSEventStreamEventIdSinceNow)
-                    : FSEventStreamEventId(sinceWhen)
+                sinceWhen: Self.sinceWhen(for: libraries),
+                // スキャンの入力なので、表示の追随より長くまとめる [SY-07]。
+                latency: AppLimits.Watch.scanCoalescingLatency
             ) { changes in
                 Task { @MainActor in box.value?.handle(changes) }
             }
         }
         await stream?.setRoots(Self.prunedRoots(libraries.map(\.rootPath)))
+    }
+
+    /// ストリームに渡す差分の起点を決める [SY-03][WA-11][WA-12]。
+    ///
+    /// **検証済みの起点だけを使い、その最小値を採る。** イベント ID は
+    /// システム全体で単調（SDK いわく「global, system-wide clock のように
+    /// 振る舞う」）なので、最小値なら取りこぼさない。余分に届く分は
+    /// スキャンが冪等 [FO-20] なので害が無い。
+    ///
+    /// **検証できなかった起点は混ぜない** [WA-12]。混ぜてもそのボリュームには
+    /// 履歴が無いので再生されず（§10.1.0 の実測）、他のボリュームの履歴を
+    /// 無用に遡らせるだけになる。1 つも無ければ「今から」。
+    static func sinceWhen(for libraries: [WatchedLibrary]) -> FSEventStreamEventId {
+        guard let earliest = libraries.compactMap({ $0.usableCheckpoint?.eventID }).min() else {
+            return FSEventStreamEventId(kFSEventStreamEventIdSinceNow)
+        }
+        return FSEventStreamEventId(earliest)
+    }
+
+    /// **自プロセスが加えた変更**を伝える [FO-01]。
+    ///
+    /// FSEvents は `kFSEventStreamCreateFlagIgnoreSelf` [FO-10] で自分の変更を
+    /// 落とし、さらに期待変更台帳 [FO-12] も落とす。二重に落ちるので、
+    /// **アプリがライブラリフォルダへ入れたファイルは DB に載らない**
+    /// ——ファイルマネージャーからドラッグしたものが蔵書に現れない、という形。
+    ///
+    /// `DirectoryChangeHub.noteLocalChanges` と同じ考え方で、
+    /// `FileOperationService` の 1 箇所から明示的に知らせる。ファイルシステムを
+    /// 変更する経路はすべてそこを通ることが静的検査 [FO-02][B-10] で
+    /// 強制されているので、**知らせ忘れが構造的に起こらない。**
+    ///
+    /// - Note: **台帳を引かない。** 台帳の目的は自動リネームの無限ループを
+    ///   防ぐこと [R-13][FO-24] であって、収束型のスキャン [FO-20] にとっては
+    ///   「自分の変更こそ DB に反映すべきもの」である。ここでの二重処理は
+    ///   冪等なので無害。
+    public nonisolated static func noteLocalChanges(at urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        Task { @MainActor in shared.noteLocalChanges(at: urls) }
+    }
+
+    /// ``noteLocalChanges(at:)`` の実体。既にメインアクタ上の呼び出し元
+    /// （テストを含む）はこちらを直接使える。
+    public func noteLocalChanges(at urls: [URL]) {
+        guard !watched.isEmpty else { return }          // ライブラリが無ければ何もしない
+        var byLibrary: [LibraryID: Set<String>] = [:]
+        for url in urls {
+            let path = url.standardizedFileURL.path
+            guard let library = library(containing: path) else { continue }
+            byLibrary[library.id, default: []].insert(Self.relativePath(path, in: library))
+        }
+        for (id, paths) in byLibrary {
+            if suspendedLibraries.contains(id) {
+                pendingWhileSuspended[id, default: []].formUnion(paths)   // [FO-14][EV-02]
+                continue
+            }
+            emit(ScanRequest(libraryID: id, relativePaths: paths.sorted(),
+                             needsFullScan: false, lastEventID: latestEventID))
+        }
+    }
+
+    /// いまストリームが処理した最新のイベント ID。監視していなければ
+    /// **システム全体の現在値**を使う——`0` を保存すると「まだ無い」の意味に
+    /// なり、次回に履歴を要求できなくなる。
+    public var latestEventID: UInt64 {
+        stream.map { UInt64($0.latestEventID) } ?? FSEventsHistory.currentEventID()
     }
 
     /// テスト用。実 FSEvents を張らずに振り分けだけを試す。
@@ -107,8 +195,7 @@ public final class LibraryWatcher {
         guard let paths = pendingWhileSuspended.removeValue(forKey: libraryID), !paths.isEmpty
         else { return }
         emit(ScanRequest(libraryID: libraryID, relativePaths: Array(paths).sorted(),
-                         needsFullScan: false,
-                         lastEventID: stream.map { UInt64($0.latestEventID) } ?? 0))
+                         needsFullScan: false, lastEventID: latestEventID))
     }
 
     // MARK: - イベントの処理 [10.5]
@@ -126,16 +213,11 @@ public final class LibraryWatcher {
             // ① 台帳照合。自己変更はここで落とす [FO-12][EV-01]。
             if ledger.consume(path: change.path) != nil { continue }
 
-            var relative = change.path
-            if relative.hasPrefix(library.rootPath + "/") {
-                relative.removeFirst(library.rootPath.count + 1)
-            } else if relative == library.rootPath {
-                relative = ""
-            }
-            byLibrary[library.id, default: []].insert(relative)
+            byLibrary[library.id, default: []]
+                .insert(Self.relativePath(change.path, in: library))
         }
 
-        let lastID = stream.map { UInt64($0.latestEventID) } ?? 0
+        let lastID = latestEventID
         for id in fullScan {
             guard !suspendedLibraries.contains(id) else { continue }   // [EV-02]
             emit(ScanRequest(libraryID: id, relativePaths: [],
@@ -153,6 +235,13 @@ public final class LibraryWatcher {
 
     func emit(_ request: ScanRequest) {
         for continuation in continuations.values { continuation.yield(request) }
+    }
+
+    /// 監視ルートからの相対パス。根そのものなら空文字。
+    static func relativePath(_ path: String, in library: WatchedLibrary) -> String {
+        if path == library.rootPath { return "" }
+        guard path.hasPrefix(library.rootPath + "/") else { return path }
+        return String(path.dropFirst(library.rootPath.count + 1))
     }
 
     func library(containing path: String) -> WatchedLibrary? {

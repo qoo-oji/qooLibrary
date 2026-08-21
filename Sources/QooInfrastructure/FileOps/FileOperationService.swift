@@ -77,6 +77,11 @@ public actor FileOperationService {
     /// 変わった場合はそのフォルダ自身を渡す。
     private nonisolated func announce(_ urls: [URL]) {
         DirectoryChangeHub.noteLocalChanges(at: urls)
+        // ライブラリの走査にも同じ変更を知らせる [FO-01]。FSEvents は
+        // `IgnoreSelf` [FO-10] と期待変更台帳 [FO-12] で自分の変更を二重に
+        // 落とすので、この経路が無いと**アプリがライブラリへ入れたファイルが
+        // DB に載らない**（`LibraryWatcher.noteLocalChanges` のコメント参照）。
+        LibraryWatcher.noteLocalChanges(at: urls)
     }
 
     /// 期待変更台帳への**事前**登録 [FO-11]。

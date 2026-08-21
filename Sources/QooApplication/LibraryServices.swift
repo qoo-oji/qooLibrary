@@ -61,6 +61,9 @@ public final class LibraryServices {
     private var backupRepository: (any BackupRepository)?
     private var scanEngine: ScanEngine?
     private var didBootstrap = false
+    /// 実体への追随 [SY-01〜SY-08][VD-01〜VD-11]。`bootstrap()` で組み立て、
+    /// ``startSync()`` で動き出す。
+    public private(set) var sync: LibrarySyncCoordinator?
 
     public init() {}
 
@@ -105,6 +108,7 @@ public final class LibraryServices {
             labelRepository = SQLiteLabelRepository(database: opened)
             backupRepository = SQLiteBackupRepository(database: opened)
             Log.app.info("ライブラリストアを開いた: \(Log.path(storeURL))")
+            makeSyncCoordinator()
         } catch let error as QooDatabase.StoreError {
             startupFailure = StoreStartupFailure(error)
             Log.app.error("ライブラリストアを開けない: \(String(describing: error))")
@@ -115,6 +119,51 @@ public final class LibraryServices {
             return
         }
         await refreshLibraries()
+    }
+
+    /// 実体への追随を組み立てる。**開始はしない**——起動時に走査が始まる前に
+    /// 登録フォルダの読み込み（`RegisteredFolderStore.loadAndActivateAll`）が
+    /// 済んでいる必要があるので、開始はアプリ側が明示的に呼ぶ [ST-01]。
+    private func makeSyncCoordinator() {
+        guard let libraryRepository, sync == nil else { return }
+        // `swift test` 中は組み立てない。既定の依存は
+        // `RegisteredFolderStore.shared` と `LibraryWatcher.shared`（どちらも
+        // アプリ全体で 1 つ）なので、**開発機の実際の登録フォルダに対して
+        // FSEvents を張ってしまう** [`DiagnosticLog` のテスト時出力振り替えと
+        // 同じ理由]。調整役のテストは独立インスタンスを組み立てて検証する。
+        if RuntimeEnvironment.isRunningTests { return }
+        let engine = makeScanEngineIfNeeded()
+        sync = LibrarySyncCoordinator(dependencies: .init(
+            libraries: libraryRepository,
+            scan: { [weak engine] mode, url in
+                guard let engine else { return .notRun }
+                return try await engine.scan(mode, root: url)
+            },
+            fullScanInterval: Self.configuredFullScanInterval()))
+    }
+
+    /// 起動時にフルスキャンし直すまでの間隔 [SY-05]。環境設定で変更でき、
+    /// `0` 以下なら無効。
+    static func configuredFullScanInterval() -> TimeInterval? {
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: fullScanIntervalDaysKey) != nil else {
+            return AppLimits.Watch.defaultFullScanInterval
+        }
+        let days = defaults.double(forKey: fullScanIntervalDaysKey)
+        return days > 0 ? days * 24 * 60 * 60 : nil
+    }
+
+    /// 環境設定の鍵。UI 側と共有する。
+    public static let fullScanIntervalDaysKey = "qoo.library.fullScanIntervalDays"
+
+    /// 実体への追随を始める [SY-01]。**登録フォルダを読み終えてから呼ぶこと。**
+    public func startSync() async {
+        await sync?.start()
+    }
+
+    /// 終了時に差分の起点を保存して止める [SY-02][WA-02]。
+    public func stopSync() async {
+        await sync?.stop()
     }
 
     /// 既定の置き場所 [07章 §7.1]。
@@ -223,6 +272,7 @@ public final class LibraryServices {
             / フォーマット \(draft.filenameFormats.count) 本 → \(Log.path(url))
             """)
         await refreshLibraries()
+        await sync?.resync()          // 監視対象に加える [SY-01]
         return id
     }
 
@@ -234,6 +284,7 @@ public final class LibraryServices {
         try await repository.unregister(id: summary.id, keepLabels: keepLabels)
         Log.app.info("ライブラリを無効化: \(Log.redactable(summary.displayName))")
         await refreshLibraries()
+        await sync?.resync()          // 監視対象から外す
     }
 
     // MARK: - 設定の編集 [LS-01〜LS-03]
@@ -331,6 +382,7 @@ public final class LibraryServices {
         try await repository.unregister(id: id, keepLabels: keepLabels)
         Log.app.info("ライブラリを削除: \(Log.redactable(name ?? "?"))")
         await refreshLibraries()
+        await sync?.resync()
     }
 
     // MARK: - スキャン
@@ -346,10 +398,45 @@ public final class LibraryServices {
         onProgress: (@Sendable (Int, String) -> Void)? = nil
     ) async throws -> ScanSummary {
         guard let engine = makeScanEngineIfNeeded() else { throw ServiceError.notReady }
-        let summary = try await engine.scan(mode ?? .full(libraryID: libraryID),
-                                            root: root, onProgress: onProgress)
+        let scanMode = mode ?? .full(libraryID: libraryID)
+        // **起点は走査の「前」に控える** [SY-02]。走っている間に起きた変更は
+        // 次回に再生されるほうが、取りこぼすより安い（スキャンは冪等 [FO-20]）。
+        let eventID = FSEventsHistory.currentEventID()
+        let summary = try await engine.scan(scanMode, root: root, onProgress: onProgress)
+        // 手動の再スキャンと有効化直後の初回スキャンもここを通る。
+        // **保存しないと、次の起動で毎回「起点が使えない」と判定されて
+        // フルスキャンからやり直すことになる。**
+        if !summary.cancelled, !summary.skipped {
+            await saveCheckpoint(libraryID: libraryID, root: root,
+                                 eventID: eventID, mode: scanMode)
+        }
         await refreshLibraries()
         return summary
+    }
+
+    /// 走査の結果を「どこまで反映したか」として記録する [SY-02][SY-05][WA-10]。
+    private func saveCheckpoint(libraryID: LibraryID, root: URL?,
+                                eventID: UInt64, mode: ScanEngine.Mode) async {
+        guard let repository = libraryRepository else { return }
+        let resolvedRoot: URL?
+        if let root {
+            resolvedRoot = root
+        } else {
+            let summary = try? await repository.library(id: libraryID)
+            resolvedRoot = summary.map { URL(fileURLWithPath: $0.resolvedPath) }
+        }
+        guard let url = resolvedRoot else { return }
+        let deviceUUID = await FileIO.perform { FSEventsHistory.deviceUUID(for: url) }
+        do {
+            try await repository.setFSEventsCheckpoint(
+                FSEventsCheckpoint(eventID: eventID, deviceUUID: deviceUUID),
+                libraryID: libraryID)
+            if case .full = mode {
+                try await repository.setLastFullScanAt(Date(), libraryID: libraryID)
+            }
+        } catch {
+            Log.watch.warning("差分の起点を保存できない: \(String(describing: error))")
+        }
     }
 
     private func makeScanEngineIfNeeded() -> ScanEngine? {

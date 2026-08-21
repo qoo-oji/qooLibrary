@@ -9972,6 +9972,125 @@
         }
       }
     },
+    "preferences.scan.footer": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "qooLibrary follows changes as they happen, but some changes cannot be detected: those made by another computer on a network share, and those made while qooLibrary was not running on volumes that keep no change history. A periodic full scan catches them."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "qooLibrary は変更をその都度追いかけますが、検知できない変更もあります——ネットワーク共有で他のコンピュータが加えた変更と、変更履歴を持たないボリュームで qooLibrary の起動中でないときに加えられた変更です。定期フルスキャンがそれを拾います。"
+          }
+        }
+      }
+    },
+    "preferences.scan.header": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Periodic Full Scan"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "定期フルスキャン"
+          }
+        }
+      }
+    },
+    "preferences.scan.interval": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Interval"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "間隔"
+          }
+        }
+      }
+    },
+    "preferences.scan.intervalDays": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d days"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d 日"
+          }
+        }
+      }
+    },
+    "preferences.scan.periodicFullScan": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Re-scan libraries periodically at launch"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "起動時にライブラリを定期的に再スキャン"
+          }
+        }
+      }
+    },
+    "preferences.scan.revalidateFooter": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checks which volumes are connected right now and brings libraries back online. Use this if a library still shows as disconnected after you reconnected its volume."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "いま接続されているボリュームを調べ直し、ライブラリをオンラインに戻します。ボリュームを繋ぎ直してもライブラリが未接続のままのときに使ってください。"
+          }
+        }
+      }
+    },
+    "preferences.scan.revalidateVolumes": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Re-check Volumes"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ボリュームを再検証"
+          }
+        }
+      }
+    },
     "preferences.tab.access": {
       "extractionState": "stale",
       "localizations": {
@@ -10121,6 +10240,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "リセット"
+          }
+        }
+      }
+    },
+    "preferences.tab.scan": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scanning"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "スキャン"
           }
         }
       }

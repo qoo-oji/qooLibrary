@@ -88,6 +88,7 @@ struct PreferencesView: View {
                 case .associations: AssociationPreferencesTab()
                 case .compression: CompressionPreferencesTab()
                 case .access: AccessPreferencesTab()
+                case .scan: ScanPreferencesTab()
                 case .cache: CachePreferencesTab()
                 case .advanced: AdvancedPreferencesTab()
                 case .reset: ResetPreferencesTab()
@@ -126,6 +127,8 @@ enum PreferencesCategory: CaseIterable, Identifiable {
     /// フルディスクアクセスがサンドボックスの制限を回避しないと判明した
     /// ことを受けての代替手段。
     case access
+    /// [15.10 節、2-2] 取りこぼしへの備え [SY-05][VD-09]。`ScanPreferencesTab` 参照。
+    case scan
     case cache
     /// [15.10 節、1-15] 診断ログ [LG2-01〜LG2-08]。`AdvancedPreferencesTab` 参照。
     case advanced
@@ -149,6 +152,7 @@ enum PreferencesCategory: CaseIterable, Identifiable {
         case .associations: "preferences.tab.associations"
         case .compression: "preferences.tab.compression"
         case .access: "preferences.tab.access"
+        case .scan: "preferences.tab.scan"
         case .cache: "preferences.tab.cache"
         case .advanced: "preferences.tab.advanced"
         case .reset: "preferences.tab.reset"
@@ -163,6 +167,7 @@ enum PreferencesCategory: CaseIterable, Identifiable {
         case .associations: "app.badge"
         case .compression: "archivebox"
         case .access: "lock.open"
+        case .scan: "arrow.triangle.2.circlepath"
         case .cache: "internaldrive"
         case .advanced: "wrench.and.screwdriver"
         case .reset: "arrow.counterclockwise.circle"

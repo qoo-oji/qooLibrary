@@ -116,6 +116,15 @@ struct QooLibraryApp: App {
         // `LibraryEnableAction` からしか起こらない。
         Task { @MainActor in
             await LibraryServices.shared.bootstrap()
+            // **実体への追随を始める** [SY-01][VD-01]。ここまで来ると
+            // FSEvents の監視とボリュームの着脱検知が動き出し、外部での変更が
+            // 自動で DB へ反映される。
+            //
+            // `bootstrap()` の**後**に呼ぶ（リポジトリが揃っている必要がある）。
+            // 登録フォルダの読み込みとの順序は気にしなくてよい——
+            // `RegisteredFolderStore` の公開メソッドはどれも `ensureLoaded()`
+            // から始まるので、先に来ても待ち合わせる。
+            await LibraryServices.shared.startSync()
         }
         // [ER-01] エラー・通知の提示はこのコントローラ1箇所からのみ行う
         // （`NotificationRouterPresenterController` のコメント参照）。

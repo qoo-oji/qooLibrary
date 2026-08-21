@@ -25,6 +25,14 @@ public enum VolumeEvent: Sendable, Equatable {
 /// 2. `mountedVolumeURLs` の起動時列挙（起動前の着脱）[VD-08]
 /// 3. FSEvents の Mount / Unmount フラグ（取りこぼしへの備え）[VD-07]
 public actor VolumeMonitor {
+    /// ボリューム識別子を引く上限時間。
+    ///
+    /// `VolumeIdentity.identifier` は `resourceValues`／`statfs` を使うので、
+    /// **無応答の共有では最大 30 秒返らない**（§8.11.16 の遮断計測）。着脱の
+    /// 通知はまさにその瞬間に届くので、ここに上限が無いと調整役が固まる
+    /// [NV6-05 と同型]。取れなければ「識別できないボリューム」として扱う。
+    static let identifierDeadline: Duration = .seconds(3)
+
     public private(set) var isRunning = false
     /// マウントパス → ボリューム識別子。`willUnmount` の時点では
     /// **まだ識別子を引ける**が、`didUnmount` では引けないので控えておく。
@@ -34,16 +42,22 @@ public actor VolumeMonitor {
 
     public init() {}
 
+    /// 着脱の通知。**購読は同期的に成立する。**
+    ///
+    /// 以前は `AsyncStream` の builder の中で `Task { await register(...) }` と
+    /// していたため、**購読した直後の `start()` で初期のイベントを取りこぼし
+    /// 得た**（登録が別のタスクへ後回しになるため）。この getter は
+    /// `actor` 隔離なので、外から `await monitor.events` と書いた時点で
+    /// **すでにこのアクター上にいる**——`Task` を挟む必要が無い。
     public var events: AsyncStream<VolumeEvent> {
-        AsyncStream { continuation in
-            let id = UUID()
-            Task { await self.register(id, continuation) }
+        let id = UUID()
+        // builder は `AsyncStream.init` の中で**同期的に**呼ばれるので、
+        // ここで `continuation` を受け取ってそのまま登録できる。
+        let stream = AsyncStream<VolumeEvent> { continuation in
+            self.continuations[id] = continuation
             continuation.onTermination = { _ in Task { await self.unregister(id) } }
         }
-    }
-
-    func register(_ id: UUID, _ continuation: AsyncStream<VolumeEvent>.Continuation) {
-        continuations[id] = continuation
+        return stream
     }
 
     func unregister(_ id: UUID) {
@@ -86,6 +100,16 @@ public actor VolumeMonitor {
             Task { await self.handleRenamed(from: oldURL, to: newURL) }
         }
         observers.append(renameToken)
+
+        // **スリープ復帰時に突き合わせ直す** [NV-101]。眠っている間に外付けが
+        // 抜かれたり共有が落ちたりしても、通知が届かないことがある。
+        // `reconcileWithMountedVolumes` はマウント一覧から始まるので、
+        // 相手が落ちていても固まらない。
+        let wakeToken = center.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: nil) { _ in
+            Task { await self.reconcileWithMountedVolumes() }
+        }
+        observers.append(wakeToken)
     }
 
     public func stop() {
@@ -98,6 +122,11 @@ public actor VolumeMonitor {
     // MARK: - 起動時の突き合わせ [VD-08][VM3-05]
 
     /// 起動前の着脱はこの経路でしか検出できない [VD-08]。
+    ///
+    /// **スリープ復帰と手動の「ボリュームを再検証」[VD-09] からも呼ぶ。**
+    /// 通知を取りこぼす経路（サーバが突然落ちた等、§10.2.0 の未検証項目）に
+    /// 対する安全網がこれで、`MountTable` と同じくファイルシステムへは
+    /// 問い合わせない一覧取得から始まる。
     public func reconcileWithMountedVolumes() async {
         let urls = await FileIO.perform {
             FileManager.default.mountedVolumeURLs(
@@ -105,8 +134,7 @@ public actor VolumeMonitor {
         }
         var seen: [String: String] = [:]
         for url in urls {
-            guard let identifier = await FileIO.perform({ VolumeIdentity.identifier(for: url) })
-            else { continue }
+            guard let identifier = await identifier(for: url) else { continue }
             seen[url.standardizedFileURL.path] = identifier
         }
         // 前回から増えた／減ったぶんを通知する
@@ -129,9 +157,15 @@ public actor VolumeMonitor {
 
     // MARK: - 通知の処理
 
+    /// 上限時間つきでボリューム識別子を引く。取れなければ `nil`。
+    func identifier(for url: URL) async -> String? {
+        try? await FileIO.perform(waitingAtMost: Self.identifierDeadline) {
+            VolumeIdentity.identifier(for: url)
+        }
+    }
+
     func handleMounted(_ url: URL) async {
-        guard let identifier = await FileIO.perform({ VolumeIdentity.identifier(for: url) })
-        else { return }
+        guard let identifier = await identifier(for: url) else { return }
         identifierByPath[url.standardizedFileURL.path] = identifier
         Log.watch.info("ボリュームがマウントされた: \(Log.path(url))")
         emit(.mounted(volumeUUID: identifier, url: url))          // [VD-03]
@@ -157,7 +191,7 @@ public actor VolumeMonitor {
         let oldPath = oldURL.standardizedFileURL.path
         var identifier = identifierByPath.removeValue(forKey: oldPath)
         if identifier == nil {
-            identifier = await FileIO.perform { VolumeIdentity.identifier(for: newURL) }
+            identifier = await self.identifier(for: newURL)
         }
         guard let identifier else { return }
         identifierByPath[newURL.standardizedFileURL.path] = identifier

@@ -30,6 +30,13 @@ public struct ScanSummary: Sendable, Equatable {
     public var cancelled = false
 
     public var total: Int { added + updated }
+
+    /// 走らなかったことを表す値。エンジンが組み立てられていない場面で使う。
+    public static let notRun = ScanSummary(skipped: true)
+
+    public init(skipped: Bool = false) {
+        self.skipped = skipped
+    }
 }
 
 public actor ScanEngine {
@@ -88,11 +95,56 @@ public actor ScanEngine {
 
     /// 走査してライブラリと DB を収束させる。
     ///
+    /// **同じライブラリの走査は同時に 1 本しか走らない。** `actor` は `await` を
+    /// 挟むたびに再入するので、それだけでは直列にならない——フル走査と差分走査が
+    /// 重なると、**一方の列挙で観測していない行をもう一方が孤立にする**（自分が
+    /// 見ていないものを「無くなった」と読む）ため、ラベルと評価を失う [R-01]。
+    /// 手動の再スキャンと自動の追随が同時に起こりうる以上、ここで塞ぐ。
+    ///
     /// - Parameter onProgress: `(処理済み件数, 直近のファイル名)`。
     ///   件数は逐次、一覧の反映はバッチ境界 [ST-10][ST-12]。
     public func scan(_ mode: Mode,
                      root: URL? = nil,
                      onProgress: (@Sendable (Int, String) -> Void)? = nil) async throws -> ScanSummary
+    {
+        guard await acquire(mode.libraryID) else {
+            var summary = ScanSummary()
+            summary.cancelled = true
+            return summary
+        }
+        defer { release(mode.libraryID) }
+        return try await performScan(mode, root: root, onProgress: onProgress)
+    }
+
+    // MARK: - ライブラリ単位の排他
+
+    private var running: Set<LibraryID> = []
+    private var waiters: [LibraryID: [CheckedContinuation<Void, Never>]] = [:]
+
+    /// 順番を待つ。**取り消されたら獲得しない**——`ThumbnailService` の
+    /// スロット待ちで踏んだのと同じ罠で、起こされた継続がそのまま獲得すると
+    /// 「誰も解放しない占有」が残る。
+    private func acquire(_ id: LibraryID) async -> Bool {
+        while running.contains(id) {
+            if Task.isCancelled { return false }
+            await withCheckedContinuation { continuation in
+                waiters[id, default: []].append(continuation)
+            }
+            if Task.isCancelled { return false }
+        }
+        running.insert(id)
+        return true
+    }
+
+    private func release(_ id: LibraryID) {
+        running.remove(id)
+        guard let queued = waiters.removeValue(forKey: id) else { return }
+        for continuation in queued { continuation.resume() }
+    }
+
+    private func performScan(_ mode: Mode,
+                             root: URL?,
+                             onProgress: (@Sendable (Int, String) -> Void)?) async throws -> ScanSummary
     {
         var summary = ScanSummary()
         guard let library = try await deps.libraries.library(id: mode.libraryID) else {

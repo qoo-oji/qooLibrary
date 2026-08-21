@@ -1,4 +1,5 @@
 import AppKit
+import QooApplication
 import QooInfrastructure
 
 /// アプリ全体のライフサイクルのうち、SwiftUI の `App`/`Scene` に対応する
@@ -9,6 +10,7 @@ import QooInfrastructure
 ///    すべて閉じてもアプリ自体は常駐し続け、Dock からの再オープンや `⌘Q` を
 ///    ユーザーの意思に委ねる）。
 /// 2. **終了時の診断ログの確実な書き出し** [LG2-01、1-15]。
+/// 3. **終了時の差分スキャンの起点の保存** [SY-02][WA-02、2-2]。
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private static let quitWhenAllWindowsClosedKey = "qoo.preferences.quitWhenAllWindowsClosed"
 
@@ -43,6 +45,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let reply = OneShotTerminationReply()
         Task {
+            // **ログを書き切る前に**差分の起点を保存する [SY-02][WA-02]
+            // ——保存の記録もログに残したいので順序が要る。次回起動時は
+            // ここで保存した起点から差分を取る [SY-03]。
+            await LibraryServices.shared.stopSync()
             await Log.endSession()
             reply.fire()
         }

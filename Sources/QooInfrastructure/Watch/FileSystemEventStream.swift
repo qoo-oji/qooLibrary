@@ -93,9 +93,18 @@ final class FileSystemEventStream {
     /// ``setRoots(_:)`` の注記を参照。
     private var generation = 0
 
+    /// 変更をまとめて配送するまでの待ち時間（秒）。
+    ///
+    /// 表示の追随（10.0 節）は 0.25 秒、スキャンの入力（10.1 節）は 1.0 秒
+    /// [SY-07] と**目的が違う**——前者は 1 操作を 1 バッチにまとめたいだけ、
+    /// 後者は短時間の大量イベントをできるだけ畳みたい。
+    private let latency: CFTimeInterval
+
     init(sinceWhen: FSEventStreamEventId = FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
+         latency: CFTimeInterval = AppLimits.Watch.coalescingLatency,
          onChanges: @escaping @Sendable ([FileSystemChange]) -> Void) {
         self.onChanges = onChanges
+        self.latency = latency
         self.lastEventID = sinceWhen
     }
 
@@ -137,9 +146,11 @@ final class FileSystemEventStream {
         let queue = deliveryQueue
         let requested = newRoots
         let sinceWhen = lastEventID
+        let latency = self.latency
 
         let created = await FileIO.perform {
-            Self.makeStream(roots: requested, sinceWhen: sinceWhen, queue: queue, onChanges: handle)
+            Self.makeStream(roots: requested, sinceWhen: sinceWhen, latency: latency,
+                            queue: queue, onChanges: handle)
         }
 
         guard generation == mine else {
@@ -189,6 +200,7 @@ final class FileSystemEventStream {
     private nonisolated static func makeStream(
         roots: [String],
         sinceWhen: FSEventStreamEventId,
+        latency: CFTimeInterval,
         queue: DispatchQueue,
         onChanges: @escaping @Sendable ([FileSystemChange]) -> Void
     ) -> StreamBox? {
@@ -220,10 +232,15 @@ final class FileSystemEventStream {
             // ここで抑止されて困ることは無い。取りこぼしても再読み込みは
             // 冪等なので実害も無い。
             | FSEventStreamCreateFlags(kFSEventStreamCreateFlagIgnoreSelf)
+            // 異常終了の直前に起きた変更を取りこぼさない [WA-13]。SDK いわく
+            // 「`sinceWhen` を含むチャンクの履歴を丸ごと返す」ので、`sinceWhen`
+            // より小さい ID の分も届く。**スキャンは冪等** [FO-20] なので
+            // 余分に届いても害が無く、取りこぼしだけが減る。
+            | FSEventStreamCreateFlags(kFSEventStreamCreateFlagFullHistory)
 
         guard let created = FSEventStreamCreate(
             kCFAllocatorDefault, fsEventsCallback, &context,
-            roots as CFArray, sinceWhen, AppLimits.Watch.coalescingLatency, flags
+            roots as CFArray, sinceWhen, latency, flags
         ) else {
             // 生成に失敗しても致命的ではない（アプリ復帰時の再同期と
             // ローカル変更の通知は生きている）。次に集合が変わったときに
