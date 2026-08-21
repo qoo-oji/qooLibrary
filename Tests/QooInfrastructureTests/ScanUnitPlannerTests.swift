@@ -140,7 +140,44 @@ struct ScanUnitPlannerTests {
 
     @Test("変更が 1 件も無ければ単位も無い")
     func noChangesProduceNoUnits() {
-        #expect(ScanUnitPlanner.units(changedPaths: [], kind: planner([:])) == nil)
+        #expect(ScanUnitPlanner.units(changedPaths: [], kind: planner([:]))?.isEmpty == true)
+    }
+
+    // MARK: - 列挙が到達しない場所 [実機検証で発見]
+
+    /// **差分の走査単位はその場所を起点に直接列挙する**ので、`LibraryEnumerator`
+    /// が持つ「隠し項目を飛ばす」規則が効かない。実機で `.Trashes` 相当の
+    /// 隠しフォルダの中身が蔵書として取り込まれた。
+    @Test("隠しフォルダの中の変更は見ない")
+    func changesInsideAHiddenFolderAreIgnored() {
+        #expect(ScanUnitPlanner.units(
+            changedPaths: [".Trashes/501/捨てた本.cbz"], kind: planner([:]))?.isEmpty == true)
+        #expect(ScanUnitPlanner.units(
+            changedPaths: ["作者A/.隠し/本.cbz"], kind: planner([:]))?.isEmpty == true)
+        #expect(ScanUnitPlanner.units(
+            changedPaths: [".DS_Store"], kind: planner([:]))?.isEmpty == true)
+    }
+
+    @Test("covers の中の変更は見ない")
+    func changesInsideCoversAreIgnored() {
+        #expect(ScanUnitPlanner.units(
+            changedPaths: ["covers/x.png"], kind: planner([:]))?.isEmpty == true)
+    }
+
+    /// **0 件を「フルスキャンへ落とせ」と読んではならない。**
+    @Test("走査対象外の変更しか無くてもフルスキャンへ落とさない")
+    func onlyUnscannableChangesDoNotTriggerAFullScan() {
+        let units = ScanUnitPlanner.units(
+            changedPaths: [".fseventsd/0000", ".Trashes/x.cbz"], kind: planner([:]))
+        #expect(units != nil, "nil はフルスキャンを意味する")
+        #expect(units?.isEmpty == true)
+    }
+
+    @Test("対象と対象外が混ざっていれば、対象だけを見る")
+    func scannableAndUnscannableChangesMix() throws {
+        let units = try #require(ScanUnitPlanner.units(
+            changedPaths: [".Trashes/捨てた.cbz", "作者A/残る.cbz"], kind: planner([:])))
+        #expect(units == [.enumerate(relativePath: "作者A", recursive: false)])
     }
 
     // MARK: - 正規化

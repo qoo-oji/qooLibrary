@@ -167,11 +167,24 @@ public final class LibraryWatcher {
         }
     }
 
-    /// いまストリームが処理した最新のイベント ID。監視していなければ
-    /// **システム全体の現在値**を使う——`0` を保存すると「まだ無い」の意味に
-    /// なり、次回に履歴を要求できなくなる。
+    /// いまストリームが処理した最新のイベント ID。
+    ///
+    /// **監視していないとき、またはまだ 1 件も処理していないときは、
+    /// システム全体の現在値へ落とす。**
+    ///
+    /// - `0` を保存すると「まだ無い」の意味になり、次回に履歴を要求できない。
+    /// - **`kFSEventStreamEventIdSinceNow`（`UInt64.max`）を保存するともっと
+    ///   悪い**——次回は「使える起点」と判定されたうえで「今から」を意味する
+    ///   値が渡り、非起動中の変更が黙って落ちる。ストリームが 1 件も
+    ///   イベントを処理していないと `FSEventStreamGetLatestEventId` は
+    ///   まさにこの値を返す（実機検証で `lastFSEventID = -1` として発覚）。
     public var latestEventID: UInt64 {
-        stream.map { UInt64($0.latestEventID) } ?? FSEventsHistory.currentEventID()
+        guard let stream else { return FSEventsHistory.currentEventID() }
+        let id = UInt64(stream.latestEventID)
+        guard id != FSEventsCheckpoint.sinceNowSentinel, id != 0 else {
+            return FSEventsHistory.currentEventID()
+        }
+        return id
     }
 
     /// テスト用。実 FSEvents を張らずに振り分けだけを試す。

@@ -334,6 +334,12 @@ public final class LibrarySyncCoordinator {
                                 eventID: UInt64, didFullScan: Bool) async {
         // **UUID とセットで保存する。** 単独で保存できる API を持たせて
         // いないのは、次に読むとき検証できない起点を作らないため。
+        // **番兵を保存しない**（多層防御）。上流で落としているが、ここは
+        // すべての保存経路が通る 1 箇所なので、最後にもう一度確かめる。
+        guard eventID != 0, eventID != FSEventsCheckpoint.sinceNowSentinel else {
+            Log.watch.debug("起点が実在の ID でないので保存しない")
+            return
+        }
         let deviceUUID = await FileIO.perform { FSEventsHistory.deviceUUID(for: url) }
         do {
             try await deps.libraries.setFSEventsCheckpoint(

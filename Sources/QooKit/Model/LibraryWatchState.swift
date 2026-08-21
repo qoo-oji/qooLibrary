@@ -36,6 +36,16 @@ public struct FSEventsCheckpoint: Sendable, Equatable {
     /// 起点として使えない（＝履歴を要求してはいけない）ことを表す値。
     public static let unusable = FSEventsCheckpoint(eventID: 0, deviceUUID: nil)
 
+    /// FSEvents が「今から」を表すのに使う番兵（`kFSEventStreamEventIdSinceNow`
+    /// ＝ `UInt64.max`）。**実在のイベント ID ではない。**
+    ///
+    /// ストリームが 1 件もイベントを処理していないと
+    /// `FSEventStreamGetLatestEventId` はこの値を返す。**それを起点として
+    /// 保存すると、次回「使える起点」と判定されたうえで「今から」を意味する
+    /// 値が渡り、非起動中の変更が黙って落ちる**——実機検証で実際に
+    /// `lastFSEventID = -1`（`Int64` で見た `UInt64.max`）が保存された。
+    public static let sinceNowSentinel = UInt64.max
+
     /// いま引いたデバイス UUID に照らして、この起点で履歴を要求してよいか
     /// [SY-04][WA-11][WA-12]。
     ///
@@ -43,6 +53,7 @@ public struct FSEventsCheckpoint: Sendable, Equatable {
     ///   `nil`（＝履歴なし）なら常に `false`。
     public func isUsable(currentDeviceUUID: String?) -> Bool {
         guard eventID != 0 else { return false }          // まだ一度も保存していない
+        guard eventID != Self.sinceNowSentinel else { return false }   // 「今から」の番兵
         guard let current = currentDeviceUUID else { return false }  // 履歴が無い
         guard let stored = deviceUUID else { return false }          // 検証できない
         return stored == current

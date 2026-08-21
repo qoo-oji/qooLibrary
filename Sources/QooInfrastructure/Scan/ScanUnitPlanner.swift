@@ -55,6 +55,8 @@ public enum ScanUnitPlanner {
     }
 
     /// - Returns: 走査単位。**`nil` は「フルスキャンへ落とせ」** [SY-04]。
+    ///   空配列は「見るべき場所が無い」——走査対象外の変更しか届かなかった
+    ///   ときで、フルスキャンへ落としてはならない。
     public static func units(changedPaths: [String],
                              kind: (String) -> PathKind,
                              limit: Int = AppLimits.Watch.maxIncrementalUnits) -> [ScanUnit]? {
@@ -65,6 +67,15 @@ public enum ScanUnitPlanner {
             let path = normalize(raw)
             // 根そのものが動いた／根に対する変更は、範囲を絞る意味が無い。
             if path.isEmpty { return nil }
+            // **列挙が到達しない場所は、差分でも見ない** [実機検証で発見]。
+            //
+            // `LibraryEnumerator` は隠し項目と `covers` を飛ばすが、差分の
+            // 走査単位は**そこを起点に直接列挙する**ので、飛ばす規則が効かない。
+            // 実際、`/Volumes/<ライブラリ>/.Trashes` に捨てた本や、検証用に
+            // 置いた隠しフォルダの中身が蔵書として取り込まれた。
+            // **フルスキャンなら決して現れない行**なので、次のフルスキャンで
+            // 孤立になり、差分で戻り、を繰り返すことになる。
+            if !isScannable(path) { continue }
             switch kind(path) {
             case .directory:
                 enumerateUnits.insert(Unit(path: path, recursive: true))
@@ -87,7 +98,10 @@ public enum ScanUnitPlanner {
         }
 
         let total = pruned.count + neededVanished.count
-        guard total > 0, total <= limit else { return nil }
+        // **0 件は「フルスキャンへ落とせ」ではない。** 走査対象外の変更しか
+        // 届かなかった場合で、そこで全体を列挙し直すのは明らかに過剰。
+        if total == 0 { return [] }
+        guard total <= limit else { return nil }
 
         var units = pruned.map { ScanUnit.enumerate(relativePath: $0.path, recursive: $0.recursive) }
         units += neededVanished.sorted().map { ScanUnit.vanished(relativePath: $0) }
@@ -118,6 +132,18 @@ public enum ScanUnitPlanner {
         }
         // 順序を決定的にする（テストと診断ログのため）。
         return kept.sorted { ($0.path, $0.recursive ? 1 : 0) < ($1.path, $1.recursive ? 1 : 0) }
+    }
+
+    /// `LibraryEnumerator` が到達する場所か。
+    ///
+    /// 列挙の規則（隠し項目を飛ばす・`covers` へ降りない）をここでも同じく
+    /// 適用する。**片方だけ直すと、差分とフルで DB の中身が食い違う。**
+    static func isScannable(_ relativePath: String) -> Bool {
+        for component in relativePath.split(separator: "/") {
+            if component.hasPrefix(".") { return false }
+            if component == "covers" { return false }
+        }
+        return true
     }
 
     /// 前後の `/` を落とす。`"."`・`""` はライブラリ根を表す。

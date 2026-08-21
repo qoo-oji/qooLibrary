@@ -232,6 +232,32 @@ struct LibraryWatcherTests {
         #expect(!FSEventsCheckpoint(eventID: 0, deviceUUID: "ANY").isUsable(currentDeviceUUID: "ANY"))
     }
 
+    /// **「今から」の番兵を実在の ID と取り違えてはならない** [実機検証で発見]。
+    ///
+    /// ストリームが 1 件もイベントを処理していないと
+    /// `FSEventStreamGetLatestEventId` は `kFSEventStreamEventIdSinceNow`
+    /// （`UInt64.max`）を返す。それを起点として保存すると、次回は
+    /// **「使える起点」と判定されたうえで「今から」が渡り、非起動中の変更が
+    /// 黙って落ちる**——実機で `lastFSEventID = -1` として現れた。
+    @Test("「今から」の番兵は起点として使えない")
+    func theSinceNowSentinelIsNeverUsable() {
+        #expect(FSEventsCheckpoint.sinceNowSentinel == UInt64(bitPattern: -1))
+        let sentinel = FSEventsCheckpoint(eventID: FSEventsCheckpoint.sinceNowSentinel,
+                                          deviceUUID: "SAME")
+        #expect(!sentinel.isUsable(currentDeviceUUID: "SAME"))
+    }
+
+    /// 監視していない・まだ 1 件も処理していないときに保存する値。
+    @Test("保存する起点は、番兵でも 0 でもない実在の ID になる [SY-02]")
+    func theSavedEventIDIsAlwaysAReadableIdentifier() {
+        let (watcher, _) = makeWatcher([])
+        let id = watcher.latestEventID
+        #expect(id != 0)
+        #expect(id != FSEventsCheckpoint.sinceNowSentinel)
+        // 保存してすぐ読み戻したときに「使える」と判定できること。
+        #expect(FSEventsCheckpoint(eventID: id, deviceUUID: "V").isUsable(currentDeviceUUID: "V"))
+    }
+
     // MARK: - 差分の起点 [SY-02][WA-10]
 
     /// **保存する起点は「まだ無い」を表す 0 にしない。** 0 で保存すると次回に
@@ -357,4 +383,36 @@ struct LibraryWatcherLocalChannelTests {
 final class Received {
     private(set) var value: ScanRequest?
     func append(_ request: ScanRequest) { if value == nil { value = request } }
+}
+
+//
+//  ストリームを実際に張ったときの差分の起点 [SY-02][実機検証で発見]。
+//
+//  **ストリームを持たない経路だけでは足りない。** `FSEventStreamGetLatestEventId`
+//  は、1 件もイベントを処理していないと `kFSEventStreamEventIdSinceNow`
+//  （`UInt64.max`）を返す——それを保存すると、次回「使える起点」と判定された
+//  うえで「今から」が渡り、非起動中の変更が黙って落ちる。
+//
+@Suite("実ストリームを張ったときの差分の起点 [SY-02]", .serialized)
+@MainActor
+struct LibraryWatcherCheckpointTests {
+
+    @Test func aFreshStreamNeverReportsTheSinceNowSentinel() async throws {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("qoo-watcher-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let watcher = LibraryWatcher()
+        defer { _ = watcher.stop() }
+        // 検証済みの起点が無いので、ストリームは「今から」で作られる。
+        await watcher.setLibraries([
+            WatchedLibrary(id: LibraryID(rawValue: 1),
+                           rootPath: root.resolvingSymlinksInPath().path)])
+
+        let id = watcher.latestEventID
+        #expect(id != FSEventsCheckpoint.sinceNowSentinel, "番兵をそのまま返している")
+        #expect(id != 0)
+        #expect(FSEventsCheckpoint(eventID: id, deviceUUID: "V").isUsable(currentDeviceUUID: "V"))
+    }
 }

@@ -426,6 +426,7 @@ public final class LibraryServices {
             resolvedRoot = summary.map { URL(fileURLWithPath: $0.resolvedPath) }
         }
         guard let url = resolvedRoot else { return }
+        guard eventID != 0, eventID != FSEventsCheckpoint.sinceNowSentinel else { return }
         let deviceUUID = await FileIO.perform { FSEventsHistory.deviceUUID(for: url) }
         do {
             try await repository.setFSEventsCheckpoint(

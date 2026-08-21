@@ -214,3 +214,48 @@ struct IncrementalScanTests {
         #expect(summary.orphaned == 0)
     }
 }
+
+//
+//  列挙が到達しない場所は、差分でも取り込まない [実機検証で発見]。
+//
+//  **差分の走査単位はその場所を起点に直接列挙する**ので、`LibraryEnumerator`
+//  が持つ「隠し項目を飛ばす」規則が効かなかった。実機で、ボリューム上の
+//  隠しフォルダに置いたファイルが蔵書として DB に載った——**フルスキャンなら
+//  決して現れない行**なので、次のフルスキャンで孤立になり、差分で戻り、を
+//  繰り返すことになる。
+//
+@Suite("走査対象外の場所 [SY-03]", .serialized)
+struct UnscannableLocationScanTests {
+
+    @Test("隠しフォルダの中のファイルは差分でも取り込まない")
+    func filesInsideAHiddenFolderAreNotImported() async throws {
+        let w = try await ScanWorkspace()
+        try w.write("作者A/[サークルA] 通常.cbz")
+        _ = try await w.scanFull()
+
+        try w.write(".ゴミ箱/[サークルB] 捨てた.cbz")
+        let summary = try await w.engine.scan(
+            .incremental(libraryID: w.libraryID, paths: [".ゴミ箱/[サークルB] 捨てた.cbz"]),
+            root: w.root)
+
+        #expect(summary.added == 0, "隠しフォルダの中は取り込まない")
+        #expect(summary.scannedUnits == 0, "見る場所が無い")
+        let rows = try await w.allRows()
+        #expect(rows.count == 1)
+    }
+
+    /// **0 件を「フルスキャンへ落とせ」と読んではならない。**
+    @Test("走査対象外の変更しか無ければ、全体を列挙し直さない")
+    func onlyUnscannableChangesDoNotTriggerAFullScan() async throws {
+        let w = try await ScanWorkspace()
+        try w.write("作者A/[サークルA] 1.cbz")
+        try w.write("作者B/[サークルB] 2.cbz")
+        _ = try await w.scanFull()
+
+        let summary = try await w.engine.scan(
+            .incremental(libraryID: w.libraryID, paths: [".fseventsd/0000000000000001"]),
+            root: w.root)
+        #expect(summary.updated == 0, "全体を列挙し直していたら 2 になる")
+        #expect(summary.orphaned == 0)
+    }
+}

@@ -97,18 +97,32 @@ import Testing
     }
 
     /// 上限時間は、本体が戻ってこなくても効く。
+    ///
+    /// ## 経過時間で判定しない
+    /// 以前は「300 ms の上限に対して 3 秒未満で返ること」を見ていたが、
+    /// **並列実行の負荷でときどき落ちた**（実測: 5 回に 1 回ほど、3.03 秒）。
+    /// 経過時間には**打ち切りが起きてから待っているタスクが再開されるまで**の
+    /// スケジューラの遅れが含まれるので、他のテストが協調プールを使っていると
+    /// 素直に伸びる——**製品の欠陥ではないのに落ちる**。
+    ///
+    /// 確かめたい性質は「本体が終わっていないのに返ること」そのものなので、
+    /// **本体がまだ塞がっているかを直に見る。** これなら負荷に依存しない。
+    /// 経過時間は「桁で間違えていないか」の粗い煙探知器としてだけ残す。
     @Test func aDeadlineStopsWaitingEvenIfTheWorkNeverReturns() async throws {
         let release = DispatchSemaphore(value: 0)
+        let finished = BoolBox()
         let started = Date()
         var thrown: (any Error)?
         do {
             _ = try await FileIO.perform(waitingAtMost: .milliseconds(300)) {
                 release.wait() // 解放するまで戻らない
+                finished.set()
             }
         } catch {
             thrown = error
         }
         let elapsed = Date().timeIntervalSince(started)
+        let workHadFinished = finished.value
         release.signal() // 塞いだスレッドを解放してから判定する
 
         let error = try #require(thrown as? FileOperationError)
@@ -116,7 +130,16 @@ import Testing
             Issue.record("上限超過として返らなかった: \(error)")
             return
         }
-        #expect(elapsed < 3, "上限を過ぎても待ち続けた（\(elapsed) 秒）")
+        #expect(!workHadFinished, "本体が終わってから返っている＝上限が効いていない")
+        #expect(elapsed < 10, "上限が桁違いに遅れている（\(elapsed) 秒）")
+    }
+
+    /// `@Sendable` な非 async クロージャから立てる印。
+    final class BoolBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var flag = false
+        func set() { lock.lock(); flag = true; lock.unlock() }
+        var value: Bool { lock.lock(); defer { lock.unlock() }; return flag }
     }
 
     /// 期限つきの実行を繰り返しても、タイマーの後片付けで落ちないこと。
