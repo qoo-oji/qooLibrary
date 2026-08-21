@@ -17,6 +17,9 @@ public struct ScanSummary: Sendable, Equatable {
     public var orphaned = 0            // [ID-06]
     public var candidatesForReview = 0 // [ID-05]
     public var unresolvedNames = 0     // [AL-31]
+    /// 巻数の判断待ち [EM-26]。`ComicInfo.xml` の `Number` と `Volume` が
+    /// 食い違ったファイルの件数。**スキャンは止めず、完了後にまとめて聞く** [EM-31]。
+    public var volumeConflicts = 0
     public var bookFoldersDetected = 0
     /// 1 冊扱いが解除されたフォルダ [IF-05]。**孤立ではない**——通知の対象。
     public var bookFoldersReleased: [FileID] = []
@@ -46,15 +49,28 @@ public actor ScanEngine {
         public let labels: any LabelRepository
         public let parser: any FilenameParsing
         public let bookmarks: any BookmarkResolving
+        /// 埋め込みメタデータの読み取り [EM-09]。テストからフェイクを刺せる。
+        public let metadata: any EmbeddedMetadataReading
+        /// クラウドから追い出された実体かどうか [EM-62]。
+        ///
+        /// **テストから差し替えられるようにしておく**（`ThumbnailService` と
+        /// 同じ形）——実体を追い出した状態を一時ディレクトリでは作れない。
+        public let isDataless: @Sendable (URL) -> Bool
 
         public init(libraries: any LibraryRepository, files: any ManagedFileRepository,
                     labels: any LabelRepository, parser: any FilenameParsing = FilenameParser(),
-                    bookmarks: any BookmarkResolving = SecurityScopedBookmarkResolver()) {
+                    bookmarks: any BookmarkResolving = SecurityScopedBookmarkResolver(),
+                    metadata: any EmbeddedMetadataReading = EmbeddedMetadataReader(),
+                    isDataless: @escaping @Sendable (URL) -> Bool = {
+                        CloudMaterialization.isDataless($0)
+                    }) {
             self.libraries = libraries
             self.files = files
             self.labels = labels
             self.parser = parser
             self.bookmarks = bookmarks
+            self.metadata = metadata
+            self.isDataless = isDataless
         }
     }
 
@@ -157,13 +173,14 @@ public actor ScanEngine {
         var processed = 0
         for chunk in snapshots.chunked(into: AppLimits.Watch.scanBatchSize) {
             if Task.isCancelled { summary.cancelled = true; break }
-            let outcome = try await reconcile(chunk, settings: settings)
+            let outcome = try await reconcile(chunk, settings: settings, rootURL: rootURL)
             seen.formUnion(outcome.seen)
             summary.added += outcome.added
             summary.updated += outcome.updated
             summary.reidentified += outcome.reidentified
             summary.candidatesForReview += outcome.candidatesForReview
             summary.unresolvedNames += outcome.unresolvedNames
+            summary.volumeConflicts += outcome.volumeConflicts
             processed += chunk.count
             onProgress?(processed, chunk.last?.filename ?? "")
         }
@@ -223,10 +240,12 @@ public actor ScanEngine {
         var reidentified = 0
         var candidatesForReview = 0
         var unresolvedNames = 0
+        var volumeConflicts = 0
     }
 
     func reconcile(_ snapshots: [FileSnapshot],
-                   settings: LibrarySettingsSnapshot) async throws -> ChunkOutcome {
+                   settings: LibrarySettingsSnapshot,
+                   rootURL: URL) async throws -> ChunkOutcome {
         var outcome = ChunkOutcome()
 
         // 既存かどうかを先に見る（`upsertBatch` は「あれば更新」なので区別が付かない）。
@@ -261,18 +280,28 @@ public actor ScanEngine {
             else { outcome.updated += 1 }
         }
 
-        // ③ パースとラベル付与 [RC-01]。
+        // ③ 埋め込みメタデータ [EM-09]。**パースより先に読む**——
+        //    パース結果へフィールド単位で上書きするため [EM-04]。
+        let metadata = try await readMetadata(snapshots, ids: ids,
+                                              rootURL: rootURL, settings: settings)
+
+        // ④ パースとラベル付与 [RC-01]。
         for (offset, id) in ids.enumerated() {
             let snapshot = snapshots[offset]
-            let resolved = FolderLabelResolver.resolve(
+            let parsed = FolderLabelResolver.resolve(
                 relativePath: snapshot.relativePath,
                 nameWithoutExtension: snapshot.nameWithoutExtension,
                 settings: settings, parser: deps.parser,
                 purpose: .libraryScan,
                 endsWithBookFolder: snapshot.isBookFolder)
+            let embedded = metadata[id]?.metadata
+            let resolved = EmbeddedMetadataMerge.apply(embedded, to: parsed, settings: settings)
 
-            if resolved.matchedFormatID == nil, resolved.labels.isEmpty {
+            if EmbeddedMetadataMerge.isUnresolved(parsed, metadata: embedded) {
                 outcome.unresolvedNames += 1                     // [AL-31]
+            }
+            if embedded?.volumeConflict != nil {
+                outcome.volumeConflicts += 1                     // [EM-26]
             }
             try await deps.files.applyParsedFields(
                 ParsedFileFields(
@@ -286,6 +315,88 @@ public actor ScanEngine {
             try await applyLabels(resolved.labels, to: id, settings: settings)
         }
         return outcome
+    }
+
+    // MARK: - 埋め込みメタデータ [EM-07][EM-09][SE3-20〜SE3-25]
+
+    /// このバッチのメタデータを揃える。**印が一致するものは開かない** [EM-07]。
+    ///
+    /// 読む必要があるものだけを**上限つき並行**で読む [SE3-20]——I/O 待ちが
+    /// 支配的なので、並行にすると実時間がそのぶん縮む。上限を設けるのは、
+    /// ネットワーク共有へ一度に大量の要求を投げるとかえって遅くなるため。
+    func readMetadata(_ snapshots: [FileSnapshot], ids: [FileID],
+                      rootURL: URL, settings: LibrarySettingsSnapshot)
+        async throws -> [FileID: EmbeddedMetadataCacheEntry]
+    {
+        guard settings.readsEmbeddedMetadata else { return [:] }   // [EM-06]
+
+        let cached = try await deps.files.embeddedMetadataCache(ids: ids)
+        var resolved: [FileID: EmbeddedMetadataCacheEntry] = [:]
+        var pending: [PendingRead] = []
+
+        for (offset, id) in ids.enumerated() where offset < snapshots.count {
+            let snapshot = snapshots[offset]
+            let kind = PreviewableFileKind.of(filename: snapshot.filename,
+                                              isDirectory: snapshot.isBookFolder)
+            guard kind.canCarryEmbeddedMetadata else { continue }   // 開くだけ無駄
+            let stamp = EmbeddedMetadataCacheEntry.stamp(modifiedAt: snapshot.modifiedAt,
+                                                         fileSize: snapshot.fileSize)
+            if let hit = cached[id], hit.stamp == stamp {
+                resolved[id] = hit                                  // 開かない [EM-07]
+                continue
+            }
+            pending.append(PendingRead(
+                id: id, url: rootURL.appendingPathComponent(snapshot.relativePath),
+                kind: kind, stamp: stamp))
+        }
+        guard !pending.isEmpty else { return resolved }
+
+        let reader = deps.metadata
+        let isDataless = deps.isDataless
+        let source = settings.comicInfoVolumeSource
+        let limit = max(1, AppLimits.Metadata.maxConcurrentReads)
+        var fresh: [FileID: EmbeddedMetadataCacheEntry] = [:]
+
+        await withTaskGroup(of: (FileID, EmbeddedMetadataCacheEntry?).self) { group in
+            var next = 0
+            func submit() {
+                guard next < pending.count else { return }
+                let item = pending[next]
+                next += 1
+                group.addTask {
+                    // クラウドから追い出された実体は読まない [EM-62]——読むと
+                    // ダウンロードが走り、頼んでもいない蔵書全体の実体化が始まる。
+                    if await FileIO.perform({ isDataless(item.url) }) {
+                        return (item.id, nil)
+                    }
+                    let metadata = await reader.read(item.url, kind: item.kind,
+                                                     volumeSource: source)
+                    return (item.id, EmbeddedMetadataCacheEntry(stamp: item.stamp,
+                                                                metadata: metadata))
+                }
+            }
+            for _ in 0..<min(limit, pending.count) { submit() }
+            while let (id, entry) = await group.next() {
+                if let entry { fresh[id] = entry }
+                if Task.isCancelled { group.cancelAll(); break }
+                submit()
+            }
+        }
+
+        // **読めなかったときも印は書く** [SE3-25]。「読んだが無かった」と
+        // 「まだ読んでいない」を区別しないと、メタデータを持たないファイルを
+        // 毎回開き直すことになる（同人誌ライブラリでは全件がそれに当たる）。
+        if !fresh.isEmpty {
+            try await deps.files.saveEmbeddedMetadata(fresh)
+        }
+        return resolved.merging(fresh) { _, new in new }
+    }
+
+    struct PendingRead: Sendable {
+        let id: FileID
+        let url: URL
+        let kind: PreviewableFileKind
+        let stamp: String
     }
 
     /// 自動ラベルを付け直す [RC-01][RC-04]。

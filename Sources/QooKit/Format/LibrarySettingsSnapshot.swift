@@ -39,6 +39,11 @@ public struct LibrarySettingsSnapshot: Sendable {
     public let seriesTitleCompositionFormat: String
     public let maxLabelGroups: Int
 
+    /// ファイル自身が持つメタデータを読むか [EM-06]。
+    public let readsEmbeddedMetadata: Bool
+    /// `ComicInfo.xml` の巻数をどちらの要素から取るか [EM-30]。
+    public let comicInfoVolumeSource: ComicInfoVolumeSource
+
     public init(libraryID: LibraryID,
                 settingsRevision: Int = 0,
                 displayName: String = "",
@@ -55,7 +60,9 @@ public struct LibrarySettingsSnapshot: Sendable {
                 semanticBindings: [SemanticKeyword: Int] = [:],
                 normalization: NormalizationOptions = .default,
                 seriesTitleCompositionFormat: String = "@series @volume",
-                maxLabelGroups: Int = AppLimits.Format.maxLabelGroups) {
+                maxLabelGroups: Int = AppLimits.Format.maxLabelGroups,
+                readsEmbeddedMetadata: Bool = true,
+                comicInfoVolumeSource: ComicInfoVolumeSource = .ask) {
         self.libraryID = libraryID
         self.settingsRevision = settingsRevision
         self.displayName = displayName
@@ -73,6 +80,8 @@ public struct LibrarySettingsSnapshot: Sendable {
         self.normalization = normalization
         self.seriesTitleCompositionFormat = seriesTitleCompositionFormat
         self.maxLabelGroups = maxLabelGroups
+        self.readsEmbeddedMetadata = readsEmbeddedMetadata
+        self.comicInfoVolumeSource = comicInfoVolumeSource
     }
 
     /// フォーマットのコンパイルに渡す文脈を組み立てる。

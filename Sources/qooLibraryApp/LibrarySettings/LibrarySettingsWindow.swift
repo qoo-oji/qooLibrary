@@ -151,6 +151,20 @@ struct LibrarySettingsWindow: View {
         }
     }
 
+    /// 巻数の確認ダイアログ [EM-32][15.1.2]。
+    ///
+    /// **一覧はここで固定して渡す。**開いている間に走査が走って件数が変わると、
+    /// 選んだ行と適用先がずれる——利用者が見て選んだ集合をそのまま確定させる。
+    private func presentVolumeDecision() {
+        guard let libraryID = model.selectedLibraryID else { return }
+        VolumeDecisionAction.present(
+            candidates: model.pendingVolumeDecisions, libraryID: libraryID, locale: locale
+        ) {
+            // 確定したら件数と草案を読み直す——設定も書き換わっている場合がある。
+            Task { await model.reloadAfterVolumeDecision() }
+        }
+    }
+
     @ViewBuilder
     private var sectionEditor: some View {
         // 草案は `@Bindable` ではなく `Binding` を組み立てて渡す。`draft` は
@@ -171,6 +185,11 @@ struct LibrarySettingsWindow: View {
         case .volumeFormats:   LibraryVolumeFormatsSettingsView(draft: bound)
         case .delimiters:      LibraryDelimitersSettingsView(draft: bound)
         case .protectedTokens: LibraryProtectedTokensSettingsView(draft: bound)
+        case .embeddedMetadata:
+            LibraryEmbeddedMetadataSettingsView(
+                draft: bound,
+                pending: model.pendingVolumeDecisions,
+                onReview: presentVolumeDecision)
         }
     }
 

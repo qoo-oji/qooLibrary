@@ -257,6 +257,26 @@ public final class LibraryServices {
         await refreshLibraries()
     }
 
+    // MARK: - 巻数の判断 [EM-30〜EM-35]
+
+    /// `ComicInfo.xml` の `Number` と `Volume` が食い違っていて、まだ判断して
+    /// いないファイル [EM-31]。
+    public func filesAwaitingVolumeDecision(libraryID: LibraryID) async throws
+        -> [VolumeDecisionCandidate]
+    {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        return try await repository.filesAwaitingVolumeDecision(libraryID: libraryID)
+    }
+
+    /// 判断を確定する [EM-33]。**再スキャンを要さない**——衝突していた 2 つの
+    /// 値はどちらもキャッシュに残してあるので、選ばれた側を書き写すだけで済む。
+    public func resolveVolumeConflicts(_ ids: [FileID],
+                                       using source: ComicInfoVolumeSource) async throws {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        try await repository.resolveVolumeConflicts(ids, using: source)
+        Log.app.info("巻数の判断を確定: \(ids.count) 件 → \(source.rawValue)")
+    }
+
     // MARK: - バックアップ [IE-01〜IE-14][BK-05]
 
     /// DB を JSON へ写す [IE-01][IE-02]。

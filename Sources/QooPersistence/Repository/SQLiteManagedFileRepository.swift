@@ -279,6 +279,124 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
         }
     }
 
+    // MARK: - 埋め込みメタデータ [EM-07]
+
+    public func embeddedMetadataCache(ids: [FileID]) async throws
+        -> [FileID: EmbeddedMetadataCacheEntry]
+    {
+        guard !ids.isEmpty else { return [:] }
+        return try await database.writer.read { db in
+            let placeholders = Self.placeholders(ids.count)
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT id, metadataStamp, metadataJSON FROM managedFile
+                WHERE id IN (\(placeholders)) AND metadataStamp IS NOT NULL
+                """, arguments: StatementArguments(ids.map { $0.rawValue }))
+            var out: [FileID: EmbeddedMetadataCacheEntry] = [:]
+            let decoder = JSONDecoder()
+            for row in rows {
+                guard let stamp: String = row["metadataStamp"] else { continue }
+                var metadata: EmbeddedMetadata?
+                if let json: String = row["metadataJSON"] {
+                    // 壊れた JSON は「まだ読んでいない」ではなく「持っていない」
+                    // として扱う——読み直せば直るので、失敗を伝播させない。
+                    metadata = try? decoder.decode(EmbeddedMetadata.self, from: Data(json.utf8))
+                }
+                out[FileID(rawValue: row["id"])] = EmbeddedMetadataCacheEntry(
+                    stamp: stamp, metadata: metadata)
+            }
+            return out
+        }
+    }
+
+    public func saveEmbeddedMetadata(_ entries: [FileID: EmbeddedMetadataCacheEntry]) async throws {
+        guard !entries.isEmpty else { return }
+        try await database.writer.write { db in
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            for (id, entry) in entries {
+                var json: String?
+                if let metadata = entry.metadata, !metadata.isEmpty {
+                    json = String(decoding: try encoder.encode(metadata), as: UTF8.self)
+                }
+                try db.execute(sql: """
+                    UPDATE managedFile
+                       SET metadataStamp = ?, metadataSource = ?, metadataJSON = ?,
+                           hasVolumeConflict = ?
+                     WHERE id = ?
+                    """, arguments: [
+                        entry.stamp,
+                        entry.metadata.map { $0.isEmpty ? nil : $0.source.rawValue } ?? nil,
+                        json,
+                        entry.metadata?.volumeConflict != nil,
+                        id.rawValue])
+            }
+        }
+    }
+
+    public func filesAwaitingVolumeDecision(libraryID: LibraryID) async throws
+        -> [VolumeDecisionCandidate]
+    {
+        try await database.writer.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT id, filename, relativePath, metadataJSON FROM managedFile
+                WHERE libraryId = ? AND hasVolumeConflict = 1 AND state = ?
+                ORDER BY relativePath
+                """, arguments: [libraryID.rawValue, FileState.active.rawValue])
+            let decoder = JSONDecoder()
+            return rows.compactMap { row -> VolumeDecisionCandidate? in
+                guard let json: String = row["metadataJSON"],
+                      let metadata = try? decoder.decode(EmbeddedMetadata.self,
+                                                         from: Data(json.utf8)),
+                      let conflict = metadata.volumeConflict else { return nil }
+                return VolumeDecisionCandidate(
+                    id: FileID(rawValue: row["id"]),
+                    filename: row["filename"],
+                    relativePath: row["relativePath"],
+                    conflict: conflict)
+            }
+        }
+    }
+
+    public func resolveVolumeConflicts(_ ids: [FileID],
+                                       using source: ComicInfoVolumeSource) async throws {
+        guard source != .ask, !ids.isEmpty else { return }
+        try await database.writer.write { db in
+            let decoder = JSONDecoder()
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            let placeholders = Self.placeholders(ids.count)
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT id, metadataJSON FROM managedFile
+                WHERE id IN (\(placeholders)) AND hasVolumeConflict = 1
+                """, arguments: StatementArguments(ids.map { $0.rawValue }))
+
+            for row in rows {
+                guard let json: String = row["metadataJSON"],
+                      let metadata = try? decoder.decode(EmbeddedMetadata.self,
+                                                         from: Data(json.utf8)),
+                      let conflict = metadata.volumeConflict else { continue }
+                let value = source == .number ? conflict.number : conflict.volume
+                let raw = source == .number ? conflict.numberRaw : conflict.volumeRaw
+
+                // 衝突を解消した形へ書き直す。**次のスキャンで読み直しても
+                // 同じ結論になる**ように、判断の結果をメタデータ側にも残す
+                // ——残さないと、印が一致する限り衝突のままに見える。
+                let settled = EmbeddedMetadata(
+                    source: metadata.source, title: metadata.title, series: metadata.series,
+                    volume: value, volumeRaw: raw, authors: metadata.authors,
+                    volumeConflict: nil)
+                let settledJSON = String(decoding: try encoder.encode(settled), as: UTF8.self)
+                try db.execute(sql: """
+                    UPDATE managedFile
+                       SET metadataJSON = ?, hasVolumeConflict = 0,
+                           volumeNumber = ?, volumeKind = ?, volumeRaw = ?
+                     WHERE id = ?
+                    """, arguments: [settledJSON, value, VolumeValue.Kind.numeric.rawValue, raw,
+                                     row["id"] as Int64])
+            }
+        }
+    }
+
     // MARK: - 読み取り
 
     public func row(id: FileID) async throws -> FileRow? {

@@ -166,7 +166,9 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                 volumeFormats: VolumePatternCompiler.compileAll(volumePatterns),
                 semanticBindings: semantic,
                 normalization: options,
-                seriesTitleCompositionFormat: payload.seriesTitleCompositionFormat)
+                seriesTitleCompositionFormat: payload.seriesTitleCompositionFormat,
+                readsEmbeddedMetadata: payload.readsEmbeddedMetadata,
+                comicInfoVolumeSource: payload.comicInfoVolumeSource)
         }
     }
 
@@ -410,6 +412,8 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                 volumeFormats: volumes,
                 folderLevels: levels,
                 seriesTitleCompositionFormat: payload.seriesTitleCompositionFormat,
+                readsEmbeddedMetadata: payload.readsEmbeddedMetadata,
+                comicInfoVolumeSource: payload.comicInfoVolumeSource,
                 otherLibraryTypeNames: otherTypeNames,
                 otherLibraryDisplayNames: otherDisplayNames)
         }
@@ -466,7 +470,9 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
             delimiters: draft.delimiters,
             semanticBindings: draft.semanticBindings.reduce(into: [:]) { $0[$1.key.rawValue] = $1.value },
             seriesTitleCompositionFormat: draft.seriesTitleCompositionFormat,
-            labelGroupOrder: draft.labelGroups.map(\.index))
+            labelGroupOrder: draft.labelGroups.map(\.index),
+            readsEmbeddedMetadata: draft.readsEmbeddedMetadata,
+            comicInfoVolumeSource: draft.comicInfoVolumeSource)
         return String(decoding: try JSONEncoder().encode(payload), as: UTF8.self)
     }
 

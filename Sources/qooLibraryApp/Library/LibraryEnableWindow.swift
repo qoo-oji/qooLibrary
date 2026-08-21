@@ -187,6 +187,10 @@ struct LibraryEnableView: View {
         case .volumeFormats:   LibraryVolumeFormatsSettingsView(draft: $model.draft)
         case .delimiters:      LibraryDelimitersSettingsView(draft: $model.draft)
         case .protectedTokens: LibraryProtectedTokensSettingsView(draft: $model.draft)
+        case .embeddedMetadata:
+            // **判断待ちは有効化前には存在しない**（まだ 1 度も走査していない）。
+            // 設定だけを見せる——空の一覧への導線を出しても押す先が無い。
+            LibraryEmbeddedMetadataSettingsView(draft: $model.draft, pending: [], onReview: {})
         }
     }
 

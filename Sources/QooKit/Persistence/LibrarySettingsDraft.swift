@@ -128,6 +128,12 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
     public var folderLevels: [FolderLevelDraft]
     public var seriesTitleCompositionFormat: String   // [SE-33]
 
+    // --- 埋め込みメタデータ [EM-06][EM-30] ---
+    /// ファイル自身が持つメタデータ（`ComicInfo.xml` / EPUB / PDF）を読むか。
+    public var readsEmbeddedMetadata: Bool
+    /// `ComicInfo.xml` の巻数をどちらの要素から取るか。
+    public var comicInfoVolumeSource: ComicInfoVolumeSource
+
     // --- 照合の文脈（編集不可） ---
     /// **この**ライブラリを除いた他ライブラリの型名・表示名。型付き照合 [TY-01]
     /// の列挙候補を組み立てるのに要る。自分の分は編集中の値から足すので、
@@ -149,6 +155,8 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
                 volumeFormats: [VolumeFormatDraft] = [],
                 folderLevels: [FolderLevelDraft] = [],
                 seriesTitleCompositionFormat: String = "@series @volume",
+                readsEmbeddedMetadata: Bool = true,
+                comicInfoVolumeSource: ComicInfoVolumeSource = .ask,
                 otherLibraryTypeNames: [String] = [],
                 otherLibraryDisplayNames: [String] = []) {
         self.displayName = displayName
@@ -165,6 +173,8 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
         self.volumeFormats = volumeFormats
         self.folderLevels = folderLevels
         self.seriesTitleCompositionFormat = seriesTitleCompositionFormat
+        self.readsEmbeddedMetadata = readsEmbeddedMetadata
+        self.comicInfoVolumeSource = comicInfoVolumeSource
         self.otherLibraryTypeNames = otherLibraryTypeNames
         self.otherLibraryDisplayNames = otherLibraryDisplayNames
     }

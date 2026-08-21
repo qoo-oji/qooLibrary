@@ -1847,6 +1847,23 @@
         }
       }
     },
+    "common.apply": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apply"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "適用"
+          }
+        }
+      }
+    },
     "common.cancel": {
       "localizations": {
         "en": {
@@ -4730,6 +4747,23 @@
         }
       }
     },
+    "library.scan.reviewVolumes": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Review Volume Numbers…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "巻数を確認…"
+          }
+        }
+      }
+    },
     "library.scan.unresolved": {
       "extractionState": "manual",
       "localizations": {
@@ -4743,6 +4777,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "%d 件のファイル名がどのフォーマットにも一致せず、ラベルが付いていません。"
+          }
+        }
+      }
+    },
+    "library.scan.volumeConflicts": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d file(s) declare two different volume numbers, so a decision is needed."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d 件のファイルが 2 つの異なる巻数を宣言しているため、判断が必要です。"
           }
         }
       }
@@ -5372,6 +5423,193 @@
           "stringUnit": {
             "state": "translated",
             "value": "変更を破棄"
+          }
+        }
+      }
+    },
+    "librarySettings.embeddedMetadata.enabled": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Read metadata inside files"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ファイル内のメタデータを読む"
+          }
+        }
+      }
+    },
+    "librarySettings.embeddedMetadata.enabledHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Each file is opened once and the result is remembered, so later scans do not reopen files that have not changed. Turn this off for libraries whose files carry no metadata to make scanning faster."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "各ファイルは一度だけ開き、結果を憶えます。変わっていないファイルは以後のスキャンで開き直しません。メタデータを持たない蔵書ではオフにすると走査が速くなります。"
+          }
+        }
+      }
+    },
+    "librarySettings.embeddedMetadata.explanation": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Read the metadata stored inside the files themselves (ComicInfo.xml, EPUB, PDF) and use it in preference to what the file and folder names say."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ファイル自身に埋め込まれたメタデータ（ComicInfo.xml・EPUB・PDF）を読み取り、ファイル名やフォルダ名から抽出した情報より優先して使います。"
+          }
+        }
+      }
+    },
+    "librarySettings.embeddedMetadata.pendingCount": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d file(s) need a volume number decision."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d 件のファイルで、巻数の判断が必要です。"
+          }
+        }
+      }
+    },
+    "librarySettings.embeddedMetadata.pendingHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Until you decide, these files use the volume number taken from their file names."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "判断が済むまで、これらのファイルはファイル名から読み取った巻数を使います。"
+          }
+        }
+      }
+    },
+    "librarySettings.embeddedMetadata.review": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Review…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "確認…"
+          }
+        }
+      }
+    },
+    "librarySettings.embeddedMetadata.volumeSource": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Volume number in ComicInfo.xml"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComicInfo.xml の巻数"
+          }
+        }
+      }
+    },
+    "librarySettings.embeddedMetadata.volumeSource.ask": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ask me"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "確認する"
+          }
+        }
+      }
+    },
+    "librarySettings.embeddedMetadata.volumeSource.number": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Always use Number"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "常に Number を使う"
+          }
+        }
+      }
+    },
+    "librarySettings.embeddedMetadata.volumeSource.volume": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Always use Volume"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "常に Volume を使う"
+          }
+        }
+      }
+    },
+    "librarySettings.embeddedMetadata.volumeSourceHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComicInfo.xml has two elements that can hold a volume number, and applications disagree about which one to use: Komga treats Number as the volume, Kavita treats Volume as the volume. When a file has both and they differ, qooLibrary can ask you which one to trust."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ComicInfo.xml には巻数を表しうる要素が 2 つあり、どちらを使うかはアプリによって食い違います（Komga は Number、Kavita は Volume を巻数として扱います）。両方あって数字が違う場合に、どちらを採るかをここで決めます。"
           }
         }
       }
@@ -6396,6 +6634,23 @@
         }
       }
     },
+    "librarySettings.section.embeddedMetadata": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Embedded Metadata"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "埋め込みメタデータ"
+          }
+        }
+      }
+    },
     "librarySettings.section.extensions": {
       "extractionState": "manual",
       "localizations": {
@@ -6562,6 +6817,176 @@
           "stringUnit": {
             "state": "translated",
             "value": "未保存の変更"
+          }
+        }
+      }
+    },
+    "librarySettings.volumeDecision.allNumber": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Number"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Number"
+          }
+        }
+      }
+    },
+    "librarySettings.volumeDecision.allVolume": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Volume"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Volume"
+          }
+        }
+      }
+    },
+    "librarySettings.volumeDecision.column.choice": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Volume number"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "巻数"
+          }
+        }
+      }
+    },
+    "librarySettings.volumeDecision.column.file": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "File"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ファイル"
+          }
+        }
+      }
+    },
+    "librarySettings.volumeDecision.explanation": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "These files declare two different volume numbers. Compare each one with the file name and choose which value to use."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "これらのファイルは 2 つの異なる巻数を宣言しています。ファイル名と見比べて、どちらの値を使うか選んでください。"
+          }
+        }
+      }
+    },
+    "librarySettings.volumeDecision.failed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The volume number could not be saved."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "巻数を保存できませんでした。"
+          }
+        }
+      }
+    },
+    "librarySettings.volumeDecision.remember": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use the same choice for this library from now on"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "今後このライブラリでは同じ判断を使う"
+          }
+        }
+      }
+    },
+    "librarySettings.volumeDecision.rememberNeedsUnanimous": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Available when every file uses the same choice."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "すべてのファイルで同じ側を選んでいるときに使えます。"
+          }
+        }
+      }
+    },
+    "librarySettings.volumeDecision.setAll": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Set all to:"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "すべてを次にする:"
+          }
+        }
+      }
+    },
+    "librarySettings.volumeDecision.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Volume Numbers"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "巻数の確認"
           }
         }
       }

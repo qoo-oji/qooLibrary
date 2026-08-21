@@ -32,7 +32,10 @@ final class ScanWorkspace {
     let libraryID: LibraryID
     let volumeUUID: String
 
-    init(preset: String = "builtin.doujinshi-a", targetExtensions: Set<String> = ["cbz"]) async throws {
+    init(preset: String = "builtin.doujinshi-a", targetExtensions: Set<String> = ["cbz"],
+         metadata: (any EmbeddedMetadataReading)? = nil,
+         readsEmbeddedMetadata: Bool = true,
+         isDataless: (@Sendable (URL) -> Bool)? = nil) async throws {
         root = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("qoo-scan-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -58,8 +61,12 @@ final class ScanWorkspace {
         var draft = try #require(try await libraries.settingsDraft(libraryID: libraryID))
         draft.targetExtensions = Array(targetExtensions)
         draft.imageExtensions = Array(BookFolderDetector.defaultImageExtensions)
+        draft.readsEmbeddedMetadata = readsEmbeddedMetadata
         try await libraries.updateSettings(draft, libraryID: libraryID)
-        engine = ScanEngine(dependencies: .init(libraries: libraries, files: files, labels: labels))
+        engine = ScanEngine(dependencies: .init(
+            libraries: libraries, files: files, labels: labels,
+            metadata: metadata ?? EmbeddedMetadataReader(),
+            isDataless: isDataless ?? { CloudMaterialization.isDataless($0) }))
     }
 
     deinit { try? FileManager.default.removeItem(at: root) }

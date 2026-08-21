@@ -54,6 +54,11 @@ public struct RecoveryAction: Sendable, Identifiable, Equatable {
     public enum Kind: Sendable, Equatable {
         case retry
         case openSystemSettings(String)
+        /// アプリ内の別の画面を開く。仕様書の `.openWindow(WindowRoute)` に
+        /// あたるが、`WindowRoute`（ウインドウルーティング基盤）がまだ無いので
+        /// 文字列の識別子で表す。**呼び出し側が `present` の戻り値を見て開く**
+        /// ——通知を出す側だけが、どの画面を出すべきか知っている。
+        case openWindow(String)
         case dismiss
     }
 

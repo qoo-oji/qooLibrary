@@ -13,13 +13,14 @@ import QooKit
 
 public enum QooMigrations {
     /// 登録順の識別子。`v<連番>_<内容>` 形式で時系列に並ぶこと [SC-03]。
-    public static let identifiers: [String] = ["v1_initial", "v2_regexPatterns"]
+    public static let identifiers: [String] = ["v1_initial", "v2_regexPatterns", "v3_embeddedMetadata"]
 
     public static var migrator: DatabaseMigrator {
         var m = DatabaseMigrator()
         // eraseDatabaseOnSchemaChange は**決して**有効にしない（データを消すため）。
         m.registerMigration(identifiers[0], migrate: v1Initial)
         m.registerMigration(identifiers[1], migrate: v2RegexPatterns)
+        m.registerMigration(identifiers[2], migrate: v3EmbeddedMetadata)
         return m
     }
 
@@ -35,6 +36,35 @@ public enum QooMigrations {
             INSERT INTO storeMetadata (id, schemaVersion, appBuildAtLastWrite)
             VALUES (1, ?, '')
             """, arguments: [identifiers[0]])
+    }
+
+    // MARK: - v3
+
+    /// 埋め込みメタデータの読み取り（09章 §9.9）のための列を足す [EM-07]。
+    ///
+    /// **既存の行は `metadataStamp` が NULL になり、次のスキャンで
+    /// 「まだ読んでいない」として扱われる**——移行時に読みに行かない。移行は
+    /// ストアを開く前に走るので、ライブラリのボリュームが接続されているとは
+    /// 限らない（外付けが無い状態で起動しただけで移行が失敗しては困る）。
+    ///
+    /// `library.settingsJSON` の新しいキー（`readsEmbeddedMetadata` /
+    /// `comicInfoVolumeSource`）はここで触らない。`LibrarySettingsPayload` が
+    /// `decodeIfPresent` で読むので、キーが無い既存の JSON もそのまま通る。
+    static func v3EmbeddedMetadata(_ db: Database) throws {
+        try db.alter(table: "managedFile") { t in
+            t.add(column: "metadataStamp", .text)          // "mtime|size"。一致すれば開かない
+            t.add(column: "metadataSource", .text)         // NULL | comicInfo | epub | pdf
+            t.add(column: "metadataJSON", .text)           // 読み取った EmbeddedMetadata
+            t.add(column: "hasVolumeConflict", .boolean).notNull().defaults(to: false)
+        }
+        // 判断待ちの一覧を引くための部分索引 [EM-31]。件数はごく少ないので
+        // 全件の索引を作る必要が無い。
+        try db.execute(sql: """
+            CREATE INDEX managedFile_volume_conflict
+                ON managedFile(libraryId) WHERE hasVolumeConflict = 1
+            """)
+        try db.execute(sql: "UPDATE storeMetadata SET schemaVersion = ? WHERE id = 1",
+                       arguments: [identifiers[2]])
     }
 
     // MARK: - v2

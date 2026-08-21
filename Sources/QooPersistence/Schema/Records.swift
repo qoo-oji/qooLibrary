@@ -124,6 +124,13 @@ struct ManagedFileRecord: Codable, FetchableRecord, MutablePersistableRecord, Se
     var state: String
     var lastParsedFormatID: String?
     var libraryTypeMismatch: Bool
+    /// 読んだ時点の "mtime|size" [EM-07]。**読めなかったときも書く**——
+    /// 「読んだが無かった」と「まだ読んでいない」を区別しないと、メタデータを
+    /// 持たないファイルを毎回開き直すことになる [SE3-25]。
+    var metadataStamp: String?
+    var metadataSource: String?
+    var metadataJSON: String?
+    var hasVolumeConflict: Bool
 
     mutating func didInsert(_ inserted: InsertionSuccess) { id = inserted.rowID }
 }
@@ -155,7 +162,9 @@ extension ManagedFileRecord {
             pageCount: nil, subfolderCount: nil,
             firstImageWidth: nil, firstImageHeight: nil,
             trashedAt: nil, state: FileState.active.rawValue,
-            lastParsedFormatID: nil, libraryTypeMismatch: false)
+            lastParsedFormatID: nil, libraryTypeMismatch: false,
+            metadataStamp: nil, metadataSource: nil, metadataJSON: nil,
+            hasVolumeConflict: false)
     }
 
     var fileRow: FileRow {
@@ -237,6 +246,49 @@ struct LibrarySettingsPayload: Codable, Sendable {
     var semanticBindings: [String: Int] = [:]   // [RW-13]
     var seriesTitleCompositionFormat: String = "@series @volume"   // [SE-33]
     var labelGroupOrder: [Int] = []             // [LG-07][ST-23]
+    /// ファイル自身が持つメタデータを読むか [EM-06]。
+    var readsEmbeddedMetadata: Bool = true
+    /// `ComicInfo.xml` の巻数をどちらの要素から取るか [EM-30]。
+    var comicInfoVolumeSource: ComicInfoVolumeSource = .ask
 
     static let empty = LibrarySettingsPayload()
+
+    init() {}
+
+    init(targetExtensions: [String], imageExtensions: [String], delimiters: DelimiterSet,
+         semanticBindings: [String: Int], seriesTitleCompositionFormat: String,
+         labelGroupOrder: [Int], readsEmbeddedMetadata: Bool,
+         comicInfoVolumeSource: ComicInfoVolumeSource) {
+        self.targetExtensions = targetExtensions
+        self.imageExtensions = imageExtensions
+        self.delimiters = delimiters
+        self.semanticBindings = semanticBindings
+        self.seriesTitleCompositionFormat = seriesTitleCompositionFormat
+        self.labelGroupOrder = labelGroupOrder
+        self.readsEmbeddedMetadata = readsEmbeddedMetadata
+        self.comicInfoVolumeSource = comicInfoVolumeSource
+    }
+
+    /// **すべてのキーを `decodeIfPresent` で読む。**
+    ///
+    /// Swift の合成された `Decodable` は**プロパティの既定値を使わず**、
+    /// キーが無いと `keyNotFound` で失敗する [実測]。この型は既存の DB に
+    /// 保存済みの JSON を読むので、フィールドを足すたびに古い行が
+    /// 読めなくなってはならない——`AppAssociationStore` で実際に踏んだ罠と
+    /// 同じ形で、あちらは「登録済みのライブラリが全部消えたように見える」
+    /// ところまで行きかけた。
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        func value<T: Decodable>(_ key: CodingKeys, _ fallback: T) throws -> T {
+            try c.decodeIfPresent(T.self, forKey: key) ?? fallback
+        }
+        targetExtensions = try value(.targetExtensions, [])
+        imageExtensions = try value(.imageExtensions, [])
+        delimiters = try value(.delimiters, .default)
+        semanticBindings = try value(.semanticBindings, [:])
+        seriesTitleCompositionFormat = try value(.seriesTitleCompositionFormat, "@series @volume")
+        labelGroupOrder = try value(.labelGroupOrder, [])
+        readsEmbeddedMetadata = try value(.readsEmbeddedMetadata, true)
+        comicInfoVolumeSource = try value(.comicInfoVolumeSource, .ask)
+    }
 }

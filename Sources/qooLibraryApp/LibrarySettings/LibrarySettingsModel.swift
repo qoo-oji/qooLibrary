@@ -13,6 +13,7 @@ import SwiftUI
 enum LibrarySettingsSection: String, CaseIterable, Identifiable, Hashable {
     case basics, extensions, labelGroups, filenameFormats
     case folderLevels, volumeFormats, delimiters, protectedTokens
+    case embeddedMetadata
 
     var id: String { rawValue }
 
@@ -26,6 +27,7 @@ enum LibrarySettingsSection: String, CaseIterable, Identifiable, Hashable {
         case .volumeFormats:   "librarySettings.section.volumeFormats"
         case .delimiters:      "librarySettings.section.delimiters"
         case .protectedTokens: "librarySettings.section.protectedTokens"
+        case .embeddedMetadata: "librarySettings.section.embeddedMetadata"
         }
     }
 
@@ -39,6 +41,7 @@ enum LibrarySettingsSection: String, CaseIterable, Identifiable, Hashable {
         case .volumeFormats:   "number"
         case .delimiters:      "parentheses"
         case .protectedTokens: "shield"
+        case .embeddedMetadata: "doc.text.magnifyingglass"
         }
     }
 
@@ -88,6 +91,9 @@ final class LibrarySettingsModel {
     var sampleFilename: String = ""
 
     var libraries: [LibrarySummary] { LibraryServices.shared.libraries }
+
+    /// 巻数の判断待ち [EM-31]。設定を開いたときと、判断を確定したあとに読み直す。
+    private(set) var pendingVolumeDecisions: [VolumeDecisionCandidate] = []
 
     var isDirty: Bool {
         guard let draft, let savedDraft else { return false }
@@ -143,6 +149,7 @@ final class LibrarySettingsModel {
             savedDraft = loaded
             selectedFilenameFormatID = loaded?.filenameFormats.first?.id
             loadFailure = nil
+            await loadPendingVolumeDecisions()
         } catch {
             draft = nil
             savedDraft = nil
@@ -171,9 +178,30 @@ final class LibrarySettingsModel {
         draft = savedDraft
     }
 
+    // MARK: - 巻数の判断 [EM-30〜EM-35]
+
+    func loadPendingVolumeDecisions() async {
+        guard let id = selectedLibraryID else {
+            pendingVolumeDecisions = []
+            return
+        }
+        // 一覧が取れないこと自体は利用者に伝えない——設定を見に来ただけの人へ
+        // 出すには重すぎる。件数が 0 に見えるだけで、判断は次のスキャンでまた出る。
+        pendingVolumeDecisions =
+            (try? await LibraryServices.shared.filesAwaitingVolumeDecision(libraryID: id)) ?? []
+    }
+
     /// 不備をクリックしたら、その設定項目へ移動する。
     func reveal(_ issue: LibrarySettingsIssue) {
         section = LibrarySettingsSection(issue.section)
+    }
+
+    /// 判断のダイアログが閉じたあとに読み直す。
+    ///
+    /// **草案も読み直す。**「以降すべてに適用」を選ぶと設定そのものが
+    /// 書き換わるので、画面のピッカーが古い値のまま残ってはならない。
+    func reloadAfterVolumeDecision() async {
+        await loadDraft()
     }
 }
 

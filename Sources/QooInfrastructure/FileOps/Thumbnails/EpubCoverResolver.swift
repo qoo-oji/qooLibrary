@@ -24,7 +24,6 @@ import QooKit
 /// 実際のバイト列（zip シグネチャ）で判定するため、`.epub` のまま渡しても
 /// 正しく zip として読める。
 public enum EpubCoverResolver {
-    private static let containerPath = "META-INF/container.xml"
 
     public static func firstPageImageData(
         for url: URL,
@@ -32,24 +31,15 @@ public enum EpubCoverResolver {
         maxBytes: Int
     ) async -> Data? {
         guard let listing = try? await reader.listEntries(url) else { return nil }
-        // **`uniqueKeysWithValues:` は使わない** [2026-08 全体点検] — あちらは
-        // キー重複で fatalError する。zip に同名エントリが複数あるのは現実に
-        // あり得る形（更新エントリの追記）で、そのファイルのサムネイル生成で
-        // アプリごと落ちていた。畳み方は**先勝ち** — 実際にバイト列を読む
-        // `readEntry` がアーカイブを先頭から走査して最初の一致を返すため、
-        // 辞書だけ後勝ちにしても読まれるのは先頭側で、記述と実態がずれる
-        // （後勝ちへ寄せるにはエントリの通し番号の配管が要り、カバー 1 枚の
-        // 解決には見合わない）。
-        let entriesByPath = Dictionary(
-            listing.entries.map { ($0.pathname, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
+        // 一覧の索引・container.xml → OPF の解決は `EpubPackageLocator` と共有する
+        // （埋め込みメタデータの読み取り [EM-40] も同じ手順を要する）。
+        let entriesByPath = EpubPackageLocator.index(listing)
         let allPaths = Set(entriesByPath.keys)
 
-        guard let containerData = await read(entriesByPath[containerPath], url: url, reader: reader, listing: listing, maxBytes: maxBytes),
-              let rawOpfPath = resolveOPFPath(from: containerData)
+        guard let containerData = await read(entriesByPath[EpubPackageLocator.containerPath], url: url, reader: reader, listing: listing, maxBytes: maxBytes),
+              let rawOpfPath = EpubPackageLocator.opfPath(fromContainer: containerData)
         else { return nil }
-        let opfPath = matchExistingPath(rawOpfPath, in: allPaths) ?? rawOpfPath
+        let opfPath = EpubPackageLocator.matchExistingPath(rawOpfPath, in: allPaths) ?? rawOpfPath
         guard let opfData = await read(entriesByPath[opfPath], url: url, reader: reader, listing: listing, maxBytes: maxBytes)
         else { return nil }
 
@@ -80,16 +70,6 @@ public enum EpubCoverResolver {
     ) async -> Data? {
         guard let entry else { return nil }
         return try? await reader.readEntry(url, entry: entry, encoding: listing.detectedEncoding, maxBytes: maxBytes)
-    }
-
-    // MARK: - container.xml
-
-    private static func resolveOPFPath(from data: Data) -> String? {
-        let delegate = ContainerDocumentParserDelegate()
-        let parser = XMLParser(data: data)
-        parser.delegate = delegate
-        guard parser.parse(), let opfPath = delegate.opfPath, !opfPath.isEmpty else { return nil }
-        return opfPath
     }
 
     // MARK: - package document (OPF)
@@ -204,22 +184,7 @@ public enum EpubCoverResolver {
     }
 
     private static func matchExistingPath(_ candidate: String, in allPaths: Set<String>) -> String? {
-        if allPaths.contains(candidate) { return candidate }
-        let trimmed = candidate.hasPrefix("./") ? String(candidate.dropFirst(2)) : candidate
-        if allPaths.contains(trimmed) { return trimmed }
-        return allPaths.first { $0 == trimmed || $0.hasSuffix("/\(trimmed)") }
-    }
-}
-
-private nonisolated final class ContainerDocumentParserDelegate: NSObject, XMLParserDelegate {
-    private(set) var opfPath: String?
-
-    func parser(
-        _ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?,
-        qualifiedName qName: String?, attributes attributeDict: [String: String] = [:]
-    ) {
-        guard opfPath == nil, localName(of: elementName) == "rootfile" else { return }
-        opfPath = attributeDict["full-path"]
+        EpubPackageLocator.matchExistingPath(candidate, in: allPaths)
     }
 }
 

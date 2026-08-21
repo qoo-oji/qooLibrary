@@ -138,7 +138,8 @@ enum LibraryEnableAction {
                     })
             }
             guard !summary.cancelled else { return }
-            await notifyIfNoteworthy(summary, displayName: displayName, locale: locale)
+            await notifyIfNoteworthy(summary, displayName: displayName,
+                                     libraryID: libraryID, locale: locale)
             // **ここで要約を再掲しない。** `ScanEngine` が同じ数字を
             // `[Scan] スキャン完了` として既に書いており、二重に出るだけで
             // 情報が増えない。しかもこの関数は初回と再スキャンの両方から
@@ -175,6 +176,7 @@ enum LibraryEnableAction {
     ///   件数を知らせるだけにする］。ここで一覧を出す造りにはしない。
     private static func notifyIfNoteworthy(_ summary: ScanSummary,
                                            displayName: String,
+                                           libraryID: LibraryID?,
                                            locale: Locale) async {
         var lines: [String] = []
         if summary.orphaned > 0 {
@@ -189,17 +191,43 @@ enum LibraryEnableAction {
             lines.append(String(format: String(localized: "library.scan.bookFoldersReleased", locale: locale),
                                 summary.bookFoldersReleased.count))
         }
+        // **巻数の判断待ち** [EM-26][EM-31]。`ComicInfo.xml` の `Number` と
+        // `Volume` が食い違っていて、どちらが巻数か機械的に決められない。
+        // スキャンは止めずに走り切ってから、まとめて聞く。
+        var actions: [RecoveryAction] = []
+        if summary.volumeConflicts > 0 {
+            lines.append(String(format: String(localized: "library.scan.volumeConflicts", locale: locale),
+                                summary.volumeConflicts))
+            actions.append(RecoveryAction(
+                id: Self.reviewVolumesActionID,
+                title: String(localized: "library.scan.reviewVolumes", locale: locale),
+                kind: .openWindow(Self.reviewVolumesActionID)))
+        }
         guard !lines.isEmpty else { return }
 
-        await NotificationRouter.shared.present(NotificationItem(
+        let chosen = await NotificationRouter.shared.present(NotificationItem(
             category: .warning,
             // 判断を促すものなので強度 2 [ER-02]。強度 4（一時通知）は
             // フェーズ 1 の時点で提示先が無く、ログだけになって届かない。
             severity: .sheet,
             title: String(format: String(localized: "library.scan.reviewTitle", locale: locale),
                           displayName),
-            body: lines.joined(separator: "\n")))
+            body: lines.joined(separator: "\n"),
+            actions: actions))
+
+        // **ここでダイアログを出す。**要求を View 越しに回すと、メイン
+        // ウインドウが閉じているときに黙って何も起きない［既知の失敗］。
+        if chosen?.id == Self.reviewVolumesActionID, let libraryID {
+            VolumeDecisionAction.present(libraryID: libraryID, locale: locale)
+        }
     }
+
+    /// 走査結果の通知から巻数の確認を開くアクションの識別子 [EM-32]。
+    ///
+    /// **ドットを含めない。**`library.volumeDecision` のような形にすると
+    /// 文字列カタログの鍵と見分けが付かず、`check-localization-keys` が
+    /// 「未定義の鍵」として拾う。内部の識別子なので鍵と紛らわしい形にしない。
+    private static let reviewVolumesActionID = "review-volume-decisions"
 
     private static func presentUnavailable(_ failure: StoreStartupFailure?) {
         Task {

@@ -31,6 +31,9 @@ extension ManagedFileRecord: RegenerabilityDeclaring {
         "isBookFolder",
         "pageCount", "subfolderCount", "firstImageWidth", "firstImageHeight",
         "lastParsedFormatID", "libraryTypeMismatch",
+        // 埋め込みメタデータ [EM-10]。ファイルから読み直せるので JSON には持たない
+        // ——持つと、書き出した後にファイル側を直しても古い値で上書きされる。
+        "metadataStamp", "metadataSource", "metadataJSON", "hasVolumeConflict",
         // カバー画像は `coverImageSource == 'auto'` のときだけ再生成可能。
         // 列としては「再生成可能」に分類し、`coverImageSource` の値で守る [IV-03]。
         "coverImageRef",

@@ -123,6 +123,62 @@ public protocol ManagedFileRepository: Sendable {
     func releaseBookFolder(_ id: FileID) async throws
     /// パーサの結果を書き戻す [RC-01]。
     func applyParsedFields(_ fields: ParsedFileFields?, to id: FileID) async throws
+
+    // MARK: - 埋め込みメタデータ [EM-07]
+
+    /// 読み取り済みのメタデータ（と、読んだ時点の印）を引く。
+    ///
+    /// **印が一致すればファイルを開かない**——これがスキャンを実用的な速さに
+    /// 保つ唯一の手段で、無いと再スキャンのたびに 5 万件を開き直すことになる
+    /// （§9.9 の実測で 7 秒〜10 分）。
+    func embeddedMetadataCache(ids: [FileID]) async throws -> [FileID: EmbeddedMetadataCacheEntry]
+    /// 読み取り結果を保存する。**読めなかったときも印は書く** [SE3-25]。
+    func saveEmbeddedMetadata(_ entries: [FileID: EmbeddedMetadataCacheEntry]) async throws
+    /// 巻数の判断待ちのファイル [EM-31]。確認ダイアログが一覧に使う。
+    func filesAwaitingVolumeDecision(libraryID: LibraryID) async throws -> [VolumeDecisionCandidate]
+    /// 巻数の判断を確定する [EM-33]。
+    ///
+    /// **再スキャンを要さない。**衝突していた 2 つの値はどちらも
+    /// `metadataJSON` に残してあるので、選ばれた側を書き写すだけで済む——
+    /// 判断のたびに数万件を走査し直すのは釣り合わない。
+    /// - Parameter source: `.number` または `.volume`。`.ask` は何もしない。
+    func resolveVolumeConflicts(_ ids: [FileID],
+                                using source: ComicInfoVolumeSource) async throws
+}
+
+/// DB に置く埋め込みメタデータのキャッシュ 1 件ぶん [EM-07]。
+public struct EmbeddedMetadataCacheEntry: Sendable, Hashable {
+    /// 読んだ時点の `"mtime|size"`。これが変わったら読み直す。
+    public let stamp: String
+    /// 読んだ結果。**`nil` は「読んだが持っていなかった」**——「まだ読んでいない」
+    /// （＝行が無い）とは別物で、区別しないと毎回開き直すことになる [SE3-25]。
+    public let metadata: EmbeddedMetadata?
+
+    public init(stamp: String, metadata: EmbeddedMetadata?) {
+        self.stamp = stamp
+        self.metadata = metadata
+    }
+
+    /// スキャンが観測した内容から印を作る。
+    public static func stamp(modifiedAt: Date, fileSize: Int64) -> String {
+        "\(modifiedAt.timeIntervalSinceReferenceDate)|\(fileSize)"
+    }
+}
+
+/// 巻数の判断待ち 1 件 [EM-32]。確認ダイアログが並べて見せる。
+public struct VolumeDecisionCandidate: Sendable, Hashable, Identifiable {
+    public let id: FileID
+    public let filename: String
+    public let relativePath: String
+    public let conflict: EmbeddedMetadata.VolumeConflict
+
+    public init(id: FileID, filename: String, relativePath: String,
+                conflict: EmbeddedMetadata.VolumeConflict) {
+        self.id = id
+        self.filename = filename
+        self.relativePath = relativePath
+        self.conflict = conflict
+    }
 }
 
 // MARK: - ラベル

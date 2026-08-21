@@ -75,6 +75,17 @@ public enum PreviewableFileKind: Sendable, Equatable {
         }
     }
 
+    /// ファイル自身がメタデータを持ちうる種別か [EM-01]。
+    ///
+    /// **走査のたびに全件へ効くので、ここで落とせるものは落とす。**画像 1 枚や
+    /// 動画は `ComicInfo.xml` を持てない——開くだけ無駄になる。
+    public var canCarryEmbeddedMetadata: Bool {
+        switch self {
+        case .archive, .folder, .epub, .pdf: true
+        case .image, .video, .other: false
+        }
+    }
+
     // MARK: - 拡張子判定
 
     public static func isImageFilename(_ name: String) -> Bool {
