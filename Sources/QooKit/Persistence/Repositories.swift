@@ -85,7 +85,25 @@ public protocol LibraryRepository: Sendable {
     /// `keepLabels` はフェーズ 2 のラベル保管庫へ回すかどうか [RG-06]。
     func unregister(id: LibraryID, keepLabels: Bool) async throws
     func setOnline(_ online: Bool, libraryID: LibraryID) async throws          // [VD-03][VD-05]
-    func setLastFSEventID(_ eventID: UInt64, libraryID: LibraryID) async throws // [SY-02]
+    /// ボリュームの改名で移動した根を書き直す [VD-06]。`volumeUUID` は不変なので
+    /// ファイルの紐づけは維持される。
+    func setResolvedPath(_ path: String, libraryID: LibraryID) async throws
+
+    // MARK: - 監視と差分スキャンの状態 [SY-01〜SY-05]
+
+    /// 調整役が読む内部状態。`libraries()` とは別にしてあるのは
+    /// `LibraryWatchState` のコメント参照。
+    func watchStates() async throws -> [LibraryWatchState]
+    /// 差分の起点を保存する [SY-02][WA-10]。
+    ///
+    /// **イベント ID 単独で保存する API を用意しない**［設計判断］。ID だけを
+    /// 保存できると、次に読むときそれが同じ FSEvents データベースのものか
+    /// 確かめられない——**そのまま渡すと履歴が黙って 0 件になる**
+    /// （10章 §10.1.0 の実測）。組でしか保存できない形にして構造的に防ぐ。
+    func setFSEventsCheckpoint(_ checkpoint: FSEventsCheckpoint,
+                               libraryID: LibraryID) async throws
+    /// フルスキャンの完了時刻を記録する [SY-05]。取りこぼしの最終安全網。
+    func setLastFullScanAt(_ date: Date, libraryID: LibraryID) async throws
     /// レコード総数。起動時の閾値警告に使う [DB-04][IX-05]。
     func totalFileCount() async throws -> Int
 }

@@ -306,10 +306,54 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
         }
     }
 
-    public func setLastFSEventID(_ eventID: UInt64, libraryID: LibraryID) async throws {
+    public func setResolvedPath(_ path: String, libraryID: LibraryID) async throws {
         try await database.writer.write { db in
-            try db.execute(sql: "UPDATE library SET lastFSEventID = ? WHERE id = ?",
-                           arguments: [Int64(bitPattern: eventID), libraryID.rawValue])
+            try db.execute(sql: "UPDATE library SET resolvedPath = ? WHERE id = ?",
+                           arguments: [path, libraryID.rawValue])
+        }
+    }
+
+    // MARK: - 監視と差分スキャンの状態 [SY-01〜SY-05]
+
+    public func watchStates() async throws -> [LibraryWatchState] {
+        try await database.writer.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT id, uuid, displayName, resolvedPath, volumeUUID, isOnline,
+                       lastFSEventID, fsEventsUUID, lastFullScanAt
+                FROM library ORDER BY id
+                """).map { row in
+                LibraryWatchState(
+                    id: LibraryID(rawValue: row["id"]),
+                    uuid: UUID(uuidString: row["uuid"]) ?? UUID(),
+                    displayName: row["displayName"],
+                    resolvedPath: row["resolvedPath"],
+                    volumeUUID: row["volumeUUID"],
+                    isOnline: row["isOnline"],
+                    checkpoint: FSEventsCheckpoint(
+                        // 保存は `Int64(bitPattern:)` なので読み戻しも対称に。
+                        // 素の `UInt64(row[...])` は上位ビットが立った値で落ちる。
+                        eventID: UInt64(bitPattern: row["lastFSEventID"] as Int64),
+                        deviceUUID: row["fsEventsUUID"]),
+                    lastFullScanAt: (row["lastFullScanAt"] as Double?)
+                        .map(Date.init(timeIntervalSince1970:)))
+            }
+        }
+    }
+
+    public func setFSEventsCheckpoint(_ checkpoint: FSEventsCheckpoint,
+                                      libraryID: LibraryID) async throws {
+        try await database.writer.write { db in
+            try db.execute(
+                sql: "UPDATE library SET lastFSEventID = ?, fsEventsUUID = ? WHERE id = ?",
+                arguments: [Int64(bitPattern: checkpoint.eventID),
+                            checkpoint.deviceUUID, libraryID.rawValue])
+        }
+    }
+
+    public func setLastFullScanAt(_ date: Date, libraryID: LibraryID) async throws {
+        try await database.writer.write { db in
+            try db.execute(sql: "UPDATE library SET lastFullScanAt = ? WHERE id = ?",
+                           arguments: [date.timeIntervalSince1970, libraryID.rawValue])
         }
     }
 

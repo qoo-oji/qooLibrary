@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import GRDB
 import QooKit
 @testable import QooInfrastructure
 @testable import QooPersistence
@@ -88,6 +89,29 @@ final class ScanWorkspace {
         try FileManager.default.createDirectory(
             at: dst.deletingLastPathComponent(), withIntermediateDirectories: true)
         try FileManager.default.moveItem(at: root.appendingPathComponent(from), to: dst)
+    }
+
+    /// ディスク上の綴りでの相対パス。**FSEvents が渡してくるのはこの形**
+    /// （実測: 濁点は NFC で作っても NFD で返る）。差分スキャンのテストで
+    /// リテラルを渡すと、その 1 点だけ実運用と違う条件を試すことになる。
+    func onDiskRelativePath(_ relativePath: String) throws -> String {
+        let listed = try FileManager.default.contentsOfDirectory(
+            at: root.appendingPathComponent(relativePath).deletingLastPathComponent(),
+            includingPropertiesForKeys: nil)
+        let leaf = (relativePath as NSString).lastPathComponent
+        let onDisk = listed.first { $0.lastPathComponent == leaf }?.lastPathComponent ?? leaf
+        let parent = (relativePath as NSString).deletingLastPathComponent
+        return parent.isEmpty ? onDisk : parent + "/" + onDisk
+    }
+
+    /// 孤立を含めて全レコードを読む。`query` は `active` しか返さない。
+    func allRows() async throws -> [(path: String, state: FileState)] {
+        try await database.writer.read { db in
+            try Row.fetchAll(db, sql: "SELECT relativePath, state FROM managedFile").map {
+                ($0["relativePath"] as String,
+                 FileState(rawValue: $0["state"] as String) ?? .active)
+            }
+        }
     }
 
     func rows() async throws -> [FileRow] {

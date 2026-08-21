@@ -79,7 +79,9 @@ struct EmbeddedMetadataMigrationTests {
         let version = try queue.read {
             try String.fetchOne($0, sql: "SELECT schemaVersion FROM storeMetadata WHERE id = 1")
         }
-        #expect(version == "v3_embeddedMetadata")
+        // **特定の版を書かない。** 移行を 1 本足すたびにこのテストが落ちるのは
+        // 「最新版が記録されること」を確かめたい意図と食い違う（実際に v4 で落ちた）。
+        #expect(version == QooMigrations.identifiers.last)
     }
 
     /// **キーが無い既存の JSON もそのまま読める** [実測: Swift の合成された

@@ -23,6 +23,9 @@ public struct ScanSummary: Sendable, Equatable {
     public var bookFoldersDetected = 0
     /// 1 冊扱いが解除されたフォルダ [IF-05]。**孤立ではない**——通知の対象。
     public var bookFoldersReleased: [FileID] = []
+    /// この走査で見た「場所」の数 [SY-03]。差分が全体列挙へ落ちていないかを
+    /// テストと診断ログで確かめるために持つ。
+    public var scannedUnits = 0
     public var skipped = false         // オフライン等で走らなかった [SB-05]
     public var cancelled = false
 
@@ -141,33 +144,59 @@ public actor ScanEngine {
             return summary
         }
 
-        let options = LibraryEnumerator.Options(
-            targetExtensions: settings.targetExtensions,
-            imageExtensions: settings.imageExtensions.isEmpty
-                ? BookFolderDetector.defaultImageExtensions : settings.imageExtensions,
-            subPath: {
-                if case .folder(_, let path, _) = mode { return path }
-                return ""
-            }(),
-            recursive: {
-                if case .folder(_, _, let recursive) = mode { return recursive }
-                return true
-            }())
+        // ① 走査する場所を決める [SY-03]。
+        //
+        // **差分は「変更のあった場所だけ」を見る。** 以前はここが `.folder`
+        // のときしか絞られておらず、`.incremental` でもライブラリ全体を
+        // 列挙していた——ファイルが 1 つ変わるたびに 5 万件の走査が走る形
+        // だったので、`LibraryWatcher` を結線する前にここを塞いだ。
+        let plan = await resolveScanUnits(mode, rootURL: rootURL)
+        summary.scannedUnits = plan.count
 
-        // ① 実ファイルの列挙 [SE3-01]。ブロッキング I/O なので `FileIO` へ逃がす [NV6-01]。
+        // ② 実ファイルの列挙 [SE3-01]。ブロッキング I/O なので `FileIO` へ逃がす [NV6-01]。
+        //
+        // **列挙できなかった単位は孤立の判定から外す**［F2 が最悪の失敗様式］。
+        // 「読めなかった」を「無くなった」と読み替えると、権限やネットワークの
+        // 一時的な不調でラベルと評価を失う [R-01]。
         let collector = SnapshotCollector()
         let enumerator = self.enumerator
-        try await FileIO.perform {
-            try enumerator.enumerate(root: rootURL, libraryID: library.id,
-                                     volumeUUID: library.volumeUUID, options: options) {
-                collector.append($0)
+        var enumerated: [ScanUnit] = []
+        var firstFailure: (any Error)?
+        for unit in plan {
+            if Cancellation.isRequested || Task.isCancelled { summary.cancelled = true; break }
+            guard case .enumerate(let subPath, let recursive) = unit else {
+                enumerated.append(unit)          // `.vanished` は列挙しない
+                continue
+            }
+            let options = LibraryEnumerator.Options(
+                targetExtensions: settings.targetExtensions,
+                imageExtensions: settings.imageExtensions.isEmpty
+                    ? BookFolderDetector.defaultImageExtensions : settings.imageExtensions,
+                subPath: subPath, recursive: recursive)
+            do {
+                try await FileIO.perform {
+                    try enumerator.enumerate(root: rootURL, libraryID: library.id,
+                                             volumeUUID: library.volumeUUID, options: options) {
+                        collector.append($0)
+                    }
+                }
+                enumerated.append(unit)
+            } catch {
+                if firstFailure == nil { firstFailure = error }
+                Log.scan.warning("""
+                    走査単位を列挙できない（孤立の判定から外す）: \
+                    \(Log.redactable(library.displayName)) — \(Log.redactable(subPath))
+                    """)
             }
         }
+        // **1 つも列挙できなかったなら失敗として投げる。** 単位が 1 つだけの
+        // フルスキャン・フォルダスキャンでは従来どおりの振る舞いになる。
+        if let firstFailure, enumerated.isEmpty { throw firstFailure }
         let snapshots = collector.take()
         if Task.isCancelled { summary.cancelled = true; return summary }
         summary.bookFoldersDetected = snapshots.count { $0.isBookFolder }
 
-        // ② DB と突き合わせて収束させる [FO-20]。
+        // ③ DB と突き合わせて収束させる [FO-20]。
         //    保存は 500 件のバッチ境界で行う [SE3-05][ST-13]。
         var seen = Set<FileID>()
         var processed = 0
@@ -185,42 +214,51 @@ public actor ScanEngine {
             onProgress?(processed, chunk.last?.filename ?? "")
         }
 
-        // ③ 観測されなかったレコードを孤立にする [ID-06]。
-        //    差分スキャンでは行わない——見ていない範囲を消してしまうため。
-        if !summary.cancelled, case .incremental = mode {} else if !summary.cancelled {
-            let scope: FileQuery.Scope = {
-                if case .folder(_, let path, let recursive) = mode {
-                    return .folder(path: path, recursive: recursive)
+        // ④ 観測されなかったレコードを孤立にする [ID-06]。
+        //
+        // **実際に見た範囲でだけ行う。** 差分スキャンでも行うようになった
+        // ——以前は `.incremental` を丸ごと除外していたため、外部で削除された
+        // ファイルが DB に `active` のまま残り続けていた。範囲を単位ごとに
+        // 絞ってあるので「見ていない範囲を消す」ことにはならない。
+        if !summary.cancelled {
+            for unit in enumerated {
+                let scope: FileQuery.Scope
+                switch unit {
+                case .enumerate(let path, let recursive):
+                    scope = path.isEmpty && recursive
+                        ? .library : .folder(path: path, recursive: recursive)
+                case .vanished(let path):
+                    // 実体が確かに無いと分かっている場所。配下をまとめて孤立にする。
+                    scope = .folder(path: path, recursive: true)
                 }
-                return .library
-            }()
-            // 観測されなかったレコードを、実体の有無で振り分ける。
-            //
-            // **ブックフォルダが 1 冊扱いを解除された場合は孤立にしてはならない**
-            // [IF-05]。実体はまだそこにあり、ラベル紐づけも維持する。孤立にすると
-            // 「ファイルが消えた」という別の意味になってしまう。
-            let unseen = try await deps.files.unseen(
-                libraryID: library.id, scope: scope, seen: seen)
-            var stillOrphaned: [FileID] = []
-            for row in unseen {
-                let url = rootURL.appendingPathComponent(row.relativePath)
-                let exists = await FileIO.perform { () -> Bool in
-                    var isDirectory: ObjCBool = false
-                    let found = FileManager.default.fileExists(atPath: url.path,
-                                                               isDirectory: &isDirectory)
-                    return found && isDirectory.boolValue
+                // 観測されなかったレコードを、実体の有無で振り分ける。
+                //
+                // **ブックフォルダが 1 冊扱いを解除された場合は孤立にしてはならない**
+                // [IF-05]。実体はまだそこにあり、ラベル紐づけも維持する。孤立にすると
+                // 「ファイルが消えた」という別の意味になってしまう。
+                let unseen = try await deps.files.unseen(
+                    libraryID: library.id, scope: scope, seen: seen)
+                var stillOrphaned: [FileID] = []
+                for row in unseen {
+                    let url = rootURL.appendingPathComponent(row.relativePath)
+                    let exists = await FileIO.perform { () -> Bool in
+                        var isDirectory: ObjCBool = false
+                        let found = FileManager.default.fileExists(atPath: url.path,
+                                                                   isDirectory: &isDirectory)
+                        return found && isDirectory.boolValue
+                    }
+                    if row.isBookFolder, exists {
+                        try await deps.files.releaseBookFolder(row.id)       // [IF-05]
+                        summary.bookFoldersReleased.append(row.id)
+                    } else {
+                        stillOrphaned.append(row.id)
+                    }
                 }
-                if row.isBookFolder, exists {
-                    try await deps.files.releaseBookFolder(row.id)       // [IF-05]
-                    summary.bookFoldersReleased.append(row.id)
-                } else {
-                    stillOrphaned.append(row.id)
+                if !stillOrphaned.isEmpty {
+                    try await deps.files.setState(.orphaned, ids: stillOrphaned)   // [ID-06]
                 }
+                summary.orphaned += stillOrphaned.count
             }
-            if !stillOrphaned.isEmpty {
-                try await deps.files.setState(.orphaned, ids: stillOrphaned)   // [ID-06]
-            }
-            summary.orphaned = stillOrphaned.count
         }
 
         Log.scan.info("""
@@ -229,6 +267,120 @@ public actor ScanEngine {
             / 未解決 \(summary.unresolvedNames)
             """)
         return summary
+    }
+
+    // MARK: - 走査範囲 [SY-03]
+
+    /// このモードでどこを見るかを決める。
+    ///
+    /// 差分の場合だけ実体を問い合わせる（ディレクトリかファイルか、消えて
+    /// いるか）。**ブロッキング I/O なので `FileIO` へ逃がす** [NV6-02]。
+    func resolveScanUnits(_ mode: Mode, rootURL: URL) async -> [ScanUnit] {
+        switch mode {
+        case .full:
+            return [.enumerate(relativePath: "", recursive: true)]
+        case .folder(_, let path, let recursive):
+            return [.enumerate(relativePath: path, recursive: recursive)]
+        case .incremental(_, let paths):
+            guard !paths.isEmpty else {
+                // 変更のあった場所が分からない差分要求はフルスキャンと同じ [SY-04]。
+                return [.enumerate(relativePath: "", recursive: true)]
+            }
+            let planned = await FileIO.perform {
+                // **ディスク上の綴りに揃えてから使う** [実測]。
+                //
+                // 孤立の判定は SQLite の `LIKE` でパスの接頭辞を照合するので、
+                // **正規化や大小文字が 1 文字違うだけで 1 件も一致しない**。
+                // `contentsOfDirectory` は濁点を NFD（`U+30BF U+3099`）で返す
+                // 一方、アプリが自分で作ったパス（利用者が打った名前）は NFC
+                // （`U+30C0`）のことがある——照合が黙って空振りし、削除が
+                // いつまでも反映されない、という気づきにくい形になる。
+                //
+                // `realpath(3)` は**ディスク上の綴りそのもの**を返す（正規化も
+                // 大小文字も。`aBC` で引いても `Abc` が返る）ので、これを通せば
+                // 列挙が書き込む `relativePath` と必ず揃う。
+                let canonicalRoot = Self.canonicalPath(rootURL.path) ?? rootURL.path
+                let canonical = paths.map {
+                    Self.canonicalRelativePath($0, rootURL: rootURL,
+                                               canonicalRoot: canonicalRoot)
+                }
+                return ScanUnitPlanner.units(changedPaths: canonical, kind: { relative in
+                    Self.pathKind(rootURL.appendingPathComponent(relative))
+                })
+            }
+            guard let planned else {
+                Log.scan.debug("差分の範囲を絞れないのでフルスキャンへ落とす（\(paths.count) 件の変更）")
+                return [.enumerate(relativePath: "", recursive: true)]   // [SY-04]
+            }
+            return planned
+        }
+    }
+
+    /// `realpath(3)` の薄い包み。存在しなければ `nil`。
+    ///
+    /// - Note: `FileIO.perform` の中からのみ呼ぶこと [NV6-02]。
+    static func canonicalPath(_ path: String) -> String? {
+        var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
+        guard realpath(path, &buffer) != nil else { return nil }
+        // `String(cString: [CChar])` は非推奨。NUL で切ってから復号する。
+        let bytes = buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
+        return String(decoding: bytes, as: UTF8.self)
+    }
+
+    /// 相対パスをディスク上の綴りに揃える。
+    ///
+    /// **存在する最深の祖先まで解決して、残りを継ぎ足す。** 素の `realpath` は
+    /// 対象が消えていると丸ごと失敗するので、それでは削除の経路
+    /// （＝いちばん綴りを揃えたい場面）で毎回諦めることになる。
+    /// `RegisteredFolderStore` が登録パスの正規化で使っているのと同じ形。
+    ///
+    /// ## なぜ綴りを揃えるのか [実測]
+    /// 孤立の判定は SQLite の `LIKE` でパスの接頭辞を照合するので、
+    /// **正規化や大小文字が 1 文字違うだけで 1 件も一致しない**。
+    /// `contentsOfDirectory` は濁点を NFD（`U+30BF U+3099`）で返す一方、
+    /// アプリが組み立てたパスは NFC（`U+30C0`）のことがある——照合が黙って
+    /// 空振りし、削除がいつまでも反映されない、という気づきにくい形になる。
+    /// `realpath(3)` は**ディスク上の綴りそのもの**を返す（`aBC` で引いても
+    /// `Abc` が返る）ので、これを通せば列挙が書き込む `relativePath` と揃う。
+    ///
+    /// ## 残る限界
+    /// **消えた末尾の綴りだけは分からない**——その情報はファイルと一緒に
+    /// 消えている。実際には食い違わない（FSEvents はディスク上の綴りを返し、
+    /// アプリ自身の削除も一覧から選ばれた URL＝`contentsOfDirectory` 由来）。
+    /// 万一食い違っても**孤立が起きないだけ**で、別のファイルを誤って孤立に
+    /// することはない。次のフルスキャン [SY-05] が拾う。
+    static func canonicalRelativePath(_ relative: String, rootURL: URL,
+                                      canonicalRoot: String) -> String {
+        let prefix = canonicalRoot.hasSuffix("/") ? canonicalRoot : canonicalRoot + "/"
+        var components = relative.split(separator: "/", omittingEmptySubsequences: true)
+            .map(String.init)
+        var tail: [String] = []
+        while !components.isEmpty {
+            let candidate = rootURL.appendingPathComponent(components.joined(separator: "/")).path
+            if let canonical = canonicalPath(candidate), canonical.hasPrefix(prefix) {
+                let head = String(canonical.dropFirst(prefix.count))
+                return (([head] + tail)).joined(separator: "/")
+            }
+            tail.insert(components.removeLast(), at: 0)
+        }
+        return tail.joined(separator: "/")
+    }
+
+    /// パスの実体。**`lstat` を使う**——シンボリックリンクは走査の対象外
+    /// [SL-03] なので、リンク先まで辿って「ディレクトリ」と答えてはいけない。
+    ///
+    /// - Note: `FileIO.perform` の中からのみ呼ぶこと [NV6-02]。
+    static func pathKind(_ url: URL) -> ScanUnitPlanner.PathKind {
+        var info = stat()
+        if lstat(url.path, &info) == 0 {
+            return (info.st_mode & S_IFMT) == S_IFDIR ? .directory : .file
+        }
+        // `ENOENT`/`ENOTDIR` は「確かに無い」。それ以外（権限・無応答）は
+        // **判定できない**として扱い、推測で孤立にしない。
+        switch errno {
+        case ENOENT, ENOTDIR: return .absent
+        default: return .unknown
+        }
     }
 
     // MARK: - 突き合わせ

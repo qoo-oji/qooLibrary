@@ -39,6 +39,9 @@ struct LibraryRecord: Codable, FetchableRecord, MutablePersistableRecord, Sendab
     var duplicateGrouping: String
     var thumbnailsAlwaysHidden: Bool
     var lastFSEventID: Int64
+    /// `lastFSEventID` が属する FSEvents データベースの識別子 [WA-10]。
+    /// **NULL なら `lastFSEventID` を起点として使ってはならない**（§10.1.0）。
+    var fsEventsUUID: String?
     var lastFullScanAt: Double?
     var isOnline: Bool
     var isReadOnlyDueToFS: Bool

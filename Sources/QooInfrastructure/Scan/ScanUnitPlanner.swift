@@ -1,0 +1,143 @@
+//
+//  差分スキャンの走査範囲を決める [SY-03][SY-12][FO-20]。
+//
+//  **FSEvents が報告したパスを、そのまま「読み直す場所」に翻訳する部分。**
+//  ここを持たないと差分スキャンがライブラリ全体を列挙することになり、
+//  ファイルが 1 つ変わるたびに 5 万件の走査が走る。
+//
+import Foundation
+import QooKit
+
+/// 1 回の差分スキャンで見る場所。
+public enum ScanUnit: Sendable, Hashable {
+    /// 列挙して DB と突き合わせる。`relativePath` が空ならライブラリ根。
+    case enumerate(relativePath: String, recursive: Bool)
+    /// **実体が確かに消えている**（`stat` が `ENOENT`）。列挙はせず、
+    /// この配下の DB レコードを孤立にする [ID-06]。
+    ///
+    /// 消えたのがフォルダだった場合、その中身は親の「直下だけ」の照合では
+    /// 拾えない——だから別の単位として持つ。**「読めなかった」ではなく
+    /// 「確かに無い」と分かったときにだけ作ること**［F2 が最悪の失敗様式］。
+    case vanished(relativePath: String)
+
+    var relativePath: String {
+        switch self {
+        case .enumerate(let path, _), .vanished(let path): return path
+        }
+    }
+}
+
+/// 変更のあった相対パスから走査単位を導く。
+///
+/// ## なぜ「親を非再帰」と「自身を再帰」を使い分けるのか
+/// FSEvents は `kFSEventStreamCreateFlagFileEvents` を指定してあるので**個々の
+/// ファイル**を報告する。ただし**フォルダごと移動されてきた場合**（同一
+/// ボリューム内の `rename`）は中のファイルが 1 つも作られないため、
+/// **フォルダのパスが 1 件届くだけ**になる。その 1 件を「親を非再帰」で
+/// 処理すると、中身が 1 件も DB に載らない。
+///
+/// | 届いたパスの実体 | 単位 | 理由 |
+/// |---|---|---|
+/// | ディレクトリ（存在する）| **自身を再帰** | 丸ごと移動されてきた可能性がある |
+/// | ファイル（存在する）| 親を非再帰 | その 1 件だけ変わった |
+/// | 何も無い（`ENOENT`）| 親を非再帰 ＋ **自身を `vanished`** | 消えたのがフォルダなら中身も孤立にする |
+/// | 判定できない（権限・無応答）| 親を非再帰のみ | **推測で孤立にしない** |
+public enum ScanUnitPlanner {
+
+    /// パスの実体。呼び出し側が `FileIO` の中で解決して渡す [NV6-02]。
+    public enum PathKind: Sendable, Equatable {
+        case directory
+        case file
+        /// `stat` が `ENOENT` を返した＝**確かに無い**。
+        case absent
+        /// 権限・無応答などで判定できなかった。
+        case unknown
+    }
+
+    /// - Returns: 走査単位。**`nil` は「フルスキャンへ落とせ」** [SY-04]。
+    public static func units(changedPaths: [String],
+                             kind: (String) -> PathKind,
+                             limit: Int = AppLimits.Watch.maxIncrementalUnits) -> [ScanUnit]? {
+        var enumerateUnits: Set<Unit> = []
+        var vanished: Set<String> = []
+
+        for raw in changedPaths {
+            let path = normalize(raw)
+            // 根そのものが動いた／根に対する変更は、範囲を絞る意味が無い。
+            if path.isEmpty { return nil }
+            switch kind(path) {
+            case .directory:
+                enumerateUnits.insert(Unit(path: path, recursive: true))
+            case .file, .unknown:
+                enumerateUnits.insert(Unit(path: parent(of: path), recursive: false))
+            case .absent:
+                enumerateUnits.insert(Unit(path: parent(of: path), recursive: false))
+                vanished.insert(path)
+            }
+        }
+
+        // 根を再帰で見る単位が 1 つでもあれば、それはフルスキャンと同じ。
+        if enumerateUnits.contains(where: { $0.path.isEmpty && $0.recursive }) { return nil }
+
+        let pruned = prune(enumerateUnits)
+        // `vanished` は、列挙する単位の再帰範囲に含まれるなら要らない
+        // （その走査の孤立判定が同じ範囲を見るため）。
+        let neededVanished = vanished.filter { path in
+            !pruned.contains { $0.recursive && isAtOrUnder(path, $0.path) }
+        }
+
+        let total = pruned.count + neededVanished.count
+        guard total > 0, total <= limit else { return nil }
+
+        var units = pruned.map { ScanUnit.enumerate(relativePath: $0.path, recursive: $0.recursive) }
+        units += neededVanished.sorted().map { ScanUnit.vanished(relativePath: $0) }
+        return units
+    }
+
+    // MARK: - 内部
+
+    struct Unit: Hashable {
+        let path: String
+        let recursive: Bool
+    }
+
+    /// 祖先に再帰の単位があるものを落とし、同じパスの非再帰は再帰に吸収する。
+    static func prune(_ units: Set<Unit>) -> [Unit] {
+        let recursives = units.filter(\.recursive)
+        var kept: [Unit] = []
+        for unit in units {
+            // 自分より上（自分自身は除く）に再帰の単位があれば要らない。
+            if recursives.contains(where: { $0 != unit && isAtOrUnder(unit.path, $0.path) }) {
+                continue
+            }
+            // 同じパスに再帰があるなら、非再帰の方は要らない。
+            if !unit.recursive && recursives.contains(Unit(path: unit.path, recursive: true)) {
+                continue
+            }
+            kept.append(unit)
+        }
+        // 順序を決定的にする（テストと診断ログのため）。
+        return kept.sorted { ($0.path, $0.recursive ? 1 : 0) < ($1.path, $1.recursive ? 1 : 0) }
+    }
+
+    /// 前後の `/` を落とす。`"."`・`""` はライブラリ根を表す。
+    static func normalize(_ path: String) -> String {
+        var p = path
+        while p.hasPrefix("/") { p.removeFirst() }
+        while p.hasSuffix("/") { p.removeLast() }
+        return p == "." ? "" : p
+    }
+
+    static func parent(of path: String) -> String {
+        guard let index = path.lastIndex(of: "/") else { return "" }
+        return String(path[path.startIndex..<index])
+    }
+
+    /// **素の `hasPrefix` では誤る** — `a/bc` が `a/b` の配下に見える。
+    /// 区切りまで含めて確かめる（`MountTable` と同じ罠）。
+    static func isAtOrUnder(_ path: String, _ ancestor: String) -> Bool {
+        if ancestor.isEmpty { return true }
+        if path == ancestor { return true }
+        return path.hasPrefix(ancestor + "/")
+    }
+}

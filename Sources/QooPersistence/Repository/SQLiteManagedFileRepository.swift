@@ -237,7 +237,7 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
                 // 直下のみ: パス区切りが 1 つも増えないもの
                 sql += " AND relativePath LIKE ? ESCAPE '\\' AND instr(substr(relativePath, ?), '/') = 0"
                 args.append(likePrefix(path) + "%")
-                args.append(path.isEmpty ? 1 : path.count + 2)
+                args.append(sqliteOffsetAfter(path))
             }
         }
         return (sql, args)
@@ -453,7 +453,7 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
                 clauses.append("relativePath LIKE ? ESCAPE '\\'")
                 args.append(likePrefix(path) + "%")
                 clauses.append("instr(substr(relativePath, ?), '/') = 0")
-                args.append(path.isEmpty ? 1 : path.count + 2)
+                args.append(sqliteOffsetAfter(path))
             }
         }
 
@@ -524,6 +524,20 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
     }
 
     /// フォルダ配下を表す `LIKE` の前置き。空文字はライブラリ直下を指す。
+    /// `substr(relativePath, ?)` に渡す 1 起点の位置。`path` とその直後の
+    /// `/` を飛ばした次の文字を指す。
+    ///
+    /// **`String.count` を使ってはならない** [実測]。Swift はここを
+    /// **書記素クラスタ**で数えるが、SQLite の `substr`/`length` は
+    /// **コードポイント**で数える。macOS のファイル名は NFD で来るので
+    /// （`フォルダ` = `フ ォ ル タ ゛` の 5 コードポイント／4 文字）、
+    /// 濁点・半濁点を含むフォルダ名では位置が 1 つずつずれ、
+    /// **「直下だけ」の照合が 1 件も一致しなくなる**——差分スキャンの
+    /// 孤立判定と、フォルダ表示モードの一覧がまとめて空振りする。
+    static func sqliteOffsetAfter(_ path: String) -> Int {
+        path.isEmpty ? 1 : path.unicodeScalars.count + 2
+    }
+
     static func likePrefix(_ path: String) -> String {
         path.isEmpty ? "" : escapeLike(path) + "/"
     }

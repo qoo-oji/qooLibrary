@@ -52,6 +52,45 @@ struct QueryTests {
         }
     }
 
+    /// **`String.count` は書記素クラスタ、SQLite の `substr` はコードポイント**
+    /// [実測]。macOS のファイル名は NFD で来るので（`フォルダ` は 4 文字だが
+    /// 5 コードポイント）、濁点を含むフォルダ名では位置が 1 つずれ、
+    /// **「直下だけ」の照合が 1 件も一致しなくなる**。差分スキャンの孤立判定と
+    /// フォルダ表示モードの一覧がまとめて空振りする形だった。
+    @Test("濁点を含むフォルダでも「直下だけ」の照合が効く")
+    func nonRecursiveFolderScopeWorksWithDecomposedNames() async throws {
+        let f = try await Fixture.make(preset: "builtin.doujinshi-a")
+        let nfd = "フォルダ".decomposedStringWithCanonicalMapping
+        #expect(nfd.count == 4 && nfd.unicodeScalars.count == 5, "標本が NFD であること")
+
+        _ = try await f.files.upsert(f.snapshot(inode: 1, path: "\(nfd)/直下.cbz", size: 10))
+        _ = try await f.files.upsert(f.snapshot(inode: 2, path: "\(nfd)/深い/孫.cbz", size: 10))
+        _ = try await f.files.upsert(f.snapshot(inode: 3, path: "よそ/別.cbz", size: 10))
+
+        var q = FileQuery(libraryID: f.libraryID)
+        q.scope = .folder(path: nfd, recursive: false)
+        let direct = try await f.files.query(q)
+        #expect(Set(direct.rows.map(\.filename)) == ["直下.cbz"], "孫も他所も含めない")
+
+        q.scope = .folder(path: nfd, recursive: true)
+        let all = try await f.files.query(q)
+        #expect(Set(all.rows.map(\.filename)) == ["直下.cbz", "孫.cbz"])
+    }
+
+    /// 同じずれは孤立の判定にも効いている（差分スキャンが使う経路）。
+    @Test("濁点を含むフォルダでも unseen の「直下だけ」が効く [ID-06]")
+    func unseenNonRecursiveScopeWorksWithDecomposedNames() async throws {
+        let f = try await Fixture.make(preset: "builtin.doujinshi-a")
+        let nfd = "フォルダ".decomposedStringWithCanonicalMapping
+        let kept = try await f.files.upsert(f.snapshot(inode: 1, path: "\(nfd)/残る.cbz", size: 10))
+        _ = try await f.files.upsert(f.snapshot(inode: 2, path: "\(nfd)/消える.cbz", size: 10))
+        _ = try await f.files.upsert(f.snapshot(inode: 3, path: "\(nfd)/深い/孫.cbz", size: 10))
+
+        let unseen = try await f.files.unseen(
+            libraryID: f.libraryID, scope: .folder(path: nfd, recursive: false), seen: [kept])
+        #expect(unseen.map(\.filename) == ["消える.cbz"], "孫を巻き添えにしない")
+    }
+
     @Test("グループ内は OR [LF-08]")
     func orWithinGroup() async throws {
         let s = try await Setup.make()

@@ -69,7 +69,12 @@ extension FileLabelRecord: RegenerabilityDeclaring {
 extension LibraryRecord: RegenerabilityDeclaring {
     public static let regenerableColumns: Set<String> = [
         "resolvedPath",        // ブックマークから解決し直せる
-        "lastFSEventID", "lastFullScanAt", "isOnline", "isReadOnlyDueToFS",
+        // 差分スキャンの起点 [SY-02][WA-10]。**JSON へ出してはならない** —
+        // 別のマシンで取った書き出しを取り込むと、そこにあった起点を
+        // 「このボリュームのもの」として信じてしまい、非起動中の変更を
+        // 取りこぼす。取り込み後は 0/NULL のままフルスキャンへ落ちるのが正しい。
+        "lastFSEventID", "fsEventsUUID",
+        "lastFullScanAt", "isOnline", "isReadOnlyDueToFS",
         "settingsRevision", "libraryTypeVersion",
     ]
     public static let internalColumns: Set<String> = ["id", "libraryTypeId", "bookmarkData"]

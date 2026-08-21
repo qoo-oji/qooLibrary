@@ -13,7 +13,9 @@ import QooKit
 
 public enum QooMigrations {
     /// 登録順の識別子。`v<連番>_<内容>` 形式で時系列に並ぶこと [SC-03]。
-    public static let identifiers: [String] = ["v1_initial", "v2_regexPatterns", "v3_embeddedMetadata"]
+    public static let identifiers: [String] = [
+        "v1_initial", "v2_regexPatterns", "v3_embeddedMetadata", "v4_fsEventsCheckpoint",
+    ]
 
     public static var migrator: DatabaseMigrator {
         var m = DatabaseMigrator()
@@ -21,6 +23,7 @@ public enum QooMigrations {
         m.registerMigration(identifiers[0], migrate: v1Initial)
         m.registerMigration(identifiers[1], migrate: v2RegexPatterns)
         m.registerMigration(identifiers[2], migrate: v3EmbeddedMetadata)
+        m.registerMigration(identifiers[3], migrate: v4FSEventsCheckpoint)
         return m
     }
 
@@ -36,6 +39,37 @@ public enum QooMigrations {
             INSERT INTO storeMetadata (id, schemaVersion, appBuildAtLastWrite)
             VALUES (1, ?, '')
             """, arguments: [identifiers[0]])
+    }
+
+    // MARK: - v4
+
+    /// 差分の起点を `(eventID, デバイス UUID)` の**組**にする [SY-02][SY-04][WA-10]。
+    ///
+    /// **`lastFSEventID` だけでは足りない**（10章 §10.1.0 の実測）。FSEvents の
+    /// 履歴はボリューム単位の DB に載っていて、消去・purge・カウンタの巻き戻りで
+    /// 別物に差し替わる。SDK の `FSEvents.h` は「保存したイベント ID は
+    /// `FSEventsCopyUUIDForDevice()` の UUID とセットで保存し、一致するときだけ
+    /// 渡してよい」と明記しており、**NULL のボリューム（実測: SMB）へ渡すと
+    /// 履歴が 1 件も再生されないのにエラーもフラグも出ない。**
+    ///
+    /// 既存の行は `fsEventsUUID` が NULL になる＝「起点が検証できない」ので、
+    /// 次の起動で履歴を要求せずフルスキャンへ落ちる [SY-04]。**移行の時点で
+    /// UUID を引きにいかない**——移行はストアを開く前に走るため、ライブラリの
+    /// ボリュームが接続されているとは限らない（v3 と同じ判断）。
+    static func v4FSEventsCheckpoint(_ db: Database) throws {
+        for table in ["library", "temporaryFolder"] {
+            try db.alter(table: table) { t in
+                t.add(column: "fsEventsUUID", .text)       // NULL = 起点を検証できない
+            }
+        }
+        // `lastFullScanAt` [SY-05] は v1 から `library` にあるが、
+        // `temporaryFolder` には無い。フェーズ 3 で要るので今そろえておく
+        // （後から列を足すより、器のあるうちに揃えるほうが移行が 1 本で済む）。
+        try db.alter(table: "temporaryFolder") { t in
+            t.add(column: "lastFullScanAt", .double)
+        }
+        try db.execute(sql: "UPDATE storeMetadata SET schemaVersion = ? WHERE id = 1",
+                       arguments: [identifiers[3]])
     }
 
     // MARK: - v3
