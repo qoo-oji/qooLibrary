@@ -22,6 +22,15 @@ enum StandardLocation: String, CaseIterable, Identifiable, Sendable {
     case documents
     case desktop
     case downloads
+    // ここから 3 つは **Finder の「移動」メニューには無い**（Finder も出して
+    // いない）。フォルダツリーの「ホーム」グループにだけ並べる [ユーザー要望:
+    // 「ボリュームとテンポラリの間にホームグループを追加し、ユーザーフォルダの
+    // ダウンロードなどにアクセスできるように」]。`action` を持たないのはその
+    // ため——キーを割り当てないものを `DefaultKeyBindings` に載せると、
+    // 環境設定「キーボード」タブに何も起きない項目が並ぶ。
+    case movies
+    case music
+    case pictures
     case library
     case computer
     case iCloudDrive
@@ -70,6 +79,25 @@ enum StandardLocation: String, CaseIterable, Identifiable, Sendable {
         return access(real.path, R_OK) == 0 ? real : virtualHome
     }
 
+    /// 「ホーム」を開くときの行き先と入口。**解決できないときのフォール
+    /// バック先でもある**［ユーザー判断: アクセスできない場合はボリューム
+    /// 経由でホームフォルダに落ちてよい］。
+    ///
+    /// 入口は `StandardLocation.home.navigationRoot` に委ねる——「よく使う
+    /// 項目」にホームを表示していれば `.favorites`（その行がフォーカスされる）、
+    /// 隠していれば `.volume`（ボリュームツリーを辿ってフォーカスされる）。
+    /// **仮想ホームへ落ちたときは必ず `.volume`**: 仮想ホームはどの行にも
+    /// 対応しないので、`.favorites` を名乗ると宙に浮く。
+    ///
+    /// ⌘T・タブバーの ＋・起動時フォルダ・解決に失敗したときのフォールバック
+    /// が**すべてここを通る**——「ホームを開く」の意味が経路ごとに違わない
+    /// ようにするため。
+    static var homeDestination: (url: URL, navigationRoot: NavigationRoot) {
+        let url = defaultHome
+        let isRealHome = url.standardizedFileURL == realHome.standardizedFileURL
+        return (url, isRealHome ? StandardLocation.home.navigationRoot : .volume)
+    }
+
     // MARK: - 各項目
 
     var url: URL {
@@ -79,6 +107,9 @@ enum StandardLocation: String, CaseIterable, Identifiable, Sendable {
         case .documents: return home.appendingPathComponent("Documents", isDirectory: true)
         case .desktop: return home.appendingPathComponent("Desktop", isDirectory: true)
         case .downloads: return home.appendingPathComponent("Downloads", isDirectory: true)
+        case .movies: return home.appendingPathComponent("Movies", isDirectory: true)
+        case .music: return home.appendingPathComponent("Music", isDirectory: true)
+        case .pictures: return home.appendingPathComponent("Pictures", isDirectory: true)
         case .library: return home.appendingPathComponent("Library", isDirectory: true)
         // Finder の「コンピュータ」はマウント中のボリュームと起動ディスクを
         // 束ねた合成ビューで、そのまま再現できる公開 API は無い。実体として
@@ -98,6 +129,9 @@ enum StandardLocation: String, CaseIterable, Identifiable, Sendable {
         case .documents: return "menu.go.documents"
         case .desktop: return "menu.go.desktop"
         case .downloads: return "menu.go.downloads"
+        case .movies: return "menu.go.movies"
+        case .music: return "menu.go.music"
+        case .pictures: return "menu.go.pictures"
         case .library: return "menu.go.library"
         case .computer: return "menu.go.computer"
         case .iCloudDrive: return "menu.go.iCloudDrive"
@@ -122,6 +156,13 @@ enum StandardLocation: String, CaseIterable, Identifiable, Sendable {
         case .documents: return "document"
         case .desktop: return "menubar.dock.rectangle"
         case .downloads: return "arrow.down.circle"
+        // この 3 つは Finder のメニューに対応する項目が無いので、シンボルは
+        // 実フォルダのアイコンの意匠に合わせて選んだ。**ツリーの行が実際に
+        // 描くのは `FileIconProvider`（Finder とまったく同じアイコン）**で、
+        // ここは移動メニューのような SF Symbol を要する場所のための保険。
+        case .movies: return "film"
+        case .music: return "music.note"
+        case .pictures: return "photo"
         case .library: return "building.columns"
         case .computer: return "internaldrive"
         case .iCloudDrive: return "icloud"
@@ -133,8 +174,13 @@ enum StandardLocation: String, CaseIterable, Identifiable, Sendable {
 
     /// Finder と同じキー。`isCustomizable: false` で登録するので、メニューに
     /// そのまま表示される（`KeyBinding.isCustomizable` のコメント参照）。
-    var action: ActionID {
+    ///
+    /// **移動メニューに出さない項目は `nil`。** Finder に対応するコマンドが
+    /// 無いものへ独自のキーを割り当てると、Finder 準拠という基準を自分で崩す
+    /// うえ、環境設定「キーボード」タブに実体の無い項目が並ぶ。
+    var action: ActionID? {
         switch self {
+        case .movies, .music, .pictures: return nil
         case .home: return .goToHome
         case .documents: return .goToDocuments
         case .desktop: return .goToDesktop
@@ -150,6 +196,23 @@ enum StandardLocation: String, CaseIterable, Identifiable, Sendable {
 
     /// Finder は「ライブラリ」を ⌥ 代替（⇧⌘L）として隠している。同じにする。
     var isOptionAlternate: Bool { self == .library }
+
+    // MARK: - フォルダツリーの「よく使う項目」グループ
+
+    /// この場所へ移動したとき、タブがどの入口から来たことにするか
+    /// [`NavigationRoot` 参照]。
+    ///
+    /// **「よく使う項目」に*表示されている*場所だけが `.favorites`。**
+    /// 表示していない場所を `.favorites` で開くと、対応する行が無いのに
+    /// その入口を名乗ることになり、ツリーは何も指せないまま「1 階層上へ」の
+    /// 境界だけが効く、という説明できない状態になる。
+    ///
+    /// これで移動メニューから「ダウンロード」を選んでも、ツリーの
+    /// 「よく使う項目」側がフォーカスされる——**同じ場所へ行く経路が複数
+    /// あっても、行き先の見え方は 1 つに揃える。**
+    var navigationRoot: NavigationRoot {
+        FavoriteLocations.isVisible(self) ? .favorites : .volume
+    }
 
     // MARK: - アクセス要件
 
@@ -171,8 +234,13 @@ enum StandardLocation: String, CaseIterable, Identifiable, Sendable {
 
     var accessRequirement: AccessRequirement {
         switch self {
+        // `/Applications` は素のサンドボックスで読める [実測]。「よく使う項目」
+        // に既定で出るのはこのため——許可を求めずに使える。
         case .applications, .utilities, .computer: return .none
-        case .downloads: return .entitlement
+        // `~/Movies` / `~/Music` / `~/Pictures` は `com.apple.security.assets.*`
+        // で素通りする [実測、`qooLibrary.entitlements` の表]。**許可を求めずに
+        // 開ける**ので、ホームグループでは押した瞬間に中身が出る。
+        case .downloads, .movies, .music, .pictures: return .entitlement
         case .documents, .desktop: return .grantOfExactPath
         case .home, .library, .shared, .iCloudDrive: return .grantOfSelfOrAncestor
         }
@@ -190,9 +258,15 @@ enum StandardLocation: String, CaseIterable, Identifiable, Sendable {
 /// に現れるので、一元管理は保たれる。
 @MainActor
 enum StandardLocationOpener {
+    /// - Parameter onCancel: 許可パネルをユーザーが閉じたときに呼ぶ。
+    ///   フォルダツリーはここで**行の選択を元に戻す**必要がある——`List` の
+    ///   選択は押した瞬間に動いてしまうので、移動しなかったのに選択だけが
+    ///   進んだ状態が残ると、次に ↑ ↓ を押したとき居ない場所から動き出す。
+    ///   メニューから呼ぶ場合は選択の概念が無いので既定の空実装でよい。
     static func open(
         _ location: StandardLocation,
         locale: Locale,
+        onCancel: @escaping () -> Void = {},
         navigate: @escaping (URL) -> Void
     ) {
         let url = location.url
@@ -206,7 +280,10 @@ enum StandardLocationOpener {
                     navigate(url)
                     return
                 }
-                guard await requestAccess(to: url, locale: locale) else { return }
+                guard await requestAccess(to: url, locale: locale) else {
+                    onCancel()
+                    return
+                }
                 navigate(url)
             }
         }

@@ -283,13 +283,16 @@ private struct ThumbnailImage: View {
 
     var body: some View {
         Group {
-            if entry.isDirectory {
+            // パッケージ（`.app` など）はフォルダの形で描かない [ユーザー要望、
+            // Finder 準拠]。実体はディレクトリだが、利用者にとっては 1 つの
+            // 項目で、`NSWorkspace` が返すアプリ本体のアイコンがそのまま出る。
+            if entry.isNavigableFolder {
                 // フォルダは**常にフォルダの形**で描き、中身を中に収める
                 // ［ユーザー判断: フォルダとファイルを一目で見分けられること
                 // を優先］。以前は直下に画像があるフォルダだけカバーが全面に
                 // 出てファイルと区別が付かなかった。
                 FolderCoverIcon(
-                    folderIcon: FileIconProvider.shared.icon(for: entry.url, isDirectory: entry.isDirectory),
+                    folderIcon: FileIconProvider.shared.icon(for: entry.url, isDirectory: true),
                     covers: folderCovers,
                     size: size
                 )
@@ -301,7 +304,7 @@ private struct ThumbnailImage: View {
                 // サムネイル生成中・生成不可（大半のファイルはここに留まる）は
                 // Finder と同じアイコンを表示する [ユーザー要望: SF Symbol の
                 // 代用アイコンでは視認性が良くない]。
-                Image(nsImage: FileIconProvider.shared.icon(for: entry.url, isDirectory: entry.isDirectory))
+                Image(nsImage: FileIconProvider.shared.icon(for: entry.url, isDirectory: entry.isNavigableFolder))
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .padding(size * 0.12)
@@ -319,7 +322,7 @@ private struct ThumbnailImage: View {
             // `CoverImageCache` のキーは `FileIdentity` だけで**要求サイズを
             // 含まない**ため、ここで小さく要求すると、その同じファイルを単体の
             // セルとして表示したときに粗いキャッシュを掴んでしまう。
-            if entry.isDirectory {
+            if entry.isNavigableFolder {
                 let images = await ThumbnailService.shared.folderCoverThumbnails(
                     for: entry.url, maxPixelSize: Int(size * 2)
                 )

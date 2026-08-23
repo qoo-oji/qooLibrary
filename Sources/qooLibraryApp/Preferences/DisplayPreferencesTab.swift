@@ -1,3 +1,4 @@
+import QooApplication
 import SwiftUI
 
 /// 名前列（中央ペイン `Table`）の省略位置 [ユーザー要望]。`Text` の
@@ -44,6 +45,16 @@ struct DisplayPreferencesTab: View {
     /// キーを共有する。
     @AppStorage("qoo.folderList.nameTruncationMode") private var nameTruncationMode: NameTruncationMode = .tail
 
+    /// 左ペイン「よく使う項目」に並べる場所 [ユーザー要望、Finder の
+    /// 「サイドバーに表示する項目」相当]。
+    ///
+    /// **`@AppStorage` を 8 個並べない。** キーが項目ごとに動的で
+    /// （`FavoriteLocations.storageKey`）、既定値も項目によって違うため、
+    /// 素直には書けない。読み書きは `FavoriteLocations` に集約し、ここは
+    /// 画面を描き直すための写しだけを持つ——**既定値の判断を 2 か所に
+    /// 置かない**のが要点。
+    @State private var visibleFavorites: Set<StandardLocation> = []
+
     var body: some View {
         Form {
             Section {
@@ -62,6 +73,26 @@ struct DisplayPreferencesTab: View {
                     Text("preferences.display.truncationMiddle").tag(NameTruncationMode.middle)
                     Text("preferences.display.truncationTail").tag(NameTruncationMode.tail)
                 }
+            }
+
+            // 左ペイン「よく使う項目」に並べる場所 [ユーザー要望]。存在しない
+            // フォルダ（`~/Movies` を消している等）はチェックしても行が出ない
+            // ——`FavoriteLocations.load` が実体のあるものだけを並べる。
+            Section {
+                ForEach(FavoriteLocations.candidates) { location in
+                    Toggle(location.titleKey, isOn: Binding(
+                        get: { visibleFavorites.contains(location) },
+                        set: { isOn in
+                            FavoriteLocations.setVisible(location, isOn)
+                            visibleFavorites = Set(FavoriteLocations.visible)
+                            // 左ペインへ即座に反映する（登録フォルダの増減や
+                            // アクセス許可の変化と同じ共通シグナル）。
+                            SessionState.shared.reloadToken += 1
+                        }
+                    ))
+                }
+            } header: {
+                Text("preferences.display.favoritesHeader")
             }
 
             Section {
@@ -88,10 +119,14 @@ struct DisplayPreferencesTab: View {
                     showKindColumn = true
                     showCreationDateColumn = false
                     showAddedDateColumn = false
+                    FavoriteLocations.resetToDefaults()
+                    visibleFavorites = Set(FavoriteLocations.visible)
+                    SessionState.shared.reloadToken += 1
                 }
             }
         }
         .formStyle(.grouped)
         .padding(Tokens.spacing.l)
+        .task { visibleFavorites = Set(FavoriteLocations.visible) }
     }
 }

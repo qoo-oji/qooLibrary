@@ -19,6 +19,12 @@ enum LinkResolver {
     struct Resolved: Sendable {
         let url: URL
         let isDirectory: Bool
+        /// Finder が 1 つの項目として扱うディレクトリ（`.app` など）。
+        let isPackage: Bool
+
+        /// **フォルダとして中へ入るか。** パッケージは「開く＝起動する」もの
+        /// なので偽 [ユーザー要望、`FolderEntry.isNavigableFolder` と同じ判断]。
+        var isNavigableFolder: Bool { isDirectory && !isPackage }
     }
 
     /// リンクなら解決した先を、そうでなければそのまま返す。
@@ -29,8 +35,12 @@ enum LinkResolver {
     /// 作っても情報が増えない。
     static func resolve(_ url: URL) -> Resolved {
         let target = resolvedTarget(of: url) ?? url
-        let isDirectory = (try? target.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
-        return Resolved(url: target, isDirectory: isDirectory)
+        let values = try? target.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])
+        return Resolved(
+            url: target,
+            isDirectory: values?.isDirectory ?? false,
+            isPackage: values?.isPackage ?? false
+        )
     }
 
     private static func resolvedTarget(of url: URL) -> URL? {

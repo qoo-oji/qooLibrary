@@ -149,9 +149,13 @@ extension View {
     ///
     /// キーの定義は `DefaultKeyBindings` に一本化したままなので、ここで
     /// ハードコードすることはない。複数キーを持つ操作は 1 つ目を表示する。
+    ///
+    /// `action` が `nil` のときは何も付けない。Finder に対応するコマンドが
+    /// 無く、キーを割り当てていない項目のため（`StandardLocation.action` の
+    /// `.movies`／`.music`／`.pictures` がこれに当たる）。
     @ViewBuilder
-    func fixedKeyboardShortcut(_ action: ActionID) -> some View {
-        if let shortcut = DefaultKeyBindings.binding(for: action).combos.first?.swiftUIShortcut {
+    func fixedKeyboardShortcut(_ action: ActionID?) -> some View {
+        if let action, let shortcut = DefaultKeyBindings.binding(for: action).combos.first?.swiftUIShortcut {
             keyboardShortcut(shortcut)
         } else {
             self

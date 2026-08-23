@@ -10,11 +10,13 @@ import QooInfrastructure
 /// 追従する。ボリューム上の任意フォルダは専用の Security-Scoped Bookmark
 /// （`RegisteredFolderStore` とは別の、この設定専用のもの）で参照する。
 enum StartupFolderKind: String {
-    /// ホーム（既定）。**`rawValue` が `"virtualHome"` なのは歴史的な事情**で、
-    /// 既に永続化されている設定値を壊さないためそのまま残している。実際の
-    /// 行き先は実ホーム（読めなければ仮想ホーム）で、`StandardLocation.defaultHome`
-    /// が決める［ユーザー判断、1-16 移動メニューの Finder 準拠］。
-    case home = "virtualHome"
+    /// 左ペイン「よく使う項目」に**表示している**場所のいずれか。どれかは
+    /// `favoriteKey` が持ち、未設定ならホーム（従来の既定と同じ行き先）。
+    ///
+    /// **`rawValue` が `"virtualHome"` なのは歴史的な事情**で、以前この値は
+    /// 「ホーム」固定を意味していた。既に永続化されている設定を壊さないため
+    /// そのまま残す——読んだときは「よく使う項目 ＞ ホーム」として扱われる。
+    case favorite = "virtualHome"
     case registeredFolder
     case volumeFolder
 }
@@ -30,6 +32,9 @@ enum StartupFolderPreference {
     static let registeredFolderCategoryKey = "qoo.preferences.startupFolder.registeredFolderCategory"
     static let volumeBookmarkKey = "qoo.preferences.startupFolder.volumeBookmark"
     static let volumeDisplayNameKey = "qoo.preferences.startupFolder.volumeDisplayName"
+    /// 「よく使う項目」のどれを開くか（`StandardLocation.rawValue`）。
+    /// 未設定はホーム——この設定が「ホーム固定」だった頃と同じ行き先になる。
+    static let favoriteKey = "qoo.preferences.startupFolder.favorite"
 
     /// 起動時に実際に開くフォルダを解決する [`MainWindowView` から、アプリ
     /// 起動直後の最初のウインドウにだけ適用する]。`registeredFolder` は
@@ -46,15 +51,28 @@ enum StartupFolderPreference {
         await VolumeAccessStore.shared.loadAndActivateAll()
 
         let defaults = UserDefaults.standard
-        let kind = defaults.string(forKey: kindKey).flatMap(StartupFolderKind.init(rawValue:)) ?? .home
+        let kind = defaults.string(forKey: kindKey).flatMap(StartupFolderKind.init(rawValue:)) ?? .favorite
 
         switch kind {
-        case .home:
-            return (StandardLocation.defaultHome, .volume)
+        case .favorite:
+            // **「よく使う項目」に表示している場所だけを開く**［ユーザー判断:
+            // グループ直下に表示されるフォルダのみ設定可能とする］。環境設定で
+            // 隠された場合や、フォルダごと消えている・読めない場合は
+            // ホームへ落とす［同: アクセスできない場合はボリューム経由で
+            // ホームフォルダにフォールバックしてよい］。
+            let location = defaults.string(forKey: favoriteKey)
+                .flatMap(StandardLocation.init(rawValue:)) ?? .home
+            guard FavoriteLocations.isVisible(location) else { return StandardLocation.homeDestination }
+            let url = location.url
+            // 読めるかは `access(2)` 1 回で見る。よく使う項目はすべて起動
+            // ボリューム上（ホーム配下と `/Applications`）なので、待ちが
+            // 青天井になる I/O ではない [NV6-02 が防ぎたいものには当たらない]。
+            guard access(url.path, R_OK) == 0 else { return StandardLocation.homeDestination }
+            return (url, location.navigationRoot)
 
         case .registeredFolder:
             guard let idString = defaults.string(forKey: registeredFolderIDKey), let id = UUID(uuidString: idString) else {
-                return (StandardLocation.defaultHome, .volume)
+                return StandardLocation.homeDestination
             }
             // **こちらにも上限が要る** [NV-91]。`RegisteredFolderStore` は
             // `actor` で、その中のブックマーク解決は `FileIO` を経由して
@@ -78,13 +96,13 @@ enum StartupFolderPreference {
                 return url
             }
             guard let url = found ?? nil else {
-                return (StandardLocation.defaultHome, .volume)
+                return StandardLocation.homeDestination
             }
             return (url, .registeredFolder(id: id, rootURL: url))
 
         case .volumeFolder:
             guard let data = defaults.data(forKey: volumeBookmarkKey) else {
-                return (StandardLocation.defaultHome, .volume)
+                return StandardLocation.homeDestination
             }
             // **メインアクタで解決してはいけない** [NV6-02]。`.withoutMounting`
             // を付けてもブックマークの解決は対象を確かめるためにファイル
@@ -102,7 +120,7 @@ enum StartupFolderPreference {
                 return url
             }
             guard let resolved = resolved ?? nil else {
-                return (StandardLocation.defaultHome, .volume)
+                return StandardLocation.homeDestination
             }
             // **アクセスの開始は上限の外側で行う。** 中でやると、期限切れで
             // 結果を捨てたあとにもクロージャは走り続けるので、**誰も保持して

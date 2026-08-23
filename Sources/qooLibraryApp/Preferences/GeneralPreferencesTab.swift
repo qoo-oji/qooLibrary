@@ -33,7 +33,9 @@ struct GeneralPreferencesTab: View {
     // （仮想ホーム/登録フォルダ/ボリューム上の任意フォルダ）に加えて、
     // UI 表示専用に「登録フォルダのうちどちらのリストか」も別キーで
     // 覚えておく（`StartupFolderPreference` 型コメント参照）。
-    @AppStorage(StartupFolderPreference.kindKey) private var startupFolderKind = StartupFolderKind.home.rawValue
+    @AppStorage(StartupFolderPreference.kindKey) private var startupFolderKind = StartupFolderKind.favorite.rawValue
+    /// 「よく使う項目」のどれを開くか（`StandardLocation.rawValue`）。
+    @AppStorage(StartupFolderPreference.favoriteKey) private var startupFavorite = StandardLocation.home.rawValue
     @AppStorage(StartupFolderPreference.registeredFolderIDKey) private var startupRegisteredFolderID = ""
     @AppStorage(StartupFolderPreference.registeredFolderCategoryKey) private var startupRegisteredFolderCategory = ""
     @AppStorage(StartupFolderPreference.volumeDisplayNameKey) private var startupVolumeDisplayName = ""
@@ -58,13 +60,18 @@ struct GeneralPreferencesTab: View {
     /// `@AppStorage` キーとして独立に永続化**し、`startupFolderKind`
     /// （実際に起動時に使う値、`registeredFolder` になるのは具体的なフォルダ
     /// が確定した時点）とは別に管理することで解消した。
+    ///
+    /// **`favorite` の rawValue が `"virtualHome"` なのは歴史的な事情**
+    /// （以前この選択肢は「ホーム」固定だった）。既存の設定をそのまま
+    /// 「よく使う項目 ＞ ホーム」として引き継ぐため、値は変えない。
     private enum StartupFolderUIMode: String, CaseIterable {
-        case virtualHome, temporaryFolder, libraryFolder, volumeFolder
+        case favorite = "virtualHome"
+        case temporaryFolder, libraryFolder, volumeFolder
     }
 
-    @AppStorage("qoo.preferences.startupFolder.uiMode") private var startupFolderUIModeRaw = StartupFolderUIMode.virtualHome.rawValue
+    @AppStorage("qoo.preferences.startupFolder.uiMode") private var startupFolderUIModeRaw = StartupFolderUIMode.favorite.rawValue
     private var startupFolderUIMode: StartupFolderUIMode {
-        StartupFolderUIMode(rawValue: startupFolderUIModeRaw) ?? .virtualHome
+        StartupFolderUIMode(rawValue: startupFolderUIModeRaw) ?? .favorite
     }
 
     var body: some View {
@@ -102,7 +109,7 @@ struct GeneralPreferencesTab: View {
                     get: { startupFolderUIMode },
                     set: { setStartupFolderMode($0) }
                 )) {
-                    Text("preferences.general.startupFolderVirtualHome").tag(StartupFolderUIMode.virtualHome)
+                    Text("preferences.general.startupFolderFavorite").tag(StartupFolderUIMode.favorite)
                     Text("preferences.general.startupFolderTemporary").tag(StartupFolderUIMode.temporaryFolder)
                     Text("preferences.general.startupFolderLibrary").tag(StartupFolderUIMode.libraryFolder)
                     Text("preferences.general.startupFolderVolume").tag(StartupFolderUIMode.volumeFolder)
@@ -110,8 +117,8 @@ struct GeneralPreferencesTab: View {
                 .pickerStyle(.radioGroup)
 
                 switch startupFolderUIMode {
-                case .virtualHome:
-                    EmptyView()
+                case .favorite:
+                    favoriteSubPicker
                 case .temporaryFolder:
                     registeredFolderSubPicker(temporaryFolders, category: .temporary)
                 case .libraryFolder:
@@ -184,11 +191,50 @@ struct GeneralPreferencesTab: View {
         }
     }
 
+    /// 「よく使う項目」のどれを開くか [ユーザー判断: グループ直下に表示されて
+    /// いるフォルダのみ設定可能]。
+    ///
+    /// 選べるのは**いま表示している項目だけ**。環境設定「表示」タブで隠すと
+    /// ここからも消え、隠された場所が選ばれたままなら起動時はホームへ落ちる
+    /// （`StartupFolderPreference.resolve()`）。
+    @ViewBuilder
+    private var favoriteSubPicker: some View {
+        let visible = FavoriteLocations.visible
+        if visible.isEmpty {
+            Text("preferences.general.startupFolderNoFavorites")
+                .foregroundStyle(.secondary)
+        } else {
+            Picker("preferences.general.startupFolder", selection: Binding(
+                get: {
+                    let current = StandardLocation(rawValue: startupFavorite)
+                    // 隠された項目が選ばれたままなら、先頭を選んだ形で見せる
+                    // （`registeredFolderSubPicker` と同じ考え方）。
+                    return current.flatMap { visible.contains($0) ? $0 : nil } ?? visible[0]
+                },
+                set: {
+                    startupFavorite = $0.rawValue
+                    startupFolderKind = StartupFolderKind.favorite.rawValue
+                }
+            )) {
+                ForEach(visible) { location in
+                    Text(location.titleKey).tag(location)
+                }
+            }
+            .labelsHidden()
+        }
+    }
+
     private func setStartupFolderMode(_ mode: StartupFolderUIMode) {
         startupFolderUIModeRaw = mode.rawValue // ラジオの選択状態はこれで確定・定着する
         switch mode {
-        case .virtualHome:
-            startupFolderKind = StartupFolderKind.home.rawValue
+        case .favorite:
+            startupFolderKind = StartupFolderKind.favorite.rawValue
+            // まだ何も選んでいなければホーム——この設定が「ホーム固定」
+            // だった頃と同じ行き先になる。隠されていれば起動時にホームへ
+            // 落ちる（`StartupFolderPreference.resolve()`）。
+            if StandardLocation(rawValue: startupFavorite) == nil {
+                startupFavorite = StandardLocation.home.rawValue
+            }
         case .volumeFolder:
             startupFolderKind = StartupFolderKind.volumeFolder.rawValue
         case .temporaryFolder, .libraryFolder:

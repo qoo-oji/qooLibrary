@@ -3525,6 +3525,23 @@
         }
       }
     },
+    "folder.showPackageContents": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show Package Contents"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パッケージの内容を表示"
+          }
+        }
+      }
+    },
     "folder.unlock": {
       "extractionState": "stale",
       "localizations": {
@@ -3656,6 +3673,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "表示名"
+          }
+        }
+      }
+    },
+    "folderTree.favorites": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Favorites"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "よく使う項目"
           }
         }
       }
@@ -7808,6 +7842,40 @@
         }
       }
     },
+    "menu.go.movies": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Movies"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ムービー"
+          }
+        }
+      }
+    },
+    "menu.go.music": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Music"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ミュージック"
+          }
+        }
+      }
+    },
     "menu.go.noRecentFolders": {
       "extractionState": "stale",
       "localizations": {
@@ -7855,6 +7923,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "内包しているフォルダを新規ウインドウで開く"
+          }
+        }
+      }
+    },
+    "menu.go.pictures": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pictures"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ピクチャ"
           }
         }
       }
@@ -9196,6 +9281,23 @@
         }
       }
     },
+    "preferences.display.favoritesHeader": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show in Favorites"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「よく使う項目」に表示"
+          }
+        }
+      }
+    },
     "preferences.display.nameTruncationMode": {
       "extractionState": "stale",
       "localizations": {
@@ -9524,6 +9626,23 @@
         }
       }
     },
+    "preferences.general.startupFolderFavorite": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Favorites"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "よく使う項目"
+          }
+        }
+      }
+    },
     "preferences.general.startupFolderHeader": {
       "localizations": {
         "en": {
@@ -9552,6 +9671,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "ライブラリフォルダ"
+          }
+        }
+      }
+    },
+    "preferences.general.startupFolderNoFavorites": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No items are shown in Favorites"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「よく使う項目」に表示している場所がありません"
           }
         }
       }
@@ -9601,22 +9737,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "テンポラリフォルダ"
-          }
-        }
-      }
-    },
-    "preferences.general.startupFolderVirtualHome": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Home"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ホーム"
           }
         }
       }

@@ -20,7 +20,9 @@ enum InlineRenameSupport {
     /// `.onAppear`/フォーカス設定の直後に `DispatchQueue.main.async` で
     /// 1 サイクル遅らせて呼ぶ必要がある。
     static func selectBaseNameIfApplicable(for entry: FolderEntry) {
-        guard !entry.isDirectory else { return }
+        // パッケージはファイルと同じ扱い——`Foo.app` を改名するとき
+        // `.app` は選択から外す（Finder と同じ）。
+        guard !entry.isNavigableFolder else { return }
         let ext = (entry.name as NSString).pathExtension
         guard !ext.isEmpty else { return }
         let baseLength = entry.name.utf16.count - ext.utf16.count - 1 // 拡張子 + "."

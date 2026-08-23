@@ -16,9 +16,22 @@ import SwiftUI
 /// 開くときに入口の文脈も一緒に運ぶ必要がある。
 public enum NavigationRoot: Sendable, Hashable, Codable {
     case volume
+    /// フォルダツリーの「よく使う項目」グループ経由 [ユーザー要望]。
+    /// アプリケーション・ホーム・デスクトップなど、環境設定で表示を選べる
+    /// 標準の場所が並ぶ枝（`FavoriteLocations`）。
+    ///
+    /// **ボリューム経由と分ける理由は、登録フォルダのときとまったく同じ。**
+    /// 実体としては同じ `~/Downloads` でも、よく使う項目から入ったのか
+    /// Macintosh HD を手で辿って来たのかで、①ツリーのどのグループが自動展開
+    /// されるか ②⌘↑ でホームより上へ出られるか、が変わる。
+    ///
+    /// **`.registeredFolder` と違い根の URL を持たない。** 根になり得る場所は
+    /// `FavoriteLocations.visible` から引けるので、持たせても「どの値が正か」を
+    /// 照合する必要が生まれるだけで得るものが無い。
+    case favorites
     case registeredFolder(id: UUID, rootURL: URL)
 
-    /// 登録フォルダ経由なら登録 ID。ボリューム経由なら `nil`。
+    /// 登録フォルダ経由なら登録 ID。ボリューム／よく使う項目経由なら `nil`。
     /// ラベルフィルタがライブラリを解決するのに使う [LF-01]。
     public var registrationUUID: UUID? {
         if case .registeredFolder(let id, _) = self { return id }
@@ -55,8 +68,13 @@ public struct TabTarget: Sendable, Hashable, Codable {
     ///
     /// **実ホーム**［ユーザー判断、1-16 移動メニューの Finder 準拠］。読めない
     /// ときだけ仮想ホームへ落ちる（`StandardLocation.defaultHome` 参照）。
+    ///
+    /// 入口は `StandardLocation.homeDestination` が決める——「よく使う項目」に
+    /// ホームを表示していればその行がフォーカスされ、隠していればボリューム
+    /// ツリー側が反応する [ユーザー要望・ユーザー判断]。
     public static var home: TabTarget {
-        TabTarget(url: StandardLocation.defaultHome, navigationRoot: .volume)
+        let destination = StandardLocation.homeDestination
+        return TabTarget(url: destination.url, navigationRoot: destination.navigationRoot)
     }
 }
 
@@ -147,7 +165,7 @@ public final class WindowState {
 
     public init(target: TabTarget = .home) {
         self.folder = target.url
-        self.navigationRoot = target.navigationRoot
+        self.navigationRoot = Self.normalizedRoot(target.navigationRoot, for: target.url)
         self.title = target.url?.lastPathComponent ?? String(localized: "action.newTab", locale: AppLanguage.effectiveLocale)
         self.listStyle = Self.loadDefaultListStyle()
         self.iconSize = Self.loadDefaultIconSize()
@@ -180,7 +198,7 @@ public final class WindowState {
     ///   [`navigationCameFromTree` 参照]。
     public func navigate(to url: URL, root: NavigationRoot? = nil, fromTree: Bool = false) {
         navigationCameFromTree = fromTree
-        let resolvedRoot = root ?? navigationRoot
+        let resolvedRoot = Self.normalizedRoot(root ?? navigationRoot, for: url)
         if let current = folder, current != url {
             backHistory.append(TabHistoryEntry(url: current, navigationRoot: navigationRoot))
             forwardHistory.removeAll()
@@ -194,6 +212,36 @@ public final class WindowState {
         // 「最近使った」一覧の順序が入れ替わるのは Finder の挙動とも直感とも
         // ずれるため、意図してこの共通経路だけに置いている。
         RecentFoldersStore.shared.record(url)
+    }
+
+    /// 入口と行き先の不変条件を保つ [`NavigationRoot.favorites` 参照]。
+    ///
+    /// **`.favorites` を名乗れるのは、いま表示している「よく使う項目」の
+    /// いずれか、またはその配下だけ。** よく使う項目の行から入っても、
+    /// エイリアスやシンボリックリンクを開けばその外へ出られるし、環境設定で
+    /// その項目を非表示にすれば行そのものが消える。そのまま `.favorites` を
+    /// 名乗り続けると、ツリーの自動展開が
+    /// 対応する行を見つけられずファイルシステムルートまで祖先を遡り、
+    /// **`/`（＝ Macintosh HD の行 ID）を展開してしまう** — 選んでもいない
+    /// ボリュームのツリーが開く、という形で現れる。外へ出たらボリューム経由に
+    /// 戻すのが、実際の居場所とも一致する。
+    ///
+    /// この欠陥は実装後に純粋関数を孤立スクリプトで検証して見つけた。
+    /// 同じ形（打ち切り位置を誤って `/` まで遡る）をこのコードベースは
+    /// 既に 2 度踏んでおり [1-12 の登録フォルダ、1-16 の外部ボリューム]、
+    /// **展開側にも防御を置いてある**（`FolderTreePane.revealSelectionIfNeeded`）
+    /// ——砦は 2 枚あってよい。
+    ///
+    /// **`.registeredFolder` には同じ正規化を掛けない。** 登録フォルダは実体が
+    /// 動く・消えることがあり、そこで入口まで黙って変わると「1 階層上へ」の
+    /// 境界が予告なく緩む。あちらの縮退は `RegisteredFolderStore` の状態管理
+    /// [1-17] が別に面倒を見ている。
+    static func normalizedRoot(_ root: NavigationRoot, for url: URL?) -> NavigationRoot {
+        guard root == .favorites else { return root }
+        guard let url else { return .volume }
+        // 照合は成分の境界で行う（素の `hasPrefix` だと `/Users/uu` が
+        // `/Users/u` を覆う）——`FavoriteLocations.root(containing:in:)` が担う。
+        return FavoriteLocations.containingVisibleRoot(of: url) != nil ? .favorites : .volume
     }
 
     // 移動メニューの「ホーム」は `StandardLocation.home` として
@@ -230,6 +278,17 @@ public final class WindowState {
     public var canGoToParent: Bool {
         guard let folder else { return false }
         if folder.standardizedFileURL == Self.sandboxHomeDirectory { return false }
+        // よく使う項目から入ったときは**実ホームが天井** [ユーザー判断]。
+        // ダウンロードから ⌘↑ でホームへは上がれるが、ホームからは上がれない
+        // ——その上（`/Users`）は許可も無く、蔵書管理アプリで開く意味も薄い。
+        //
+        // `/Applications` のように実ホーム配下でない項目には天井が無い
+        // （⌘↑ で `/` へ抜けられる）。そこで止めても得るものが無いため
+        // [設計判断]。
+        if navigationRoot == .favorites,
+           folder.standardizedFileURL == StandardLocation.realHome.standardizedFileURL {
+            return false
+        }
         if case .registeredFolder(_, let rootURL) = navigationRoot,
            folder.standardizedFileURL == rootURL.standardizedFileURL {
             return false

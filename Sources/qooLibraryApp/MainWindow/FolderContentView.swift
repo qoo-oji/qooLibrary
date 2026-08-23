@@ -337,7 +337,7 @@ struct FolderContentView: View {
                             // 先頭位置がずれる）。Finder と同じアイコン [ユーザー要望、
                             // `FileIconProvider` 参照]。
                             HStack(spacing: Tokens.spacing.xs) {
-                                Image(nsImage: FileIconProvider.shared.icon(for: entry.url, isDirectory: entry.isDirectory))
+                                Image(nsImage: FileIconProvider.shared.icon(for: entry.url, isDirectory: entry.isNavigableFolder))
                                     .resizable()
                                     .frame(width: 16, height: 16)
                                 if renamingEntry?.url == entry.url {
@@ -899,10 +899,10 @@ struct FolderContentView: View {
         // 同じにする（新規ウインドウで開く＝フォルダのみ、展開＝アーカイブのみ、
         // このアプリケーションで開く＝単一選択のみ）。
         let selectedEntries = entries.filter { selection.contains($0.url) }
-        actions.canOpenInNewWindow = !selection.isEmpty && selectedEntries.allSatisfy(\.isDirectory)
+        actions.canOpenInNewWindow = !selection.isEmpty && selectedEntries.allSatisfy(\.isNavigableFolder)
         actions.canExtract = !selection.isEmpty && isExtractable(selected)
         if selection.count == 1, let only = selectedEntries.first {
-            actions.openWithTarget = (url: only.url, isDirectory: only.isDirectory)
+            actions.openWithTarget = (url: only.url, isDirectory: only.isNavigableFolder)
             actions.extractNamedTitle = actions.canExtract ? archiveBaseName(only.url) : nil
         }
         actions.shareItems = selected
@@ -1224,7 +1224,7 @@ struct FolderContentView: View {
         }
 
         private static let keys: Set<URLResourceKey> = [
-            .isDirectoryKey, .fileSizeKey, .contentModificationDateKey,
+            .isDirectoryKey, .isPackageKey, .fileSizeKey, .contentModificationDateKey,
             .creationDateKey, .addedToDirectoryDateKey, .isUserImmutableKey,
         ]
 
@@ -1257,12 +1257,20 @@ struct FolderContentView: View {
                 if Cancellation.isRequested {
                     return Step(entries: batch, finished: true, truncated: false)
                 }
-                guard NameFilter.matches(name: url.lastPathComponent, query: query) else { continue }
                 let values = try? url.resourceValues(forKeys: Self.keys)
+                // **パッケージの中へは降りない** [ユーザー要望、Finder 準拠]。
+                // `.app` 1 つで数千件あるので、降りると検索結果が中身で埋まり
+                // 上限（`AppLimits.Search.maxResults`）に達してしまう。
+                // パッケージ自身は結果に含める（下でフィルタに掛ける）。
+                // **名前のフィルタより前に呼ぶ** — 名前が一致しなくても中へは
+                // 入らせない。
+                if values?.isPackage == true { enumerator.skipDescendants() }
+                guard NameFilter.matches(name: url.lastPathComponent, query: query) else { continue }
                 batch.append(FolderEntry(
                     url: url,
                     name: url.lastPathComponent,
                     isDirectory: values?.isDirectory ?? false,
+                    isPackage: values?.isPackage ?? false,
                     fileSize: values?.fileSize.map(Int64.init),
                     modificationDate: values?.contentModificationDate,
                     creationDate: values?.creationDate,
@@ -1352,7 +1360,7 @@ struct FolderContentView: View {
         }
         result.sort(using: sortOrder)
         if groupFoldersAtTop {
-            result = result.filter(\.isDirectory) + result.filter { !$0.isDirectory }
+            result = result.filter(\.isNavigableFolder) + result.filter { !$0.isNavigableFolder }
         }
         return result
     }
@@ -1626,9 +1634,18 @@ struct FolderContentView: View {
             // [ユーザー指摘: フォルダの右クリックメニューにも「このアプリ
             // ケーションで開く」が無いのはおかしい]。
             if targets.count == 1, let only = targetEntries.first {
-                OpenWithMenu(url: only.url, isDirectory: only.isDirectory)
+                OpenWithMenu(url: only.url, isDirectory: only.isNavigableFolder)
+                // **パッケージの中を見る唯一の導線** [ユーザー要望、Finder 準拠]。
+                // ダブルクリックは起動に割り当てたので、中身を見たいときは
+                // ここから入る。訳語は Finder の実文言から写した
+                // （`LocalizableMerged.strings` の `N158`）。
+                if only.isPackage {
+                    Button("folder.showPackageContents", systemImage: "shippingbox") {
+                        onNavigate(only.url)
+                    }
+                }
             }
-            if targetEntries.allSatisfy(\.isDirectory) {
+            if targetEntries.allSatisfy(\.isNavigableFolder) {
                 // 新規タブ/ウインドウで開くはフォルダのみ意味を持つ。Finder は
                 // 複数選択なら選択したフォルダの数だけタブ/ウインドウを開く。
                 Button(targets.count == 1 ? "folder.openInNewTab" : "folder.openEachInNewTab", systemImage: "plus.square.on.square") {
@@ -1782,7 +1799,7 @@ struct FolderContentView: View {
         in folder: URL, includingHidden: Bool
     ) -> FolderReadOutcome {
         let keys: Set<URLResourceKey> = [
-            .isDirectoryKey, .fileSizeKey, .contentModificationDateKey,
+            .isDirectoryKey, .isPackageKey, .fileSizeKey, .contentModificationDateKey,
             .creationDateKey, .addedToDirectoryDateKey, .isUserImmutableKey,
         ]
         do {
@@ -1797,6 +1814,7 @@ struct FolderContentView: View {
                     url: url,
                     name: url.lastPathComponent,
                     isDirectory: values?.isDirectory ?? false,
+                    isPackage: values?.isPackage ?? false,
                     fileSize: values?.fileSize.map(Int64.init),
                     modificationDate: values?.contentModificationDate,
                     creationDate: values?.creationDate,
@@ -2036,14 +2054,17 @@ struct FolderContentView: View {
             // 追従のみ。一覧ではリンク自体を 1 項目として見せる [SL-01]）。
             let resolved = await FileIO.perform { urls.map { LinkResolver.resolve($0) } }
             if resolved.count == 1, let only = resolved.first {
-                if only.isDirectory {
+                // **パッケージ（`.app` など）は中へ入らず開く** [ユーザー要望:
+                // ダブルクリックで起動し、中を見るのはコンテキストメニューから]。
+                // 実体はディレクトリだが、利用者にとっては 1 つの項目である。
+                if only.isNavigableFolder {
                     onNavigate(only.url)
                 } else {
                     openWithAssociation(only.url)
                 }
                 return
             }
-            for target in resolved where !target.isDirectory {
+            for target in resolved where !target.isNavigableFolder {
                 openWithAssociation(target.url)
             }
         }
@@ -2295,7 +2316,12 @@ struct FolderEntry: Identifiable {
     var id: URL { url }
     let url: URL
     let name: String
+    /// **実体がディレクトリか。** パッケージ（`.app` など）もディレクトリなので
+    /// ここは `true` になる——「中へ入れるか」は `isNavigableFolder` を見ること。
     let isDirectory: Bool
+    /// Finder が「1 つの項目」として扱うディレクトリ [`URLResourceKey.isPackageKey`]。
+    /// `.app` / `.photoslibrary` / `.rtfd` / `.bundle` など。
+    let isPackage: Bool
     let fileSize: Int64?
     let modificationDate: Date?
     /// Finder の「作成日」列相当 [ユーザー要望: Finder に合わせてカラムを増やす]。
@@ -2307,6 +2333,20 @@ struct FolderEntry: Identifiable {
     /// [ユーザー要望: 絞り込まれたファイルがどの階層のものか分かるようにしたい]。
     /// 起点の直下にある項目は空文字（＝「ここ」）。通常の一覧では常に空。
     var relativeLocation: String = ""
+
+    /// **フォルダとして中へ入れるか** [ユーザー要望: `.app` はダブルクリックで
+    /// 起動し、中を見るのはコンテキストメニューから]。
+    ///
+    /// パッケージは実体がディレクトリでも Finder は 1 つの項目として扱う
+    /// ——ダブルクリックで起動し、一覧では 1 行、ドロップ先にもならない。
+    /// **「実体がディレクトリか」を知りたい箇所（サイズ欄の `—` 表示など）は
+    /// `isDirectory` のまま**で、ここを使うのは利用者の操作の行き先を決める
+    /// ときだけ。
+    ///
+    /// 副次的に、写真・ミュージックライブラリ（`.photoslibrary` 等）の中へ
+    /// 降りなくなるので、そこで出ていた TCC の許可ダイアログも止まる
+    /// [CLAUDE.md に未着手として残っていた件]。
+    var isNavigableFolder: Bool { isDirectory && !isPackage }
 
     /// zip/7z/rar/tar.gz（cbz/cb7/cbr のエイリアス含む）と認識できるファイル
     /// [AR-20〜AR-23]。フォルダは対象外。
@@ -2320,7 +2360,9 @@ struct FolderEntry: Identifiable {
         // 持てず、`AppLanguage.effectiveLocale` を使う
         // [1-12 ローカライズ方針、CLAUDE.md 参照]。
         let locale = AppLanguage.effectiveLocale
-        if isDirectory { return String(localized: "kind.folder", locale: locale) }
+        // パッケージは実体の種別で答える（`.app` なら「アプリケーション」）。
+        // 拡張子から引けるので、ここでファイルシステムへ問い合わせ直さない。
+        if isDirectory, !isPackage { return String(localized: "kind.folder", locale: locale) }
         let ext = url.pathExtension
         if !ext.isEmpty, let type = UTType(filenameExtension: ext), let description = type.localizedDescription {
             return description
@@ -2437,7 +2479,9 @@ struct DropIntoFolderModifier: ViewModifier {
     var paintsBackgroundHighlight: Bool = true
 
     func body(content: Content) -> some View {
-        if entry.isDirectory {
+        // パッケージはドロップ先にしない（Finder と同じ）。実体はディレクトリ
+        // なので落とせてしまうが、アプリの中へ物を入れるのは事故でしかない。
+        if entry.isNavigableFolder {
             content
                 .background(
                     paintsBackgroundHighlight && targetedURL == entry.url

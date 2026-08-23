@@ -22,11 +22,27 @@ public enum DirectoryProbe {
     /// `.directoryEntryCount`／`.linkCount` も全エントリ数で、どちらも
     /// ファイルとフォルダを区別しない。
     ///
-    /// - Parameter includingHidden: `.` で始まる名前も数えるか。既定は
-    ///   `false` で、`FileManager` の `.skipsHiddenFiles` に合わせる
-    ///   ——**呼び出し側が一覧に使う規則と揃えること**。ここで数えたものと、
-    ///   実際に一覧へ出るものが食い違ってはならない。
-    public static func hasSubdirectory(at url: URL, includingHidden: Bool = false) -> Bool? {
+    /// - Parameter includingHidden: 隠し項目も数えるか。既定は `false` で、
+    ///   `FileManager` の `.skipsHiddenFiles` に合わせる——**呼び出し側が
+    ///   一覧に使う規則と揃えること**。ここで数えたものと、実際に一覧へ出る
+    ///   ものが食い違ってはならない。
+    ///
+    ///   **「隠し」は名前の `.` 接頭辞だけではない** [ユーザー報告で発見]。
+    ///   `UF_HIDDEN` フラグ（`chflags hidden`）が立った項目も Finder と
+    ///   `.skipsHiddenFiles` は隠すので、ここでも数えない。実際に
+    ///   `~/Downloads` がこの状態で、「空なのに三角が出る」という形で現れた
+    ///   ——一覧には 1 件も出ないのに、`readdir` の名前だけを見ていたため
+    ///   数えていた。
+    /// - Parameter countingPackages: パッケージ（`.app` など）をサブフォルダと
+    ///   して数えるか。フォルダツリーは**数えない**——ツリーにパッケージを
+    ///   出さない以上、それを理由に三角を出すと「開いても何も無い」嘘になる。
+    ///   `false` にすると `DT_DIR` の項目ごとに `isPackageKey` を引くので、
+    ///   パッケージばかりのフォルダ（`/Applications` など）では打ち切りが
+    ///   効かず全件走査になる（[実測] 45 件で 1 ミリ秒未満、`Utilities` を
+    ///   含むので実際にはもっと早く打ち切れる）。
+    public static func hasSubdirectory(
+        at url: URL, includingHidden: Bool = false, countingPackages: Bool = true
+    ) -> Bool? {
         guard let dir = opendir(url.path) else { return nil } // 読めない → 不明
         defer { closedir(dir) }
 
@@ -40,15 +56,20 @@ public enum DirectoryProbe {
 
             switch Int32(value.d_type) {
             case DT_DIR:
-                return true
+                let child = url.appendingPathComponent(name)
+                if !includingHidden, isHiddenByFlag(child) { continue }
+                if countingPackages || !isPackage(child) { return true }
             case DT_LNK, DT_UNKNOWN:
                 // `.isDirectoryKey` はリンクを辿るので、ディレクトリへの
                 // シンボリックリンクは一覧に「フォルダ」として現れる。
                 // ここでも辿って数える（`lstat` ではなく `stat`）。
                 // `DT_UNKNOWN` を返すファイルシステムのための保険でもある。
                 var status = stat()
-                if stat(url.appendingPathComponent(name).path, &status) == 0,
-                   (status.st_mode & S_IFMT) == S_IFDIR {
+                let child = url.appendingPathComponent(name)
+                if stat(child.path, &status) == 0,
+                   (status.st_mode & S_IFMT) == S_IFDIR,
+                   includingHidden || (status.st_flags & UInt32(UF_HIDDEN)) == 0,
+                   countingPackages || !isPackage(child) {
                     return true
                 }
             default:
@@ -56,5 +77,26 @@ public enum DirectoryProbe {
             }
         }
         return false
+    }
+
+    /// `UF_HIDDEN` が立っているか（`chflags hidden`）。**名前の `.` 接頭辞とは
+    /// 別の隠し方**で、`FileManager` の `.skipsHiddenFiles` も Finder も
+    /// こちらを隠す。`stat(2)` 1 回で済むので `resourceValues` より軽い。
+    ///
+    /// 引けなければ「隠れていない」に倒す——数え落として三角が消えるより、
+    /// 余分に数えて「開いたら空だった」で済ませるほうが害が小さい
+    /// （`hasSubdirectory` の `nil` と同じ判断）。
+    private static func isHiddenByFlag(_ url: URL) -> Bool {
+        var status = stat()
+        guard stat(url.path, &status) == 0 else { return false }
+        return (status.st_flags & UInt32(UF_HIDDEN)) != 0
+    }
+
+    /// Finder が 1 つの項目として扱うディレクトリか [`URLResourceKey.isPackageKey`]。
+    /// 引けなければ「パッケージではない」に倒す——誤って数えても
+    /// 「開いたら空だった」で済むが、数え落とすと開けるはずの行から三角が
+    /// 消えて行き止まりになる。
+    private static func isPackage(_ url: URL) -> Bool {
+        (try? url.resourceValues(forKeys: [.isPackageKey]))?.isPackage ?? false
     }
 }

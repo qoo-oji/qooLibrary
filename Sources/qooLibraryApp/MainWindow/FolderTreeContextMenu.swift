@@ -17,6 +17,8 @@ import SwiftUI
 /// 予定があるため、両者を型で区別できる必要がある。
 enum FolderTreeGroup: Sendable, Equatable {
     case volume
+    /// 環境設定で表示を選べる標準の場所 [ユーザー要望、`FavoriteLocations`]。
+    case favorites
     case temporary
     case library
 }
@@ -31,12 +33,17 @@ enum FolderTreeGroup: Sendable, Equatable {
 /// 2 つに情報が分かれていたが、判断基準を 1 つに集約して取り違えを防ぐ。
 enum FolderTreeBranch: Sendable, Hashable {
     case volume
+    /// 「よく使う項目」グループ [ユーザー要望]。登録フォルダと違い**根の情報を
+    /// 持たない**——根になり得る場所は `FavoriteLocations.visible` から引ける
+    /// （`NavigationRoot.favorites` のコメント参照）。
+    case favorites
     case temporary(id: UUID, rootURL: URL)
     case library(id: UUID, rootURL: URL)
 
     var group: FolderTreeGroup {
         switch self {
         case .volume: .volume
+        case .favorites: .favorites
         case .temporary: .temporary
         case .library: .library
         }
@@ -45,8 +52,37 @@ enum FolderTreeBranch: Sendable, Hashable {
     var navigationRoot: NavigationRoot {
         switch self {
         case .volume: .volume
+        case .favorites: .favorites
         case .temporary(let id, let rootURL), .library(let id, let rootURL):
             .registeredFolder(id: id, rootURL: rootURL)
+        }
+    }
+
+    /// 枝の同一性を表す鍵 [`FolderTreeSelection` が使う]。
+    ///
+    /// **`rootURL` は含めない。** 同じ登録フォルダを指していても、どこから
+    /// 組み立てたかで URL の表現が違いうる（`contentsOfDirectory` が返した
+    /// もの、ブックマークを解決したもの、`navigationRoot` が運んできたもの）。
+    /// `URL` の等価判定は末尾スラッシュや `isDirectory` フラグまで見るので、
+    /// これを同一性に混ぜると**枝が一致せず、ツリーの自動展開が黙って
+    /// 効かなくなる**——登録 ID（UUID）だけで一意に決まるので混ぜる必要も無い。
+    ///
+    /// **ライブラリとテンポラリも区別しない**（`registered:` に畳む）
+    /// [実機検証で発見した不具合の対処]。`NavigationRoot` は種別を持たないので、
+    /// 選択を組み立てる側は登録一覧を引いて種別を決めるしかない——その一覧は
+    /// 非同期に読み込まれるため、**起動直後は空で、テンポラリをライブラリと
+    /// 取り違える**。取り違えても登録 ID は同じなので、ここで畳んでおけば
+    /// 行と選択は一致する。**登録 ID は種別をまたいで一意**（1 つの登録は
+    /// ライブラリかテンポラリのどちらか）なので、畳んでも別物を同一視する
+    /// ことはない。
+    ///
+    /// メニューの出し分け（`group`）は行が持つ枝から直に取るので、こちらの
+    /// 統合には影響しない。
+    var identityKey: String {
+        switch self {
+        case .volume: "volume"
+        case .favorites: "favorites"
+        case .temporary(let id, _), .library(let id, _): "registered:\(id.uuidString)"
         }
     }
 
@@ -68,6 +104,9 @@ enum FolderTreeRowRole: Sendable, Equatable {
     case volumeRoot
     /// ライブラリ／テンポラリとして登録されたフォルダそのものの行。
     case registeredRoot
+    /// 「よく使う項目」グループに直接並ぶ行（アプリケーション・ホーム・
+    /// デスクトップ…）[ユーザー要望]。**その中を辿った先は `.plainFolder`。**
+    case favoriteRoot
     /// 上記いずれでもない、実フォルダを辿った先の通常の行。
     case plainFolder
 }
@@ -116,6 +155,9 @@ struct FolderTreeRowContext {
     /// - 登録フォルダのルートを消す・動かす・改名すると、Security-Scoped
     ///   Bookmark が解決不能になり登録自体が壊れる。片付けは明示的な
     ///   「登録解除」に一本化する。
+    /// - よく使う項目に並ぶ標準の場所（アプリケーション・ホーム・デスク
+    ///   トップ…）を消す・改名するのは事故そのもので、Finder のサイドバーも
+    ///   これらの操作を出さない［ユーザー判断］。
     /// - 加えて、どちらのルートも**親フォルダへの書き込み権限を持たない**
     ///   （登録で得たスコープはその配下だけ、ボリュームの親は `/Volumes`）。
     ///   複製・エイリアス作成・「ここに圧縮」は書き込み先が親フォルダのため、
@@ -237,6 +279,17 @@ struct FolderTreeContextMenu: View {
                     Task { await VolumeEjectAction.eject(context.url) }
                 }
             }
+        case .favorites:
+            // **固有の項目は無い。** よく使う項目の行に足したくなるものは
+            // 「アクセスを許可…」だが、それは押した瞬間にパネルが出る
+            // 経路（`StandardLocationOpener`）で既に満たしている
+            // ［ユーザー判断: 未許可の項目も普通に並べ、押したらパネル］
+            // ——メニューを開いて選ばせるより手数が少ない。
+            //
+            // 「サイドバーから削除」相当（表示項目の切り替え）は環境設定
+            // 「表示」タブが持つ [`FavoriteLocations`]。行から直接隠せるように
+            // するなら、ここへ足すのが自然。
+            EmptyView()
         case .temporary, .library:
             // サムネイルを常に非表示にする [DS-04]。**登録ルート行だけ**に出す
             // ——設定の持ち主は登録フォルダ 1 件（`RegisteredFolder`）であって、

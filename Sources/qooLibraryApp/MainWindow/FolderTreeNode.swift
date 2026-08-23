@@ -38,7 +38,7 @@ public struct FolderTreeNode: Identifiable, Sendable, Hashable {
     public var hasSubfolders: Bool?
 
     public enum Kind: Sendable, Hashable {
-        case volume, temporary, library, plainFolder
+        case volume, favorite, temporary, library, plainFolder
     }
 
     public init(
@@ -71,7 +71,9 @@ public struct FolderTreeNode: Identifiable, Sendable, Hashable {
         do {
             contents = try fm.contentsOfDirectory(
                 at: node.url,
-                includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey, .isUserImmutableKey],
+                includingPropertiesForKeys: [
+                    .isDirectoryKey, .isPackageKey, .isSymbolicLinkKey, .isUserImmutableKey,
+                ],
                 options: [.skipsHiddenFiles]
             )
         } catch let error as NSError where error.domain == NSCocoaErrorDomain {
@@ -105,8 +107,16 @@ public struct FolderTreeNode: Identifiable, Sendable, Hashable {
 
         return contents
             .compactMap { url -> FolderTreeNode? in
-                let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .isUserImmutableKey])
+                let values = try? url.resourceValues(forKeys: [
+                    .isDirectoryKey, .isPackageKey, .isSymbolicLinkKey, .isUserImmutableKey,
+                ])
                 guard values?.isDirectory == true else { return nil } // ツリーはフォルダのみ
+                // **パッケージ（`.app` など）はツリーに出さない** [ユーザー要望、
+                // Finder 準拠]。実体はディレクトリだが利用者にとっては 1 つの
+                // 項目で、中を見るのは中央ペインの「パッケージの内容を表示」から。
+                // これで `/Applications` を展開しても `Utilities` などの素の
+                // フォルダだけが並ぶ（[実測] 45 件中 41 件がパッケージ）。
+                if values?.isPackage == true { return nil }
                 // ライブラリ配下の .qooarchive はツリーに表示しない [LP-08][FA-11]
                 if url.lastPathComponent == ".qooarchive" { return nil }
                 let isSymlink = values?.isSymbolicLink ?? false
@@ -118,7 +128,9 @@ public struct FolderTreeNode: Identifiable, Sendable, Hashable {
                     // シンボリックリンクはそもそも展開できない [SL-05] ので
                     // 中を読みに行かない。三角は `.disabled` で出したままにする
                     // （リンクであることは行のアイコンのバッジで分かる）。
-                    hasSubfolders: (probesSubfolders && !isSymlink) ? DirectoryProbe.hasSubdirectory(at: url) : nil
+                    hasSubfolders: (probesSubfolders && !isSymlink)
+                        ? DirectoryProbe.hasSubdirectory(at: url, countingPackages: false)
+                        : nil
                 )
             }
             .sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
@@ -142,7 +154,7 @@ public struct FolderTreeNode: Identifiable, Sendable, Hashable {
                 isEjectableVolume: VolumeEjector.isEjectable(url), // [1-16]
                 isNetworkVolume: isNetwork,
                 // ネットワーク越しは調べない（`children(of:)` と同じ判断）。
-                hasSubfolders: isNetwork ? nil : DirectoryProbe.hasSubdirectory(at: url)
+                hasSubfolders: isNetwork ? nil : DirectoryProbe.hasSubdirectory(at: url, countingPackages: false)
             )
         }
         .sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }

@@ -130,17 +130,23 @@ struct MainWindowView: View {
         return UserDefaults.standard.bool(forKey: key)
     }
 
-    /// これから「アプリ起動時に開くフォルダ」の `.task` がタブの `folder`/
-    /// `navigationRoot` を書き換える見込みがあるかどうか。`.task` 内の適用
-    /// ガード（`wasLaunchedWithoutExplicitFolder`/`hasAppliedStartupFolderThisLaunch`/
-    /// `UserDefaults` の設定値）と全く同じ条件を、`.task` が実際に走る前に
-    /// 同期的に判定できるようにしたもの [実機検証で発見したバグの修正、
-    /// `FolderTreePane` の `skipsInitialAutoExpand` 引数のコメント参照]。
-    private var hasPendingStartupFolderOverride: Bool {
-        guard wasLaunchedWithoutExplicitFolder, !Self.hasAppliedStartupFolderThisLaunch else { return false }
-        let kind = UserDefaults.standard.string(forKey: StartupFolderPreference.kindKey)
-        return kind != nil && kind != StartupFolderKind.home.rawValue
-    }
+    /// 「アプリ起動時に開くフォルダ」の解決が終わったか。
+    ///
+    /// **フォルダツリーの自動展開はこれが `true` になるまで待つ。** 待たないと、
+    /// 解決前の暫定の行き先（`TabTarget.home`）に対して一度展開が走り、
+    /// `expandedNodeIDs` は減らないのでその展開が残り続ける
+    /// ——ユーザー報告「テンポラリフォルダを指定しているのに、起動すると
+    /// ボリュームの Macintosh HD がホームフォルダまで展開される」がこれ。
+    ///
+    /// 以前は「上書きの見込みがあるか」を `UserDefaults` から**事前に**
+    /// 推測していたが、`.home` を除外していたため、
+    /// **起動時フォルダを「ホーム」にすると仮想ホーム（`Data`）が開いていた**
+    /// [実機検証で発見]。`TabTarget.home` は `WindowState.init` で評価され、
+    /// その時点では `VolumeAccessStore.loadAndActivateAll()` がまだ終わって
+    /// いないので `defaultHome` が「実ホームを読めない」と判断してしまう。
+    /// **解決を必ず通す**ようにして直した（`StartupFolderPreference.resolve()`
+    /// は許可の有効化を待ってから判定する）。
+    @State private var startupFolderResolved = false
 
     /// ウインドウタイトル [ユーザー要望]。タブが無い/フォルダが無い場合のみ
     /// アプリ名にフォールバックする。
@@ -180,7 +186,12 @@ struct MainWindowView: View {
             },
             goToStandardLocation: { location in
                 StandardLocationOpener.open(location, locale: locale) { url in
-                    windowState.navigate(to: url, root: .volume)
+                    // 入口は場所ごとに決まる [`StandardLocation.navigationRoot`]。
+                    // ホームグループに並ぶ場所（ホーム・書類・ダウンロード…）は
+                    // `.home` になり、メニューから行ってもツリーのホームグループ
+                    // 側がフォーカスされる——**同じ場所へ行く経路が複数あっても、
+                    // 行き先の見え方は 1 つに揃える。**
+                    windowState.navigate(to: url, root: location.navigationRoot)
                 }
             },
             beginGoToFolder: { presentGoToFolderDialog() },
@@ -582,7 +593,7 @@ struct MainWindowView: View {
                     FolderTreePane(
                         selectedURL: windowState.folder,
                         navigationRoot: windowState.navigationRoot,
-                        skipsInitialAutoExpand: hasPendingStartupFolderOverride,
+                        startupFolderResolved: startupFolderResolved,
                         onSelect: { url, root in windowState.navigate(to: url, root: root, fromTree: true) },
                         // ツリーのコンテキストメニュー「新規タブ／ウインドウで
                         // 開く」[ユーザー要望]。**タブ・ウインドウのどちらも
@@ -691,16 +702,23 @@ struct MainWindowView: View {
         // コメント参照]。既定（仮想ホーム）のときは何もしない（不要な非同期
         // 処理・チラつきを避ける）。
         .task {
-            guard wasLaunchedWithoutExplicitFolder, !Self.hasAppliedStartupFolderThisLaunch else { return }
+            // 明示的な行き先で開いたウインドウ（新規タブ／ウインドウで開く）と、
+            // 起動後 2 本目以降は解決しない。ツリーには「もう待たなくてよい」
+            // ことだけ伝える。
+            guard wasLaunchedWithoutExplicitFolder, !Self.hasAppliedStartupFolderThisLaunch else {
+                startupFolderResolved = true
+                return
+            }
             Self.hasAppliedStartupFolderThisLaunch = true
-            guard UserDefaults.standard.string(forKey: StartupFolderPreference.kindKey) != nil,
-                  UserDefaults.standard.string(forKey: StartupFolderPreference.kindKey) != StartupFolderKind.home.rawValue
-            else { return }
+            // **「ホーム」も含めて必ず解決する**（`startupFolderResolved` の
+            // コメント参照）。`resolve()` はボリューム許可の有効化を待つので、
+            // ここで初めて実ホームかどうかを正しく判定できる。
             let (url, root) = await StartupFolderPreference.resolve()
             windowState.folder = url
             windowState.navigationRoot = root
             // メインスレッドで FS を待たない [NV6-02]。
             windowState.title = await FileIO.perform { FileManager.default.displayName(atPath: url.path) }
+            startupFolderResolved = true
         }
     }
 }

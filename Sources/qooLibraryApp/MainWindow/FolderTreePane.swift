@@ -30,24 +30,20 @@ struct FolderTreePane: View {
     /// （テンポラリ経由のときだけ適用）にも使う想定の基盤 [ユーザー指摘、
     /// CLAUDE.md 参照]。
     let navigationRoot: NavigationRoot
-    /// このペインが初めて現れた瞬間だけ、自動展開（`revealSelectionIfNeeded`）
-    /// を1回スキップする [実機検証で発見・修正したバグ: 「アプリ起動時に
-    /// 開くフォルダ」にテンポラリ／ライブラリフォルダを設定していても、
-    /// 起動直後は一瞬だけ既定の仮想ホーム（`navigationRoot == .volume`）が
-    /// 表示され、このペイン自身の `.task` がその一瞬の状態に対して
-    /// `revealSelectionIfNeeded` を呼んでしまっていた。`expandedNodeIDs`/
-    /// `volumesExpanded` は加算的にしか変化しない（`formUnion`、`= true`
-    /// を戻す経路が無い）ため、直後に `MainWindowView` 側の別の `.task` が
-    /// 正しい登録フォルダへ切り替えても、この一瞬の展開（Macintosh HD →
-    /// ユーザーの実ホームフォルダまで）だけが取り消されずに残り続けていた
-    /// ——ユーザー報告「テンポラリフォルダを指定しているのに、起動すると
-    /// ボリュームのMacintosh HDがユーザーのホームフォルダまでツリー展開
-    /// してしまう」。`MainWindowView.hasPendingStartupFolderOverride` が
-    /// 「これから上書きされる見込みがあるか」を`.task`実行前に同期的に
-    /// 判定し、上書きが見込まれる場合は初回の自動展開をスキップする——
-    /// 実際に上書きが適用された後は `.onChange(of: selectedURL)` 経由で
-    /// 改めて（今度は正しい `navigationRoot` で）自動展開される。
-    let skipsInitialAutoExpand: Bool
+    /// 「アプリ起動時に開くフォルダ」の解決が終わったか
+    /// [`MainWindowView.startupFolderResolved` 参照]。
+    ///
+    /// **自動展開はこれと「一覧の読み込み完了」の両方が揃うまで待つ。**
+    /// 解決前の暫定の行き先に対して一度でも展開が走ると、`expandedNodeIDs` は
+    /// 減らないので**その展開が残り続ける**——ユーザー報告「テンポラリ
+    /// フォルダを指定しているのに、起動するとボリュームの Macintosh HD が
+    /// ホームフォルダまで展開される」がこの形だった。
+    ///
+    /// 以前は「初回だけスキップする」真偽値を受け取っていたが、それだと
+    /// **上書きが結局起きなかった場合に一度も展開されない**（`.home` を選んで
+    /// いて既に実ホームが開いている場合など）。両者が揃った時点で 1 回走る
+    /// 形にすると、`.task` とこの値のどちらが先に確定しても正しく動く。
+    let startupFolderResolved: Bool
     let onSelect: (URL, NavigationRoot) -> Void
     /// コンテキストメニューの「新規タブで開く」「新規ウインドウで開く」
     /// [ユーザー要望: 中央ペインのメニューに原則あわせる]。中央ペインと違い
@@ -57,16 +53,33 @@ struct FolderTreePane: View {
     let onOpenInNewTab: (URL, NavigationRoot) -> Void
     let onOpenInNewWindow: (URL) -> Void
 
-    @State private var volumesExpanded = true
-    @State private var temporaryExpanded = true
-    @State private var libraryExpanded = true
-    @State private var expandedNodeIDs: Set<String> = [] // [LP-05]
+    /// ボリューム・ホーム・登録フォルダの一覧を読み終えたか。
+    /// 起動直後の自動展開は、これと `startupFolderResolved` が揃ってから走る。
+    @State private var treeDataLoaded = false
+    @State private var didRevealInitialSelection = false
+
+    // グループの開閉は再起動をまたいで覚える [ユーザー判断]。**グループが
+    // 4 つになり、左ペインの高さによってはテンポラリ・ライブラリが
+    // スクロールしないと見えなくなる**ため、使わないグループを畳んだら
+    // その状態が残るようにする。
+    //
+    // **`@AppStorage` を使ってはいけない。** 下の `body` はこれらを
+    // 「行を描くかどうか」の `if` 条件に使っており、`@AppStorage` をその形で
+    // 読むと SwiftUI の Observation が無限に再評価してアプリがハングする
+    // [1-9 のタブバー表示トグルで実際に踏んだ]。`isRightPaneCollapsed` と
+    // 同じく、**初期値だけ `UserDefaults` から素の値として読み、変更時に
+    // 明示的に書き戻す**一方向の同期にしてある。
+    @State private var volumesExpanded = FolderTreePane.storedExpansion(.volumes)
+    @State private var favoritesExpanded = FolderTreePane.storedExpansion(.favorites)
+    @State private var temporaryExpanded = FolderTreePane.storedExpansion(.temporary)
+    @State private var libraryExpanded = FolderTreePane.storedExpansion(.library)
+    @State private var expandedNodeIDs: Set<FolderTreeSelection> = [] // [LP-05]
     /// 現在スクロール領域内に実際に描画されている行の ID（`FolderTreeNode.id`
     /// と同じ正規化パス文字列）。`List` は行を遅延生成するため、各
     /// `FolderTreeRow` の `.onAppear`/`.onDisappear` で増減させる
     /// [`revealSelectionIfNeeded` が「既に表示範囲内なら再スクロールしない」
     /// 判定に使う、ユーザー要望]。
-    @State private var visibleNodeIDs: Set<String> = []
+    @State private var visibleNodeIDs: Set<FolderTreeSelection> = []
     /// `List` 自身に持たせる選択 [ユーザー要望: ツリーをキーボードで辿りたい]。
     ///
     /// **上下移動も ← → の開閉も `List`／`DisclosureGroup` が既に持っている。**
@@ -79,6 +92,10 @@ struct FolderTreePane: View {
     /// 要る [`FolderTreeBranch` 参照]）。
     @State private var listSelection: FolderTreeSelection?
     @State private var volumes: [FolderTreeNode] = []
+    /// 「よく使う項目」グループの行 [ユーザー要望]。何を並べるかは環境設定
+    /// （`FavoriteLocations`）が決めるので登録フォルダのような永続化は無く、
+    /// 存在確認と「直下にサブフォルダがあるか」を測り直すだけで再構築できる。
+    @State private var favoriteItems: [FavoriteItem] = []
     /// 外付けディスク・ディスクイメージ・ネットワークボリュームのマウント
     /// ポイントが並ぶ場所。起動ボリューム（`/`）はここには現れないが、
     /// 取り外されることも無いので見張る必要が無い。
@@ -118,7 +135,8 @@ struct FolderTreePane: View {
                     if volumesExpanded {
                         ForEach(volumes) { node in
                             FolderTreeRow(
-                                node: node, expandedIDs: $expandedNodeIDs, visibleIDs: $visibleNodeIDs, selectedURL: selectedURL,
+                                node: node, expandedIDs: $expandedNodeIDs, visibleIDs: $visibleNodeIDs,
+                                selection: listSelection,
                                 branch: .volume, role: .volumeRoot, onSelect: onSelect,
                                 onDropFailure: { presentFailureMessage($0) },
                                 operations: operations, menuActions: menuActions
@@ -126,7 +144,38 @@ struct FolderTreePane: View {
                         }
                     }
                 } header: {
-                    GroupHeader(title: String(localized: "folderTree.volumes", locale: locale), isExpanded: $volumesExpanded)
+                    GroupHeader(
+                        title: String(localized: "folderTree.volumes", locale: locale),
+                        isExpanded: persistedExpansion(.volumes, $volumesExpanded))
+                }
+
+                // ボリュームとテンポラリの間 [ユーザー指定の位置]。Finder の
+                // 「よく使う項目」にあたるグループで、並べる場所は環境設定で
+                // 選べる [`FavoriteLocations`]。
+                Section {
+                    if favoritesExpanded {
+                        ForEach(favoriteItems) { item in
+                            FolderTreeRow(
+                                node: item.node, expandedIDs: $expandedNodeIDs, visibleIDs: $visibleNodeIDs,
+                                selection: listSelection,
+                                branch: .favorites, role: .favoriteRoot, onSelect: onSelect,
+                                onDropFailure: { presentFailureMessage($0) },
+                                operations: operations, menuActions: menuActions,
+                                // 表示名は文字列カタログから引く [ユーザー要望:
+                                // 表示名は Finder に揃える]。`localizedName` /
+                                // `displayName(atPath:)` でも Finder と同じ訳語は
+                                // 得られるが、あれは `Bundle.main.preferredLocalizations`
+                                // に固定されるため**アプリ内の言語切替に追従しない**
+                                // [実測]。訳語そのものは Apple の一次情報
+                                // （`SystemFolderLocalizations`）から写してある。
+                                displayNameKey: item.location.titleKey
+                            )
+                        }
+                    }
+                } header: {
+                    GroupHeader(
+                        title: String(localized: "folderTree.favorites", locale: locale),
+                        isExpanded: persistedExpansion(.favorites, $favoritesExpanded))
                 }
 
                 Section {
@@ -134,7 +183,11 @@ struct FolderTreePane: View {
                         registeredFolderRows(temporaryEntries, kind: .temporary)
                     }
                 } header: {
-                    GroupHeader(title: String(localized: "folderTree.temporaryFolders", locale: locale), isExpanded: $temporaryExpanded, showsAddButton: true) {
+                    GroupHeader(
+                        title: String(localized: "folderTree.temporaryFolders", locale: locale),
+                        isExpanded: persistedExpansion(.temporary, $temporaryExpanded),
+                        showsAddButton: true
+                    ) {
                         presentRegistrationPanel(kind: .temporary)
                     }
                 }
@@ -144,7 +197,11 @@ struct FolderTreePane: View {
                         registeredFolderRows(libraryEntries, kind: .library)
                     }
                 } header: {
-                    GroupHeader(title: String(localized: "folderTree.libraryFolders", locale: locale), isExpanded: $libraryExpanded, showsAddButton: true) {
+                    GroupHeader(
+                        title: String(localized: "folderTree.libraryFolders", locale: locale),
+                        isExpanded: persistedExpansion(.library, $libraryExpanded),
+                        showsAddButton: true
+                    ) {
                         presentRegistrationPanel(kind: .library)
                     }
                 }
@@ -154,7 +211,7 @@ struct FolderTreePane: View {
                 guard let newValue,
                       newValue.url.standardizedFileURL != selectedURL?.standardizedFileURL
                 else { return }
-                onSelect(newValue.url, newValue.branch.navigationRoot)
+                navigateToSelection(newValue)
             }
             // 中央ペインなど外からフォルダが変わったときは選択も合わせておく。
             // そうしないと、次に ↑ ↓ を押したとき前にいた場所から動き出す。
@@ -194,9 +251,15 @@ struct FolderTreePane: View {
             .task {
                 volumesWatch.watch(Self.volumesDirectory, scope: .shallow)
                 await reloadVolumes()
+                await reloadFavorites()
                 await reloadRegisteredFolders()
-                guard !skipsInitialAutoExpand else { return }
-                revealSelectionIfNeeded(scrollProxy: scrollProxy)
+                treeDataLoaded = true
+                revealInitialSelectionIfReady(scrollProxy: scrollProxy)
+            }
+            // 起動時フォルダの解決と一覧の読み込みは、どちらが先に終わるか
+            // 決まっていない。**両方揃った時点で 1 回だけ**自動展開する。
+            .onChange(of: startupFolderResolved) { _, _ in
+                revealInitialSelectionIfReady(scrollProxy: scrollProxy)
             }
             .folderOperationsHost(operations)
             .onChange(of: selectedURL) { _, _ in
@@ -224,10 +287,52 @@ struct FolderTreePane: View {
             .onChange(of: SessionState.shared.reloadToken) { _, _ in
                 Task {
                     await reloadVolumes()
+                    // アクセス許可の増減や、環境設定での表示項目の変更で
+                    // 「よく使う項目」の見え方が変わる（許可した瞬間に
+                    // 「直下にサブフォルダがあるか」を測れるようになり、三角の
+                    // 有無が確定する）。どちらもこの共通シグナルを動かす。
+                    await reloadFavorites()
                     await reloadRegisteredFolders()
                 }
             }
         }
+    }
+
+    /// 開閉を覚えるグループ。
+    enum TreeGroup: String {
+        case volumes, favorites, temporary, library
+        var storageKey: String { "qoo.folderTree.expanded.\(rawValue)" }
+    }
+
+    /// 既定はすべて開いた状態。`bool(forKey:)` は未設定でも `false` を返すので、
+    /// 「設定されているか」を先に見る [`MainWindowView.storedFlag` と同じ形]。
+    static func storedExpansion(_ group: TreeGroup) -> Bool {
+        guard UserDefaults.standard.object(forKey: group.storageKey) != nil else { return true }
+        return UserDefaults.standard.bool(forKey: group.storageKey)
+    }
+
+    /// 見出しのクリックで開閉したときに書き戻す `Binding`。
+    ///
+    /// **`revealSelectionIfNeeded` の自動展開はここを通さない**（`@State` を
+    /// 直接動かす）。自動で開いたものまで覚えると、利用者が畳んだ意図を
+    /// アプリ側が黙って上書きすることになる——覚えるのは明示的な操作だけ。
+    private func persistedExpansion(_ group: TreeGroup, _ state: Binding<Bool>) -> Binding<Bool> {
+        Binding(
+            get: { state.wrappedValue },
+            set: { newValue in
+                state.wrappedValue = newValue
+                UserDefaults.standard.set(newValue, forKey: group.storageKey)
+            }
+        )
+    }
+
+    /// 起動直後の自動展開。**材料と行き先の両方が揃ってから、1 回だけ**走る。
+    ///
+    /// 以降の移動は `.onChange(of: selectedURL)` が拾う。
+    private func revealInitialSelectionIfReady(scrollProxy: ScrollViewProxy) {
+        guard treeDataLoaded, startupFolderResolved, !didRevealInitialSelection else { return }
+        didRevealInitialSelection = true
+        revealSelectionIfNeeded(scrollProxy: scrollProxy)
     }
 
     /// 外からフォルダが変わったときに `List` の選択を合わせる。
@@ -236,14 +341,21 @@ struct FolderTreePane: View {
     /// `NavigationRoot` は種別（テンポラリ／ライブラリ）を持たないので、
     /// 登録一覧から引き当てる。
     private func syncListSelection(to url: URL?) {
-        guard let url else {
-            listSelection = nil
-            return
-        }
+        listSelection = rowID(for: url)
+    }
+
+    /// `selectedURL` と `navigationRoot` から行の識別子を組み立てる。
+    ///
+    /// `List` の選択とツリーの自動展開・スクロールが**同じ導出**を使う
+    /// ——別々に書くと、選択している行とスクロール先が食い違う。
+    private func rowID(for url: URL?) -> FolderTreeSelection? {
+        guard let url else { return nil }
         let branch: FolderTreeBranch
         switch navigationRoot {
         case .volume:
             branch = .volume
+        case .favorites:
+            branch = .favorites
         case .registeredFolder(let id, let rootURL):
             if temporaryEntries.contains(where: { $0.folder.id == id }) {
                 branch = .temporary(id: id, rootURL: rootURL)
@@ -251,7 +363,12 @@ struct FolderTreePane: View {
                 branch = .library(id: id, rootURL: rootURL)
             }
         }
-        listSelection = FolderTreeSelection(url: url, branch: branch)
+        return FolderTreeSelection(url: url, branch: branch)
+    }
+
+    /// 祖先のパス集合を、その枝の行の識別子へ変換する。
+    private static func rowIDs(_ paths: Set<String>, branch: FolderTreeBranch) -> Set<FolderTreeSelection> {
+        Set(paths.map { FolderTreeSelection(path: $0, branch: branch) })
     }
 
     /// [ユーザー要望] `selectedURL` の祖先をすべて展開し、その行までスクロール
@@ -286,15 +403,37 @@ struct FolderTreePane: View {
             // `floor == "/"` となり、ループの終了条件と一致するため従来どおり
             // 動く（仮想ホームのように `/` 配下の深い場所も正しく展開される）。
             expandedNodeIDs.formUnion(
-                Self.ancestorPaths(of: selectedURL, downTo: volumeRoot(containing: selectedURL))
+                Self.rowIDs(Self.ancestorPaths(of: selectedURL, downTo: volumeRoot(containing: selectedURL)), branch: .volume)
             )
+        case .favorites:
+            favoritesExpanded = true
+            // **一番深く一致する行で打ち切る。** `~/Downloads/foo` はホーム行
+            // にも一致するが、開きたいのは「ダウンロード」行の下だけ——上まで
+            // 開くと、ホーム行が展開されて同じフォルダが 2 か所に見えることになる。
+            //
+            // **一致する行が無ければ何も展開しない。** `.favorites` を名乗り
+            // ながらどの行の配下でもない状態は `WindowState.normalizedRoot` が
+            // 潰しているので通常は起こらないが、ここで無条件に遡ると `/`（＝
+            // Macintosh HD の行 ID）まで開いてしまう——選んでもいない
+            // ボリュームのツリーが展開される、という 3 度目の同じ壊れ方に
+            // なるので、砦を 2 枚にしておく。
+            if let floor = favoriteRoot(containing: selectedURL) {
+                expandedNodeIDs.formUnion(
+                    Self.rowIDs(Self.ancestorPaths(of: selectedURL, downTo: floor), branch: .favorites)
+                )
+            }
         case .registeredFolder(let id, let rootURL):
             if temporaryEntries.contains(where: { $0.folder.id == id }) {
                 temporaryExpanded = true
             } else if libraryEntries.contains(where: { $0.folder.id == id }) {
                 libraryExpanded = true
             }
-            expandedNodeIDs.formUnion(Self.ancestorPaths(of: selectedURL, downTo: rootURL))
+            let branch: FolderTreeBranch = temporaryEntries.contains(where: { $0.folder.id == id })
+                ? .temporary(id: id, rootURL: rootURL)
+                : .library(id: id, rootURL: rootURL)
+            expandedNodeIDs.formUnion(
+                Self.rowIDs(Self.ancestorPaths(of: selectedURL, downTo: rootURL), branch: branch)
+            )
         }
 
         // ツリー行は遅延読み込み（`FolderTreeRow.loadChildren()`）のため、
@@ -302,7 +441,9 @@ struct FolderTreePane: View {
         // 数フレームかかることがある。`PaneWindows.swift`/`WindowFrameAutosave.swift`
         // と同じ「1サイクル遅らせて適用する」パターンだが、階層が深い場合は
         // 複数段のカスケードになるため、経験的に十分な余裕を持たせている。
-        let targetID = selectedURL.standardizedFileURL.path
+        // スクロール先も枝で絞る [`FolderTreeSelection`]。同じ実フォルダが
+        // 2 つの枝に現れるので、パスだけで探すと選んでいない側の行へ飛ぶ。
+        guard let targetID = rowID(for: selectedURL) else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             // [ユーザー要望] ハイライトされた行が既に表示範囲内にあるなら
             // スクロールしない。`visibleNodeIDs` は各 `FolderTreeRow` の
@@ -358,6 +499,18 @@ struct FolderTreePane: View {
             .max { $0.standardizedFileURL.path.count < $1.standardizedFileURL.path.count }
     }
 
+    /// `url` を含む「よく使う項目」の行のうち、**一番深いもの**。無ければ
+    /// `nil` ——呼び出し側はそのとき**何も展開しない**（上のコメント参照）。
+    ///
+    /// `volumeRoot(containing:)` と同じ最長一致。判定そのものは
+    /// `FavoriteLocations.root(containing:in:)` に純粋関数として置いてある
+    /// （引数だけで振る舞いが決まるので、実アプリを起動せず境界条件を
+    /// 確かめられる）。**表示中の行そのもの**から探すので、環境設定で項目を
+    /// 隠した直後でも食い違わない。
+    private func favoriteRoot(containing url: URL) -> URL? {
+        FavoriteLocations.root(containing: url, in: favoriteItems.map(\.node.url))
+    }
+
     private static func ancestorPaths(of url: URL, downTo floor: URL?) -> Set<String> {
         var paths: Set<String> = []
         let floorPath = floor?.standardizedFileURL.path
@@ -380,7 +533,8 @@ struct FolderTreePane: View {
             ForEach(entries) { entry in
                 if let node = entry.node {
                     FolderTreeRow(
-                        node: node, expandedIDs: $expandedNodeIDs, visibleIDs: $visibleNodeIDs, selectedURL: selectedURL,
+                        node: node, expandedIDs: $expandedNodeIDs, visibleIDs: $visibleNodeIDs,
+                        selection: listSelection,
                         branch: .registered(kind: kind, id: entry.folder.id, rootURL: node.url),
                         role: .registeredRoot,
                         onSelect: onSelect,
@@ -466,7 +620,7 @@ struct FolderTreePane: View {
             openInNewTab: { onOpenInNewTab($0.url, $0.navigationRoot) },
             openInNewWindow: { onOpenInNewWindow($0.url) },
             beginRenameFolder: { presentRenameFolderDialog($0.url) },
-            beginNewFolder: { presentNewFolderDialog(in: $0.url) },
+            beginNewFolder: { presentNewFolderDialog(in: $0.url, branch: $0.branch) },
             beginRenameDisplayName: { presentRenameDisplayNameDialog($0) },
             unregister: { unregisterFolder($0) },
             // [DS-04] 状態はメインアクタ上のキャッシュから同期的に読み、
@@ -507,7 +661,7 @@ struct FolderTreePane: View {
     }
 
     /// `parent` の中に新規フォルダを作る [FM-01]。
-    private func presentNewFolderDialog(in parent: URL) {
+    private func presentNewFolderDialog(in parent: URL, branch: FolderTreeBranch) {
         DialogWindowPresenter.shared.present(
             title: String(localized: "action.newFolder", locale: locale)
         ) { _ in
@@ -521,7 +675,7 @@ struct FolderTreePane: View {
                     // 開かないと「何も起きなかった」ように見えるため。既に展開済み
                     // なら `SessionState.reloadToken` 側で、折りたたみ済みなら
                     // 展開を検知した `FolderTreeRow` 側で、どちらも子が読み直される。
-                    expandedNodeIDs.insert(parent.standardizedFileURL.path)
+                    expandedNodeIDs.insert(FolderTreeSelection(url: parent, branch: branch))
                     reloadTreeAfterMutation()
                 }
             }
@@ -731,6 +885,44 @@ struct FolderTreePane: View {
         volumes = await FileIO.perform { FolderTreeNode.mountedVolumes() }
     }
 
+    private func reloadFavorites() async {
+        // 何を並べるかはメインアクタ側で決め（`UserDefaults` を読むだけ）、
+        // 実 I/O を伴う行の組み立てだけを外へ出す [NV6-02]。
+        let locations = FavoriteLocations.visible
+        favoriteItems = await FileIO.perform { FavoriteLocations.load(locations) }
+    }
+
+    /// ツリーの選択が動いたときの移動 [LP-06]。
+    ///
+    /// **よく使う項目の行だけ、未許可ならその場で許可パネルを挟む**
+    /// ［ユーザー判断: 未許可の項目も普通に並べ、押したらパネルを出す］。
+    /// デスクトップ・書類は TCC 保護でそのパスへの許可が要り、ホーム自身も
+    /// 許可が要る [実測、`StandardLocation.accessRequirement`]——ここで
+    /// 求めないと、「アクセス権がありません」に突き当たるまで理由が分からない。
+    ///
+    /// 判定と許可の求め方は「移動」メニューと同じ `StandardLocationOpener`
+    /// に委ねる。同じ場所へ行く経路が 2 つあって振る舞いが違う、という形を
+    /// 作らないため [1-12 のアプリ関連付けで踏んだ「複数の到達経路」の教訓]。
+    private func navigateToSelection(_ selection: FolderTreeSelection) {
+        let root = selection.branch.navigationRoot
+        guard case .favorites = selection.branch,
+              let location = FavoriteLocations.visible.first(where: {
+                  $0.url.standardizedFileURL == selection.url.standardizedFileURL
+              })
+        else {
+            onSelect(selection.url, root)
+            return
+        }
+        StandardLocationOpener.open(
+            location, locale: locale,
+            // パネルを閉じられたら選択を戻す。押した瞬間に `List` の選択は
+            // 動いてしまうので、移動しなかったのに選択だけ進んだ状態を残すと、
+            // 次の ↑ ↓ が居ない場所から動き出す。
+            onCancel: { syncListSelection(to: selectedURL) },
+            navigate: { onSelect($0, root) }
+        )
+    }
+
     private func reloadRegisteredFolders() async {
         // **状態を 1 回でまとめて解決する** [1-17]。以前は登録ごとに
         // `resolvedURL(for:)` を逐次呼んでいたが、`states()` はマウント表を
@@ -748,6 +940,15 @@ struct FolderTreePane: View {
         }
         libraryEntries = built.library
         temporaryEntries = built.temporary
+        // **ここで `syncListSelection` を呼んではいけない** [実機検証で発見]。
+        // このメソッドは `await` を挟むので、そのあと読む `selectedURL` は
+        // **1 世代古い View インスタンスの値**になり得る（このコードベースが
+        // 繰り返し踏んでいる罠）。古い値で `listSelection` を書き換えると
+        // `.onChange(of: listSelection)` がユーザー操作と区別できずに発火し、
+        // **起動時フォルダを開いた直後に、それを捨てて古い場所へ戻してしまう。**
+        //
+        // 枝の取り違え（一覧が空のときテンポラリをライブラリと判定する）は、
+        // `FolderTreeBranch.identityKey` が種別を畳むことで無害になっている。
         syncRegistrationParentWatches(states)
         // 「移動」メニュー用のキャッシュも同じタイミングで更新する [1-16]。
         // 登録の追加・解除・表示名変更・`SessionState.reloadToken` の変化は
@@ -814,7 +1015,7 @@ struct FolderTreePane: View {
                             // [ユーザー報告: 直下にファイルしか無いのに三角が出る]。
                             // ネットワーク越しは調べない（`children(of:)` と同じ判断）。
                             hasSubfolders: MountTable.current().isRemote(url)
-                                ? nil : DirectoryProbe.hasSubdirectory(at: url)
+                                ? nil : DirectoryProbe.hasSubdirectory(at: url, countingPackages: false)
                         )
                     }
                     : nil
@@ -840,12 +1041,60 @@ struct FolderTreePane: View {
 
 /// 登録済みフォルダ 1 件（表示名・Security-Scoped Bookmark）と、解決済みの
 /// `FolderTreeNode`（オフラインなら `nil` [SB-05]）のペア。
-/// `List` の選択が指すもの。**URL と枝の両方**を持つ — 枝が無いと、
-/// 同じ実フォルダでもボリューム経由かライブラリ経由かを区別できず、
-/// `NavigationRoot` を正しく決められない [`FolderTreeBranch` 参照]。
+/// ツリーの行を一意に指す識別子。選択・展開・可視判定・スクロールの
+/// **すべてがこれを鍵にする。**
+///
+/// **URL と枝の両方**を持つ — 枝が無いと、同じ実フォルダでもボリューム経由か
+/// ライブラリ経由かを区別できず、`NavigationRoot` を正しく決められない
+/// [`FolderTreeBranch` 参照]。
+///
+/// ## なぜパスだけでは足りないのか
+///
+/// **同じ実フォルダが 2 つの枝に同時に現れる。** `~/Downloads` はホーム
+/// グループの行であると同時に、Macintosh HD → Users → … と辿った先にも
+/// ある。以前はパス文字列だけを鍵にしていたため、
+///
+/// - 片方を展開するともう片方も開き、
+/// - 選択のハイライトが 2 か所に出て、
+/// - `scrollTo` がどちらへ飛ぶか決まらなかった
+///
+/// ——最後のものは「起動時にホームグループの行をフォーカスする」[ユーザー要望]
+/// を直接壊す（ボリューム側の行へスクロールしうる）。ホームグループを
+/// 追加して確実に起こるようになったが、**登録フォルダでも同じ形が元から
+/// あった**（登録したフォルダはボリュームを辿っても到達できる）。
+///
+/// ## 同一性は正規化パスで決める（`URL` の `==` ではない）
+///
+/// `URL` の等価判定は末尾スラッシュや `isDirectory` フラグの違いまで見るため、
+/// `contentsOfDirectory` が返した URL と、祖先のパスから組み立てた URL が
+/// 一致しない。正規化は `init` で 1 回だけ行う——`Set` の出入りは行の
+/// 表示・非表示のたびに起きるので、`hash` のたびに正規化し直さない。
 struct FolderTreeSelection: Hashable {
     let url: URL
     let branch: FolderTreeBranch
+    private let normalizedPath: String
+
+    init(url: URL, branch: FolderTreeBranch) {
+        self.url = url
+        self.branch = branch
+        self.normalizedPath = url.standardizedFileURL.path
+    }
+
+    /// 祖先のパス文字列（`FolderTreePane.ancestorPaths`）から作る。
+    init(path: String, branch: FolderTreeBranch) {
+        self.init(url: URL(fileURLWithPath: path, isDirectory: true), branch: branch)
+    }
+
+    /// 枝は `identityKey` で比べる——`rootURL` の表現差を持ち込まないため
+    /// [`FolderTreeBranch.identityKey` 参照]。
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.branch.identityKey == rhs.branch.identityKey && lhs.normalizedPath == rhs.normalizedPath
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(branch.identityKey)
+        hasher.combine(normalizedPath)
+    }
 }
 
 /// 登録済みフォルダ 1 件の、ツリーが描くのに必要な材料 [1-17]。
@@ -1056,11 +1305,14 @@ private struct DegradedRegisteredFolderRow: View {
 /// ツリーの 1 行。実フォルダの子を遅延読み込みする再帰 View。
 private struct FolderTreeRow: View {
     let node: FolderTreeNode
-    @Binding var expandedIDs: Set<String>
+    @Binding var expandedIDs: Set<FolderTreeSelection>
     /// 現在画面に描画されている行の ID 集合。`.onAppear`/`.onDisappear` で
     /// 自分自身の ID を増減させる [`FolderTreePane.visibleNodeIDs` 参照]。
-    @Binding var visibleIDs: Set<String>
-    let selectedURL: URL?
+    @Binding var visibleIDs: Set<FolderTreeSelection>
+    /// いま選ばれている行 [`FolderTreeSelection`]。**枝まで含めて比べる**
+    /// ——同じ実フォルダがボリューム側とホームグループ側の両方にあるので、
+    /// パスだけで比べると青いハイライトが 2 か所に出る。
+    let selection: FolderTreeSelection?
     /// この行（および再帰的に読み込まれる子孫すべて）が属するツリーの枝
     /// [`FolderTreeBranch` 参照]。`registeredFolder` と違い**子孫にもそのまま
     /// 伝播させる**（クリックした行がツリーのどの枝に属するかを常に正しく
@@ -1079,6 +1331,17 @@ private struct FolderTreeRow: View {
     /// ままにし、登録解除・表示名変更のメニューが実フォルダの深い階層に
     /// 誤って出ないようにする。
     var registeredFolder: RegisteredFolder?
+    /// 実フォルダ名の代わりに使う表示名 [ユーザー要望: 表示名は Finder に
+    /// 揃える]。ホームグループの行だけが渡す（`~/Downloads` を「ダウンロード」
+    /// と描く）。
+    ///
+    /// **`String` ではなく `LocalizedStringKey` で受ける**のが要点。
+    /// `Text(LocalizedStringKey)` は `.environment(\.locale)` を自動で見るので、
+    /// アプリ内の表示言語切替にそのまま追従する——`localizedName` /
+    /// `displayName(atPath:)` は `Bundle.main.preferredLocalizations` に固定
+    /// されるため追従しない [実測]。**子孫には渡さない**: その先は実フォルダで、
+    /// 名前はユーザーが付けたものである。
+    var displayNameKey: LocalizedStringKey?
     /// 登録ルート行が縮退しているときの注記 [1-17]。`registeredFolder` と同じく
     /// **子孫には伝播させない**——`.unsupportedFileSystem` はボリューム全体の
     /// 性質なので配下にも当てはまるが、警告を全行に重ねて出しても読みづらく
@@ -1106,18 +1369,21 @@ private struct FolderTreeRow: View {
     @State private var watch = DirectoryObservation()
     @State private var isDropTargeted = false
 
-    private var isSelected: Bool {
-        selectedURL?.standardizedFileURL.path == node.url.standardizedFileURL.path
+    /// この行の識別子。選択・展開・可視判定・スクロールのすべてがこれを使う。
+    private var rowID: FolderTreeSelection {
+        FolderTreeSelection(url: node.url, branch: branch)
     }
+
+    private var isSelected: Bool { selection == rowID }
 
     private var isExpanded: Binding<Bool> {
         Binding(
-            get: { expandedIDs.contains(node.id) },
+            get: { expandedIDs.contains(rowID) },
             set: { newValue in
                 if newValue {
-                    expandedIDs.insert(node.id)
+                    expandedIDs.insert(rowID)
                 } else {
-                    expandedIDs.remove(node.id)
+                    expandedIDs.remove(rowID)
                 }
             }
         )
@@ -1130,6 +1396,26 @@ private struct FolderTreeRow: View {
             node: node, branch: branch, role: role, registeredFolder: registeredFolder,
             annotation: annotation, allowsWriting: allowsWriting
         )
+    }
+
+    /// 展開しようとして「アクセス権がありません」になったとき、その場で許可を
+    /// 求める経路 [ユーザー判断: ホームグループは押したらパネル]。
+    ///
+    /// **よく使う項目の行にだけ返す。** それ以外は従来どおり環境設定
+    /// 「アクセス権」タブへ誘導する——許可 UI を一箇所に集約するという既存の
+    /// 判断はそのままで、ここだけ例外にするのは「書類を開きたい」という
+    /// 明示的な操作の直後だから（移動メニューが同じ理由でその場パネルを
+    /// 出しているのと揃える）。
+    ///
+    /// 許可されると `requestAccess` が `SessionState.reloadToken` を進め、
+    /// この行の `.onChange` が読み直す——ここで明示的に読み直す必要は無い。
+    private var grantAccessInPlace: (() -> Void)? {
+        guard case .favorites = branch else { return nil }
+        let url = node.url
+        let locale = locale
+        return {
+            Task { _ = await StandardLocationOpener.requestAccess(to: url, locale: locale) }
+        }
     }
 
     /// ボリューム行の右端に出す取り出しボタン [ユーザー要望、Finder の
@@ -1171,7 +1457,11 @@ private struct FolderTreeRow: View {
     private var rowLabel: some View {
         HStack(spacing: Tokens.spacing.xs) {
         Label {
-            Text(node.displayName)
+            if let displayNameKey {
+                Text(displayNameKey)
+            } else {
+                Text(node.displayName)
+            }
         } icon: {
             // Finder と同じアイコン [ユーザー要望]。シンボリックリンクは
             // `NSWorkspace` が対象種別のアイコンにエイリアスの矢印バッジを
@@ -1322,13 +1612,17 @@ private struct FolderTreeRow: View {
         // 選択と行の対応が壊れ、最初の ↓ で先頭行へ飛んだきり動かなくなる
         // （実機で踏んだ。**最初にこれを調べずに実機で 3 通り試して溶かした**
         // ——CLAUDE.md 冒頭「不可解な事象はまず WebSearch で調べる」）。
-        .tag(FolderTreeSelection(url: node.url, branch: branch))
+        .tag(rowID)
+        // **`ScrollViewReader` の探し先も枝込みにする。** `ForEach` の暗黙の
+        // identity は `FolderTreeNode.id`（パス文字列）なので、明示しないと
+        // 同じパスの行が 2 つの枝にある場合にどちらへ飛ぶか決まらない。
+        .id(rowID)
         .disabled(node.isSymlink) // [SL-05]
         // [ユーザー要望] `List` の行virtualizationを利用して「実際に画面へ
         // 描画されているか」を追跡する（`revealSelectionIfNeeded` の
         // 「既に表示範囲内ならスクロールしない」判定に使う）。
-        .onAppear { visibleIDs.insert(node.id) }
-        .onDisappear { visibleIDs.remove(node.id) }
+        .onAppear { visibleIDs.insert(rowID) }
+        .onDisappear { visibleIDs.remove(rowID) }
         .onChange(of: isExpanded.wrappedValue, initial: true) { _, expanded in
             guard expanded else {
                 // **たたんだら忘れる** [レビューで発見]。以前は `children` を
@@ -1441,11 +1735,12 @@ private struct FolderTreeRow: View {
             if volumeNotMounted {
                 VolumeNotMountedRow() // [1-17][SB-05]
             } else if accessDenied {
-                AccessDeniedRow() // [SB-04][LP2-09]
+                AccessDeniedRow(onGrantInPlace: grantAccessInPlace) // [SB-04][LP2-09]
             } else if let children {
                 ForEach(children) { child in
                     FolderTreeRow(
-                        node: child, expandedIDs: $expandedIDs, visibleIDs: $visibleIDs, selectedURL: selectedURL,
+                        node: child, expandedIDs: $expandedIDs, visibleIDs: $visibleIDs,
+                        selection: selection,
                         branch: branch, role: .plainFolder, onSelect: onSelect,
                         onDropFailure: onDropFailure,
                         operations: operations, menuActions: menuActions,
@@ -1495,6 +1790,9 @@ private struct VolumeNotMountedRow: View {
 /// （`FolderTreeRow` の `.onChange(of: SessionState.shared.reloadToken)` 参照）。
 private struct AccessDeniedRow: View {
     @Environment(\.openWindow) private var openWindow
+    /// 非 `nil` なら、環境設定へ送らずその場で許可パネルを出す
+    /// [ホームグループの行だけ、`FolderTreeRow.grantAccessInPlace` 参照]。
+    var onGrantInPlace: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
@@ -1502,8 +1800,12 @@ private struct AccessDeniedRow: View {
                 .font(.system(size: Tokens.fontSize.caption))
                 .foregroundStyle(Tokens.Colors.dangerText)
             Button("folderTree.grantAccessEllipsis") {
-                PreferencesNavigation.shared.pendingCategory = .access
-                openWindow(id: "preferences")
+                if let onGrantInPlace {
+                    onGrantInPlace()
+                } else {
+                    PreferencesNavigation.shared.pendingCategory = .access
+                    openWindow(id: "preferences")
+                }
             }
             .font(.system(size: Tokens.fontSize.caption))
         }

@@ -78,18 +78,21 @@ private struct SingleItemInspector: View {
                 if let info {
                     Divider()
                     LabeledContent("column.kind", value: info.kindDescription) // [DT-04]
+                    // **実体がファイルのときだけ出す。** ディレクトリの
+                    // `fileSize` は `nil` なので、パッケージをファイル扱いに
+                    // すると「0 KB」と表示されてしまう [実機検証で発見]。
                     if !info.isDirectory {
                         LabeledContent("column.size", value: Self.sizeFormatter.string(fromByteCount: info.size ?? 0)) // [DT-03]
                     }
                     LabeledContent("column.creationDate", value: info.creationDate.map { Self.dateFormatter.string(from: $0) } ?? "—") // [DT-01]
                     LabeledContent("column.modificationDate", value: info.modificationDate.map { Self.dateFormatter.string(from: $0) } ?? "—") // [DT-02]
 
-                    if info.isDirectory || info.isArchive {
+                    if info.isNavigableFolder || info.isArchive {
                         Divider()
                         if let containedCounts {
                             LabeledContent("inspector.containedFileCount", value: "\(containedCounts.fileCount)") // [DT-05]
                             LabeledContent("inspector.containedFolderCount", value: "\(containedCounts.folderCount)") // [DT-06]
-                            if info.isDirectory {
+                            if info.isNavigableFolder {
                                 LabeledContent("inspector.totalContentSize", value: Self.sizeFormatter.string(fromByteCount: containedCounts.totalSize))
                             }
                         } else {
@@ -128,7 +131,7 @@ private struct SingleItemInspector: View {
             // **メインスレッドで `resourceValues` を呼ばない** [NV6-02]。
             // 選択を動かすたびに走るうえ、相手が応答しなければそこで止まる。
             info = await FileIO.perform { Self.loadInfo(for: url) }
-            guard let info, info.isDirectory || info.isArchive else { return }
+            guard let info, info.isNavigableFolder || info.isArchive else { return }
             // 打ち切られた場合は `nil` が返る。**途中まで数えた値を表示しない**
             // [レビューで発見]。`Task.detached` をやめてキャンセルが実際に
             // 伝わるようになったことで、それまで起こり得なかったこの経路が
@@ -139,7 +142,7 @@ private struct SingleItemInspector: View {
         .onChange(of: url, initial: true) { _, newValue in
             parentWatch.watch(newValue.deletingLastPathComponent(), scope: .shallow)
         }
-        .onChange(of: SubtreeWatchKey(url: url, isDirectory: info?.isDirectory == true), initial: true) { _, key in
+        .onChange(of: SubtreeWatchKey(url: url, isDirectory: info?.isNavigableFolder == true), initial: true) { _, key in
             subtreeWatch.watch(key.isDirectory ? key.url : nil, scope: .shallow)
         }
     }
@@ -165,17 +168,30 @@ private struct SingleItemInspector: View {
     /// 実機で発生）。
     nonisolated private static func loadInfo(for url: URL) -> FileDetailInfo? {
         guard let values = try? url.resourceValues(forKeys: [
-            .isDirectoryKey, .fileSizeKey, .creationDateKey, .contentModificationDateKey,
+            .isDirectoryKey, .isPackageKey, .fileSizeKey, .creationDateKey, .contentModificationDateKey,
         ]) else { return nil }
+        // **`isDirectory` は実体のまま持ち、パッケージかどうかは別に持つ**
+        // [実機検証で発見: `isDirectory` を潰したら、`.app` のサイズが
+        // 「0 KB」と表示された——ディレクトリの `fileSize` は `nil` なので、
+        // ファイル扱いにした瞬間に `?? 0` が効いてしまう]。
+        //
+        // 使い分けは呼び出し側で決める:
+        //  ・サイズを出すか  → 実体がファイルのときだけ（`isDirectory` を見る）
+        //  ・中を数えるか    → フォルダのときだけ（`isNavigableFolder` を見る）
+        // パッケージの中を数えないので、写真ライブラリ（`.photoslibrary`）を
+        // 選んだだけで TCC の許可ダイアログが出ることも無くなる。
         let isDirectory = values.isDirectory ?? false
+        let isPackage = values.isPackage ?? false
         let isArchive = !isDirectory && ArchiveFormat.from(filename: url.lastPathComponent) != nil
         return FileDetailInfo(
             isDirectory: isDirectory,
+            isPackage: isPackage,
             isArchive: isArchive,
             size: values.fileSize.map(Int64.init),
             creationDate: values.creationDate,
             modificationDate: values.contentModificationDate,
-            kindDescription: Self.kindDescription(for: url, isDirectory: isDirectory)
+            // パッケージは実際の種別で答える（`.app` なら「アプリケーション」）。
+            kindDescription: Self.kindDescription(for: url, isDirectory: isDirectory && !isPackage)
         )
     }
 
@@ -184,6 +200,8 @@ private struct SingleItemInspector: View {
     /// 同じ数行を持つ（`ThumbnailService.identity(of:)` と同じ理由）。
     /// `loadInfo`（nonisolated、FileIO のスレッド上で走る）から呼ばれるため
     /// こちらも nonisolated。
+    /// - Parameter isDirectory: **パッケージを除いた**「フォルダか」。
+    ///   `.app` を「フォルダ」と答えないよう、呼び出し側で除いてから渡す。
     nonisolated private static func kindDescription(for url: URL, isDirectory: Bool) -> String {
         let locale = AppLanguage.effectiveLocale
         if isDirectory { return String(localized: "kind.folder", locale: locale) }
@@ -280,12 +298,20 @@ private struct SingleItemInspector: View {
 }
 
 private struct FileDetailInfo {
+    /// **実体がディレクトリか。** パッケージ（`.app` など）もここは `true`。
     let isDirectory: Bool
+    /// Finder が 1 つの項目として扱うディレクトリ [ユーザー要望]。
+    let isPackage: Bool
     let isArchive: Bool
     let size: Int64?
     let creationDate: Date?
     let modificationDate: Date?
     let kindDescription: String
+
+    /// 中を数える対象か。**パッケージは数えない**——利用者にとっては 1 つの
+    /// 項目で、写真ライブラリのような TCC 保護のパッケージでは、選んだだけで
+    /// 許可ダイアログが出ることにもなる。
+    var isNavigableFolder: Bool { isDirectory && !isPackage }
 }
 
 private struct ContainedCounts {

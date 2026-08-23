@@ -15,6 +15,91 @@ struct DirectoryProbeTests {
         return url
     }
 
+    // MARK: - 隠し項目 [ユーザー報告: 空のはずのフォルダに三角が出る]
+
+    /// **`UF_HIDDEN` は名前の `.` 接頭辞とは別の隠し方。**
+    /// `FileManager` の `.skipsHiddenFiles` も Finder もこれを隠すので、
+    /// ここでも数えない——数えると「一覧には何も出ないのに三角だけがある」
+    /// 状態になる（実際に `~/Downloads` がこの状態だった）。
+    @Test func foldersHiddenByFlagAreNotCounted() throws {
+        let root = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let hidden = root.appendingPathComponent("PlainName")
+        try FileManager.default.createDirectory(at: hidden, withIntermediateDirectories: false)
+        try FileManager.default.setAttributes(
+            [.init(rawValue: FileAttributeKey.immutable.rawValue): false], ofItemAtPath: hidden.path)
+        // `chflags hidden` 相当。`FileAttributeKey` には無いので直に立てる。
+        var status = stat()
+        #expect(stat(hidden.path, &status) == 0)
+        #expect(chflags(hidden.path, status.st_flags | UInt32(UF_HIDDEN)) == 0)
+
+        // 一覧（`.skipsHiddenFiles`）に出ないことを先に確かめる——**この前提が
+        // 崩れたらテストの意味が無くなる**ので一緒に固定する。
+        let listed = try FileManager.default.contentsOfDirectory(
+            at: root, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
+        #expect(listed.isEmpty)
+
+        #expect(DirectoryProbe.hasSubdirectory(at: root) == false)
+        #expect(DirectoryProbe.hasSubdirectory(at: root, includingHidden: true) == true)
+    }
+
+    // MARK: - パッケージ [ユーザー要望: `.app` は 1 つの項目として扱う]
+
+    /// フォルダツリーはパッケージを行として出さない。**それを理由に三角を
+    /// 出すと「開いても何も無い」嘘になる**ので、数にも入れない。
+    @Test func packagesAreNotCountedWhenAsked() throws {
+        let root = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: root) }
+        for name in ["Test.app", "Test.bundle", "Test.rtfd"] {
+            try FileManager.default.createDirectory(
+                at: root.appendingPathComponent(name), withIntermediateDirectories: false)
+        }
+        // 既定（`countingPackages: true`）は従来どおり数える——中央ペインの
+        // ように「実体がディレクトリか」を知りたい呼び出し側のため。
+        #expect(DirectoryProbe.hasSubdirectory(at: root) == true)
+        #expect(DirectoryProbe.hasSubdirectory(at: root, countingPackages: false) == false)
+    }
+
+    /// パッケージに混じって素のフォルダが 1 つでもあれば数える。
+    /// **打ち切りの位置を間違えると、パッケージで止まって取りこぼす。**
+    @Test func aPlainFolderAmongPackagesIsStillFound() throws {
+        let root = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: root) }
+        // 名前順でパッケージが先に来るようにする（`/Applications` と同じ形）。
+        for name in ["A.app", "B.app", "Utilities"] {
+            try FileManager.default.createDirectory(
+                at: root.appendingPathComponent(name), withIntermediateDirectories: false)
+        }
+        #expect(DirectoryProbe.hasSubdirectory(at: root, countingPackages: false) == true)
+    }
+
+    /// **[既知の限界] パッケージへのシンボリックリンクは数えてしまう。**
+    ///
+    /// `URLResourceKey` はリンクを辿らないので（[実測] `isDirectory` すら
+    /// `false` を返す）、`isPackage` はリンク自身を見て `false` になる。
+    /// 一方この関数の `DT_LNK` 経路は `stat(2)` で辿るため「ディレクトリが
+    /// ある」と数える。
+    ///
+    /// **これはリンク全般が抱える既存の不整合の一部で、パッケージ固有では
+    /// ない。** `FolderTreeNode.children(of:)` も同じ `isDirectory` で弾くため
+    /// **シンボリックリンクはそもそもツリーに行として出ない**（[実測]）——
+    /// つまり「リンクだけがあるフォルダは三角が出るが、開くと空」という
+    /// 食い違いが以前からある（仕様 [SL-01][SL-06] は「リンク自体を 1 項目
+    /// として表示する」と定めており、実装がそこに追いついていない）。
+    ///
+    /// ここではその実態を固定するに留める——直すなら `children(of:)` 側で
+    /// リンクを表示できるようにするのが筋で、パッケージの都合で片側だけ
+    /// 変えると食い違いが増える。
+    @Test func aSymlinkToAPackageIsStillCounted() throws {
+        let root = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let package = root.appendingPathComponent("Real.app")
+        try FileManager.default.createDirectory(at: package, withIntermediateDirectories: false)
+        let link = root.appendingPathComponent("Link.app")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: package)
+        #expect(DirectoryProbe.hasSubdirectory(at: root, countingPackages: false) == true)
+    }
+
     @Test func emptyDirectoryHasNoSubdirectory() throws {
         let root = try makeWorkspace()
         defer { try? FileManager.default.removeItem(at: root) }
