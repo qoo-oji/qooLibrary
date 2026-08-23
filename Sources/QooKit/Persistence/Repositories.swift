@@ -183,6 +183,34 @@ public protocol ManagedFileRepository: Sendable {
     /// - Parameter source: `.number` または `.volume`。`.ask` は何もしない。
     func resolveVolumeConflicts(_ ids: [FileID],
                                 using source: ComicInfoVolumeSource) async throws
+
+    // MARK: - 評価 [RA-01〜RA-08]
+
+    /// 星を書き込む [RA-01]。`0` は未評価 [RA-02]（`rating` 列は未評価を 0 で持つ
+    /// ので、解除は「0 を書く」ことで表す）。範囲外は 0〜5 へ丸める。
+    ///
+    /// **走査は `rating` に触れない**（`updateInPlace` の SQL に列が無い）ので、
+    /// 再スキャンで消えることはない。JSON バックアップにも入る
+    /// （`regenerableColumns` に `rating` が無い＝再生成不可能データ [MG-22]）。
+    func setRating(_ stars: Int, ids: [FileID]) async throws
+
+    /// 同じシリーズのファイル [RA-04]。**基準のファイル自身も含む。**
+    ///
+    /// ## `seriesName` ではなく `seriesKey` で照合する
+    /// 呼び出し側にシリーズ名を渡させる形（`filesInSeries(libraryID:seriesName:)`）
+    /// にすると、**呼び出し側に正規化の責務が移る**——表記ゆれのある巻が黙って
+    /// 対象から漏れ、しかも漏れたことは件数を数えても分からない。基準の
+    /// ファイルを渡してもらえば、同じ行の正規化済み `seriesKey`（索引
+    /// `mf_lib_series`）でそのまま引ける。ライブラリの取り違えも構造的に起きない。
+    ///
+    /// ## どの状態まで含めるか［設計判断］
+    /// **`.trashed` だけを除く。** 評価は DB 上の属性で、実体の有無に関わらず
+    /// 保持される [ID-08] ——外付けを抜いている（`.offline`）あいだに全巻へ
+    /// 適用したら、挿し直したときだけ 1 冊違う、という形になるほうが驚きが
+    /// 大きい。ゴミ箱（`.trashed`）は消す予定のものなので除く。
+    ///
+    /// シリーズ名を持たなければ空配列を返す [RA-07]。
+    func filesInSameSeries(as id: FileID) async throws -> [FileRow]
 }
 
 /// DB に置く埋め込みメタデータのキャッシュ 1 件ぶん [EM-07]。

@@ -87,3 +87,20 @@ enum FileMetadata {
         )
     }
 }
+
+/// ライブラリの DB 行を引くための識別子 [ID-01][ID-02]。
+///
+/// `FileMetadata` は `QooInfrastructure` の内部型なので、上位層（インスペクタが
+/// 選択中のファイルの行を引く等）から使えるようにする窓口をここに置く。
+///
+/// **`library.volumeUUID` を渡すこと。** 走査が
+/// `FileMetadata.identity(of:volumeUUID:)` に**ライブラリの**識別子を渡して
+/// 書いたのと同じ組でなければ引き当たらない——ここで
+/// `VolumeIdentity.identifier(for: url)` を独立に求め直すと、走査時と食い違った
+/// 場合に「DB に載っているのに引けない」という、原因の分かりにくい形になる。
+public enum LibraryFileIdentity {
+    /// - Note: `stat(2)` を伴う。**`FileIO.perform` の中から呼ぶこと** [NV6-02]。
+    public static func of(_ url: URL, volumeUUID: String) -> FileIdentity? {
+        FileMetadata.identity(of: url, volumeUUID: volumeUUID)
+    }
+}

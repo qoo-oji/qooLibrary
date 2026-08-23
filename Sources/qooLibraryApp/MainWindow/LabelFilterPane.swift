@@ -110,15 +110,10 @@ struct LabelFilterPane: View {
     private var ratingSection: some View {
         Section {
             HStack(spacing: Tokens.spacing.xs) {
-                ForEach(1...5, id: \.self) { star in
-                    Button {
-                        toggleRating(star)
-                    } label: {
-                        Image(systemName: isStarFilled(star) ? "star.fill" : "star")
-                            .foregroundStyle(model.ratingFilter == nil ? Color.secondary : Color.accentColor)
-                    }
-                    .buttonStyle(.plain)
-                }
+                RatingStars(
+                    filled: model.ratingFilter?.stars ?? 0,
+                    tint: model.ratingFilter == nil ? Color.secondary : Color.accentColor,
+                    onSelect: toggleRating)
                 Spacer()
                 // [RT-03] 「以上」と「ちょうど」の切り替え。
                 Menu {
@@ -144,13 +139,9 @@ struct LabelFilterPane: View {
         }
     }
 
-    private func isStarFilled(_ star: Int) -> Bool {
-        guard let filter = model.ratingFilter else { return false }
-        // 「ちょうど」でも星は左から塗る——空の星の間に塗った星が飛び飛びで
-        // 並ぶ形にすると、何が選ばれているのか読み取れない。モードは
-        // 隣のメニューが示す。
-        return star <= filter.stars
-    }
+    // 「ちょうど」でも星は左から塗る（`RatingStars` の `filled` にそのまま
+    // 星数を渡す）——空の星の間に塗った星が飛び飛びで並ぶ形にすると、何が
+    // 選ばれているのか読み取れない。モードは隣のメニューが示す。
 
     private func toggleRating(_ star: Int) {
         if let current = model.ratingFilter, current.stars == star {

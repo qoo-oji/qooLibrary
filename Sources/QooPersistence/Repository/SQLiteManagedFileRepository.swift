@@ -397,6 +397,48 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
         }
     }
 
+    // MARK: - 評価 [RA-01〜RA-08]
+
+    public func setRating(_ stars: Int, ids: [FileID]) async throws {
+        guard !ids.isEmpty else { return }
+        let clamped = max(0, min(5, stars))
+        try await database.writer.write { db in
+            // **分割して書く。**「シリーズ全巻に適用」[RA-04] は 1 回で数百件に
+            // なりうるので、`matchingRelativePaths` と同じ理由（ホスト変数の
+            // 上限と、巨大な `IN` の実測 56 倍の遅さ）で 900 件ずつに区切る。
+            //
+            // **この分割は変異検証では空振りする**（外しても全件正しく書ける）。
+            // この環境の SQLite はホスト変数の上限が高いため——壊れるのは
+            // 速度のほうで、`matchingRelativePaths` とまったく同じ事情。
+            // 外さないこと。
+            for start in stride(from: 0, to: ids.count, by: Self.maxBoundParameters) {
+                let chunk = Array(ids[start..<min(start + Self.maxBoundParameters, ids.count)])
+                var args: [any DatabaseValueConvertible] = [clamped]
+                args.append(contentsOf: chunk.map(\.rawValue))
+                try db.execute(sql: """
+                    UPDATE managedFile SET rating = ?
+                     WHERE id IN (\(Self.placeholders(chunk.count)))
+                    """, arguments: StatementArguments(args.map { Optional($0) }))
+            }
+        }
+    }
+
+    public func filesInSameSeries(as id: FileID) async throws -> [FileRow] {
+        try await database.writer.read { db in
+            // 基準の行から `libraryId` と `seriesKey` を取る——呼び出し側に
+            // 渡させない理由はプロトコルのコメント参照。
+            guard let anchor = try Row.fetchOne(db, sql: """
+                SELECT libraryId, seriesKey FROM managedFile WHERE id = ?
+                """, arguments: [id.rawValue]) else { return [] }
+            guard let key: String = anchor["seriesKey"], !key.isEmpty else { return [] }
+            return try ManagedFileRecord.fetchAll(db, sql: """
+                SELECT * FROM managedFile
+                 WHERE libraryId = ? AND seriesKey = ? AND state <> 'trashed'
+                 ORDER BY COALESCE(volumeNumber, 1e18), relativePath
+                """, arguments: [anchor["libraryId"] as Int64, key]).map(\.fileRow)
+        }
+    }
+
     // MARK: - 読み取り
 
     public func row(id: FileID) async throws -> FileRow? {

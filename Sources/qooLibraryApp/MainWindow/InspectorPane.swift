@@ -1,4 +1,5 @@
 import AppKit
+import QooApplication
 import QooInfrastructure
 import QooKit
 import SwiftUI
@@ -9,9 +10,9 @@ import UniformTypeIdentifiers
 /// いない場合は現在のフォルダ自身の情報を表示する（Finder には無い挙動だが、
 /// 常設インスペクタとして常に何か表示されている方が有用なため）[設計判断]。
 ///
-/// タイトル編集・ラベル・評価・カバー画像の差し替え（DT-08/09/11、
-/// RP-10〜12、RL-01〜09、RA-01〜08、CV2-02〜08）は SwiftData の
-/// `Library`/`ManagedFile` が前提の Phase 2 機能のため未実装。アプリの
+/// **評価 [RA-01〜RA-08] は実装済み**（`InspectorRatingSection`、2-10 の第 1 段）。
+/// タイトル編集・ラベル・カバー画像の差し替え（DT-08/09/11、RP-10〜12、
+/// RL-01〜09、CV2-02〜08）は 2-10 の残りとして未実装。アプリの
 /// 関連付け表示（DT-07）も `AppAssociationService`（1-12 で実装予定）が無いため
 /// 未実装。カバー画像の「表示」（CV2-01 相当）のみ、1-9 で作った
 /// `ThumbnailService`/`FileIconProvider` を再利用して実装する。
@@ -21,6 +22,10 @@ struct InspectorPane: View {
     let selection: Set<URL>
     /// カバー画像の表示もサムネイル一括トグルに従う [DS-06][CV2-01]。
     let thumbnailsHidden: Bool
+    /// 表示中のライブラリ [RA-01]。ボリューム経由で開いているなら `nil`。
+    /// **URL から逆算しない**——`NavigationRoot` の約束に従い、判定は
+    /// 呼び出し側（`MainWindowView`）の責務（`LabelFilterModel` と同じ）。
+    let library: LibrarySummary?
 
     private var targets: [URL] {
         if selection.isEmpty {
@@ -34,7 +39,15 @@ struct InspectorPane: View {
             if targets.isEmpty {
                 PlaceholderPane(title: String(localized: "inspector.title", locale: locale), subtitle: "")
             } else if targets.count == 1 {
-                SingleItemInspector(url: targets[0], thumbnailsHidden: thumbnailsHidden)
+                SingleItemInspector(
+                    url: targets[0], thumbnailsHidden: thumbnailsHidden,
+                    // **何も選んでいないときは評価欄を出さない**［設計判断］。
+                    // その場合ここが描いているのは「いま居る場所」であって、
+                    // 利用者が選んだ項目ではない——立っている場所に星を付ける
+                    // 操作は意味を成さないし、ライブラリを歩くあいだずっと
+                    // 「評価できません」が常駐することになる。ブックフォルダ
+                    // [RA-08] は 1 冊として親の一覧に並ぶので、そちらで選べる。
+                    library: selection.isEmpty ? nil : library)
             } else {
                 MultiItemInspector(urls: targets)
             }
@@ -46,6 +59,10 @@ struct InspectorPane: View {
 private struct SingleItemInspector: View {
     let url: URL
     let thumbnailsHidden: Bool
+    let library: LibrarySummary?
+
+    /// 評価 [RA-01〜RA-08]。判定は `QooApplication` 側が持つ。
+    @State private var rating = RatingEditorModel()
 
     @State private var info: FileDetailInfo?
     @State private var containedCounts: ContainedCounts?
@@ -100,6 +117,8 @@ private struct SingleItemInspector: View {
                         }
                     }
 
+                    InspectorRatingSection(model: rating) // [RA-01〜RA-08]
+
                     Divider()
                     LabeledContent("inspector.location") {
                         Text(url.deletingLastPathComponent().path)
@@ -139,6 +158,14 @@ private struct SingleItemInspector: View {
             guard let counts = await Self.computeContainedCounts(for: url, isArchive: info.isArchive) else { return }
             containedCounts = counts
         }
+        // 評価を読む [RA-01]。**操作履歴の長さを鍵に含める**——⌘Z / ⇧⌘Z は
+        // この View を通らずに DB を書き換えるので、選択と入口だけを鍵に
+        // すると取り消した結果が星に反映されない。`operationHistory` は
+        // run / undo / redo のいずれでも 1 件増える（`CommandStack.record`）。
+        .task(id: RatingLoadKey(url: url, libraryID: library?.id,
+                                commandRevision: CommandStack.shared.operationHistory.count)) {
+            await rating.load(url: url, library: library, services: LibraryServices.shared)
+        }
         .onChange(of: url, initial: true) { _, newValue in
             parentWatch.watch(newValue.deletingLastPathComponent(), scope: .shallow)
         }
@@ -158,6 +185,12 @@ private struct SingleItemInspector: View {
     private struct SubtreeWatchKey: Equatable {
         let url: URL
         let isDirectory: Bool
+    }
+
+    private struct RatingLoadKey: Equatable {
+        let url: URL
+        let libraryID: LibraryID?
+        let commandRevision: Int
     }
 
     /// **`nonisolated` は必須。** `resourceValues` は I/O を伴うため呼び出し元は

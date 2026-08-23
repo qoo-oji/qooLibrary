@@ -2658,6 +2658,23 @@
         }
       }
     },
+    "error.setRatingFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rating failed"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "評価の設定に失敗しました"
+          }
+        }
+      }
+    },
     "error.trashFailed": {
       "extractionState": "stale",
       "localizations": {
@@ -4420,6 +4437,91 @@
           "stringUnit": {
             "state": "translated",
             "value": "場所"
+          }
+        }
+      }
+    },
+    "inspector.rating": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rating"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "評価"
+          }
+        }
+      }
+    },
+    "inspector.rating.applySeries": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apply to all %@ volumes in this series"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このシリーズ全巻（%@ 冊）に適用"
+          }
+        }
+      }
+    },
+    "inspector.rating.clearSeries": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear the rating for all %@ volumes in this series"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このシリーズ全巻（%@ 冊）の評価を解除"
+          }
+        }
+      }
+    },
+    "inspector.rating.noSeries": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No series name"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "シリーズ名がありません"
+          }
+        }
+      }
+    },
+    "inspector.rating.notInLibrary": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cannot be rated: not in the library"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ライブラリに取り込まれていないため評価できません"
           }
         }
       }

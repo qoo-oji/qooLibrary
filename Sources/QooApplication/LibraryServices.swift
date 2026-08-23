@@ -392,6 +392,42 @@ public final class LibraryServices {
         Log.app.info("巻数の判断を確定: \(ids.count) 件 → \(source.rawValue)")
     }
 
+    // MARK: - 評価 [RA-01〜RA-08]
+
+    /// 選択中のファイルに対応する DB 行を引く。無ければ `nil`
+    /// （対象拡張子外・まだ走査されていない・ライブラリの外）。
+    ///
+    /// **`FileIdentity` で引く**——`relativePath` の照合にすると、綴り（NFD/NFC・
+    /// 大小文字）が 1 文字でも食い違った瞬間に黙って空振りする経路を新しく
+    /// 作ることになる（差分スキャンで実際に踏んだ形、10章 §10.6）。同一性は
+    /// 走査が書いたものそのものなので、綴りの一致に依存しない。
+    ///
+    /// - Note: `stat(2)` を伴うため `FileIO` の上で求める [NV6-02]。
+    public func fileRow(at url: URL, in library: LibrarySummary) async throws -> FileRow? {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        let identity = await FileIO.perform {
+            LibraryFileIdentity.of(url, volumeUUID: library.volumeUUID)
+        }
+        guard let identity, let id = try await repository.find(identity: identity) else {
+            return nil
+        }
+        return try await repository.row(id: id)
+    }
+
+    /// 星を書き込む [RA-01][RA-02]。**Undo は `SetRatingCommand` が担う**ので、
+    /// UI から直接ここを呼ばないこと（呼ぶと ⌘Z で戻せない操作ができる）。
+    public func setRating(_ stars: Int, ids: [FileID]) async throws {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        try await repository.setRating(stars, ids: ids)
+    }
+
+    /// 同じシリーズの全巻 [RA-04]。件数の事前表示 [RA-05] と一括適用の両方が
+    /// これを使う——別々に数えると「N 冊に適用します」と実際の件数がずれる。
+    public func filesInSameSeries(as id: FileID) async throws -> [FileRow] {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        return try await repository.filesInSameSeries(as: id)
+    }
+
     // MARK: - バックアップ [IE-01〜IE-14][BK-05]
 
     /// DB を JSON へ写す [IE-01][IE-02]。

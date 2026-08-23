@@ -513,7 +513,11 @@ struct MainWindowView: View {
                     InspectorPane(
                         folder: windowState.folder,
                         selection: windowState.selection,
-                        thumbnailsHidden: windowState.areThumbnailsHidden // [DS-06][CV2-01]
+                        thumbnailsHidden: windowState.areThumbnailsHidden, // [DS-06][CV2-01]
+                        // ラベルフィルタと同じ解決経路 [RA-01][LF-01]。
+                        // 入口が登録フォルダのときだけライブラリが決まる。
+                        library: windowState.navigationRoot.registrationUUID
+                            .flatMap { LibraryServices.shared.library(registrationUUID: $0) }
                     )
                     .inspectorColumnWidth(min: 220, ideal: rightWidth, max: 420)
                     .modifier(PaneWidthPersisting(storedWidth: $rightWidth))
