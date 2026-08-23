@@ -31,6 +31,25 @@ struct FolderContentView: View {
     /// このクロージャは呼び出しのたびに `windowState.tabs[index].folder` を
     /// 読み直す（`MainWindowView` 側の配線を参照）。
     let currentFolder: () -> URL?
+    /// ラベルフィルタが有効なときに、この一覧へ残してよい**直下の子の名前**
+    /// [VM-02][LF-14]。`nil` は「絞らない」（フィルタ全 OFF、ライブラリの外、
+    /// または件数を数えられなかったとき）。
+    ///
+    /// **DB の一覧をそのまま描くのではなく、実体の一覧を絞る**——フォルダ表示
+    /// モードではすべてのファイル操作が可能でなければならず [VM-03]、フィルタが
+    /// 全 OFF なら DB に載っていないもの（対象拡張子以外）も従来どおり見える
+    /// 必要がある [VM-01]。集合には「該当ファイルの名前」と「該当ファイルを
+    /// 配下に持つフォルダの名前」の両方が入っている。
+    var allowedChildNames: Set<String>?
+    /// 再帰検索の結果へラベルフィルタを効かせる [LF-14]。残してよい URL を返す。
+    /// `nil` は「絞らない」（フィルタ全 OFF・ライブラリの外・問い合わせ失敗）。
+    ///
+    /// **直下の名前（`allowedChildNames`）では検索結果を絞れない**——深い所の
+    /// 該当ファイルは、それを含む直下フォルダの名前へ畳まれて集合に入るため、
+    /// 名前で突き合わせると同じフォルダの非該当ファイルまで通る。
+    var filterDeepResults: ((_ urls: [URL]) async -> Set<URL>?)?
+    /// フィルタが変わったことの合図。`.task(id:)` の鍵に混ぜる。
+    var labelFilterRevision: Int = 0
     @Binding var selection: Set<URL>
     /// 「戻る」「1階層上へ」で親フォルダへ移動した直後、直前までいた
     /// フォルダまでスクロールするための信号 [`WindowState.pendingRevealURL`
@@ -105,6 +124,8 @@ struct FolderContentView: View {
     /// 再帰検索の結果 [ユーザー要望: サブフォルダも再帰的に検索する]。
     /// 検索していないときは空。
     @State private var searchResults: [FolderEntry] = []
+    /// 検索結果のうちラベルフィルタに該当するもの [LF-14]。`nil` は絞らない。
+    @State private var allowedDeepURLs: Set<URL>?
     /// 走査中か（進捗表示用）。
     @State private var isSearching = false
     /// 上限（`AppLimits.Search.maxResults`）に達して打ち切ったか。
@@ -566,6 +587,17 @@ struct FolderContentView: View {
         // 再帰検索 [ユーザー要望]。`.task(id:)` はキーが変わると前のタスクを
         // 自動でキャンセルしてから始めるので、打鍵のたびに走査が積み上がらない。
         .task(id: searchKey) { await runSearch() }
+        // [LF-14] 検索結果へラベルフィルタを効かせる。**結果が増えるたびに
+        // 問い合わせ直す**——検索は 64 件ごとに小出しで反映されるので、完了を
+        // 待つと「一度すべて出てから絞られる」ちらつきになる。1 回の問い合わせは
+        // 900 件以下の `IN` なので、数十回に分かれても費用は小さい。
+        .task(id: deepFilterKey) {
+            guard hasActiveSearch, let filterDeepResults else {
+                allowedDeepURLs = nil
+                return
+            }
+            allowedDeepURLs = await filterDeepResults(searchResults.map(\.url))
+        }
         // 検索中だけ配下すべてを見張る [10章 §10.0]。検索していないときは
         // 対象を `nil` にして登録を解く。
         .onChange(of: SearchWatchKey(folder: folder, isSearching: hasActiveSearch), initial: true) { _, key in
@@ -1269,6 +1301,22 @@ struct FolderContentView: View {
     /// 検索フィールド自体はウインドウのツールバー（`MainWindowView`）にあり、
     /// このビューは `searchText` を受け取って一覧を絞り込む役目だけを持つ
     /// [Finder 風の「普段はボタン、押すと検索欄」にするためツールバーへ移した]。
+    /// 検索結果の絞り込みを問い合わせ直す条件 [LF-14]。
+    ///
+    /// **URL の配列そのものを鍵にしない**——2,000 件の配列のハッシュを再描画の
+    /// たびに計算することになる。件数と検索語で十分区別できる。
+    private struct DeepFilterKey: Hashable {
+        let folder: URL?
+        let searchText: String
+        let resultCount: Int
+        let filterRevision: Int
+    }
+
+    private var deepFilterKey: DeepFilterKey {
+        DeepFilterKey(folder: folder, searchText: searchText,
+                      resultCount: searchResults.count, filterRevision: labelFilterRevision)
+    }
+
     private var hasActiveSearch: Bool {
         !searchText.trimmingCharacters(in: .whitespaces).isEmpty
     }
@@ -1285,6 +1333,23 @@ struct FolderContentView: View {
         // 一致判定の規則とその理由は `NameFilter` 側にまとめてある。
         // ライブラリ横断検索・ラベル検索はフェーズ2の担当。
         var result = hasActiveSearch ? searchResults : entries
+        // [VM-02] ラベルフィルタ。該当ファイルと、該当ファイルを配下に持つ
+        // フォルダだけを残す。
+        //
+        // **検索中は適用しない**——`searchResults` は配下から再帰的に集めた
+        // 一覧なので、直下の子の名前とは照合できない（深い所のファイルは
+        // 名前ではなく、それを含む直下フォルダの名前として集合に入っている）。
+        // 素朴に名前で突き合わせると「該当が 1 件でもあるフォルダの中身が
+        // 全部通る」という、絞れているように見えて絞れていない状態になる。
+        // 検索との併用は `matchingRelativePaths` で別に扱う。
+        if hasActiveSearch {
+            // [LF-14] 検索結果は 1 件ずつ DB へ問い合わせて絞る。
+            if let allowed = allowedDeepURLs {
+                result = result.filter { allowed.contains($0.url) }
+            }
+        } else if let allowed = allowedChildNames {
+            result = result.filter { allowed.contains($0.name) }
+        }
         result.sort(using: sortOrder)
         if groupFoldersAtTop {
             result = result.filter(\.isDirectory) + result.filter { !$0.isDirectory }

@@ -31,14 +31,30 @@ public struct FileQuery: Sendable, Hashable {
     }
 
     /// 評価フィルタ [RT-01][RT-03]。
+    ///
+    /// **「選んだ星以上」と「星と完全一致」を切り替えられること**が要件 [RT-03]。
+    /// 以前は `minimum` と `unratedOnly` の 2 つで表していたが、その形では
+    /// 「星 3 ちょうど」を書けない——`unratedOnly` は `.exact` の星 0 として
+    /// 吸収した（`rating` 列は未評価を 0 で持つ）。
     public struct RatingFilter: Sendable, Hashable {
-        public let minimum: Int
-        /// `true` = 未評価（0）だけを見る。
-        public let unratedOnly: Bool
-        public init(minimum: Int, unratedOnly: Bool = false) {
-            self.minimum = minimum
-            self.unratedOnly = unratedOnly
+        public enum Mode: String, Sendable, Hashable, CaseIterable {
+            case atLeast
+            case exact
         }
+
+        /// 0〜5 [RT-01]。**`init` で丸める**——範囲外を弾かずに黙って
+        /// 通すと、`rating >= 9` のような決して一致しない条件が
+        /// 「フィルタが壊れている」ようにしか見えない形で表に出る。
+        public let stars: Int
+        public let mode: Mode
+
+        public init(stars: Int, mode: Mode = .atLeast) {
+            self.stars = max(0, min(5, stars))
+            self.mode = mode
+        }
+
+        /// 未評価だけを見る。
+        public static let unrated = RatingFilter(stars: 0, mode: .exact)
     }
 
     public var libraryID: LibraryID

@@ -127,6 +127,27 @@ public protocol ManagedFileRepository: Sendable {
     func row(id: FileID) async throws -> FileRow?
     func query(_ q: FileQuery) async throws -> FilePage
     func count(_ q: FileQuery) async throws -> Int
+    /// フィルタに該当するファイルから、`scope` のフォルダ**直下**の子の名前を集める
+    /// [VM-02][LF-14]。
+    ///
+    /// 「該当ファイル」と「**該当ファイルを配下に持つフォルダ**」が 1 度の
+    /// 問い合わせで両方得られる——深い所にある該当ファイルは、その最初のパス成分
+    /// （＝直下のフォルダ名）として現れる。フォルダ表示モードで絞り込むための
+    /// 唯一の入口で、`query` で全件を取って呼び出し側が畳む形は採らない
+    /// （フィルタが緩いとライブラリ全件を materialize することになる [FI-05]）。
+    ///
+    /// `scope` の `recursive` は**無視して必ず配下全体**を見る。直下だけを見ると
+    /// 「該当ファイルを配下に持つフォルダ」を落とす。
+    func matchingChildNames(_ q: FileQuery) async throws -> Set<String>
+    /// 候補の相対パスのうち、条件に該当するものを返す [LF-14]。
+    ///
+    /// 検索結果（配下から再帰的に集めた一覧）へフィルタを効かせるための経路。
+    /// ``matchingChildNames(_:)`` は直下の子へ畳んでしまうので、深い階層の
+    /// 1 件ずつを見分けたいときはこちらを使う。**候補を渡す形にしてあるのは、
+    /// 該当ファイル全件を持ち出さないため** [FI-05]——緩いフィルタでは
+    /// ライブラリのほぼ全件が該当し得る。
+    func matchingRelativePaths(_ q: FileQuery,
+                               among candidates: [String]) async throws -> Set<String>
     /// 走査の範囲にあるが今回観測されなかったレコードを返す。
     ///
     /// 孤立にするかどうかは呼び出し側が決める——**ブックフォルダが 1 冊扱いを
@@ -249,6 +270,12 @@ public struct LabelSummary: Sendable, Hashable, Identifiable {
 
 public protocol LabelRepository: Sendable {
     func groups(libraryID: LibraryID) async throws -> [LabelGroupSummary]
+    /// ラベルフィルタでの表示順 [LF-03][LG-07]。**ライブラリ単位の永続設定で
+    /// 全ウインドウ共有** [ST-23]——ウインドウごとに違う順序で並ぶと、
+    /// 同じライブラリを 2 枚開いたときにどちらが正しいか言えなくなる。
+    ///
+    /// 渡された順に 0 から振り直す。一覧に無いグループには触れない。
+    func setGroupOrder(_ orderedIDs: [LabelGroupID]) async throws
     func group(libraryID: LibraryID, index: Int) async throws -> LabelGroupSummary?
     func labels(groupID: LabelGroupID, includeArchived: Bool) async throws -> [LabelSummary]
     /// 無ければ作る。一意性は `(groupID, 正規化名)` [LB-01][N-03][LA-07]。

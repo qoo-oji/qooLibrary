@@ -242,6 +242,22 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
         }
     }
 
+    /// ラベルフィルタでの表示順 [LF-03][LG-07][ST-23]。
+    ///
+    /// **1 トランザクションでまとめて振り直す**——途中で落ちて順序が半分だけ
+    /// 入れ替わると、`displayOrder` に重複が生まれて並びが不定になる
+    /// （`groups()` は `ORDER BY displayOrder, groupIndex` なので、同点は
+    /// `groupIndex` で決まってしまい利用者の並べ替えが黙って無かったことになる）。
+    public func setGroupOrder(_ orderedIDs: [LabelGroupID]) async throws {
+        guard !orderedIDs.isEmpty else { return }
+        try await database.writer.write { db in
+            for (order, id) in orderedIDs.enumerated() {
+                try db.execute(sql: "UPDATE labelGroup SET displayOrder = ? WHERE id = ?",
+                               arguments: [order, id.rawValue])
+            }
+        }
+    }
+
     /// 増分更新 [IX-03] の破綻に備えた全件再集計 [IX-04]。
     /// 実測 844 ms / 10,530 ラベル——疑わしければ気軽に回してよい。
     public func recountAll(libraryID: LibraryID) async throws {

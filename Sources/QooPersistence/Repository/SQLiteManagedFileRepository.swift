@@ -430,6 +430,83 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
         }
     }
 
+    /// フィルタに該当するファイルから、`scope` のフォルダ直下の子の名前を集める
+    /// [VM-02][LF-14]。
+    ///
+    /// **1 度の問い合わせで「該当ファイル」と「該当ファイルを配下に持つフォルダ」
+    /// の両方**が得られる。深い所にある該当ファイルは、最初のパス成分
+    /// （＝直下のフォルダ名）へ畳まれて現れる。
+    public func matchingChildNames(_ q: FileQuery) async throws -> Set<String> {
+        // **必ず配下全体を見る。**直下だけに絞ると「該当ファイルを配下に持つ
+        // フォルダ」を落とし、フィルタを掛けた瞬間に掘っていけなくなる。
+        var recursive = q
+        let folder: String
+        switch q.scope {
+        case .folder(let path, _):
+            folder = path
+            recursive.scope = .folder(path: path, recursive: true)
+        case .library:
+            folder = ""
+        }
+        // 位置は `sqliteOffsetAfter` で数える（`String.count` は使えない。
+        // 同関数のコメント参照）。SELECT 節が先なので引数もこちらが先。
+        let offset = Self.sqliteOffsetAfter(folder)
+        let frozen = recursive
+        return try await database.writer.read { db in
+            // **引数の組み立てはこの中で行う**——`[any DatabaseValueConvertible]`
+            // は Sendable ではないので、外で作ると閉包に渡せない（`query` も同じ形）。
+            let (where_, whereArgs) = Self.whereClause(frozen)
+            var args: [any DatabaseValueConvertible] = [offset, offset, offset, offset]
+            args.append(contentsOf: whereArgs)
+            let names = try String.fetchAll(db, sql: """
+                SELECT DISTINCT CASE
+                    WHEN instr(substr(relativePath, ?), '/') = 0
+                        THEN substr(relativePath, ?)
+                    ELSE substr(relativePath, ?, instr(substr(relativePath, ?), '/') - 1)
+                END FROM managedFile WHERE \(where_)
+                """, arguments: StatementArguments(args.map { Optional($0) }))
+            return Set(names.filter { !$0.isEmpty })
+        }
+    }
+
+    /// 候補の相対パスのうち、条件に該当するものを返す [LF-14]。
+    public func matchingRelativePaths(_ q: FileQuery,
+                                      among candidates: [String]) async throws -> Set<String> {
+        guard !candidates.isEmpty else { return [] }
+        let frozen = q
+        return try await database.writer.read { db in
+            let (where_, whereArgs) = Self.whereClause(frozen)
+            var found: Set<String> = []
+            // **分割して問う。**理由は 2 つあり、実際に効いているのは後者。
+            //
+            // ① SQLite のホスト変数の上限は版・ビルドオプションによって 999 まで
+            //    下がる。検索結果の上限（2,000 件）をそのまま並べると、GRDB が
+            //    同梱する SQLite かシステムのものかで挙動が変わる。
+            // ② **巨大な `IN` は桁違いに遅い** [実測]。1,805 件の候補で
+            //    900 件ずつなら 0.20 秒、1 回にまとめると 11.14 秒（56 倍）。
+            //
+            // この環境の上限は高いので ① だけでは分割を外しても通ってしまう
+            // （変異検証で確認済み）。**分割をやめると壊れるのは速度のほう。**
+            for start in stride(from: 0, to: candidates.count, by: Self.maxBoundParameters) {
+                let chunk = Array(candidates[start..<min(start + Self.maxBoundParameters,
+                                                         candidates.count)])
+                var args: [any DatabaseValueConvertible] = whereArgs
+                args.append(contentsOf: chunk)
+                let rows = try String.fetchAll(db, sql: """
+                    SELECT relativePath FROM managedFile
+                     WHERE \(where_) AND relativePath IN (\(Self.placeholders(chunk.count)))
+                    """, arguments: StatementArguments(args.map { Optional($0) }))
+                found.formUnion(rows)
+            }
+            return found
+        }
+    }
+
+    /// 1 度の問い合わせに並べるホスト変数の上限。条件側の分も入るので
+    /// 余裕を見て 900 にしてある（SQLite の既定は版により 999〜32,766）。
+    /// **速度の観点でも 900 前後が要る**——上の実測を参照。
+    static let maxBoundParameters = 900
+
     // MARK: - SQL の組み立て
 
     /// 「グループ内 OR × グループ間 AND」は `INTERSECT` で表す [LF-08〜LF-10][FI-01]。
@@ -458,12 +535,10 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
         }
 
         if let rating = q.ratingFilter {
-            if rating.unratedOnly {
-                clauses.append("rating = 0")
-            } else {
-                clauses.append("rating >= ?")
-                args.append(rating.minimum)
-            }
+            // [RT-03] 「以上」と「完全一致」。未評価は `rating = 0` なので
+            // `.exact` の星 0 でそのまま表せる。
+            clauses.append(rating.mode == .atLeast ? "rating >= ?" : "rating = ?")
+            args.append(rating.stars)
         }
 
         if let text = q.searchText, !text.isEmpty {

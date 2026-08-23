@@ -282,6 +282,14 @@ public enum AppLimits {
         public static let previewSampleLimit = 500
     }
 
+    /// ラベルフィルタ [LF-01〜LF-14][PN-01〜PN-06]。
+    public enum LabelFilter {
+        /// ピン留めが 1 件も無いグループで、たたんだまま見せるラベルの数
+        /// [PN-03]。100 を超えるラベルを前提にした機能なので [PN-01]、
+        /// 既定では出さない残りを「もっと見る」へ回す。
+        public static let collapsedLabelCount = 10
+    }
+
     public enum Search {
         /// 再帰検索で保持する結果の上限。
         ///

@@ -308,6 +308,70 @@ public final class LibraryServices {
         await refreshLibraries()
     }
 
+    // MARK: - ラベル [LF-01〜LF-14][PN-01〜PN-06]
+
+    /// ラベルフィルタに並べるグループ [LF-01]。
+    ///
+    /// **ラベルが 0 件のグループを落とすのは呼び出し側の仕事** [LF-02][LA-09]
+    /// ——`labelCount` はアーカイブ済みを数えないので、この値が 0 かどうかで
+    /// 判定できる。ここで落としてしまうと、ラベルグループ編集ウインドウ
+    /// （2-6）が空のグループを触れなくなる。
+    public func labelGroups(libraryID: LibraryID) async throws -> [LabelGroupSummary] {
+        guard let repository = labelRepository else { throw ServiceError.notReady }
+        return try await repository.groups(libraryID: libraryID)
+    }
+
+    /// グループに属するラベル [LF-04]。既定でアーカイブ済みを含めない [LF-12][LA-02]。
+    public func labels(groupID: LabelGroupID,
+                       includeArchived: Bool = false) async throws -> [LabelSummary] {
+        guard let repository = labelRepository else { throw ServiceError.notReady }
+        return try await repository.labels(groupID: groupID, includeArchived: includeArchived)
+    }
+
+    /// ピン留め [PN-04]。**ライブラリ単位の永続設定で全ウインドウ共有** [ST-23]。
+    public func setLabelPinned(_ id: LabelID, _ pinned: Bool) async throws {
+        guard let repository = labelRepository else { throw ServiceError.notReady }
+        try await repository.setPinned(id, pinned)
+    }
+
+    /// グループの並べ替え [LF-03][LG-07]。こちらも全ウインドウ共有 [ST-23]。
+    public func setLabelGroupOrder(_ orderedIDs: [LabelGroupID]) async throws {
+        guard let repository = labelRepository else { throw ServiceError.notReady }
+        try await repository.setGroupOrder(orderedIDs)
+    }
+
+    // MARK: - 一覧の問い合わせ [FI-01〜FI-05][VM-02]
+
+    /// 条件に該当する件数 [LF-11]。
+    public func fileCount(_ q: FileQuery) async throws -> Int {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        return try await repository.count(q)
+    }
+
+    /// フォルダ表示モードで残す子の名前 [VM-02]。
+    ///
+    /// 返るのは「該当ファイルの名前」と「該当ファイルを配下に持つフォルダの名前」
+    /// の**両方**。中央ペインはこの集合で実ファイルの一覧を絞る——DB 側の
+    /// 一覧をそのまま描くのではなく、**実体の一覧を絞る**形にしてあるのは、
+    /// フォルダ表示モードではファイル操作がすべて可能でなければならない
+    /// [VM-03] ためで、DB に載っていないもの（対象拡張子以外）もフィルタが
+    /// 全 OFF なら従来どおり見える必要がある [VM-01]。
+    public func matchingChildNames(_ q: FileQuery) async throws -> Set<String> {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        return try await repository.matchingChildNames(q)
+    }
+
+    /// 候補の相対パスのうち条件に該当するものを返す [LF-14]。
+    ///
+    /// 中央ペインの**再帰検索の結果**へフィルタを効かせるための経路。
+    /// `matchingChildNames` は直下の子へ畳むので、深い階層のファイルを
+    /// 1 件ずつ見分けるにはこちらが要る。
+    public func matchingRelativePaths(_ q: FileQuery,
+                                      among candidates: [String]) async throws -> Set<String> {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        return try await repository.matchingRelativePaths(q, among: candidates)
+    }
+
     // MARK: - 巻数の判断 [EM-30〜EM-35]
 
     /// `ComicInfo.xml` の `Number` と `Volume` が食い違っていて、まだ判断して

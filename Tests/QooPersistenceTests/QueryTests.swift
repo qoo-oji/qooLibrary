@@ -189,10 +189,101 @@ struct QueryTests {
             }
         }
         var q = FileQuery(libraryID: f.libraryID)
-        q.ratingFilter = .init(minimum: 3)
+        q.ratingFilter = .init(stars: 3)                             // 以上
         #expect(try await f.files.query(q).totalCount == 3)          // 3,4,5
-        q.ratingFilter = .init(minimum: 0, unratedOnly: true)
+        // [RT-03] 「星と完全一致」。以上との差が出る値で確かめる——`.exact` を
+        // `.atLeast` として実装しても星 5 では同じ件数になり、空振りする。
+        q.ratingFilter = .init(stars: 3, mode: .exact)
+        #expect(try await f.files.query(q).totalCount == 1)          // 3 だけ
+        q.ratingFilter = .unrated
         #expect(try await f.files.query(q).totalCount == 1)          // 0
+        // 範囲外は丸める（決して一致しない条件を作らせない）。
+        #expect(FileQuery.RatingFilter(stars: 9).stars == 5)
+        #expect(FileQuery.RatingFilter(stars: -1).stars == 0)
+    }
+
+    /// フォルダ表示モードでフィルタを掛けたときに何を残すか [VM-02][LF-14]。
+    ///
+    /// 「該当ファイル」だけでなく「**該当ファイルを配下に持つフォルダ**」も
+    /// 残さないと、フィルタを掛けた瞬間に下の階層へ掘っていけなくなる。
+    @Test("該当ファイルと、それを配下に持つフォルダの名前が取れる [VM-02]")
+    func matchingChildNames() async throws {
+        let s = try await Setup.make()
+        // Setup は フォルダ0/{file1,file3}、フォルダ1/{file2,file4} を作る。
+        let all = try await s.f.files.matchingChildNames(s.query())
+        #expect(all == ["フォルダ0", "フォルダ1"])
+
+        // A1 が付くのは file1（フォルダ0）と file3（フォルダ0）だけ。
+        // **配下に該当が無いフォルダ1 は落ちる。**
+        let a1 = try await s.f.files.matchingChildNames(s.query([3: ["A1"]]))
+        #expect(a1 == ["フォルダ0"])
+
+        // フォルダの中まで降りるとファイル名で返る。
+        var inFolder = try await s.query([3: ["A1"]])
+        inFolder.scope = .folder(path: "フォルダ0", recursive: false)
+        #expect(try await s.f.files.matchingChildNames(inFolder) == ["file1.cbz", "file3.cbz"])
+    }
+
+    /// `recursive: false` を渡されても配下全体を見る。直下だけに絞ると
+    /// 「該当ファイルを配下に持つフォルダ」を落とす。
+    @Test("直下指定でも配下全体から畳む [VM-02]")
+    func matchingChildNamesIgnoresRecursiveFlag() async throws {
+        let f = try await Fixture.make()
+        _ = try await f.files.upsert(f.snapshot(inode: 1, path: "a.cbz"))
+        _ = try await f.files.upsert(f.snapshot(inode: 2, path: "sub/b.cbz"))
+        _ = try await f.files.upsert(f.snapshot(inode: 3, path: "sub/deep/c.cbz"))
+        var q = FileQuery(libraryID: f.libraryID)
+        q.scope = .folder(path: "", recursive: false)
+        #expect(try await f.files.matchingChildNames(q) == ["a.cbz", "sub"])
+        q.scope = .folder(path: "sub", recursive: false)
+        #expect(try await f.files.matchingChildNames(q) == ["b.cbz", "deep"])
+    }
+
+    /// 再帰検索の結果へフィルタを効かせる経路 [LF-14]。
+    @Test("候補のうち条件に該当するものだけ返る [LF-14]")
+    func matchingRelativePaths() async throws {
+        let s = try await Setup.make()
+        let q = try await s.query([2: ["C1"]])          // file1, file2 が該当
+        let candidates = ["フォルダ0/file1.cbz", "フォルダ1/file2.cbz",
+                          "フォルダ0/file3.cbz", "存在しない.cbz"]
+        let matched = try await s.f.files.matchingRelativePaths(q, among: candidates)
+        #expect(matched == ["フォルダ0/file1.cbz", "フォルダ1/file2.cbz"])
+        // **候補に無いものは返らない**——DB 側の該当を全部返す実装にすると、
+        // 検索結果に無いファイルまで一覧へ紛れ込む。
+        #expect(try await s.f.files.matchingRelativePaths(q, among: []).isEmpty)
+    }
+
+    /// ホスト変数の上限を越える候補でも落とさない [LF-14]。
+    ///
+    /// **このテストは分割の有無を見分けられない**（変異検証で確認済み）——
+    /// この環境の SQLite は上限が高く、1 回にまとめても結果は正しい。
+    /// 実際に壊れるのは速度で、1,805 件を 1 回で問うと 0.20 秒 → 11.14 秒に
+    /// なる（実測）。ここで固定しているのは「分割しても取りこぼさない」ことだけ。
+    @Test("候補が上限を越えても分割して問い合わせる [LF-14]")
+    func matchingRelativePathsSplitsLargeCandidateSets() async throws {
+        let f = try await Fixture.make()
+        let count = SQLiteManagedFileRepository.maxBoundParameters * 2 + 5
+        _ = try await f.files.upsertBatch((0..<count).map {
+            f.snapshot(inode: UInt64($0 + 1), path: String(format: "%05d.cbz", $0))
+        })
+        let candidates = (0..<count).map { String(format: "%05d.cbz", $0) }
+        let matched = try await f.files.matchingRelativePaths(
+            FileQuery(libraryID: f.libraryID), among: candidates)
+        #expect(matched.count == count)
+    }
+
+    /// **濁点を含むフォルダ名**でも畳めること。`substr` の位置を
+    /// `String.count` で数えると 1 つずれて空振りする（`sqliteOffsetAfter`
+    /// のコメント参照）。
+    @Test("濁点を含むフォルダ名でも子の名前を畳める [実測]")
+    func matchingChildNamesUnderComposedFolderName() async throws {
+        let f = try await Fixture.make()
+        let parent = "ガジェット"      // NFD で来る想定の濁点入り
+        _ = try await f.files.upsert(f.snapshot(inode: 1, path: "\(parent)/x.cbz"))
+        _ = try await f.files.upsert(f.snapshot(inode: 2, path: "\(parent)/なか/y.cbz"))
+        var q = FileQuery(libraryID: f.libraryID)
+        q.scope = .folder(path: parent, recursive: false)
+        #expect(try await f.files.matchingChildNames(q) == ["x.cbz", "なか"])
     }
 
     @Test("ページングは総件数を一緒に返す [PF-10][FI-05]")
@@ -415,5 +506,20 @@ struct LabelRepositoryTests {
         try await f.labels.setArchived([id], false)
         try await f.labels.setPinned(id, true)
         #expect(try await f.labels.labels(groupID: group.id, includeArchived: false).first?.isPinned == true)
+    }
+
+    /// ラベルフィルタでの並べ替え [LF-03][LG-07][ST-23]。
+    @Test("グループの表示順を保存できる [LF-03][LG-07]")
+    func groupOrdering() async throws {
+        let f = try await Fixture.make()
+        let groups = try await f.labels.groups(libraryID: f.libraryID)
+        #expect(groups.count >= 3)
+        let reversed = groups.reversed().map(\.id)
+        try await f.labels.setGroupOrder(reversed)
+        let after = try await f.labels.groups(libraryID: f.libraryID)
+        #expect(after.map(\.id) == reversed)
+        // **同点を作らない**——`groups()` は `displayOrder, groupIndex` の順なので、
+        // 重複が残ると利用者の並べ替えが黙って `groupIndex` 順へ戻る。
+        #expect(Set(after.map(\.displayOrder)).count == after.count)
     }
 }

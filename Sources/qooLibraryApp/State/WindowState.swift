@@ -1,4 +1,5 @@
 import Foundation
+import QooApplication
 import QooInfrastructure
 import SwiftUI
 
@@ -16,6 +17,13 @@ import SwiftUI
 public enum NavigationRoot: Sendable, Hashable, Codable {
     case volume
     case registeredFolder(id: UUID, rootURL: URL)
+
+    /// 登録フォルダ経由なら登録 ID。ボリューム経由なら `nil`。
+    /// ラベルフィルタがライブラリを解決するのに使う [LF-01]。
+    public var registrationUUID: UUID? {
+        if case .registeredFolder(let id, _) = self { return id }
+        return nil
+    }
 }
 
 /// 新しいタブ／ウインドウの行き先 [ネイティブタブ移行]。
@@ -131,6 +139,10 @@ public final class WindowState {
     // Observation が無限に再評価を繰り返す不具合を実機検証で確認済みのため、
     // そのパターンは避けている）。
     public var listStyle: ListStyle // [LV-04]
+    /// ラベルフィルタ [LF-01〜LF-14]。**ウインドウ固有** [ST-21][LF-06]
+    /// ——選択は DB に保存せず、同じライブラリを 2 枚開けば別々に絞れる。
+    /// ピン留めとグループの並び順だけは全ウインドウ共有 [ST-23]。
+    public let labelFilter = LabelFilterModel()
     public var iconSize: Double // [IV-04]
 
     public init(target: TabTarget = .home) {
@@ -448,6 +460,26 @@ public final class WindowState {
         else { return }
         selection = [leavingFolder]
         pendingRevealURL = leavingFolder
+    }
+
+    /// ライブラリ根から見た現在フォルダの相対パス [VM-02][LF-14]。
+    ///
+    /// DB の `relativePath` と同じ綴り方（根を剥がしただけ、先頭に `/` を付けない。
+    /// 根そのものなら空文字）にする——`LibraryEnumerator.snapshot` がそう作る。
+    ///
+    /// **現在地が根の配下に無ければ `nil`**。`navigationRoot` は「どの入口から
+    /// 来たか」を持ち回る値なので、パスバーで登録ルートより上へ移ったり
+    /// `relocate` で登録先が変わったりすると `.registeredFolder` のまま外に出る
+    /// （`relocateIfFolderVanished` が同じ配慮をしている）。その状態で相対パスを
+    /// 作ると、まったく無関係な場所を指す文字列ができる。
+    public var libraryRelativePath: String? {
+        guard case .registeredFolder(_, let rootURL) = navigationRoot,
+              let folder else { return nil }
+        let root = rootURL.standardizedFileURL.path
+        let current = folder.standardizedFileURL.path
+        if current == root { return "" }
+        guard current.hasPrefix(root + "/") else { return nil }
+        return String(current.dropFirst(root.count + 1))
     }
 
     /// このタブの現在地を、新しいタブ／ウインドウの行き先として表す。

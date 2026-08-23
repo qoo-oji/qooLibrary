@@ -453,6 +453,20 @@ struct MainWindowView: View {
                     FolderContentView(
                             folder: windowState.folder,
                             currentFolder: { windowState.folder },
+                            // [VM-02] ラベルフィルタで残す子の名前。左ペインを
+                            // 畳んでいても効く（駆動しているのは `.task`）。
+                            allowedChildNames: windowState.labelFilter.allowedChildNames,
+                            // [LF-14] 検索結果は名前では絞れないので、1 件ずつ
+                            // DB へ問い合わせる経路を渡す。
+                            filterDeepResults: { urls in
+                                guard case .registeredFolder(_, let rootURL)
+                                        = windowState.navigationRoot else { return nil }
+                                return await windowState.labelFilter.deepMatches(
+                                    urls,
+                                    libraryRootPath: rootURL.standardizedFileURL.path,
+                                    services: LibraryServices.shared)
+                            },
+                            labelFilterRevision: windowState.labelFilter.revision,
                             selection: $windowState.selection,
                             pendingRevealURL: $windowState.pendingRevealURL,
                             navigationCameFromTree: windowState.navigationCameFromTree,
@@ -496,6 +510,21 @@ struct MainWindowView: View {
     }
 
 
+    private var labelFilterLoadKey: LabelFilterLoadKey {
+        LabelFilterLoadKey(
+            root: windowState.navigationRoot,
+            libraries: LibraryServices.shared.libraries.map {
+                "\($0.id.rawValue):\($0.settingsRevision)"
+            })
+    }
+
+    private var labelFilterResultKey: LabelFilterResultKey {
+        LabelFilterResultKey(
+            libraryID: windowState.labelFilter.library?.id,
+            relativePath: windowState.libraryRelativePath,
+            revision: windowState.labelFilter.revision)
+    }
+
     /// キーボードショートカットの配線（可視要素を持たない不可視ボタン群）。
     /// `mainToolbar`/`detailPane` と同じ理由で `body` から切り出している。
     ///
@@ -526,6 +555,13 @@ struct MainWindowView: View {
                 // 割り当てたときだけ効く）。「取り出す」（⌘E）はファイルメニュー側。
                 KeyBindingButtons(action: .ejectAll, store: keyBindingStore) {
                     Task { await VolumeEjectAction.ejectAll() }
+                }
+                // ラベルフィルタの一括 OFF（既定 ⇧⌘K）[LF-07]。1-8 で
+                // `ActionID.clearLabelFilter` として登録だけしてあったものを、
+                // ここで初めて配線した。**ウインドウ固有の状態**なので、
+                // 押したウインドウの絞り込みだけが解ける [ST-21][LF-06]。
+                KeyBindingButtons(action: .clearLabelFilter, store: keyBindingStore) {
+                    windowState.labelFilter.clearAll()
                 }
             }
             .frame(width: 0, height: 0)
@@ -562,11 +598,13 @@ struct MainWindowView: View {
                         dividerIndex: 0, targetSize: folderTreeHeight, axis: .vertical,
                         onDividerMoved: { folderTreeHeight = $0 }
                     ))
-                    PlaceholderPane(
-                        title: String(localized: "mainWindow.labelFilter", locale: locale),
-                        subtitle: String(localized: "mainWindow.implementedIn28", locale: locale)
-                    )
-                    .frame(minHeight: 80)
+                    // ラベルフィルタ [LF-01〜LF-14]。読み込みと再計算は下の
+                    // `.task` が駆動する——**左ペインと中央ペインの両方**が
+                    // 同じ結果を見る必要があり、この View に持たせると
+                    // 左ペインを畳んだときに中央の絞り込みが止まる。
+                    LabelFilterPane(model: windowState.labelFilter,
+                                    services: LibraryServices.shared)
+                        .frame(minHeight: 80)
                 }
                 .navigationSplitViewColumnWidth(min: 180, ideal: leftWidth, max: 400)
                 .modifier(PaneWidthPersisting(storedWidth: $leftWidth))
@@ -598,6 +636,23 @@ struct MainWindowView: View {
         // 「取り出す」の判定は現在地とマウント状態でしか変わらないので、
         // その 2 つが動いたときだけ調べ直す [NV6-02]。
         .task(id: windowState.folder) { await refreshEjectState() }
+        // ラベルフィルタのグループとラベルを読む [LF-01][LF-02]。
+        //
+        // **一覧の変化にも乗せる**——`LibraryServices.libraries` は起動直後に
+        // 非同期で埋まるので、「開いたとき 1 回」だけ読む造りにすると空の
+        // 一覧を見て確定してしまう（ライブラリ設定ウインドウで実際に踏んだ
+        // 競合と同じ形）。有効化・無効化・設定変更もここで拾える。
+        .task(id: labelFilterLoadKey) {
+            await windowState.labelFilter.load(
+                registrationUUID: windowState.navigationRoot.registrationUUID,
+                services: LibraryServices.shared)
+        }
+        // 件数と、中央ペインが残す子の名前を数え直す [LF-11][VM-02]。
+        .task(id: labelFilterResultKey) {
+            await windowState.labelFilter.refreshResults(
+                folderRelativePath: windowState.libraryRelativePath,
+                services: LibraryServices.shared)
+        }
         .onChange(of: SessionState.shared.reloadToken) {
             Task { await refreshEjectState() }
         }
@@ -673,6 +728,25 @@ private struct PaneWidthPersisting: ViewModifier {
             }
         }
     }
+}
+
+/// ラベルフィルタの読み込みを走らせ直す条件。
+///
+/// `libraries` の要約まで含めるのは、**有効化・無効化・設定変更に追随する**ため。
+/// `settingsRevision` が変わるとラベルグループの名前や並びも変わり得る [VT-02]。
+private struct LabelFilterLoadKey: Hashable {
+    let root: NavigationRoot
+    let libraries: [String]
+}
+
+/// 件数と絞り込み結果を数え直す条件。
+///
+/// **選択そのものを鍵にしない**——辞書の中身が同じでも別インスタンスになった
+/// 瞬間に再計算が走る。`revision` は選択・評価が実際に変わったときだけ増える。
+private struct LabelFilterResultKey: Hashable {
+    let libraryID: LibraryID?
+    let relativePath: String?
+    let revision: Int
 }
 
 struct PlaceholderPane: View {
