@@ -4787,6 +4787,36 @@ AX で問い合わせれば採れる（`AXMenuItemCmdChar` / `AXMenuItemCmdModif
   確かめている（見落とし方向へ倒れていないことの担保）。
 
 
+### デバッグビルドを Apple Development で署名する（TCC の再プロンプト対策、2026-08）
+
+ユーザー報告:「デバッグビルドでミュージックや写真などのフォルダへのアクセス許可を
+尋ねるダイアログが定期的に出る。一度許可してもしばらくすると再び出る」。
+
+**真因は時間ではなく再ビルド。** `project.yml` に `DEVELOPMENT_TEAM` が無く、
+`CODE_SIGN_STYLE: Automatic` が**アドホック署名**に落ちていた。指定要件が
+`designated => cdhash H"…"` になるため、**再ビルドのたびに TCC から見て別の
+アプリ**になり、`~/Pictures/Photos Library.photoslibrary`（`kTCCServicePhotos`）・
+`~/Music` のライブラリ（`kTCCServiceMediaLibrary`）への許可が失効する。
+entitlements の `assets.*` はサンドボックス層を通すだけで TCC 層には効かない
+（既記録のとおり）。
+
+- **対処**: `DEVELOPMENT_TEAM: 2FF822GHRW` を追加。指定要件が
+  `identifier "com.qoolibrary.app" and anchor apple generic and certificate leaf[subject.CN] = …`
+  になり、再ビルドを越えて TCC の許可が保たれる。切替直後に
+  `tccutil reset Photos|MediaLibrary|SystemPolicy*Folder com.qoolibrary.app` で
+  旧 CDHash の記録を掃除した。
+- **踏んだ罠: Team ID は証明書の CN の括弧内ではない。** `Apple Development:
+  … (X9JV7585FT)` の括弧内を Team ID として渡すと「No signing certificate
+  "Mac Development" found」で落ちる。**Team ID は証明書の OU**（`openssl x509
+  -subject` で確認、ここでは `2FF822GHRW`）。
+- **CI には証明書が無い**ので、`ci.yml` の xcodebuild に
+  `CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM=` を渡して
+  アドホックへ戻す（同じ引数で手元でも BUILD SUCCEEDED・`Signature=adhoc` を確認）。
+- 署名の切替後に起動し、CPU 0%・ウインドウが描画されることまで確認した。
+- **残る限界**: Photos／Music ライブラリのパッケージ内部を覗けば、署名が安定していても
+  **初回は必ず 1 回**尋ねられる。署名と独立に止めるには `.photoslibrary` 等の
+  パッケージを Finder と同じく 1 項目として扱い中へ降りない対処が要る（未着手）。
+
 ### サブフォルダを持たないフォルダに三角マークを出さない（ユーザー報告）
 
 ユーザー報告:「ライブラリフォルダに登録したフォルダの直下にファイルしかないのに、

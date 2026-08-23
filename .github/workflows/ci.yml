@@ -86,7 +86,7 @@ jobs:
       - name: Generate qooLibrary.xcodeproj
         run: xcodegen generate
       - name: xcodebuild
-        run: xcodebuild -project qooLibrary.xcodeproj -scheme qooLibraryApp -configuration Debug build
+        run: xcodebuild -project qooLibrary.xcodeproj -scheme qooLibraryApp -configuration Debug build CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM=
 
   # LC-05: THIRD-PARTY-NOTICES.md の更新漏れ検出。
   license:
