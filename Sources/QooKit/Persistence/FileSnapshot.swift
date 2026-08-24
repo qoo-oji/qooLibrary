@@ -50,6 +50,34 @@ public enum CoverSource: String, Sendable, Codable, Hashable { case auto, sideca
 /// 表現する [RC-04]。
 public enum LabelOrigin: String, Sendable, Codable, Hashable, CaseIterable {
     case auto, manual, manuallyRemoved
+
+    /// 統合したとき、同じファイルに付いていた 2 つのラベルの `origin` から
+    /// 残すほうを決める [LB-07][LE-11]［ユーザー判断］。
+    ///
+    /// **manual > auto > manuallyRemoved。** 統合は「同じものに 2 つの名前が
+    /// 付いていた」を是正する操作なので、どちらかで手で付けていたなら手動として
+    /// 残す。素朴に移動先を優先すると、`source` が `manual`・`target` が
+    /// `manuallyRemoved` のファイルで**手動付与が黙って消える**——しかも
+    /// 件数を見ても気づけない。
+    ///
+    /// 逆に「統合したのだから一律 `manual`」にはしない。自動付与されたラベルを
+    /// まとめただけで再スキャン耐性が変わってしまい（`auto` は再計算で更新されるが
+    /// `manual` は守られる [RC-04]）、`manuallyRemoved` の印まで消えて**外した
+    /// はずのラベルが復活する**。
+    ///
+    /// **この 1 行が決定の実体**なので、SQL にも View にも埋めずここに置く
+    /// （`LabelEditorModel.candidates` と同じ理由）。
+    public static func merging(_ a: LabelOrigin, _ b: LabelOrigin) -> LabelOrigin {
+        rank(a) >= rank(b) ? a : b
+    }
+
+    private static func rank(_ origin: LabelOrigin) -> Int {
+        switch origin {
+        case .manual: 2
+        case .auto: 1
+        case .manuallyRemoved: 0
+        }
+    }
 }
 
 /// 一覧に表示する 1 行 [RP2-02]。`Sendable` な値型で、DB の行そのものではない。

@@ -119,7 +119,12 @@ targets.append(
     // ——両者は相互依存しないため、片方のテストターゲットからは書けない [A-01]。
     .testTarget(
         name: "IntegrationTests",
-        dependencies: ["QooInfrastructure", "QooPersistence", "QooKit"]
+        // `QooApplication` は `LibrarySyncIntegrationTests` が `@testable import`
+        // する。**宣言が無くても Debug は偶然通る**（他のテストターゲットが
+        // 同じ場所へ吐いたモジュールを拾うため）が、Release では
+        // 「no such module 'QooApplication'」で落ちる——2-2 でこのテストを
+        // 足したときに宣言が漏れ、CI が Debug しか回さないため気づかれずにいた。
+        dependencies: ["QooApplication", "QooInfrastructure", "QooPersistence", "QooKit"]
     )
 )
 

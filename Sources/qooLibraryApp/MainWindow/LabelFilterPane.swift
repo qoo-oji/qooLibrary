@@ -231,6 +231,15 @@ struct LabelFilterPane: View {
             // （`Toggle` のラベルは既定で内容幅なので `Spacer` が効かない）。
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        // 改名・統合・保管庫へ送る導線 [LB-06][LB-07][LA-01]。ここから直接
+        // 編集させず、**編集ウインドウ（15.2）へ送る**——改名は他のラベルとの
+        // 衝突、統合は相手選び、削除は影響件数の確認を伴い、フィルタの
+        // 狭い行の中では扱いきれない。
+        .contextMenu {
+            Button("labelEditor.editLabelsEllipsis", systemImage: "tag") {
+                LabelEditorNavigation.open(libraryID: group.libraryID, openWindow: openWindow)
+            }
+        }
     }
 
     private func expansionBinding(_ group: LabelGroupSummary) -> Binding<Bool> {
@@ -262,6 +271,7 @@ struct LabelFilterPane: View {
     }
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.openWindow) private var openWindow
 
     // MARK: - 件数 [LF-11]
 

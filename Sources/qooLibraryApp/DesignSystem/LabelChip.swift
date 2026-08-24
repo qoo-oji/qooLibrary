@@ -6,6 +6,7 @@
 //  とは別の経路で扱う——DT2-03「コード中に HEX を直書きしない」が禁じているのは
 //  デザインの色をコードへ埋めることであって、利用者が付けた色を描くことではない。
 //
+import AppKit
 import QooKit
 import SwiftUI
 
@@ -20,6 +21,19 @@ extension Color {
                   red: Double((value >> 16) & 0xFF) / 255,
                   green: Double((value >> 8) & 0xFF) / 255,
                   blue: Double(value & 0xFF) / 255)
+    }
+
+    /// `#RRGGBB` へ書き出す [LE-10][CO-04][CO-06]。
+    ///
+    /// **sRGB へ変換してから読む。** `ColorPicker` は表示色空間（P3 など）の色を
+    /// 返すことがあり、そのまま成分を取ると DB に入る値と画面の色がずれる。
+    /// 変換できなければ `nil`——読めない値を書き込むより、保存しないほうがよい。
+    var labelHexString: String? {
+        guard let srgb = NSColor(self).usingColorSpace(.sRGB) else { return nil }
+        let r = Int((srgb.redComponent * 255).rounded())
+        let g = Int((srgb.greenComponent * 255).rounded())
+        let b = Int((srgb.blueComponent * 255).rounded())
+        return String(format: "#%02X%02X%02X", r, g, b)
     }
 }
 

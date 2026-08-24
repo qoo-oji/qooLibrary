@@ -556,7 +556,8 @@ struct FolderTreePane: View {
                         isLibraryEnabled: LibraryServices.shared
                             .isEnabled(registrationUUID: entry.folder.id),
                         onDisableLibrary: { disableLibrary(entry.folder) },
-                        onOpenLibrarySettings: { openLibrarySettings(entry.folder) }
+                        onOpenLibrarySettings: { openLibrarySettings(entry.folder) },
+                        onOpenLabelEditor: { openLabelEditor(entry.folder) }
                     )
                 }
             }
@@ -635,7 +636,8 @@ struct FolderTreePane: View {
             enableLibrary: { LibraryEnableAction.begin(folder: $0, url: $1, locale: locale) },
             rescanLibrary: { LibraryEnableAction.rescan(folder: $0, url: $1, locale: locale) },
             disableLibrary: { LibraryEnableAction.disable(folder: $0) },
-            openLibrarySettings: { openLibrarySettings($0) }
+            openLibrarySettings: { openLibrarySettings($0) },
+            openLabelEditor: { openLabelEditor($0) }
         )
     }
 
@@ -828,6 +830,17 @@ struct FolderTreePane: View {
         guard let summary = LibraryServices.shared.library(registrationUUID: folder.id) else { return }
         LibrarySettingsNavigation.shared.pendingLibraryID = summary.id
         openWindow(id: "librarySettings")
+    }
+
+    /// ラベルグループ編集ウインドウを開く [LE-01〜LE-12][15.2 節]。
+    ///
+    /// **登録ルート行は 2 つある**（通常の `FolderTreeContextMenu` と、縮退した
+    /// `DegradedRegisteredFolderRow`）。配線は別々なので、項目を足すときは
+    /// 両方に要る——片方だけ配線して取り残した前例がある。
+    private func openLabelEditor(_ folder: RegisteredFolder) {
+        guard let summary = LibraryServices.shared.library(registrationUUID: folder.id) else { return }
+        LabelEditorNavigation.shared.pendingLibraryID = summary.id
+        openWindow(id: "labelEditor")
     }
 
     /// ライブラリ機能だけを無効にする（登録フォルダは残す）。
@@ -1213,6 +1226,9 @@ private struct DegradedRegisteredFolderRow: View {
     let onDisableLibrary: () -> Void
     /// 設定は DB しか触らないので、縮退状態でも開ける [LS-01]。
     let onOpenLibrarySettings: () -> Void
+    /// ラベルグループ編集ウインドウ [LE-01〜LE-12]。**縮退状態でこそ要る**
+    /// ——外付けが無い間に表記ゆれを片付けられる（DB しか触らない）。
+    let onOpenLabelEditor: () -> Void
 
     /// `.offline` だけ薄くする。ゴミ箱・消失は「気づいてほしい」状態なので
     /// 薄めない——未接続は待てば戻る日常的な状態で、そちらこそ目立たない
@@ -1290,6 +1306,9 @@ private struct DegradedRegisteredFolderRow: View {
                 Button("library.settings.menuItem", systemImage: "gearshape") {
                     onOpenLibrarySettings()
                 }
+            }
+            if libraryItems.contains(.labels) {
+                Button("library.labels.menuItem", systemImage: "tag") { onOpenLabelEditor() }
             }
             if libraryItems.contains(.disable) {
                 Button("library.disable.menuItem", systemImage: "books.vertical.circle") {

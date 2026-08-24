@@ -10,19 +10,39 @@ import SwiftUI
 
 // MARK: - ラベルグループ
 
+/// ラベルグループの一覧と編集 [LG-03][LE-01][LE-02][LE-10][CO-04]。
+///
+/// **ライブラリ設定ウインドウとラベルグループ編集ウインドウで共有する**
+/// ［ユーザー判断］。§15.2 は 3 ペインの中央にグループ一覧を置くと定めるが、
+/// その中身（改名・予約語紐づけ）は設定ウインドウに既にある——同じ編集を
+/// 2 箇所に実装すると片方だけ直して取り残す（このリポジトリで 3 度踏んだ形）。
+///
+/// 違うのは `selection` の有無だけ。設定ウインドウは `nil` を渡して一覧として
+/// 見せ、編集ウインドウは束縛を渡して「どのグループのラベルを右に出すか」を決める。
 struct LibraryLabelGroupsSettingsView: View {
     @Binding var draft: LibrarySettingsDraft
+    /// 選択中のグループ（`LabelGroupDraft.id`）。`nil` を渡すと選択させない。
+    var selection: Binding<UUID?>?
+    /// 見出しと説明を出すか。編集ウインドウでは中央ペインの幅が狭いので省く。
+    var showsHeader: Bool = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.l) {
-            SettingsSectionHeader(title: "librarySettings.section.labelGroups",
-                                  explanation: "librarySettings.labelGroups.explanation")
+            if showsHeader {
+                SettingsSectionHeader(title: "librarySettings.section.labelGroups",
+                                      explanation: "librarySettings.labelGroups.explanation")
+            }
 
             VStack(spacing: 0) {
                 header
                 Divider()
                 ForEach($draft.labelGroups) { $group in
                     row($group)
+                        .background(isSelected($group.wrappedValue)
+                                    ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.25)
+                                    : Color.clear)
+                        .contentShape(Rectangle())
+                        .onTapGesture { selection?.wrappedValue = $group.wrappedValue.id }
                     Divider()
                 }
             }
@@ -42,6 +62,7 @@ struct LibraryLabelGroupsSettingsView: View {
         HStack(spacing: Tokens.spacing.s) {
             Text("librarySettings.labelGroups.number").frame(width: 90, alignment: .leading)
             Text("librarySettings.labelGroups.name").frame(minWidth: 120, alignment: .leading)
+            Text("librarySettings.labelGroups.color").frame(width: 24, alignment: .leading)
             Spacer(minLength: Tokens.spacing.m)
             Text("librarySettings.labelGroups.semantic").frame(width: 130, alignment: .leading)
             Text("librarySettings.labelGroups.autoAssign").frame(width: 60, alignment: .center)
@@ -64,6 +85,11 @@ struct LibraryLabelGroupsSettingsView: View {
                 .labelsHidden()
                 .editableFieldChrome()
                 .frame(minWidth: 120)
+            // グループ色 [LE-10][CO-04]。ライト・ダークの両方とコントラスト
+            // 警告 [CO-05] はポップオーバーの中で扱う。
+            LabelColorWell(color: colorBinding(for: group),
+                           defaultColor: defaultColor(for: group.wrappedValue),
+                           previewName: group.wrappedValue.name)
             Spacer(minLength: Tokens.spacing.m)
             FixedWidthPopUp(items: semanticItems(for: group.wrappedValue.index),
                             selection: semanticBinding(for: group.wrappedValue.index))
@@ -80,6 +106,31 @@ struct LibraryLabelGroupsSettingsView: View {
             .frame(width: 22)
         }
         .padding(.vertical, Tokens.spacing.xs)
+    }
+
+    private func isSelected(_ group: LabelGroupDraft) -> Bool {
+        selection?.wrappedValue == group.id
+    }
+
+    private func colorBinding(for group: Binding<LabelGroupDraft>) -> Binding<LabelColor> {
+        Binding(
+            get: { LabelColor(hexLight: group.wrappedValue.colorHexLight,
+                              hexDark: group.wrappedValue.colorHexDark) },
+            set: {
+                group.wrappedValue.colorHexLight = $0.hexLight
+                group.wrappedValue.colorHexDark = $0.hexDark
+            })
+    }
+
+    /// 「既定に戻す」で戻す先 [CO-01][MT-13]。**リテラルの表を持たず**、
+    /// そのときのグループ数に応じて色相環を等分して生成する
+    /// ——グループを増減しても既定色が破綻しない。
+    private func defaultColor(for group: LabelGroupDraft) -> LabelColor? {
+        let ordered = draft.labelGroups.map(\.index).sorted()
+        guard let position = ordered.firstIndex(of: group.index) else { return nil }
+        let palette = LabelColorPalette.palette(count: max(ordered.count, 1))
+        guard position < palette.count else { return nil }
+        return palette[position]
     }
 
     /// セマンティック予約語の紐づけ [LE-01][RW-12]。**1 対 1 を UI で守る**

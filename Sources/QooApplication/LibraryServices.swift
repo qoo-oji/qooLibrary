@@ -340,6 +340,49 @@ public final class LibraryServices {
         try await repository.setGroupOrder(orderedIDs)
     }
 
+    // MARK: - ラベルの編集 [LE-07〜LE-11][LB-05〜LB-07][CO-06]
+    //
+    // **Undo は `LabelCommands` のコマンドが担う**ので、UI から直接ここを
+    // 呼ばないこと（呼ぶと ⌘Z で戻せない操作ができる。`setRating` /
+    // `applyLabelAssignments` と同じ約束）。
+
+    public func renameLabel(_ id: LabelID, to name: String) async throws {
+        guard let repository = labelRepository else { throw ServiceError.notReady }
+        try await repository.rename(id, to: name)
+    }
+
+    public func setLabelArchived(_ ids: [LabelID], _ archived: Bool) async throws {
+        guard let repository = labelRepository else { throw ServiceError.notReady }
+        try await repository.setArchived(ids, archived)
+    }
+
+    public func setLabelColor(_ id: LabelID, hex: String?) async throws {
+        guard let repository = labelRepository else { throw ServiceError.notReady }
+        try await repository.setColor(id, hex: hex)
+    }
+
+    public func deleteLabels(_ ids: [LabelID]) async throws {
+        guard let repository = labelRepository else { throw ServiceError.notReady }
+        try await repository.deleteLabels(ids)
+    }
+
+    public func mergeLabel(_ source: LabelID, into target: LabelID) async throws {
+        guard let repository = labelRepository else { throw ServiceError.notReady }
+        try await repository.merge(source, into: target)
+    }
+
+    /// 削除・統合を戻すための写し [LabelSnapshot]。
+    public func labelSnapshots(_ ids: [LabelID]) async throws -> [LabelSnapshot] {
+        guard let repository = labelRepository else { throw ServiceError.notReady }
+        return try await repository.snapshot(labelIDs: ids)
+    }
+
+    /// 写しの状態へちょうど戻す [LabelSnapshot]。
+    public func restoreLabels(_ snapshots: [LabelSnapshot]) async throws {
+        guard let repository = labelRepository else { throw ServiceError.notReady }
+        try await repository.restore(snapshots)
+    }
+
     // MARK: - 一覧の問い合わせ [FI-01〜FI-05][VM-02]
 
     /// 条件に該当する件数 [LF-11]。

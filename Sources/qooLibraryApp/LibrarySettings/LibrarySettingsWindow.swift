@@ -276,7 +276,10 @@ private struct QooErrorPlaceholder: View {
 
 // MARK: - 確認ダイアログ
 
-private struct UnsavedChangesDialog: View {
+/// 未保存の草案を捨てるか保存するかを尋ねる。
+/// **ラベルグループ編集ウインドウ（15.2）とも共有する**——同じ「切り替えで
+/// 編集が消える」場面なので、別の見た目を作らない [CP-02]。
+struct UnsavedChangesDialog: View {
     @Environment(\.locale) private var locale
     @Environment(\.dialogDismiss) private var dismiss
 

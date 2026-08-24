@@ -344,6 +344,14 @@ struct FolderTreeContextMenu: View {
                 actions.openLibrarySettings(folder)
             }
         }
+        if visible.contains(.labels) {
+            // ラベルグループとラベルの編集 [LE-01〜LE-12][15.2 節]。
+            // **オンラインを要らない**——DB しか触らないので、外付けが無い間に
+            // 表記ゆれを片付けられる（`LibraryMenuVisibility` のコメント参照）。
+            Button("library.labels.menuItem", systemImage: "tag") {
+                actions.openLabelEditor(folder)
+            }
+        }
         if visible.contains(.rescan) {
             Button("library.rescan.menuItem", systemImage: "arrow.clockwise") {
                 actions.rescanLibrary(folder, context.url)
@@ -528,4 +536,6 @@ struct FolderTreeContextMenuActions {
     var rescanLibrary: (RegisteredFolder, URL) -> Void = { _, _ in }
     var disableLibrary: (RegisteredFolder) -> Void = { _ in }
     var openLibrarySettings: (RegisteredFolder) -> Void = { _ in }
+    /// ラベルグループ編集ウインドウを開く [LE-01〜LE-12][15.2 節]。
+    var openLabelEditor: (RegisteredFolder) -> Void = { _ in }
 }

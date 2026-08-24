@@ -45,15 +45,39 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
             displayOrder: row["displayOrder"], labelCount: row["labelCount"])
     }
 
+    /// グループのラベル [LF-04][LE-03]。
+    ///
+    /// **件数を 2 つ返す。** `fileCount`（非正規化列）はフィルタ用で保管庫の
+    /// ファイルを数えない [FA-05]、`fileCountIncludingArchived` は編集ウインドウの
+    /// バッジ用で数える [LE-05]。要件が意図的に食い違っているので、1 つの値では
+    /// 両方を満たせない——同じ値を使うと、ファイルを保管庫へ入れただけで
+    /// ラベルが「0 件」＝消してよさそう [LE-04] に見える。
+    ///
+    /// 後者だけ毎回数え直すのは、**保管庫は稀な操作なので専用の非正規化列を
+    /// 増やすほどではない**ため（列を増やすと `adjustCount` の呼び出し全てに
+    /// 二重の更新が要り、ずれる箇所が倍になる）。
     public func labels(groupID: LabelGroupID, includeArchived: Bool) async throws -> [LabelSummary] {
         try await database.writer.read { db in
             let sql = """
-                SELECT * FROM label WHERE labelGroupId = ?
+                SELECT label.*, COALESCE((
+                    SELECT COUNT(*) FROM fileLabel fl
+                    JOIN managedFile mf ON mf.id = fl.managedFileId
+                    WHERE fl.labelId = label.id AND fl.origin != 'manuallyRemoved'
+                      AND mf.state = 'active'
+                ), 0) AS countWithArchived
+                FROM label WHERE labelGroupId = ?
                 \(includeArchived ? "" : "AND isArchived = 0")
                 ORDER BY isPinned DESC, name
                 """
-            return try LabelRecord.fetchAll(db, sql: sql, arguments: [groupID.rawValue])
-                .map(Self.summary)
+            return try Row.fetchAll(db, sql: sql, arguments: [groupID.rawValue]).map { row in
+                LabelSummary(
+                    id: LabelID(rawValue: row["id"]),
+                    groupID: LabelGroupID(rawValue: row["labelGroupId"]),
+                    name: row["name"], normalizedName: row["normalizedName"],
+                    colorHex: row["colorHex"], isPinned: row["isPinned"],
+                    isArchived: row["isArchived"], fileCount: row["fileCount"],
+                    fileCountIncludingArchived: row["countWithArchived"])
+            }
         }
     }
 
@@ -252,26 +276,82 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
         }
     }
 
-    /// ラベルの統合 [LB-07]。移動先に既にある紐づけは捨てる。
+    /// ラベルの統合 [LB-07][LE-11]。
+    ///
+    /// **両方が付いているファイルの `origin` は `LabelOrigin.merging` が決める**
+    /// ［ユーザー判断］。以前は `UPDATE OR IGNORE` 1 本で移していたが、それだと
+    /// 移動先の値が無条件に残り、`source` が `manual`・`target` が
+    /// `manuallyRemoved` のファイルで**手動付与が黙って消えていた**。
     public func merge(_ source: LabelID, into target: LabelID) async throws {
         guard source != target else { return }
         try await database.writer.write { db in
+            guard let s = try LabelRecord.fetchOne(db, key: source.rawValue) else {
+                throw LabelEditError.labelNotFound(source)
+            }
+            guard let t = try LabelRecord.fetchOne(db, key: target.rawValue) else {
+                throw LabelEditError.labelNotFound(target)
+            }
+            // **グループをまたぐ統合は認めない** [LB-07]。ラベルの一意性は
+            // グループ内で定義されており [LB-01]、またぐと「グループを移す」
+            // という別の操作になる。
+            guard s.labelGroupId == t.labelGroupId else { throw LabelEditError.crossGroupMerge }
+
+            // ① 両方が付いているファイル: origin を突き合わせて移動先を書き換える。
+            let overlapping = try Row.fetchAll(db, sql: """
+                SELECT src.managedFileId AS fileId,
+                       src.origin AS srcOrigin, dst.origin AS dstOrigin,
+                       MIN(src.assignedAt, dst.assignedAt) AS assignedAt
+                FROM fileLabel src
+                JOIN fileLabel dst ON dst.managedFileId = src.managedFileId
+                WHERE src.labelId = ? AND dst.labelId = ?
+                """, arguments: [source.rawValue, target.rawValue])
+            for row in overlapping {
+                let srcOrigin = LabelOrigin(rawValue: row["srcOrigin"]) ?? .auto
+                let dstOrigin = LabelOrigin(rawValue: row["dstOrigin"]) ?? .auto
+                let winner = LabelOrigin.merging(srcOrigin, dstOrigin)
+                try db.execute(sql: """
+                    UPDATE fileLabel SET origin = ?, assignedAt = ?
+                    WHERE managedFileId = ? AND labelId = ?
+                    """, arguments: [winner.rawValue, row["assignedAt"] as Double,
+                                     row["fileId"] as Int64, target.rawValue])
+            }
+            // ② 重ならないものは移す。①で処理済みの行は主キーが衝突するので
+            //    `OR IGNORE` で飛ばし、残骸は③の cascade が片付ける。
             try db.execute(sql: """
                 UPDATE OR IGNORE fileLabel SET labelId = ? WHERE labelId = ?
                 """, arguments: [target.rawValue, source.rawValue])
+            // ③ 統合元を消す。残った重複行は `ON DELETE CASCADE` で一緒に消える。
             try db.execute(sql: "DELETE FROM label WHERE id = ?", arguments: [source.rawValue])
             try Self.recount(db, labelIDs: [target])
         }
     }
 
+    /// 改名 [LB-06]。紐づけは行の ID で張られているので何もしなくてよい。
+    ///
+    /// **衝突は素の UNIQUE 制約違反ではなく `LabelEditError` で返す** [LE-11]
+    /// ——「UNIQUE constraint failed: label.labelGroupId, label.normalizedName」を
+    /// そのまま見せる代わりに、呼び出し側が「代わりに統合しますか」を出せるよう
+    /// 衝突相手の ID を添える。
     public func rename(_ id: LabelID, to name: String) async throws {
         try await database.writer.write { db in
-            guard let record = try LabelRecord.fetchOne(db, key: id.rawValue) else { return }
+            guard let record = try LabelRecord.fetchOne(db, key: id.rawValue) else {
+                throw LabelEditError.labelNotFound(id)
+            }
             let options = try Self.normalizationOptions(
                 db, groupID: LabelGroupID(rawValue: record.labelGroupId))
+            let normalized = TextNormalizer.normalize(name, options: options)
+            // **自分自身は衝突ではない。** 大小文字や全角半角だけを直す改名
+            // （`abc` → `ABC`）は正規化名が変わらないので、`id != ?` で外さないと
+            // 表記を整える操作が一切できなくなる。
+            if let other = try Int64.fetchOne(db, sql: """
+                SELECT id FROM label
+                WHERE labelGroupId = ? AND normalizedName = ? AND id != ?
+                """, arguments: [record.labelGroupId, normalized, id.rawValue]) {
+                throw LabelEditError.nameAlreadyExists(existing: LabelID(rawValue: other),
+                                                       name: name)
+            }
             try db.execute(sql: "UPDATE label SET name = ?, normalizedName = ? WHERE id = ?",
-                           arguments: [name, TextNormalizer.normalize(name, options: options),
-                                       id.rawValue])
+                           arguments: [name, normalized, id.rawValue])
         }
     }
 
@@ -290,6 +370,116 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
         try await database.writer.write { db in
             try db.execute(sql: "UPDATE label SET isPinned = ? WHERE id = ?",
                            arguments: [pinned, id.rawValue])
+        }
+    }
+
+    /// ラベル固有色 [LE-10][CO-06]。`nil` へ戻すとグループ色を継承する。
+    public func setColor(_ id: LabelID, hex: String?) async throws {
+        try await database.writer.write { db in
+            try db.execute(sql: "UPDATE label SET colorHex = ? WHERE id = ?",
+                           arguments: [hex, id.rawValue])
+        }
+    }
+
+    /// 削除 [LE-07]。**紐づけも一緒に消える** [LE-08][LB-05]——`fileLabel` の
+    /// 外部キーが `ON DELETE CASCADE` なので、ここで別途消す必要はない
+    /// （消し忘れる余地を作らないため、あえてアプリ側で二重に消さない）。
+    ///
+    /// **`manuallyRemoved` の印も一緒に消える。** つまり削除したラベルと同じ名前が
+    /// 自動付与で再び現れれば、そのラベルは作り直されて付く [AL-07]。「二度と
+    /// 付けたくない」という意思表示は削除ではなく保管庫 [LA-01] が担う——
+    /// 削除は「このラベルは要らなかった」であって「今後も拒む」ではない。
+    public func deleteLabels(_ ids: [LabelID]) async throws {
+        guard !ids.isEmpty else { return }
+        try await database.writer.write { db in
+            try db.execute(sql: """
+                DELETE FROM label
+                WHERE id IN (\(SQLiteManagedFileRepository.placeholders(ids.count)))
+                """, arguments: StatementArguments(
+                    ids.map { $0.rawValue as any DatabaseValueConvertible }) ?? StatementArguments())
+        }
+    }
+
+    /// 行と紐づけの完全な写しを取る [LabelSnapshot]。削除・統合の Undo 用。
+    public func snapshot(labelIDs: [LabelID]) async throws -> [LabelSnapshot] {
+        guard !labelIDs.isEmpty else { return [] }
+        return try await database.writer.read { db in
+            var result: [LabelSnapshot] = []
+            for id in labelIDs {
+                // **存在しない ID は飛ばす。** 同時に消えていた 1 件のせいで、
+                // 戻せるはずの残りまで戻せなくなるほうが害が大きい。
+                guard let record = try LabelRecord.fetchOne(db, key: id.rawValue) else { continue }
+                let rows = try Row.fetchAll(db, sql: """
+                    SELECT managedFileId, origin, assignedAt FROM fileLabel WHERE labelId = ?
+                    """, arguments: [id.rawValue])
+                result.append(LabelSnapshot(
+                    id: id, groupID: LabelGroupID(rawValue: record.labelGroupId),
+                    name: record.name, normalizedName: record.normalizedName,
+                    colorHex: record.colorHex, isPinned: record.isPinned,
+                    isArchived: record.isArchived,
+                    assignments: rows.map { row in
+                        LabelSnapshot.Assignment(
+                            fileID: FileID(rawValue: row["managedFileId"]),
+                            origin: LabelOrigin(rawValue: row["origin"]) ?? .auto,
+                            assignedAt: Date(timeIntervalSinceReferenceDate: row["assignedAt"]))
+                    }))
+            }
+            return result
+        }
+    }
+
+    /// 写しの状態へちょうど戻す [LabelSnapshot]。
+    ///
+    /// **`id` を明示して `INSERT` する。** `label.id` は AUTOINCREMENT なので
+    /// 削除された ID は再利用されず空いたまま残り、元の ID をそのまま取り戻せる
+    /// ［実測］。別 ID で作り直すと、ラベルフィルタでチェック中だった選択が
+    /// 黙って外れる。
+    ///
+    /// **1 トランザクションで書く**——統合の Undo は統合元と統合先の 2 件を
+    /// まとめて戻すので、途中で切れると「元は戻ったが先が統合後のまま」という
+    /// どちらでもない状態が残る。
+    public func restore(_ snapshots: [LabelSnapshot]) async throws {
+        guard !snapshots.isEmpty else { return }
+        try await database.writer.write { db in
+            for snapshot in snapshots {
+                // グループごと消えていたら戻せない（ライブラリの登録解除など）。
+                // その場合は Undo の対象そのものが失われているので黙って飛ばす。
+                let groupExists = try Bool.fetchOne(db, sql:
+                    "SELECT EXISTS(SELECT 1 FROM labelGroup WHERE id = ?)",
+                    arguments: [snapshot.groupID.rawValue]) ?? false
+                guard groupExists else { continue }
+
+                try db.execute(sql: """
+                    INSERT INTO label
+                        (id, labelGroupId, name, normalizedName, colorHex,
+                         isPinned, isArchived, fileCount)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+                    ON CONFLICT(id) DO UPDATE SET
+                        labelGroupId = excluded.labelGroupId, name = excluded.name,
+                        normalizedName = excluded.normalizedName,
+                        colorHex = excluded.colorHex, isPinned = excluded.isPinned,
+                        isArchived = excluded.isArchived
+                    """, arguments: [snapshot.id.rawValue, snapshot.groupID.rawValue,
+                                     snapshot.name, snapshot.normalizedName, snapshot.colorHex,
+                                     snapshot.isPinned, snapshot.isArchived])
+
+                // 「ちょうど戻す」ので、写しに無い紐づけは消す。
+                try db.execute(sql: "DELETE FROM fileLabel WHERE labelId = ?",
+                               arguments: [snapshot.id.rawValue])
+                for assignment in snapshot.assignments {
+                    // **相手のファイルが消えていたら飛ばす。** `INSERT OR IGNORE`
+                    // は外部キー違反を無視しないので、`WHERE EXISTS` で自分で外す
+                    // ——1 件の消失で Undo 全体が失敗するのを避ける。
+                    try db.execute(sql: """
+                        INSERT INTO fileLabel (managedFileId, labelId, origin, assignedAt)
+                        SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM managedFile WHERE id = ?)
+                        """, arguments: [assignment.fileID.rawValue, snapshot.id.rawValue,
+                                         assignment.origin.rawValue,
+                                         assignment.assignedAt.timeIntervalSinceReferenceDate,
+                                         assignment.fileID.rawValue])
+                }
+            }
+            try Self.recount(db, labelIDs: snapshots.map(\.id))
         }
     }
 

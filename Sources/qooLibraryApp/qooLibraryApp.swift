@@ -252,6 +252,15 @@ struct QooLibraryApp: App {
         }
         .defaultSize(width: 980, height: 620)
 
+        // ラベルグループとラベルの編集 [LE-01〜LE-12][15.2 節]。開くのは
+        // フォルダツリーの「ラベルを編集…」、ラベルフィルタと右ペインの
+        // ラベルの右クリックから（`LabelEditorNavigation` が対象を渡す）。
+        Window("labelEditor.windowTitle", id: "labelEditor") {
+            LabelGroupEditorWindow()
+                .appLanguageOverride()
+        }
+        .defaultSize(width: 1240, height: 680)
+
         Window("preferences.windowTitle", id: "preferences") {
             PreferencesView()
                 .appLanguageOverride()

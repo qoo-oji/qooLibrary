@@ -18,6 +18,7 @@ struct InspectorLabelSection: View {
 
     @Environment(\.locale) private var locale
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.openWindow) private var openWindow
     @State private var isAddingLabel = false
 
     var body: some View {
@@ -142,6 +143,14 @@ struct InspectorLabelSection: View {
                       color: labelColor(label, in: group),
                       count: label.fileCount,
                       isAutomatic: assignment.isAutomatic)      // [RL-06]
+                // 改名・統合・保管庫へ送る導線 [LB-06][LB-07][LA-01]。
+                // ここでは付け外ししかできないので、編集は 15.2 のウインドウへ。
+                .contextMenu {
+                    Button("labelEditor.editLabelsEllipsis", systemImage: "tag") {
+                        LabelEditorNavigation.open(libraryID: group.libraryID,
+                                                   openWindow: openWindow)
+                    }
+                }
             Spacer(minLength: 0)
             // 複数選択で一部にだけ付いているとき、何件かを添える [RP-02]。
             if assignment.checkState == .some {

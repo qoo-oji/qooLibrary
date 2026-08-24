@@ -281,10 +281,25 @@ public struct LabelSummary: Sendable, Hashable, Identifiable {
     public let colorHex: String?           // nil → グループ色を継承 [CO-06]
     public let isPinned: Bool              // [LB-03]
     public let isArchived: Bool            // [LA-01]
-    public let fileCount: Int              // 非正規化 [DB-02]
+    /// ラベルフィルタが見せる件数 [LF-11]。非正規化 [DB-02]。
+    ///
+    /// **ファイル保管庫に入れたファイルは数えない** [FA-05]——保管庫の中身は
+    /// フィルタの結果から外れるので、件数だけ残ると数が合わない。
+    public let fileCount: Int
+    /// ラベル編集ウインドウのバッジが見せる件数 [LE-03][LE-05]。
+    ///
+    /// **保管庫に入れたファイルも数える** [LE-05]。`fileCount` とわざわざ分けて
+    /// いるのは要件が意図的に食い違っているため——フィルタからは外す [FA-05] が、
+    /// **バッジには影響させない**。同じ値を使い回すと、ファイルを保管庫へ入れた
+    /// だけでラベルが「0 件」＝赤字＝消してよさそう [LE-04][RC-07] に見えてしまう。
+    /// 紐づけは維持されているのに、である。
+    ///
+    /// ファイル保管庫（2-11）が入るまでは `fileCount` と必ず一致する。
+    public let fileCountIncludingArchived: Int
 
     public init(id: LabelID, groupID: LabelGroupID, name: String, normalizedName: String,
-                colorHex: String?, isPinned: Bool, isArchived: Bool, fileCount: Int) {
+                colorHex: String?, isPinned: Bool, isArchived: Bool, fileCount: Int,
+                fileCountIncludingArchived: Int? = nil) {
         self.id = id
         self.groupID = groupID
         self.name = name
@@ -293,7 +308,73 @@ public struct LabelSummary: Sendable, Hashable, Identifiable {
         self.isPinned = isPinned
         self.isArchived = isArchived
         self.fileCount = fileCount
+        self.fileCountIncludingArchived = fileCountIncludingArchived ?? fileCount
     }
+}
+
+/// ラベル 1 件と、その紐づけの完全な写し。**削除とマージを ⌘Z で戻すために要る。**
+///
+/// 付け外し [RL-01] と違い、削除 [LE-07] とマージ [LB-07] は `label` の行そのものを
+/// 物理的に消す。戻すには行を作り直すしかなく、そのとき **`id` をそのまま使う**。
+///
+/// **元の ID へ戻せるのは `label.id` が AUTOINCREMENT だから**［実測］。削除された
+/// ID は二度と再利用されないので空いたまま残り、明示指定した `INSERT` で同じ ID を
+/// 取り戻せる（`sqlite_sequence` も巻き戻らない）。別 ID で作り直すと、ラベル
+/// フィルタでチェック中だった選択やウインドウ状態復元 [ST-26] が黙って外れる
+/// ——`label` にだけ AUTOINCREMENT を付けた T-03 の決定③が、想定とは別の形でここでも効く。
+///
+/// `fileCount` は持たない。非正規化された再生成可能な値なので、復元後に数え直す。
+public struct LabelSnapshot: Sendable, Hashable {
+    /// 紐づけ 1 件ぶん。
+    public struct Assignment: Sendable, Hashable {
+        public let fileID: FileID
+        public let origin: LabelOrigin
+        public let assignedAt: Date
+
+        public init(fileID: FileID, origin: LabelOrigin, assignedAt: Date) {
+            self.fileID = fileID
+            self.origin = origin
+            self.assignedAt = assignedAt
+        }
+    }
+
+    public let id: LabelID
+    public let groupID: LabelGroupID
+    public let name: String
+    public let normalizedName: String
+    public let colorHex: String?
+    public let isPinned: Bool
+    public let isArchived: Bool
+    /// そのラベルの紐づけ**全件**。`manuallyRemoved` の行も含む——除去の印は
+    /// 「付いていない」ではなく「外したと記録されている」という別の状態で、
+    /// 落とすと ⌘Z のあと再スキャンでラベルが復活する [RC-04]。
+    public let assignments: [Assignment]
+
+    public init(id: LabelID, groupID: LabelGroupID, name: String, normalizedName: String,
+                colorHex: String?, isPinned: Bool, isArchived: Bool,
+                assignments: [Assignment]) {
+        self.id = id
+        self.groupID = groupID
+        self.name = name
+        self.normalizedName = normalizedName
+        self.colorHex = colorHex
+        self.isPinned = isPinned
+        self.isArchived = isArchived
+        self.assignments = assignments
+    }
+}
+
+/// ラベル編集で、利用者に伝えるべき理由がある失敗 [LE-07][LE-11]。
+///
+/// 素の制約違反のまま投げると「UNIQUE constraint failed: label.labelGroupId,
+/// label.normalizedName」がそのまま画面に出る。**呼び出し側が次の一手を出せる
+/// ようにする**——改名の衝突なら「代わりに統合しますか」を勧められる [LE-11]。
+public enum LabelEditError: Error, Sendable, Hashable {
+    /// 同じグループに、正規化後が同じ名前のラベルが既にある [LB-01][N-03]。
+    case nameAlreadyExists(existing: LabelID, name: String)
+    /// 別のラベルグループへは統合できない [LB-07]。
+    case crossGroupMerge
+    case labelNotFound(LabelID)
 }
 
 /// 1 ファイル 1 ラベルぶんの紐づけの変更 [RL-01][RL-07]。
@@ -343,10 +424,43 @@ public protocol LabelRepository: Sendable {
     /// `undo()` がどちらもこれを使う（戻すのも「指定した状態へ揃える」ことに
     /// 他ならないので、復元のための別 API を作らない）。
     func applyAssignments(labelID: LabelID, _ changes: [LabelAssignmentChange]) async throws
+    /// 2 つのラベルを統合する [LB-07][LE-11]。`source` の行は消え、紐づけは
+    /// `target` へ移る。
+    ///
+    /// **同じファイルに両方が付いていたら `origin` は manual > auto >
+    /// manuallyRemoved で決める**［ユーザー判断］。素朴に `UPDATE OR IGNORE` で
+    /// 移すと移動先の値が無条件に残り、`source` が `manual`・`target` が
+    /// `manuallyRemoved` のファイルで**手動付与が黙って消える**。統合は
+    /// 「同じものに 2 つの名前が付いていた」を是正する操作なので、どちらかで
+    /// 手で付けていたなら手動として残す。
+    ///
+    /// **別グループへは統合できない** [LB-07]——ラベルの一意性はグループ内で
+    /// 定義されており [LB-01]、またぐと「グループを移す」という別の操作になる。
     func merge(_ source: LabelID, into target: LabelID) async throws           // [LB-07]
+    /// 改名 [LB-06]。紐づけは維持される（行の ID が変わらないため何もしなくてよい）。
+    ///
+    /// 同じグループに正規化後が同じ名前があれば `LabelEditError.nameAlreadyExists`。
+    /// **素の UNIQUE 制約違反を投げない**——呼び出し側が「代わりに統合」を
+    /// 勧められるよう、衝突相手の ID を添えて返す [LE-11]。
     func rename(_ id: LabelID, to name: String) async throws                   // [LB-06]
     func setArchived(_ ids: [LabelID], _ archived: Bool) async throws          // [LA-01][LA-08]
     func setPinned(_ id: LabelID, _ pinned: Bool) async throws                 // [LB-03]
+    /// ラベル固有色 [LE-10][CO-06]。`nil` へ戻すとグループ色を継承する。
+    func setColor(_ id: LabelID, hex: String?) async throws
+    /// 削除 [LE-07]。**紐づけも一緒に消える** [LE-08][LB-05]——`fileLabel` の
+    /// 外部キーが `ON DELETE CASCADE` なので DB が保証する。
+    func deleteLabels(_ ids: [LabelID]) async throws
+    /// 行と紐づけの完全な写しを取る。**削除・統合の Undo 用** [LabelSnapshot]。
+    ///
+    /// 存在しない ID は黙って飛ばす（同時に消えていた場合に、戻せるものまで
+    /// 戻せなくなるのを避ける）。
+    func snapshot(labelIDs: [LabelID]) async throws -> [LabelSnapshot]
+    /// 写しの状態へ**ちょうど**戻す。写しに含まれない紐づけは消える。
+    ///
+    /// 「指定した状態へ揃える」という `applyAssignments` と同じ形にしてある
+    /// ——戻すことも「ある状態へ揃える」ことに他ならないので、復元専用の
+    /// 別の意味を持つ API を作らない。`fileCount` は数え直す。
+    func restore(_ snapshots: [LabelSnapshot]) async throws
     /// 増分更新の破綻に備えた再集計 [IX-03][IX-04]。実測 844 ms / 10,530 ラベル。
     func recountAll(libraryID: LibraryID) async throws
 }
