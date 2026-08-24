@@ -49,7 +49,10 @@ struct InspectorPane: View {
                     // [RA-08] は 1 冊として親の一覧に並ぶので、そちらで選べる。
                     library: selection.isEmpty ? nil : library)
             } else {
-                MultiItemInspector(urls: targets)
+                // [RP-02] 複数選択でも共通情報＋ラベルの一括付与／削除を出す。
+                // ここは必ず「選んだ項目」なので、単一選択のときのような
+                // 「現在のフォルダを描いている」場合分けは要らない。
+                MultiItemInspector(urls: targets, library: library)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -57,15 +60,26 @@ struct InspectorPane: View {
 }
 
 private struct SingleItemInspector: View {
+    @Environment(\.locale) private var locale
     let url: URL
     let thumbnailsHidden: Bool
     let library: LibrarySummary?
 
     /// 評価 [RA-01〜RA-08]。判定は `QooApplication` 側が持つ。
     @State private var rating = RatingEditorModel()
+    /// ラベル設定 [RL-01〜RL-07]。同上。
+    @State private var labels = LabelEditorModel()
+    /// 書き込みのあと一覧と件数を読み直すための合図。**`.task(id:)` の鍵に
+    /// 入れる**——`operationHistory` の増分でも読み直せるが、ダイアログから
+    /// 作った新しいラベルは一覧に無いので、書いた側から明示的に促す。
+    @State private var labelRevision = 0
 
     @State private var info: FileDetailInfo?
     @State private var containedCounts: ContainedCounts?
+    /// 中身を数えられなかった [DT-05][DT-06]。**「まだ数えている」と区別する**
+    /// ——区別しないとスピナーが永久に回り続ける［ユーザーが実機で指摘］。
+    /// 壊れたアーカイブ・対応していない形式で起こる。
+    @State private var containedCountsUnreadable = false
     /// この項目を含むフォルダを見張る [10章 §10.0]。項目が外部で消された・
     /// 改名された・書き換えられたときに、詳細が古いまま残らないようにする。
     @State private var parentWatch = DirectoryObservation()
@@ -106,7 +120,13 @@ private struct SingleItemInspector: View {
 
                     if info.isNavigableFolder || info.isArchive {
                         Divider()
-                        if let containedCounts {
+                        if containedCountsUnreadable {
+                            // **回り続けるスピナーを見せない** [ER-01 の精神]。
+                            // 「数えられなかった」は結果であって、進行中ではない。
+                            LabeledContent("inspector.containedFileCount",
+                                           value: String(localized: "inspector.containedUnreadable",
+                                                         locale: locale))
+                        } else if let containedCounts {
                             LabeledContent("inspector.containedFileCount", value: "\(containedCounts.fileCount)") // [DT-05]
                             LabeledContent("inspector.containedFolderCount", value: "\(containedCounts.folderCount)") // [DT-06]
                             if info.isNavigableFolder {
@@ -118,6 +138,7 @@ private struct SingleItemInspector: View {
                     }
 
                     InspectorRatingSection(model: rating) // [RA-01〜RA-08]
+                    InspectorLabelSection(model: labels) { labelRevision &+= 1 } // [RL-01〜RL-07]
 
                     Divider()
                     LabeledContent("inspector.location") {
@@ -145,6 +166,7 @@ private struct SingleItemInspector: View {
             if loadedURL != url {
                 info = nil
                 containedCounts = nil
+                containedCountsUnreadable = false
                 loadedURL = url
             }
             // **メインスレッドで `resourceValues` を呼ばない** [NV6-02]。
@@ -155,8 +177,19 @@ private struct SingleItemInspector: View {
             // [レビューで発見]。`Task.detached` をやめてキャンセルが実際に
             // 伝わるようになったことで、それまで起こり得なかったこの経路が
             // 生きるようになった。
-            guard let counts = await Self.computeContainedCounts(for: url, isArchive: info.isArchive) else { return }
-            containedCounts = counts
+            switch await Self.computeContainedCounts(for: url, isArchive: info.isArchive) {
+            case .counted(let counts):
+                containedCounts = counts
+                containedCountsUnreadable = false
+            case .unreadable:
+                // 壊れたアーカイブ・対応していない形式。**結果として確定させる**
+                // ——ここで何もせずに返ると、スピナーが回ったまま残る。
+                containedCountsUnreadable = true
+            case .cancelled:
+                // 打ち切られただけ。**途中まで数えた値も「読めない」も出さない**
+                // ——次の読み込みが答えを出す [レビューで発見の方針を踏襲]。
+                break
+            }
         }
         // 評価を読む [RA-01]。**操作履歴の長さを鍵に含める**——⌘Z / ⇧⌘Z は
         // この View を通らずに DB を書き換えるので、選択と入口だけを鍵に
@@ -165,6 +198,14 @@ private struct SingleItemInspector: View {
         .task(id: RatingLoadKey(url: url, libraryID: library?.id,
                                 commandRevision: CommandStack.shared.operationHistory.count)) {
             await rating.load(url: url, library: library, services: LibraryServices.shared)
+        }
+        // ラベルを読む [RL-01]。鍵の考え方は評価と同じ（⌘Z はこの View を
+        // 通らずに DB を書き換える）。`labelRevision` も含めるのは、ダイアログ
+        // から新しく作ったラベルが一覧に無いため。
+        .task(id: LabelLoadKey(url: url, libraryID: library?.id,
+                               commandRevision: CommandStack.shared.operationHistory.count,
+                               revision: labelRevision)) {
+            await labels.load(urls: [url], library: library, services: LibraryServices.shared)
         }
         .onChange(of: url, initial: true) { _, newValue in
             parentWatch.watch(newValue.deletingLastPathComponent(), scope: .shallow)
@@ -191,6 +232,13 @@ private struct SingleItemInspector: View {
         let url: URL
         let libraryID: LibraryID?
         let commandRevision: Int
+    }
+
+    private struct LabelLoadKey: Equatable {
+        let url: URL
+        let libraryID: LibraryID?
+        let commandRevision: Int
+        let revision: Int
     }
 
     /// **`nonisolated` は必須。** `resourceValues` は I/O を伴うため呼び出し元は
@@ -264,11 +312,27 @@ private struct SingleItemInspector: View {
     ///   その 1 本がプールのスレッドを 1 本占有し続ける（コア数ぶん溜まれば
     ///   アプリの `async` 処理が全部止まる）。取り消しは `Cancellation` 経由で
     ///   届く。
-    nonisolated private static func computeContainedCounts(for url: URL, isArchive: Bool) async -> ContainedCounts? {
+    /// 中身を数えた結果 [DT-05][DT-06]。
+    ///
+    /// **「打ち切られた」と「読めなかった」を分ける。** どちらも `nil` にして
+    /// いたため、壊れたアーカイブを選ぶとスピナーが永久に回っていた
+    /// ［ユーザーが実機で指摘］——前者は次の読み込みが答えを出すので黙って
+    /// 待てばよいが、後者はそれ以上何も起きない。
+    private enum ContainedCountsResult {
+        case counted(ContainedCounts)
+        case unreadable
+        case cancelled
+    }
+
+    nonisolated private static func computeContainedCounts(for url: URL,
+                                                           isArchive: Bool) async -> ContainedCountsResult {
         if isArchive {
             return await computeArchiveCounts(url)
         }
-        return await FileIO.perform { computeFolderCounts(url) }
+        guard let counts = await FileIO.perform({ computeFolderCounts(url) }) else {
+            return .cancelled
+        }
+        return .counted(counts)
     }
 
     /// 打ち切られたら `nil`。**途中まで数えた値を返さない** — 呼び出し側が
@@ -299,9 +363,14 @@ private struct SingleItemInspector: View {
         return ContainedCounts(fileCount: fileCount, folderCount: folderCount, totalSize: totalSize)
     }
 
-    private static func computeArchiveCounts(_ url: URL) async -> ContainedCounts? {
-        guard let backend = ArchiveBackendRegistry.reader(for: url) else { return nil }
-        guard let listing = try? await backend.listEntries(url) else { return nil }
+    private static func computeArchiveCounts(_ url: URL) async -> ContainedCountsResult {
+        guard let backend = ArchiveBackendRegistry.reader(for: url) else { return .unreadable }
+        // 取り消しは「読めない」ではない——選択を動かしただけで「読めません」と
+        // 出ると、実際には読めるアーカイブを読めないものだと誤解させる。
+        guard !Task.isCancelled else { return .cancelled }
+        guard let listing = try? await backend.listEntries(url) else {
+            return Task.isCancelled ? .cancelled : .unreadable
+        }
         var fileCount = 0
         var folderCount = 0
         var totalSize: Int64 = 0
@@ -313,7 +382,8 @@ private struct SingleItemInspector: View {
                 totalSize += entry.uncompressedSize
             }
         }
-        return ContainedCounts(fileCount: fileCount, folderCount: folderCount, totalSize: totalSize)
+        return .counted(ContainedCounts(fileCount: fileCount, folderCount: folderCount,
+                                        totalSize: totalSize))
     }
 
     private static let sizeFormatter: ByteCountFormatter = {
@@ -358,16 +428,37 @@ private struct ContainedCounts {
 private struct MultiItemInspector: View {
     @Environment(\.locale) private var locale
     let urls: [URL]
+    /// 表示中のライブラリ [RP-02]。ボリューム経由なら `nil`。
+    let library: LibrarySummary?
+
+    /// ラベルの一括付与／削除 [RP-02][RL-01〜RL-07]。
+    @State private var labels = LabelEditorModel()
+    @State private var labelRevision = 0
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Tokens.spacing.m) {
-            Text(String(format: String(localized: "inspector.itemsSelected", locale: locale), urls.count))
-                .font(.system(size: Tokens.fontSize.title2, weight: .semibold))
-            Divider()
-            LabeledContent("inspector.totalSize", value: Self.sizeFormatter.string(fromByteCount: Self.totalSize(of: urls)))
+        ScrollView {
+            VStack(alignment: .leading, spacing: Tokens.spacing.m) {
+                Text(String(format: String(localized: "inspector.itemsSelected", locale: locale), urls.count))
+                    .font(.system(size: Tokens.fontSize.title2, weight: .semibold))
+                Divider()
+                LabeledContent("inspector.totalSize", value: Self.sizeFormatter.string(fromByteCount: Self.totalSize(of: urls)))
+                InspectorLabelSection(model: labels) { labelRevision &+= 1 }
+            }
+            .padding(Tokens.spacing.m)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .padding(Tokens.spacing.m)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .task(id: LoadKey(urls: urls, libraryID: library?.id,
+                          commandRevision: CommandStack.shared.operationHistory.count,
+                          revision: labelRevision)) {
+            await labels.load(urls: urls, library: library, services: LibraryServices.shared)
+        }
+    }
+
+    private struct LoadKey: Equatable {
+        let urls: [URL]
+        let libraryID: LibraryID?
+        let commandRevision: Int
+        let revision: Int
     }
 
     /// `FileInfoSheet`（1-9 までの簡易版）と同じ単純化: フォルダは中身を

@@ -104,3 +104,92 @@ public final class SetRatingCommand: Command {
         return .complete
     }
 }
+
+/// ラベルの付与・除去 [RL-01][RL-03][RL-07][RP-02]。
+///
+/// ## `SetRatingCommand` と同じ形にしてある
+/// 単一選択の付け外しと複数選択の一括 [RP-02] は、対象の件数が違うだけの同じ
+/// 操作である。別々のコマンドにすると、片方だけ直して取り残す形を新しく作る。
+///
+/// ## 変更前の状態は 1 件ずつ持つ
+/// 同じラベルでも、あるファイルでは `auto`、別のファイルでは `manual`、
+/// また別では `manuallyRemoved` の印が付いている——という状態がふつうにある。
+/// `undo()` で一律に消すと**元の状態を破壊する**（評価で同じ判断をしている
+/// [RA-06]）。`nil`（行が無かった）も 3 種目の状態として区別する。
+///
+/// ## 外すときは常に `manuallyRemoved` を立てる［ユーザー判断］
+/// `RC-04` は自動ラベルについて定めているが、**利用者から見れば origin の違いは
+/// 画面上の小さな印だけ**で、「外したのに再スキャンで戻ってくる」の驚きは
+/// どちらでも変わらない。外す操作を「このファイルにこのラベルは不要」という
+/// 意思表示として扱い、付け直せば印は消える（`assign` が origin を上書きする）。
+@MainActor
+public final class AssignLabelCommand: Command {
+    /// 変更前の状態 1 件ぶん。`origin` が `nil` は「紐づけの行が無かった」。
+    public struct Previous: Sendable, Hashable {
+        public let fileID: FileID
+        public let url: URL
+        public let origin: LabelOrigin?
+
+        public init(fileID: FileID, url: URL, origin: LabelOrigin?) {
+            self.fileID = fileID
+            self.url = url
+            self.origin = origin
+        }
+    }
+
+    private let labelID: LabelID
+    private let previous: [Previous]
+    /// 付けるなら `.manual`、外すなら `.manuallyRemoved`［ユーザー判断］。
+    private let newOrigin: LabelOrigin
+    private let labelName: String
+    private let subjectName: String
+    private let services: LibraryServices
+
+    /// - Parameters:
+    ///   - assigning: 付けるなら `true`、外すなら `false`。
+    ///   - subjectName: 表示に使う対象の呼び名（単一ならファイル名、複数なら「N 項目」）。
+    public init(labelID: LabelID, labelName: String, previous: [Previous],
+                assigning: Bool, subjectName: String, services: LibraryServices) {
+        self.labelID = labelID
+        self.labelName = labelName
+        self.previous = previous
+        self.newOrigin = assigning ? .manual : .manuallyRemoved
+        self.subjectName = subjectName
+        self.services = services
+    }
+
+    public var displayName: String {
+        let verb = newOrigin == .manual ? "を付与" : "を除去"
+        return "「\(subjectName)」のラベル「\(labelName)」\(verb)"
+    }
+
+    public var logDescription: String {
+        Self.logDescription("\(newOrigin == .manual ? "assignLabel" : "unassignLabel")",
+                            previous.map(\.url))
+    }
+
+    public let isUndoable = true
+
+    public func execute() async throws -> CommandResult {
+        guard !previous.isEmpty else { return .success }
+        try await services.applyLabelAssignments(labelID: labelID, previous.map {
+            LabelAssignmentChange(fileID: $0.fileID, origin: newOrigin)
+        })
+        return .success
+    }
+
+    public func undo() async throws -> UndoResult {
+        guard !previous.isEmpty else { return .impossible(reason: "元に戻す対象がありません") }
+        do {
+            // **1 トランザクションで書き戻す**ので、途中まで戻った状態は残らない
+            // ——`SetRatingCommand` が `.partial` を返しうるのは、星の値ごとに
+            // 分けて書くため。こちらは 1 回の呼び出しで済む。
+            try await services.applyLabelAssignments(labelID: labelID, previous.map {
+                LabelAssignmentChange(fileID: $0.fileID, origin: $0.origin)
+            })
+            return .complete
+        } catch {
+            return .impossible(reason: error.localizedDescription)
+        }
+    }
+}

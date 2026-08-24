@@ -98,32 +98,25 @@ public final class LabelFilterModel {
 
     /// そのグループで実際に並べるラベル [PN-02][PN-03][PN-06]。
     ///
-    /// - 展開中（「もっと見る」）は全件。検索文字列があれば絞る [PN-05]
-    /// - ピン留めがあればピン留めだけ [PN-02]
-    /// - 無ければ名前順で上位 10 件 [PN-03]
-    /// - **チェック中のラベルはピン対象外でも必ず含める** [PN-06]
+    /// 並べ方そのものは `PinnedLabelListing` が持つ——右ペインのラベル設定
+    /// [RL-04] が「ラベルフィルタと同様に」同じ一覧を出すので、規則を 2 箇所に
+    /// 置かない。ここが渡すのは「チェック中のものは必ず含める」[PN-06] だけ。
     public func visibleLabels(in group: LabelGroupSummary) -> [LabelSummary] {
-        let all = labels[group.id] ?? []
-        if revealedGroups.contains(group.id) {
-            let text = searchText[group.id] ?? ""
-            guard !text.isEmpty else { return all }
-            return all.filter { NameFilter.matches(name: $0.name, query: text) }
-        }
-        let pinned = all.filter(\.isPinned)
-        let base = pinned.isEmpty
-            ? Array(all.prefix(AppLimits.LabelFilter.collapsedLabelCount))
-            : pinned
-        let checked = all.filter { isSelected($0) }
-        var seen = Set<LabelID>()
-        // `labels` は既に「ピン留め優先・名前順」で来ているので、その順序を
-        // 保ったまま重複を落とすだけでよい [PN-06]。
-        return (base + checked).filter { seen.insert($0.id).inserted }
+        PinnedLabelListing.visible(
+            labels[group.id] ?? [],
+            collapsedLimit: AppLimits.LabelFilter.collapsedLabelCount,
+            isRevealed: revealedGroups.contains(group.id),
+            searchText: searchText[group.id] ?? "",
+            mustInclude: { self.isSelected($0) })
     }
 
     /// 「もっと見る」を出すべきか [PN-02][PN-03]。
     public func hasMoreLabels(in group: LabelGroupSummary) -> Bool {
-        guard !revealedGroups.contains(group.id) else { return false }
-        return (labels[group.id] ?? []).count > visibleLabels(in: group).count
+        PinnedLabelListing.hasMore(
+            labels[group.id] ?? [],
+            collapsedLimit: AppLimits.LabelFilter.collapsedLabelCount,
+            isRevealed: revealedGroups.contains(group.id),
+            mustInclude: { self.isSelected($0) })
     }
 
     // MARK: - 操作

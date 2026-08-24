@@ -34,6 +34,9 @@ struct LabelChip: View {
     let color: LabelColor
     /// 件数バッジ [LB-05]。`nil` なら出さない。
     var count: Int?
+    /// 自動付与の印 [RL-06]。**押せない小さなインジケータ**——手動で付けた
+    /// ものと見分けが付かないと、再スキャンで消えるかどうかが読めない。
+    var isAutomatic: Bool = false
     /// ピンボタンを出すか [PN-04]。
     var showsPin: Bool = false
     var isPinned: Bool = false
@@ -89,6 +92,12 @@ struct LabelChip: View {
                     .font(.system(size: Tokens.fontSize.caption))
                     .monospacedDigit()
                     .opacity(0.65)
+            }
+            if isAutomatic {                                        // [RL-06]
+                Image(systemName: "sparkles")
+                    .font(.system(size: Tokens.fontSize.caption))
+                    .opacity(0.7)
+                    .help(String(localized: "inspector.labels.automatic"))
             }
         }
         .foregroundStyle(foreground)

@@ -428,6 +428,58 @@ public final class LibraryServices {
         return try await repository.filesInSameSeries(as: id)
     }
 
+    // MARK: - ラベル設定 [RL-01〜RL-07]
+
+    /// 選択中のファイルに対応する DB 行をまとめて引く [RP-02]。
+    ///
+    /// **`stat(2)` は 1 度の `FileIO.perform` にまとめる** [NV6-02]——1 件ずつ
+    /// 逃がすと、応答しない共有の上で選択が 50 件あれば 50 回ぶん待つことに
+    /// なる（`ThumbnailService` で同じ形を直している）。
+    ///
+    /// 返すのは**引けたものだけ**。DB に行が無いもの（対象拡張子外・まだ走査
+    /// されていない）は落ちるので、呼び出し側が件数の差で気づける。
+    public func fileRows(at urls: [URL], in library: LibrarySummary) async throws -> [URL: FileRow] {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        guard !urls.isEmpty else { return [:] }
+        let volumeUUID = library.volumeUUID
+        let identities: [(URL, FileIdentity)] = await FileIO.perform {
+            urls.compactMap { url in
+                LibraryFileIdentity.of(url, volumeUUID: volumeUUID).map { (url, $0) }
+            }
+        }
+        var result: [URL: FileRow] = [:]
+        for (url, identity) in identities {
+            guard let id = try await repository.find(identity: identity),
+                  let row = try await repository.row(id: id) else { continue }
+            result[url] = row
+        }
+        return result
+    }
+
+    /// 選択中のファイルに付いているラベルを読む [RL-01][RL-04][RL-06]。
+    public func labelAssignments(fileIDs: [FileID]) async throws
+        -> [FileID: [LabelID: LabelOrigin]]
+    {
+        guard let repository = labelRepository else { throw ServiceError.notReady }
+        return try await repository.assignments(fileIDs: fileIDs)
+    }
+
+    /// ラベルを作る（既にあればそれを返す）[RL-02][LB-01][N-03]。
+    public func ensureLabel(groupID: LabelGroupID, name: String) async throws -> LabelID {
+        guard let repository = labelRepository else { throw ServiceError.notReady }
+        return try await repository.ensureLabel(groupID: groupID, name: name)
+    }
+
+    /// ラベルの紐づけを書き換える [RL-01][RL-07]。
+    ///
+    /// **Undo は `AssignLabelCommand` が担う**ので、UI から直接ここを呼ばない
+    /// こと（呼ぶと ⌘Z で戻せない操作ができる。`setRating` と同じ約束）。
+    public func applyLabelAssignments(labelID: LabelID,
+                                      _ changes: [LabelAssignmentChange]) async throws {
+        guard let repository = labelRepository else { throw ServiceError.notReady }
+        try await repository.applyAssignments(labelID: labelID, changes)
+    }
+
     // MARK: - バックアップ [IE-01〜IE-14][BK-05]
 
     /// DB を JSON へ写す [IE-01][IE-02]。

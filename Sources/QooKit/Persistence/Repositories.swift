@@ -296,6 +296,24 @@ public struct LabelSummary: Sendable, Hashable, Identifiable {
     }
 }
 
+/// 1 ファイル 1 ラベルぶんの紐づけの変更 [RL-01][RL-07]。
+///
+/// **`origin` を `Optional` で持つのは、Undo が「元の状態」をそのまま書き戻す
+/// ため。** `nil` は「紐づけの行が無かった」＝消す、`.manuallyRemoved` は
+/// 「外した印が付いていた」[RC-04] を意味し、この 3 種を区別できないと
+/// ⌘Z が別の状態へ戻してしまう（評価で「変更前の値を 1 件ずつ持つ」と
+/// 決めたのと同じ理由 [RA-06]）。
+public struct LabelAssignmentChange: Sendable, Hashable {
+    public let fileID: FileID
+    /// `nil` は紐づけを消す。
+    public let origin: LabelOrigin?
+
+    public init(fileID: FileID, origin: LabelOrigin?) {
+        self.fileID = fileID
+        self.origin = origin
+    }
+}
+
 public protocol LabelRepository: Sendable {
     func groups(libraryID: LibraryID) async throws -> [LabelGroupSummary]
     /// ラベルフィルタでの表示順 [LF-03][LG-07]。**ライブラリ単位の永続設定で
@@ -313,6 +331,18 @@ public protocol LabelRepository: Sendable {
     /// 1 ファイルの自動ラベルを丸ごと置き換える。手動・手動除外には触れない [RC-04]。
     func replaceAutoLabels(fileID: FileID, labelIDs: Set<LabelID>) async throws
     func labelIDs(fileID: FileID) async throws -> [(labelID: LabelID, origin: LabelOrigin)]
+    /// 複数ファイルの紐づけを 1 度に読む [RL-04][RP-02]。
+    ///
+    /// 1 件ずつ引くと、選択したファイルの数だけ読み取りトランザクションが
+    /// 開く。右ペインは選択が変わるたびに読み直すので、そこは 1 回で済ませる。
+    func assignments(fileIDs: [FileID]) async throws -> [FileID: [LabelID: LabelOrigin]]
+    /// 1 つのラベルの紐づけを、ファイルごとに指定した状態へ揃える [RL-01][RL-07]。
+    ///
+    /// **1 トランザクションで書く** [RP2-04]——一括付与の途中で失敗したときに、
+    /// 半分だけ付いた状態を残さない。`AssignLabelCommand` の `execute()` と
+    /// `undo()` がどちらもこれを使う（戻すのも「指定した状態へ揃える」ことに
+    /// 他ならないので、復元のための別 API を作らない）。
+    func applyAssignments(labelID: LabelID, _ changes: [LabelAssignmentChange]) async throws
     func merge(_ source: LabelID, into target: LabelID) async throws           // [LB-07]
     func rename(_ id: LabelID, to name: String) async throws                   // [LB-06]
     func setArchived(_ ids: [LabelID], _ archived: Bool) async throws          // [LA-01][LA-08]

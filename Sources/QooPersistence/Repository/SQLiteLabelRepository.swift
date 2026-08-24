@@ -75,6 +75,32 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
 
     // MARK: - 書き込み
 
+    /// 複数ファイルの紐づけを 1 度に読む [RL-04][RP-02]。
+    public func assignments(fileIDs: [FileID]) async throws -> [FileID: [LabelID: LabelOrigin]] {
+        guard !fileIDs.isEmpty else { return [:] }
+        return try await database.writer.read { db in
+            var result: [FileID: [LabelID: LabelOrigin]] = [:]
+            // ホスト変数の上限を避けて分ける（`setRating` と同じ事情。**外しても
+            // 結果は正しく、壊れるのは速度のほう**なので変異検証では空振りする）。
+            let step = SQLiteManagedFileRepository.maxBoundParameters
+            for start in stride(from: 0, to: fileIDs.count, by: step) {
+                let chunk = Array(fileIDs[start..<min(start + step, fileIDs.count)])
+                let rows = try Row.fetchAll(db, sql: """
+                    SELECT managedFileId, labelId, origin FROM fileLabel
+                    WHERE managedFileId IN (\(SQLiteManagedFileRepository.placeholders(chunk.count)))
+                    """, arguments: StatementArguments(chunk.map { Optional($0.rawValue) }))
+                for row in rows {
+                    let file = FileID(rawValue: row["managedFileId"])
+                    let label = LabelID(rawValue: row["labelId"])
+                    let origin = LabelOrigin(rawValue: row["origin"]) ?? .auto
+                    result[file, default: [:]][label] = origin
+                }
+            }
+            return result
+        }
+    }
+
+
     /// 無ければ作る。一意性は `(groupID, 正規化名)` [LB-01][N-03][NM-06][LA-07]。
     /// **表示名は最初に登録された原文**を使う [N-03]。
     public func ensureLabel(groupID: LabelGroupID, name: String) async throws -> LabelID {
@@ -156,6 +182,31 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
                            arguments: [fileID.rawValue, labelID.rawValue])
         }
         if wasCounted { try adjustCount(db, labelID: labelID, by: -1) }
+    }
+
+    /// 1 つのラベルの紐づけを、指定した状態へ揃える [RL-01][RL-07]。
+    ///
+    /// **1 トランザクション**で書く [RP2-04]——一括付与 [RP-02] の途中で失敗
+    /// したときに、半分だけ付いた状態を残さない。`execute()` と `undo()` の
+    /// どちらもこれを通る。
+    ///
+    /// **この原子性は変異検証では空振りする**——書き込みを 1 件ずつのトランザクション
+    /// に割っても、失敗を注入しない限り結果は同じになるため。壊れるのは
+    /// 「途中で失敗したときに半端な状態が残らない」という性質のほうなので、
+    /// 通ることを理由に割らないこと（`setRating` の 900 件分割と同じ事情）。
+    public func applyAssignments(labelID: LabelID,
+                                 _ changes: [LabelAssignmentChange]) async throws {
+        guard !changes.isEmpty else { return }
+        try await database.writer.write { db in
+            for change in changes {
+                if let origin = change.origin {
+                    try Self.assign(db, fileID: change.fileID, labelID: labelID, origin: origin)
+                } else {
+                    try Self.unassign(db, fileID: change.fileID, labelID: labelID,
+                                      markManuallyRemoved: false)
+                }
+            }
+        }
     }
 
     /// 1 ファイルの**自動**ラベルを丸ごと置き換える [RC-01][RC-04]。
