@@ -782,10 +782,17 @@ private struct EditMenuCommands: View {
     @FocusedValue(\.folderMenuActions) private var actions
 
     var body: some View {
-        Button("action.cut", systemImage: "scissors") { actions?.cut() }
+        Button("action.cut", systemImage: "scissors") {
+            // 入力中なら文字を切り取る［ユーザー指定、`TextEditingKeyRouting` 参照］。
+            guard !TextEditingKeyRouting.handledCut() else { return }
+            actions?.cut()
+        }
             .disabled(actions?.canCut != true)
             .fixedKeyboardShortcut(.cut)
-        Button("action.copy", systemImage: "document.on.document") { actions?.copy() }
+        Button("action.copy", systemImage: "document.on.document") {
+            guard !TextEditingKeyRouting.handledCopy() else { return }
+            actions?.copy()
+        }
             .disabled(actions?.canCopy != true)
             .fixedKeyboardShortcut(.copy)
             // 以下 3 つはいずれも Finder と同じ ⌥ 代替 [Finder 対比監査。
@@ -796,7 +803,10 @@ private struct EditMenuCommands: View {
                     .fixedKeyboardShortcut(.copyPath)
                     .disabled(actions?.canCopyPath != true)
             }
-        Button("action.paste", systemImage: "document.on.clipboard") { actions?.paste() }
+        Button("action.paste", systemImage: "document.on.clipboard") {
+            guard !TextEditingKeyRouting.handledPaste() else { return }
+            actions?.paste()
+        }
             .disabled(actions?.canPaste != true)
             .fixedKeyboardShortcut(.paste)
             .modifierKeyAlternate(.option) {
@@ -805,7 +815,10 @@ private struct EditMenuCommands: View {
                     .disabled(actions?.canPaste != true)
             }
         Divider()
-        Button("action.selectAll", systemImage: "character.textbox") { actions?.selectAll() }
+        Button("action.selectAll", systemImage: "character.textbox") {
+            guard !TextEditingKeyRouting.handledSelectAll() else { return }
+            actions?.selectAll()
+        }
             .disabled(actions?.canSelectAll != true)
             .fixedKeyboardShortcut(.selectAll)
             .modifierKeyAlternate(.option) {
