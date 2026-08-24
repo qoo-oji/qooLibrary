@@ -1,4 +1,5 @@
 import Foundation
+import QooInfrastructure
 import QooKit
 import Testing
 @testable import QooApplication
@@ -15,9 +16,15 @@ import Testing
 /// 一時ディレクトリ上のストアと擬似ライブラリ。
 @MainActor
 final class ServicesWorkspace {
-    let services = LibraryServices()
+    let services: LibraryServices
     let storeDirectory: URL
     let libraryRoot: URL
+    /// ユーザー指定カバーの複製 [CV-06]。**この作業領域ごとに分ける**——
+    /// 既定の場所はテスト中も一時ディレクトリへ振り替わるが、そこを共有すると
+    /// 互いの複製を掃除し合う（`purgeUnreferencedUserCovers` は「参照されて
+    /// いないものを捨てる」ので、別のテストの複製は必ず未参照に見える）。
+    let coverDirectory: URL
+
     let registrationUUID = UUID()
 
     init() throws {
@@ -25,6 +32,9 @@ final class ServicesWorkspace {
             .appendingPathComponent("qoo-services-\(UUID().uuidString)")
         storeDirectory = base.appendingPathComponent("store")
         libraryRoot = base.appendingPathComponent("library")
+        coverDirectory = base.appendingPathComponent("usercovers")
+        services = LibraryServices(
+            userCoverStore: DefaultUserCoverStore(baseDirectory: coverDirectory))
         try FileManager.default.createDirectory(at: libraryRoot, withIntermediateDirectories: true)
     }
 

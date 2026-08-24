@@ -193,3 +193,133 @@ public final class AssignLabelCommand: Command {
         }
     }
 }
+
+/// タイトル・シリーズ名・巻数・著者を書き換える [RP-10][RP-11][RP-12]。
+///
+/// ## 手動編集と「ファイル名から再取得」を 1 つのコマンドで扱う
+/// 前者は `title`/`titleOrigin` だけ、後者はそこにシリーズ名・巻数・著者が
+/// 加わる——**書き換える列の数が違うだけの同じ操作**である。`SetRatingCommand`
+/// を単発と「全巻に適用」で共有しているのと同じ理由で、別々のコマンドにすると
+/// 片方だけ直して取り残す形を新しく作ることになる。
+///
+/// ## 変更前は「値一式」で持つ
+/// 再取得は `titleOrigin` を `.manual` から `.auto` へ落とすので、`undo()` で
+/// 値だけ戻して origin を戻し忘れると、**次の再スキャンで手動編集が消える**
+/// ——しかも取り消した直後には正しく見えるので気づけない。前後を同じ型
+/// （`FileFieldEdit`）で持てば、書き戻しは「前の値をそのまま書く」で済む。
+@MainActor
+public final class SetFileFieldsCommand: Command {
+    public enum Kind: Sendable {
+        /// 右ペインでタイトルを打ち替えた [RP-10]。
+        case editTitle
+        /// 「ファイル名から再取得」[RP-12]。
+        case rederive
+    }
+
+    private let fileID: FileID
+    private let url: URL
+    private let previous: FileFieldEdit
+    private let next: FileFieldEdit
+    private let subjectName: String
+    private let kind: Kind
+    private let services: LibraryServices
+
+    public init(fileID: FileID, url: URL, previous: FileFieldEdit, next: FileFieldEdit,
+                subjectName: String, kind: Kind, services: LibraryServices) {
+        self.fileID = fileID
+        self.url = url
+        self.previous = previous
+        self.next = next
+        self.subjectName = subjectName
+        self.kind = kind
+        self.services = services
+    }
+
+    public var displayName: String {
+        switch kind {
+        case .editTitle: "「\(subjectName)」のタイトルを変更"
+        case .rederive: "「\(subjectName)」をファイル名から再取得"
+        }
+    }
+
+    public var logDescription: String {
+        Self.logDescription(kind == .editTitle ? "setTitle" : "rederiveFields", [url])
+    }
+
+    public let isUndoable = true
+
+    public func execute() async throws -> CommandResult {
+        try await services.setFileFields(next, id: fileID)
+        return .success
+    }
+
+    public func undo() async throws -> UndoResult {
+        do {
+            try await services.setFileFields(previous, id: fileID)
+            return .complete
+        } catch {
+            return .impossible(reason: error.localizedDescription)
+        }
+    }
+}
+
+/// カバー画像の割り当てを書き換える [CV-02][CV-07]。
+///
+/// **複製そのものは消さない。** 差し替えも「既定に戻す」も ⌘Z で戻せる以上、
+/// その場で複製を消すと**取り消した先に実体が無い**状態を作る。参照されなく
+/// なった複製は起動時に掃除される（`LibraryServices.purgeUnreferencedUserCovers`）。
+@MainActor
+public final class SetCoverCommand: Command {
+    public enum Kind: Sendable {
+        /// 好きな画像に差し替えた [CV-02][CV-03][CV-04][CV-05]。
+        case replace
+        /// 自動抽出へ戻した [CV-07]。
+        case revert
+    }
+
+    private let fileID: FileID
+    private let url: URL
+    private let previous: CoverAssignment
+    private let next: CoverAssignment
+    private let subjectName: String
+    private let kind: Kind
+    private let services: LibraryServices
+
+    public init(fileID: FileID, url: URL, previous: CoverAssignment, next: CoverAssignment,
+                subjectName: String, kind: Kind, services: LibraryServices) {
+        self.fileID = fileID
+        self.url = url
+        self.previous = previous
+        self.next = next
+        self.subjectName = subjectName
+        self.kind = kind
+        self.services = services
+    }
+
+    public var displayName: String {
+        switch kind {
+        case .replace: "「\(subjectName)」のカバー画像を変更"
+        case .revert: "「\(subjectName)」のカバー画像を既定に戻す"
+        }
+    }
+
+    public var logDescription: String {
+        Self.logDescription(kind == .replace ? "setCover" : "revertCover", [url])
+    }
+
+    public let isUndoable = true
+
+    public func execute() async throws -> CommandResult {
+        try await services.setCover(next, id: fileID)
+        return .success
+    }
+
+    public func undo() async throws -> UndoResult {
+        do {
+            try await services.setCover(previous, id: fileID)
+            return .complete
+        } catch {
+            return .impossible(reason: error.localizedDescription)
+        }
+    }
+}

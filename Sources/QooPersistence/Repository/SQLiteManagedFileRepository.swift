@@ -441,6 +441,57 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
 
     // MARK: - 読み取り
 
+    // MARK: - 右ペインからの編集 [RP-10〜RP-12][CV-02〜CV-08]
+
+    public func setFields(_ edit: FileFieldEdit, id: FileID) async throws {
+        try await database.writer.write { db in
+            // 正規化はここで行う [3.8 節]。`applyParsedFields` とまったく同じ
+            // 導出を通すので、手で編集したシリーズ名でも表記ゆれの吸収
+            // （`filesInSameSeries` の照合）が走査由来のものと揃う。
+            let options = try Self.normalizationOptions(db, fileID: id)
+            try db.execute(sql: """
+                UPDATE managedFile SET
+                    title = ?, titleOrigin = ?,
+                    seriesName = ?, seriesKey = ?,
+                    volumeNumber = ?, volumeKind = ?, volumeRaw = ?,
+                    authorName = ?
+                WHERE id = ?
+                """, arguments: [
+                    edit.title,
+                    edit.titleOrigin.rawValue,
+                    edit.seriesName,
+                    edit.seriesName.map { TextNormalizer.normalize($0, options: options) },
+                    edit.volume.number,
+                    edit.volume.kind.rawValue,
+                    edit.volume.raw,
+                    edit.authorName,
+                    id.rawValue])
+        }
+    }
+
+    public func setCover(_ assignment: CoverAssignment, id: FileID) async throws {
+        try await database.writer.write { db in
+            // **`.userSpecified` 以外では `ref` を消す。** 残すと「自動に戻した
+            // のに複製が参照されたまま」になり、起動時の掃除
+            // （`UserCoverStore.purgeUnreferenced`）が永久に捨てられない。
+            let ref = assignment.source == .userSpecified ? assignment.ref : nil
+            try db.execute(sql: """
+                UPDATE managedFile SET coverImageSource = ?, coverImageRef = ?
+                 WHERE id = ?
+                """, arguments: [assignment.source.rawValue, ref, id.rawValue])
+        }
+    }
+
+    public func userCoverRefs(libraryID: LibraryID) async throws -> Set<String> {
+        try await database.writer.read { db in
+            let refs = try String.fetchAll(db, sql: """
+                SELECT coverImageRef FROM managedFile
+                 WHERE libraryId = ? AND coverImageSource = ? AND coverImageRef IS NOT NULL
+                """, arguments: [libraryID.rawValue, CoverSource.userSpecified.rawValue])
+            return Set(refs)
+        }
+    }
+
     public func row(id: FileID) async throws -> FileRow? {
         try await database.writer.read { db in
             try ManagedFileRecord.fetchOne(db, key: id.rawValue)?.fileRow

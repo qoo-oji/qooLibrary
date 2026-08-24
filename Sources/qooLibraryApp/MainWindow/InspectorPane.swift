@@ -10,12 +10,11 @@ import UniformTypeIdentifiers
 /// いない場合は現在のフォルダ自身の情報を表示する（Finder には無い挙動だが、
 /// 常設インスペクタとして常に何か表示されている方が有用なため）[設計判断]。
 ///
-/// **評価 [RA-01〜RA-08] は実装済み**（`InspectorRatingSection`、2-10 の第 1 段）。
-/// タイトル編集・ラベル・カバー画像の差し替え（DT-08/09/11、RP-10〜12、
-/// RL-01〜09、CV2-02〜08）は 2-10 の残りとして未実装。アプリの
-/// 関連付け表示（DT-07）も `AppAssociationService`（1-12 で実装予定）が無いため
-/// 未実装。カバー画像の「表示」（CV2-01 相当）のみ、1-9 で作った
-/// `ThumbnailService`/`FileIconProvider` を再利用して実装する。
+/// **評価 [RA-01〜RA-08]・ラベル [RL-01〜RL-07]・タイトル [RP-10〜RP-12]・
+/// カバー画像 [CV-01〜CV-08] は実装済み**（それぞれ `InspectorRatingSection` /
+/// `InspectorLabelSection` / `InspectorTitleSection` / `InspectorCoverSection`）。
+/// アプリの関連付け表示 [DT-07] とアーカイブ状態 [DT-11] は未実装——前者は
+/// 表示の置き場所を決めていないため、後者はファイル保管庫（2-11）が無いため。
 struct InspectorPane: View {
     @Environment(\.locale) private var locale
     let folder: URL?
@@ -67,6 +66,10 @@ private struct SingleItemInspector: View {
 
     /// 評価 [RA-01〜RA-08]。判定は `QooApplication` 側が持つ。
     @State private var rating = RatingEditorModel()
+    /// タイトル [RP-10〜RP-12][DT-08][DT-09]。同上。
+    @State private var title = TitleEditorModel()
+    /// カバー画像 [CV-01〜CV-08]。同上。
+    @State private var cover = CoverEditorModel()
     /// ラベル設定 [RL-01〜RL-07]。同上。
     @State private var labels = LabelEditorModel()
     /// 書き込みのあと一覧と件数を読み直すための合図。**`.task(id:)` の鍵に
@@ -101,10 +104,12 @@ private struct SingleItemInspector: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Tokens.spacing.m) {
-                InspectorThumbnail(url: url, thumbnailsHidden: thumbnailsHidden)
+                InspectorCoverSection(url: url, thumbnailsHidden: thumbnailsHidden,
+                                      model: cover) // [CV-01〜CV-08]
                 Text(url.lastPathComponent)
                     .font(.system(size: Tokens.fontSize.title2, weight: .semibold))
                     .lineLimit(3)
+                InspectorTitleSection(model: title) // [RP-10〜RP-12][DT-08][DT-09]
 
                 if let info {
                     Divider()
@@ -195,9 +200,18 @@ private struct SingleItemInspector: View {
         // この View を通らずに DB を書き換えるので、選択と入口だけを鍵に
         // すると取り消した結果が星に反映されない。`operationHistory` は
         // run / undo / redo のいずれでも 1 件増える（`CommandStack.record`）。
-        .task(id: RatingLoadKey(url: url, libraryID: library?.id,
+        .task(id: RowLoadKey(url: url, libraryID: library?.id,
                                 commandRevision: CommandStack.shared.operationHistory.count)) {
             await rating.load(url: url, library: library, services: LibraryServices.shared)
+        }
+        // タイトルとカバーを読む [RP-10][CV-01]。鍵の考え方は評価と同じ。
+        .task(id: RowLoadKey(url: url, libraryID: library?.id,
+                                commandRevision: CommandStack.shared.operationHistory.count)) {
+            await title.load(url: url, library: library, services: LibraryServices.shared)
+        }
+        .task(id: RowLoadKey(url: url, libraryID: library?.id,
+                                commandRevision: CommandStack.shared.operationHistory.count)) {
+            await cover.load(url: url, library: library, services: LibraryServices.shared)
         }
         // ラベルを読む [RL-01]。鍵の考え方は評価と同じ（⌘Z はこの View を
         // 通らずに DB を書き換える）。`labelRevision` も含めるのは、ダイアログ
@@ -228,7 +242,9 @@ private struct SingleItemInspector: View {
         let isDirectory: Bool
     }
 
-    private struct RatingLoadKey: Equatable {
+    /// 「選択中の DB 行を読み直す」ための鍵。評価・タイトル・カバーが共有する
+    /// ——どれも同じ 1 行を読むので、鍵が食い違うと片方だけ古いまま残る。
+    private struct RowLoadKey: Equatable {
         let url: URL
         let libraryID: LibraryID?
         let commandRevision: Int
@@ -485,7 +501,7 @@ private struct MultiItemInspector: View {
 /// 異なる（グリッドセルは正方形、こちらは横幅いっぱいの固定高さ）ため、
 /// 専用の共有コンポーネントへ切り出すほどの規模ではないと判断し、意図的に
 /// 個別実装にしている。
-private struct InspectorThumbnail: View {
+struct InspectorThumbnail: View {
     let url: URL
     let thumbnailsHidden: Bool
 

@@ -125,6 +125,13 @@ struct QooLibraryApp: App {
             // `RegisteredFolderStore` の公開メソッドはどれも `ensureLoaded()`
             // から始まるので、先に来ても待ち合わせる。
             await LibraryServices.shared.startSync()
+            // 参照されなくなったユーザー指定カバーの複製を捨てる [CV-06]。
+            // **起動時に一度だけ**——差し替え・「既定に戻す」はその場では
+            // 消さない（⌘Z で戻せる以上、消すと取り消した先に実体が無い）。
+            // `CommandStack` はメモリのみで再起動をまたがないので、この時点で
+            // 参照されていない複製はもう誰も戻せない
+            // （`SecureExtractor.cleanupResidualStaging()` と同じ位置づけ）。
+            await LibraryServices.shared.purgeUnreferencedUserCovers()
         }
         // [ER-01] エラー・通知の提示はこのコントローラ1箇所からのみ行う
         // （`NotificationRouterPresenterController` のコメント参照）。

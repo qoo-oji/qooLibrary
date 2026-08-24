@@ -2318,6 +2318,40 @@
         }
       }
     },
+    "error.cover.notAnImage": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The chosen file could not be read as an image."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "選んだファイルを画像として読み取れませんでした。"
+          }
+        }
+      }
+    },
+    "error.cover.notAnImage.recovery": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose a PNG, JPEG, HEIC, or other image file."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PNG・JPEG・HEIC などの画像ファイルを選んでください。"
+          }
+        }
+      }
+    },
     "error.createAliasFailed": {
       "extractionState": "stale",
       "localizations": {
@@ -2641,6 +2675,23 @@
         }
       }
     },
+    "error.setCoverFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The cover image could not be changed."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "カバー画像を変更できませんでした。"
+          }
+        }
+      }
+    },
     "error.setDefaultApplicationFailed": {
       "extractionState": "stale",
       "localizations": {
@@ -2688,6 +2739,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "評価の設定に失敗しました"
+          }
+        }
+      }
+    },
+    "error.setTitleFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The title could not be changed."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "タイトルを変更できませんでした。"
           }
         }
       }
@@ -4424,6 +4492,159 @@
         }
       }
     },
+    "inspector.cover.chooseFile": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Change…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "変更…"
+          }
+        }
+      }
+    },
+    "inspector.cover.choosePage": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose a Page…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ページから選ぶ…"
+          }
+        }
+      }
+    },
+    "inspector.cover.choosePageTitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose a Cover Page"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "カバーにするページを選ぶ"
+          }
+        }
+      }
+    },
+    "inspector.cover.noPages": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No images were found in this item."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この項目の中に画像が見つかりませんでした。"
+          }
+        }
+      }
+    },
+    "inspector.cover.panelMessage": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose an image to use as the cover."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "カバーに使う画像を選んでください。"
+          }
+        }
+      }
+    },
+    "inspector.cover.revert": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restore Default"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "既定に戻す"
+          }
+        }
+      }
+    },
+    "inspector.cover.sourceSidecar": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Using an image from the covers folder"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "covers フォルダの画像を使っています"
+          }
+        }
+      }
+    },
+    "inspector.cover.sourceUser": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Using a custom image"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "指定した画像を使っています"
+          }
+        }
+      }
+    },
+    "inspector.cover.usePage": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use This Page"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このページを使う"
+          }
+        }
+      }
+    },
     "inspector.fullPath": {
       "extractionState": "stale",
       "localizations": {
@@ -4781,6 +5002,23 @@
         }
       }
     },
+    "inspector.seriesName": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Series"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "シリーズ"
+          }
+        }
+      }
+    },
     "inspector.title": {
       "extractionState": "stale",
       "localizations": {
@@ -4794,6 +5032,74 @@
           "stringUnit": {
             "state": "translated",
             "value": "詳細情報"
+          }
+        }
+      }
+    },
+    "inspector.title.header": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Title"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "タイトル"
+          }
+        }
+      }
+    },
+    "inspector.title.manual": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edited manually"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手動で編集しました"
+          }
+        }
+      }
+    },
+    "inspector.title.notInLibrary": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This item is not in the library, so its title cannot be edited."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ライブラリに取り込まれていないため、タイトルを編集できません。"
+          }
+        }
+      }
+    },
+    "inspector.title.rederive": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Get from File Name"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ファイル名から再取得"
           }
         }
       }
@@ -4828,6 +5134,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "合計サイズ"
+          }
+        }
+      }
+    },
+    "inspector.volume": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Volume"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "巻数"
           }
         }
       }

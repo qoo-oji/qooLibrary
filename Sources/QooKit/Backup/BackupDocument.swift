@@ -16,7 +16,7 @@
 //
 //  ## 値によって再生成可能性が変わる列がある
 //  `title` は `titleOrigin == "manual"` のときだけ再生成不可能 [RP-11]、
-//  `coverImageRef` は `coverImageSource == "user"` のときだけ [IV-03]、
+//  `coverImageRef` は `coverImageSource == "userSpecified"` のときだけ [IV-03]、
 //  ラベル紐づけは `origin != "auto"` のときだけ [RC-04]。**列ではなく値で
 //  分かれる**ので、これらは判定に使う列ごと JSON へ出す。
 //
@@ -302,8 +302,13 @@ public struct FileBackup: Codable, Sendable, Equatable {
     /// `"auto"` / `"manual"`。`manual` のときだけ `title` が意味を持つ [RP-11]。
     public var titleOrigin: String
     public var title: String?
-    /// `"auto"` / `"user"` / `"sidecar"`。`user` のときだけ `coverImageRef` が
-    /// 意味を持つ [IV-03][CV2-02]。
+    /// `CoverSource` の生値（`"auto"` / `"sidecar"` / `"userSpecified"`）。
+    /// `userSpecified` のときだけ `coverImageRef` が意味を持つ [IV-03][CV2-02]。
+    ///
+    /// **`"user"` ではない。** 2-10 でカバーの差し替えを実装するまで書き手が
+    /// 居らず、この注記だけが `"user"` と述べていた（実際に書かれるのは
+    /// `CoverSource.userSpecified.rawValue`）。判定は `CoverSource.auto` との
+    /// 比較で行っているので振る舞いは変わらないが、注記のほうを実態に揃えた。
     public var coverImageSource: String
     public var coverImageRef: String?
     public var isArchived: Bool

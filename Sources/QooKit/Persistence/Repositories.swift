@@ -211,6 +211,30 @@ public protocol ManagedFileRepository: Sendable {
     ///
     /// シリーズ名を持たなければ空配列を返す [RA-07]。
     func filesInSameSeries(as id: FileID) async throws -> [FileRow]
+
+    // MARK: - 右ペインからの編集 [RP-10〜RP-12][CV-02〜CV-08]
+
+    /// タイトル・シリーズ名・巻数・著者をまとめて書く [RP-10][RP-12]。
+    ///
+    /// **`seriesKey` はここで導出する** — 呼び出し側に正規化させない [3.8 節]。
+    /// `titleOrigin` も渡された値をそのまま書く（`applyParsedFields` のように
+    /// `manual` を守る細工はしない）——守る側と、意図して書き換える側は
+    /// 別の操作である。
+    func setFields(_ edit: FileFieldEdit, id: FileID) async throws
+
+    /// カバー画像の割り当てを書く [CV-02][CV-06][CV-07]。
+    ///
+    /// **複製そのものの作成・削除はここではしない。** DB は参照だけを持ち
+    /// [CL-05]、実体の管理は保存側（`UserCoverStore`）の仕事——混ぜると
+    /// 「DB は書けたが複製が無い」「複製はあるが誰も参照していない」の
+    /// どちらへも倒れ得る。
+    func setCover(_ assignment: CoverAssignment, id: FileID) async throws
+
+    /// そのライブラリでいま参照されているユーザー指定カバーの名前 [CV-06]。
+    ///
+    /// 起動時に「どの複製も参照されていないか」を確かめるために使う
+    /// （`UserCoverStore.purgeUnreferenced`）。
+    func userCoverRefs(libraryID: LibraryID) async throws -> Set<String>
 }
 
 /// DB に置く埋め込みメタデータのキャッシュ 1 件ぶん [EM-07]。

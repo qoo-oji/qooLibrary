@@ -4,11 +4,11 @@ import QooKit
 
 /// フォルダ表示モードでの先頭画像サムネイル生成 [9.6 節、IV-01][IV-08][IV-09]。
 ///
-/// 仕様書の `resolveCover` は ①ユーザー指定 → ②サイドカー → ③先頭画像、の
-/// 3段階だが、①②は SwiftData（`Library`/`ManagedFile.coverImageSource`）が
-/// 前提の Phase 2 機能。フェーズ1にはまだ DB もライブラリ登録も無いため、
-/// このサービスは③（フォルダ・アーカイブの先頭画像）だけを担う
-/// [1-9 のスコープ、`CoverImageCache.swift` のコメントと同じ理由]。
+/// 仕様書の `resolveCover` は ①ユーザー指定 → ②サイドカー → ③先頭画像 の
+/// 3 段階だが、**このサービスが担うのは③だけ**。①②は DB とライブラリの
+/// 実体を見る必要があるため `CoverEditorModel`（`QooApplication`、2-10）が
+/// 持ち、そこが「表示に使う URL 1 つ」を決めてからここへ渡す
+/// ——①②の実体はどちらも素の画像ファイルなので、この経路にそのまま乗る。
 public actor ThumbnailService {
     public static let shared = ThumbnailService()
 

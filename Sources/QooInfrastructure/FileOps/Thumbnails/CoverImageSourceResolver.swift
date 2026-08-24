@@ -5,9 +5,11 @@ import QooKit
 /// [9.6 節 `resolveCover` の③、IV-01]。
 ///
 /// 仕様書の `resolveCover` は ①ユーザー指定 → ②サイドカー → ③先頭画像 の
-/// 3 段階だが、①②は SwiftData（`Library`/`ManagedFile.coverImageSource`）を
-/// 前提とするフェーズ 2 の機能。フェーズ 1 では③だけを担う
-/// [`ThumbnailService`/`CoverImageCache` と同じスコープ]。
+/// 3 段階で、**ここが担うのは③だけ**。①は `UserCoverStore`、②は
+/// `SidecarCoverLocator`、順序の判定は `CoverEditorModel`（`QooApplication`）。
+///
+/// 「利用者に選ばせるための一覧」は `ArchiveCoverPicker` [CV-05]——先頭 1 枚を
+/// 解決するこことは目的も費用の性質も違うので、型を分けてある。
 ///
 /// **`ThumbnailService` の private なヘルパーだったものを独立させた**
 /// [1-14 Quick Look 連携で切り出し]。Quick Look の独自カバープレビュー

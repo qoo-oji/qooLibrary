@@ -60,12 +60,21 @@ public final class LibraryServices {
     private var labelRepository: (any LabelRepository)?
     private var backupRepository: (any BackupRepository)?
     private var scanEngine: ScanEngine?
+    /// ユーザー指定カバーの複製 [CV-06]。DB を開けていなくても場所は決まるので、
+    /// リポジトリと違い常に持っている。
+    private let userCoverStore: any UserCoverStoring
     private var didBootstrap = false
     /// 実体への追随 [SY-01〜SY-08][VD-01〜VD-11]。`bootstrap()` で組み立て、
     /// ``startSync()`` で動き出す。
     public private(set) var sync: LibrarySyncCoordinator?
 
-    public init() {}
+    /// - Parameter userCoverStore: ユーザー指定カバーの複製の置き場所 [CV-06]。
+    ///   **テストは独立した一時ディレクトリを渡すこと**（`bootstrap(storeURL:)` と
+    ///   同じ理由）。既定も `swift test` 中は振り替わるが、テストどうしが
+    ///   同じ場所を共有すると互いの複製を掃除し合う。
+    public init(userCoverStore: any UserCoverStoring = DefaultUserCoverStore.shared) {
+        self.userCoverStore = userCoverStore
+    }
 
     // MARK: - 起動
 
@@ -282,6 +291,10 @@ public final class LibraryServices {
         guard let repository = libraryRepository else { throw ServiceError.notReady }
         guard let summary = try await repository.library(uuid: uuid) else { return }
         try await repository.unregister(id: summary.id, keepLabels: keepLabels)
+        // ユーザー指定カバーの複製を片付ける [CV-06]。行が連鎖削除された時点で
+        // 誰も参照していないので、起動時の掃除を待たずにここで捨ててよい
+        // ——無効化は Undo できないため、「取り消した先に実体が無い」は起きない。
+        await userCoverStore.removeAll(libraryUUID: summary.uuid)
         Log.app.info("ライブラリを無効化: \(Log.redactable(summary.displayName))")
         await refreshLibraries()
         await sync?.resync()          // 監視対象から外す
@@ -471,6 +484,98 @@ public final class LibraryServices {
         return try await repository.filesInSameSeries(as: id)
     }
 
+    // MARK: - タイトル編集 [RP-10〜RP-12]
+
+    /// タイトル・シリーズ名・巻数・著者を書き込む [RP-10][RP-12]。
+    ///
+    /// **Undo は `SetFileFieldsCommand` が担う**ので、UI から直接ここを呼ばない
+    /// こと（`setRating`/`applyLabelAssignments` と同じ約束）。
+    public func setFileFields(_ edit: FileFieldEdit, id: FileID) async throws {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        try await repository.setFields(edit, id: id)
+    }
+
+    /// ファイル名（と、読み取り済みの埋め込みメタデータ）から導き直す [RP-12]。
+    ///
+    /// ## 走査とまったく同じ手順を通す
+    /// `FolderLabelResolver.resolve` → `EmbeddedMetadataMerge.apply` の順は
+    /// `ScanEngine.reconcile` の④と同じ。別の導出を書くと「再取得したのに
+    /// 次の再スキャンで違う値になる」——`RP-12` が戻したいのは
+    /// **「走査が付けるはずの値」**であって、それに似た何かではない。
+    ///
+    /// ## ファイルを開き直さない
+    /// 埋め込みメタデータは DB のキャッシュから読む [EM-07]。実体を開くと
+    /// ネットワーク越しでは数秒待たされるうえ、印が変わっていなければ走査も
+    /// 開かない [SE3-25] ので、開いても同じ値しか得られない。
+    ///
+    /// - Returns: 書き込むべき値一式。`titleOrigin` は `.auto` に戻る。
+    public func rederivedFields(for row: FileRow) async throws -> FileFieldEdit {
+        guard let repository = fileRepository,
+              let libraries = libraryRepository else { throw ServiceError.notReady }
+        guard let settings = try await libraries.settingsSnapshot(libraryID: row.libraryID) else {
+            throw ServiceError.notReady
+        }
+        let nameWithoutExtension = (row.filename as NSString).deletingPathExtension
+        let resolved = FolderLabelResolver.resolve(
+            relativePath: row.relativePath,
+            nameWithoutExtension: nameWithoutExtension,
+            settings: settings,
+            purpose: .libraryScan,
+            endsWithBookFolder: row.isBookFolder)
+        let embedded = try await repository.embeddedMetadataCache(ids: [row.id])[row.id]?.metadata
+        let merged = EmbeddedMetadataMerge.apply(embedded, to: resolved, settings: settings)
+        return FileFieldEdit(title: merged.title, titleOrigin: .auto,
+                             seriesName: merged.seriesName, volume: merged.volume,
+                             authorName: merged.authorName)
+    }
+
+    // MARK: - カバー画像 [CV-02〜CV-08]
+
+    /// カバーの割り当てを書き込む [CV-02][CV-07]。
+    ///
+    /// **Undo は `SetCoverCommand` が担う**ので、UI から直接ここを呼ばないこと。
+    public func setCover(_ assignment: CoverAssignment, id: FileID) async throws {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        try await repository.setCover(assignment, id: id)
+    }
+
+    /// 画像データを複製として保存し、DB に書く参照を返す [CV-06]。
+    ///
+    /// **書き込みは `FileIO` の上で行う** [NV6-01]。置き場所はローカルだが、
+    /// 呼び出し元（右ペイン）はメインアクタである。
+    public func storeUserCover(_ data: Data, library: LibrarySummary) async throws -> String {
+        let store = userCoverStore
+        let uuid = library.uuid
+        return try await FileIO.perform { try store.store(data, libraryUUID: uuid) }
+    }
+
+    /// 複製の場所 [CV-06]。存在するかは呼び出し側が判定する。
+    public func userCoverURL(ref: String, library: LibrarySummary) -> URL {
+        userCoverStore.url(forRef: ref, libraryUUID: library.uuid)
+    }
+
+    /// 参照されていない複製を捨てる [CV-06]。**起動時に一度だけ呼ぶ。**
+    ///
+    /// 差し替えと「既定に戻す」はその場では複製を消さない——どちらも ⌘Z で
+    /// 戻せるので、消すと**取り消した先に実体が無い**状態を作る。`CommandStack`
+    /// はメモリのみで再起動をまたがないため、起動時に参照されていない複製は
+    /// もう誰も戻せない（`SecureExtractor.cleanupResidualStaging()` と同じ形）。
+    public func purgeUnreferencedUserCovers() async {
+        guard let libraries = libraryRepository, let files = fileRepository else { return }
+        var referenced: [UUID: Set<String>] = [:]
+        do {
+            for library in try await libraries.libraries() {
+                referenced[library.uuid] = try await files.userCoverRefs(libraryID: library.id)
+            }
+        } catch {
+            // 引けなかったときは**何も捨てない**——「参照が 0 件」と
+            // 「参照を読めなかった」を取り違えると、生きている複製を全部消す。
+            Log.db.error("ユーザー指定カバーの参照を読めませんでした: \(error.localizedDescription)")
+            return
+        }
+        await userCoverStore.purgeUnreferenced(referenced)
+    }
+
     // MARK: - ラベル設定 [RL-01〜RL-07]
 
     /// 選択中のファイルに対応する DB 行をまとめて引く [RP-02]。
@@ -573,9 +678,12 @@ public final class LibraryServices {
     /// 二度と片付けられない」欠陥を作った前例がある [LibraryMenuVisibility]。
     public func deleteLibrary(id: LibraryID, keepLabels: Bool = false) async throws {
         guard let repository = libraryRepository else { throw ServiceError.notReady }
-        let name = try await repository.library(id: id)?.displayName
+        let summary = try await repository.library(id: id)
         try await repository.unregister(id: id, keepLabels: keepLabels)
-        Log.app.info("ライブラリを削除: \(Log.redactable(name ?? "?"))")
+        if let summary {
+            await userCoverStore.removeAll(libraryUUID: summary.uuid)   // [CV-06]
+        }
+        Log.app.info("ライブラリを削除: \(Log.redactable(summary?.displayName ?? "?"))")
         await refreshLibraries()
         await sync?.resync()
     }

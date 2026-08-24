@@ -55,7 +55,7 @@ struct BackupTests {
             try db.execute(sql: """
                 UPDATE managedFile
                    SET rating = 3, title = '題', titleOrigin = 'manual',
-                       coverImageSource = 'user', coverImageRef = 'cover-ref',
+                       coverImageSource = 'userSpecified', coverImageRef = 'cover-ref',
                        isArchived = 1, archivedFromPath = 'old/path.cbz', archivedAt = 100,
                        isDuplicateRepresentativePinned = 1,
                        state = 'trashed', trashedAt = 200

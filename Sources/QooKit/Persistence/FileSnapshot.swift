@@ -90,16 +90,29 @@ public struct FileRow: Sendable, Hashable, Identifiable {
     public let createdAt: Date
     public let modifiedAt: Date
     public let title: String?
+    /// タイトルが手動編集されたか [RP-11]。`.manual` の値は再スキャンでも
+    /// 埋め込みメタデータでも上書きされない（`applyParsedFields` の SQL が守る）。
+    public let titleOrigin: ValueOrigin
     public let seriesName: String?
     public let volume: VolumeValue
+    public let authorName: String?
     public let rating: Int
+    /// ユーザー指定カバーの複製の名前 [CV-06]。`coverImageSource == .userSpecified`
+    /// のときだけ意味を持つ。**複製そのもののパスではない**——置き場所は
+    /// `UserCoverStore` が決めるので、DB は参照だけを持つ [CL-05]。
+    public let coverImageRef: String?
+    public let coverImageSource: CoverSource
     public let state: FileState
     public let isArchived: Bool
     public let isBookFolder: Bool
 
     public init(id: FileID, libraryID: LibraryID, relativePath: String, filename: String,
                 fileSize: Int64, createdAt: Date, modifiedAt: Date, title: String?,
-                seriesName: String?, volume: VolumeValue, rating: Int, state: FileState,
+                titleOrigin: ValueOrigin = .auto,
+                seriesName: String?, volume: VolumeValue, authorName: String? = nil,
+                rating: Int,
+                coverImageRef: String? = nil, coverImageSource: CoverSource = .auto,
+                state: FileState,
                 isArchived: Bool, isBookFolder: Bool) {
         self.id = id
         self.libraryID = libraryID
@@ -109,9 +122,13 @@ public struct FileRow: Sendable, Hashable, Identifiable {
         self.createdAt = createdAt
         self.modifiedAt = modifiedAt
         self.title = title
+        self.titleOrigin = titleOrigin
         self.seriesName = seriesName
         self.volume = volume
+        self.authorName = authorName
         self.rating = rating
+        self.coverImageRef = coverImageRef
+        self.coverImageSource = coverImageSource
         self.state = state
         self.isArchived = isArchived
         self.isBookFolder = isBookFolder
