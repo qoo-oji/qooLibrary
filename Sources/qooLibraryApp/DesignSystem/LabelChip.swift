@@ -55,6 +55,16 @@ struct LabelChip: View {
     var showsPin: Bool = false
     var isPinned: Bool = false
     var onTogglePin: (() -> Void)?
+    /// 紐づけが 0 件で、**名前を赤字にする** [LE-04][RC-07]。
+    ///
+    /// **チップの外から `.foregroundStyle` を掛けても効かない**［実機検証で発見］
+    /// ——ここが背景から文字色を計算して上書きするため [CO-05]。赤字にするかは
+    /// チップ自身が知っている必要がある。
+    ///
+    /// 既定は偽。ラベルフィルタと右ペインでは 0 件でも赤くしない——あちらで
+    /// 求められているのは「絞り込む／付け外しする」ことで、「消してよさそう」の
+    /// 判断は編集ウインドウの仕事 [LE-04]。
+    var isOrphaned: Bool = false
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -67,6 +77,10 @@ struct LabelChip: View {
     }
 
     private var foreground: Color {
+        // 0 件の赤字 [LE-04] は**意図した意味づけ**なので、背景から導く
+        // 自動の文字色 [CO-05] より優先する。淡い既定色の上でも濃い色の上でも
+        // 読めるよう、色そのものはアセット（ライト/ダークで別値）が持つ。
+        if isOrphaned { return Color("DangerText") }
         guard let hex = LabelColorPalette.readableForeground(on: backgroundHex),
               let color = Color(labelHex: hex) else { return .primary }
         return color

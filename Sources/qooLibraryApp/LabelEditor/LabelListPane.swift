@@ -63,7 +63,9 @@ struct LabelListPane: View {
         case .failed(let reason):
             placeholder(LocalizedStringKey(reason), systemImage: "exclamationmark.triangle")
         case .ready:
-            list
+            // 縮む側。フッターが伸びたら**一覧が譲る**——譲らないと中身全体が
+            // ウインドウからはみ出す。
+            list.frame(minHeight: 60)
         }
     }
 
@@ -102,19 +104,31 @@ struct LabelListPane: View {
 
     // MARK: - 下部: 操作
 
+    /// **下端の操作群は高さを増やさない。** 失敗の理由が 1 行増えただけで
+    /// フッターが伸び、**ウインドウの中身全体がはみ出して両ペインの上端と
+    /// 下端が消える**（実機で踏んだ。有効化ウインドウで同じ形を 3 度直している
+    /// ——「固定サイズのウインドウでは可変高さの領域を 2 つ持たない」）。
+    ///
+    /// 理由は伸びうるので**上限付きのスクロール領域**に閉じ込め、一覧の側を
+    /// 縮む側にする（`.layoutPriority(1)` で先に高さを確保する）。
     private var footer: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.m) {
             if let errorText {
-                Text(errorText)
-                    .font(.system(size: Tokens.fontSize.caption))
-                    .foregroundStyle(Color("DangerText"))
-                    .fixedSize(horizontal: false, vertical: true)
+                ScrollView {
+                    Text(errorText)
+                        .font(.system(size: Tokens.fontSize.caption))
+                        .foregroundStyle(Color("DangerText"))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 44)
             }
             addRow
             if let single = singleSelection { editRow(single) }
             batchRow
         }
         .padding(Tokens.spacing.m)
+        .layoutPriority(1)
     }
 
     /// 追加 [LE-07]。グループが未保存（DB に行が無い）なら押せない。
@@ -286,9 +300,11 @@ struct LabelRowView: View {
 
     var body: some View {
         HStack(spacing: Tokens.spacing.s) {
-            LabelChip(name: row.name, color: color, count: row.fileCount)
-                // 0 件は赤字 [LE-04][RC-07]、保管庫はグレー [LE-06]
-                .foregroundStyle(row.isOrphaned ? Color("DangerText") : Color.primary)
+            // 0 件は赤字 [LE-04][RC-07]、保管庫はグレー [LE-06]。
+            // **赤字はチップに渡す**——外から `.foregroundStyle` を掛けても、
+            // チップが背景から文字色を計算して上書きしてしまう［実機で発見］。
+            LabelChip(name: row.name, color: color, count: row.fileCount,
+                      isOrphaned: row.isOrphaned)
                 .opacity(row.isArchived ? 0.55 : 1)
             if row.isPinned {
                 Image(systemName: "pin.fill")
