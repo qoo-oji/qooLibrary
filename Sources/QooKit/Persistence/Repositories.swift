@@ -139,6 +139,16 @@ public protocol ManagedFileRepository: Sendable {
     /// `scope` の `recursive` は**無視して必ず配下全体**を見る。直下だけを見ると
     /// 「該当ファイルを配下に持つフォルダ」を落とす。
     func matchingChildNames(_ q: FileQuery) async throws -> Set<String>
+    /// 現在フォルダの**直下**にあるブックフォルダの名前 [IF-17]。
+    ///
+    /// フォルダ表示モードでインジケータを出すためだけの経路。判定を
+    /// その場で計算する（直下に対象拡張子 0 件かつ画像 1 件以上 [IF-01]）と
+    /// **フォルダの数だけ列挙が要る**ので、走査が既に出した答え
+    /// （`isBookFolder`）を引く。
+    ///
+    /// `matchingChildNames` と違い**畳まない**——ブックフォルダ「を含む」
+    /// フォルダは通常のフォルダであって、印を付ける対象ではない。
+    func bookFolderChildNames(libraryID: LibraryID, relativePath: String) async throws -> Set<String>
     /// 候補の相対パスのうち、条件に該当するものを返す [LF-14]。
     ///
     /// 検索結果（配下から再帰的に集めた一覧）へフィルタを効かせるための経路。

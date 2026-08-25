@@ -44,11 +44,20 @@ public final class LibraryContentModel {
     public struct Row: Sendable, Hashable, Identifiable {
         public let file: FileRow
         public let url: URL
+        /// ユーザー指定カバーの複製の場所 [IV-02①][CV-06]。`coverImageSource`
+        /// が `.userSpecified` のときだけ入る。
+        ///
+        /// **実体があるかは見ていない**——存在確認は I/O なので、実際に描く
+        /// ときに `CoverResolution` がサイドカーの探索とまとめて 1 回で行う。
+        /// ここで持つのは**パスの組み立てだけ**（`UserCoverStore.url(forRef:)`
+        /// は純粋な計算）なので、200 行ぶん作っても費用が無い。
+        public let userCoverURL: URL?
         public var id: URL { url }
 
-        public init(file: FileRow, url: URL) {
+        public init(file: FileRow, url: URL, userCoverURL: URL? = nil) {
             self.file = file
             self.url = url
+            self.userCoverURL = userCoverURL
         }
 
         /// 一覧に出す名前 [IV-05][IV-07]。
@@ -119,7 +128,8 @@ public final class LibraryContentModel {
         do {
             let page = try await services.files(query)
             guard mine == generation else { return }
-            rows = Self.rows(from: page.rows, libraryRootPath: library.resolvedPath)
+            rows = Self.rows(from: page.rows, libraryRootPath: library.resolvedPath,
+                             userCoverURL: { services.userCoverURL(ref: $0, library: library) })
             totalCount = page.totalCount
             state = .ready
         } catch {
@@ -152,7 +162,8 @@ public final class LibraryContentModel {
             // 減らすことがあり、古い総数のままだと「もう無いのに読み続ける」か
             // 「まだあるのに止まる」のどちらかになる。
             totalCount = page.totalCount
-            let more = Self.rows(from: page.rows, libraryRootPath: library.resolvedPath)
+            let more = Self.rows(from: page.rows, libraryRootPath: library.resolvedPath,
+                                 userCoverURL: { services.userCoverURL(ref: $0, library: library) })
             // 同じ行が二度入らないようにする。ページの境目で走査が行を挿すと
             // `offset` がずれて重複し得る（`Identifiable` の id が衝突すると
             // SwiftUI が実行時に文句を言う）。
@@ -243,12 +254,16 @@ public final class LibraryContentModel {
     ///
     /// **`isDirectory` はブックフォルダかどうかで決める** [IF-10]——ブックフォルダは
     /// 実体がディレクトリだが `managedFile` の 1 行として 1 冊分を表す。
-    nonisolated static func rows(from files: [FileRow], libraryRootPath: String) -> [Row] {
+    nonisolated static func rows(from files: [FileRow], libraryRootPath: String,
+                                 userCoverURL: (String) -> URL?) -> [Row] {
         let root = URL(fileURLWithPath: libraryRootPath, isDirectory: true)
         return files.map { file in
             Row(file: file,
                 url: root.appendingPathComponent(file.relativePath,
-                                                 isDirectory: file.isBookFolder))
+                                                 isDirectory: file.isBookFolder),
+                // [IV-02①] 参照があるときだけ場所を組み立てる。I/O は無い。
+                userCoverURL: file.coverImageSource == .userSpecified
+                    ? file.coverImageRef.flatMap(userCoverURL) : nil)
         }
     }
 }

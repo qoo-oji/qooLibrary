@@ -81,7 +81,7 @@ struct LibraryContentModelTests {
                                 isBookFolder: true),
                    Self.fileRow(relativePath: "作品A/第02巻.cbz", filename: "第02巻.cbz",
                                 isBookFolder: false)],
-            libraryRootPath: "/tmp/lib")
+            libraryRootPath: "/tmp/lib", userCoverURL: { _ in nil })
         #expect(rows[0].url.hasDirectoryPath)
         #expect(!rows[1].url.hasDirectoryPath)
         #expect(rows[0].url.path == "/tmp/lib/作品A/第01巻")
@@ -323,12 +323,37 @@ struct LibraryContentModelTests {
 
     private static func fileRow(relativePath: String, filename: String,
                                 title: String? = nil,
-                                isBookFolder: Bool = false) -> FileRow {
+                                isBookFolder: Bool = false,
+                                coverRef: String? = nil,
+                                coverSource: CoverSource = .auto) -> FileRow {
         FileRow(id: FileID(rawValue: 1), libraryID: LibraryID(rawValue: 1),
                 relativePath: relativePath, filename: filename,
                 fileSize: 1, createdAt: .distantPast, modifiedAt: .distantPast,
                 title: title, seriesName: nil, volume: VolumeValue.none,
-                rating: 0, state: .active, isArchived: false, isBookFolder: isBookFolder)
+                rating: 0, coverImageRef: coverRef, coverImageSource: coverSource,
+                state: .active, isArchived: false, isBookFolder: isBookFolder)
+    }
+
+    // MARK: - 一覧のカバー画像 [IV-02①]
+
+    /// **参照があるときだけ場所を組み立てる。** `.auto`／`.sidecar` の行にも
+    /// 参照が残っていることがある（`setCover` は `.userSpecified` 以外で消すが、
+    /// 過去の版で書かれた行や取り込んだ JSON では残り得る）ので、
+    /// `coverImageSource` を見ずに `coverImageRef` だけで判定すると、
+    /// **自動へ戻したはずの本に古い複製が出続ける**。
+    @Test("ユーザー指定のときだけ複製の場所を持つ [IV-02①][CV-06]")
+    func onlyUserSpecifiedRowsCarryACoverURL() {
+        let rows = LibraryContentModel.rows(
+            from: [Self.fileRow(relativePath: "1.cbz", filename: "1.cbz",
+                                coverRef: "a.png", coverSource: .userSpecified),
+                   Self.fileRow(relativePath: "2.cbz", filename: "2.cbz",
+                                coverRef: "b.png", coverSource: .auto),
+                   Self.fileRow(relativePath: "3.cbz", filename: "3.cbz")],
+            libraryRootPath: "/tmp/lib",
+            userCoverURL: { URL(fileURLWithPath: "/covers/\($0)") })
+        #expect(rows[0].userCoverURL?.path == "/covers/a.png")
+        #expect(rows[1].userCoverURL == nil, "自動なのに複製を指してはいけない")
+        #expect(rows[2].userCoverURL == nil)
     }
 
     private static func row(filename: String, title: String?) -> LibraryContentModel.Row {

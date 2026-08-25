@@ -325,3 +325,49 @@ struct WhitespaceTests {
         #expect(Whitespace.normalizeLiteral("   ") == " ")
     }
 }
+
+// MARK: - searchKey(joining:)
+
+@Suite("複数の値をまとめた検索キー [SR-03]")
+struct SearchKeyJoiningTests {
+
+    @Test("部品ごとに正規化してから繋ぐ")
+    func normalizesEachPart() throws {
+        let key = TextNormalizer.searchKey(joining: ["ＡＢＣ", "ぶらっく", nil])
+        #expect(key == "abc\u{1F}ブラック")
+    }
+
+    @Test("nil と空は落とす")
+    func dropsEmptyParts() throws {
+        #expect(TextNormalizer.searchKey(joining: [nil, "", "   ", "あ"]) == "ア")
+        #expect(TextNormalizer.searchKey(joining: [nil, nil]).isEmpty)
+    }
+
+    /// ファイル名の stem がタイトルと一致するのは自動抽出ではごく普通で、
+    /// 落とさないと索引 `mf_search` が理由もなく倍の大きさになる。
+    @Test("同じ値は 1 つだけ持つ")
+    func dropsDuplicates() throws {
+        #expect(TextNormalizer.searchKey(joining: ["作品", "作品"]) == "作品")
+        // 正規化した結果が同じなら 1 つ（全角と半角）。
+        #expect(TextNormalizer.searchKey(joining: ["ＡＢＣ", "abc"]) == "abc")
+    }
+
+    /// **これがこの関数の存在理由。** 空白で繋ぐと `normalize` の空白畳み込みで
+    /// 1 本の文字列になり、部品をまたいだ語が当たってしまう。
+    @Test("区切りは normalize を素通りし、空白にならない")
+    func theSeparatorSurvivesNormalization() throws {
+        let key = TextNormalizer.searchKey(joining: ["ゼータ", "イータ"])
+        #expect(key.contains(TextNormalizer.searchKeyPartSeparator))
+        // 問い合わせ側の鍵は 1 部品なので、区切りを含む形には決してならない。
+        let query = TextNormalizer.searchKey("ゼータ イータ")
+        #expect(!query.contains(TextNormalizer.searchKeyPartSeparator))
+        #expect(!key.contains(query), "部品をまたいで一致してはいけない")
+    }
+
+    @Test("区切り自体は空白でも全角の写像域でもない")
+    func theSeparatorIsNotWhitespaceOrFolded() throws {
+        let sep = TextNormalizer.searchKeyPartSeparator
+        #expect(!Whitespace.isWhitespace(sep))
+        #expect(TextNormalizer.normalize(String(sep)) == String(sep))
+    }
+}

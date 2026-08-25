@@ -163,6 +163,11 @@ public final class WindowState {
     /// `labelFilter` と同じく、駆動する（読み直す）のは `MainWindowView` の
     /// `.task(id:)`。
     public let libraryContent = LibraryContentModel()
+    /// フォルダ表示モードでのブックフォルダ [IF-17][IF-18]。ライブラリ表示
+    /// モードでは既に 1 冊として 1 行に出ているので、印の出番があるのは
+    /// フォルダ表示モードだけ。`libraryContent` と同じく駆動は
+    /// `MainWindowView` の `.task(id:)`。
+    public let bookFolders = BookFolderIndex()
     // 既定は `.list`。1-12 で、この既定値自体を環境設定「表示」タブから変更
     // できるようにした（`DisplayPreferencesTab.swift` 参照）。ウインドウ固有
     // 状態自体は引き続き DB に保存しない [ST-20] が、「次に開くウインドウの

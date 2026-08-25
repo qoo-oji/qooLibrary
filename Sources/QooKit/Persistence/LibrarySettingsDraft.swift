@@ -134,6 +134,11 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
     /// `ComicInfo.xml` の巻数をどちらの要素から取るか。
     public var comicInfoVolumeSource: ComicInfoVolumeSource
 
+    // --- ブックフォルダ [IF-17][IF-18] ---
+    /// ブックフォルダの「開く」を関連付けアプリに任せるか [IF-18][AS-06]。
+    /// 偽なら既定どおりフォルダを開く（配下の画像一覧を表示する）。
+    public var opensBookFolderWithApp: Bool
+
     // --- 照合の文脈（編集不可） ---
     /// **この**ライブラリを除いた他ライブラリの型名・表示名。型付き照合 [TY-01]
     /// の列挙候補を組み立てるのに要る。自分の分は編集中の値から足すので、
@@ -157,6 +162,7 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
                 seriesTitleCompositionFormat: String = "@series @volume",
                 readsEmbeddedMetadata: Bool = true,
                 comicInfoVolumeSource: ComicInfoVolumeSource = .ask,
+                opensBookFolderWithApp: Bool = false,
                 otherLibraryTypeNames: [String] = [],
                 otherLibraryDisplayNames: [String] = []) {
         self.displayName = displayName
@@ -175,6 +181,7 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
         self.seriesTitleCompositionFormat = seriesTitleCompositionFormat
         self.readsEmbeddedMetadata = readsEmbeddedMetadata
         self.comicInfoVolumeSource = comicInfoVolumeSource
+        self.opensBookFolderWithApp = opensBookFolderWithApp
         self.otherLibraryTypeNames = otherLibraryTypeNames
         self.otherLibraryDisplayNames = otherLibraryDisplayNames
     }

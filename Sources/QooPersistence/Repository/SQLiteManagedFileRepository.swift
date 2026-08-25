@@ -29,6 +29,25 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
         return id.map { FileID(rawValue: $0) }
     }
 
+    /// `searchKey` を行の現在値から作り直す [SR-03]。
+    ///
+    /// タイトル・シリーズ名を書き換えた**あと**に呼ぶこと。**書いた値ではなく
+    /// 行を読み直す**のが要点——`applyParsedFields` の `title` は
+    /// `CASE WHEN titleOrigin = 'manual'` で据え置かれることがあるので、
+    /// 渡された値から組み立てると手動編集した行だけ鍵が実態とずれる。
+    static func refreshSearchKey(_ db: Database, id: FileID,
+                                 options: NormalizationOptions) throws {
+        let stmt = try db.cachedStatement(sql:
+            "SELECT filename, title, seriesName FROM managedFile WHERE id = ?")
+        guard let row = try Row.fetchOne(stmt, arguments: [id.rawValue]) else { return }
+        let filename: String = row["filename"]
+        let key = ManagedFileSearchKey.make(
+            stem: ManagedFileSearchKey.stem(ofFilename: filename),
+            title: row["title"], seriesName: row["seriesName"], options: options)
+        try db.execute(sql: "UPDATE managedFile SET searchKey = ? WHERE id = ?",
+                       arguments: [key, id.rawValue])
+    }
+
     /// 再照合の候補を確度の高い順に返す [ID-03][ID3-02]。
     ///
     /// ① 同一相対パス + 同一サイズ ② 同一ファイル名 + 同一サイズ ③ 同一ファイル名のみ。
@@ -126,7 +145,13 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
         try stmt.execute(arguments: [
             snapshot.relativePath, snapshot.filename,
             TextNormalizer.normalize(stem, options: options),
-            TextNormalizer.searchKey(stem, options: options),
+            // **stem だけ**を書く [SR-03]。タイトル・シリーズを混ぜた最終形は
+            // 直後に走る `applyParsedFields` が書く——走査は upsert と
+            // `applyParsedFields` を必ず対にして呼ぶ（`ScanEngine` の ②→④）。
+            // ここで DB のタイトルを読み直すと、走査の内側の輪で 1 ファイルにつき
+            // SELECT が 1 本増える。**この対を崩す経路を作らないこと。**
+            ManagedFileSearchKey.make(stem: stem, title: nil, seriesName: nil,
+                                      options: options),
             snapshot.fileSize,
             snapshot.modifiedAt.timeIntervalSinceReferenceDate,
             snapshot.isBookFolder, id.rawValue])
@@ -255,6 +280,10 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
                         authorName = NULL, lastParsedFormatID = NULL, libraryTypeMismatch = 0
                     WHERE id = ?
                     """, arguments: [id.rawValue])
+                // タイトルは `titleOrigin = 'manual'` なら残るので、消した枝でも
+                // 鍵は作り直す [SR-03]。
+                try Self.refreshSearchKey(db, id: id,
+                                          options: try Self.normalizationOptions(db, fileID: id))
                 return
             }
             let options = try Self.normalizationOptions(db, fileID: id)
@@ -276,6 +305,9 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
                     fields.matchedFormatID.uuidString,
                     fields.libraryTypeMismatch,
                     id.rawValue])
+            // タイトル・シリーズ名も検索対象 [SR-03]。**書いた値ではなく行を
+            // 読み直す**（上の `CASE WHEN titleOrigin = 'manual'` があるため）。
+            try Self.refreshSearchKey(db, id: id, options: options)
         }
     }
 
@@ -466,6 +498,10 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
                     edit.volume.raw,
                     edit.authorName,
                     id.rawValue])
+            // 手で直したタイトル・シリーズ名も、その場で検索に出る [SR-03]。
+            // ここを忘れると「直したのに検索で見つからない」という、
+            // 画面からは理由の読み取れない形になる。
+            try Self.refreshSearchKey(db, id: id, options: options)
         }
     }
 
@@ -559,6 +595,28 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
                 END FROM managedFile WHERE \(where_)
                 """, arguments: StatementArguments(args.map { Optional($0) }))
             return Set(names.filter { !$0.isEmpty })
+        }
+    }
+
+    /// 直下のブックフォルダの名前 [IF-17]。
+    ///
+    /// **`whereClause` を使い回す**——ゴミ箱・保管庫の除外 [FI-02] と直下の
+    /// 判定（`instr(substr(relativePath, ?), '/') = 0`）を自前で書き直すと、
+    /// 除外条件が片方だけ古くなる。位置は `sqliteOffsetAfter` で数えること
+    /// （`String.count` は書記素で数えるが SQLite はコードポイントで数える。
+    /// 濁点を含むフォルダ名で 1 件も一致しなくなる [10章 §10.6 の実測]）。
+    public func bookFolderChildNames(libraryID: LibraryID,
+                                     relativePath: String) async throws -> Set<String> {
+        var q = FileQuery(libraryID: libraryID)
+        q.scope = .folder(path: relativePath, recursive: false)
+        let frozen = q
+        return try await database.writer.read { db in
+            let (where_, whereArgs) = Self.whereClause(frozen)
+            let names = try String.fetchAll(db, sql: """
+                SELECT filename FROM managedFile
+                 WHERE \(where_) AND isBookFolder = 1
+                """, arguments: StatementArguments(whereArgs.map { Optional($0) }))
+            return Set(names)
         }
     }
 

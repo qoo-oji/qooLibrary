@@ -122,6 +122,12 @@ struct FolderContentView: View {
     /// 中央ペインの表示モード [TB-01][VM-01][VM-10]。**一覧の源が変わる**
     /// ——フォルダ表示モードは実体を絞り、ライブラリ表示モードは DB の行を描く。
     let displayMode: DisplayMode
+    /// 現在フォルダ直下のブックフォルダの名前 [IF-17]。フォルダ表示モードで
+    /// アイコンに印を出すためだけに使う（ライブラリ表示モードでは空）。
+    let bookFolderNames: Set<String>
+    /// ブックフォルダの「開く」を関連付けアプリに任せるか [IF-18][AS-06]。
+    /// ライブラリ単位の設定［ユーザー判断］。
+    let opensBookFolderWithApp: Bool
     /// ライブラリ表示モードの一覧 [VM-10〜VM-16]。`displayMode == .library` の
     /// ときだけ意味を持つ。読み直しを駆動するのは `MainWindowView` の
     /// `.task(id:)`（`labelFilter` と同じ形）。
@@ -363,6 +369,7 @@ struct FolderContentView: View {
                                 Image(nsImage: FileIconProvider.shared.icon(for: entry.url, isDirectory: entry.isNavigableFolder))
                                     .resizable()
                                     .frame(width: 16, height: 16)
+                                    .bookFolderBadge(entry.isBookFolder, iconSize: 16)  // [IF-17]
                                 if renamingEntry?.url == entry.url {
                                     // Finder 流のインライン名前編集 [ユーザー要望]。
                                     TextField("column.name", text: $renameText)
@@ -1618,6 +1625,24 @@ struct FolderContentView: View {
         if groupFoldersAtTop {
             result = result.filter(\.isNavigableFolder) + result.filter { !$0.isNavigableFolder }
         }
+        // [IF-17] ブックフォルダの印。**`reload()` ではなくここで付ける**
+        // ——印の出どころ（DB）は実体の列挙とは別に更新される（走査が
+        // `isBookFolder` を書き換える・別のライブラリへ移る）ので、一覧を
+        // 作った時点で焼き付けると、印だけが古いまま残る。
+        //
+        // **検索結果には付けない**——`searchResults` は配下から再帰的に集めた
+        // ものだが、`bookFolderNames` は直下のぶんしか無い。名前だけで
+        // 突き合わせると深い階層の同名フォルダに誤って印が付く。
+        if !bookFolderNames.isEmpty, !hasActiveSearch {
+            result = result.map { entry in
+                guard BookFolderIndex.indicatesBookFolder(
+                    name: entry.name, isDirectory: entry.isDirectory,
+                    in: bookFolderNames) else { return entry }
+                var marked = entry
+                marked.isBookFolder = true
+                return marked
+            }
+        }
         return result
     }
 
@@ -2343,6 +2368,10 @@ struct FolderContentView: View {
     ///   ダブルクリックしただけで固まらないようにするため。
     private func openEntries(_ targets: [FolderEntry]) {
         let urls = targets.map(\.url)
+        // [IF-18] 関連付けアプリに任せるか。**リンクを解決する前に、元の項目で
+        // 判定する**——印（`isBookFolder`）は直下の一覧から来ており、解決先が
+        // 別の場所なら引けない。`resolved` とは添字で対応させる。
+        let opensWithApp = targets.map { self.opensWithApp($0) }
         Task {
             // [SL-02] リンクは**開くときだけ**リンク先へ追従する（表示上の
             // 追従のみ。一覧ではリンク自体を 1 項目として見せる [SL-01]）。
@@ -2351,17 +2380,28 @@ struct FolderContentView: View {
                 // **パッケージ（`.app` など）は中へ入らず開く** [ユーザー要望:
                 // ダブルクリックで起動し、中を見るのはコンテキストメニューから]。
                 // 実体はディレクトリだが、利用者にとっては 1 つの項目である。
-                if only.isNavigableFolder {
+                if only.isNavigableFolder, opensWithApp.first != true {
                     onNavigate(only.url)
                 } else {
                     openWithAssociation(only.url)
                 }
                 return
             }
-            for target in resolved where !target.isNavigableFolder {
+            for (index, target) in resolved.enumerated()
+            where !target.isNavigableFolder || opensWithApp[index] {
                 openWithAssociation(target.url)
             }
         }
+    }
+
+    /// ブックフォルダを関連付けアプリで開くか [IF-18][AS-06]。
+    ///
+    /// **既定は偽**＝フォルダを開く（配下の画像一覧を表示する）。設定は
+    /// ライブラリ単位で、ボリューム経由で入ったときは `bookFolderNames` が
+    /// 空なので常に偽になる——同じ実フォルダでもライブラリの入口から入った
+    /// ときだけライブラリ由来の振る舞いにする [LF-01 と同じ判断]。
+    private func opensWithApp(_ entry: FolderEntry) -> Bool {
+        opensBookFolderWithApp && entry.isBookFolder
     }
 
     /// [ER-01] 開くのに失敗した場合もエラーを握りつぶさず提示する。
@@ -2633,6 +2673,14 @@ struct FolderEntry: Identifiable {
     /// これが非 `nil` であること自体が「この行は DB の一覧から来た」という印で、
     /// 表示名 [IV-05]・列 [LV-04]・操作の可否 [VM-13] の分岐がこれを見る。
     var libraryRow: FileRow?
+    /// ユーザー指定カバーの複製の場所 [IV-02①][CV-06]。ライブラリ表示モードで
+    /// `coverImageSource == .userSpecified` のときだけ入る。**実体があるかは
+    /// 見ていない**（存在確認は描くときに `CoverResolution` がまとめて行う）。
+    var userCoverURL: URL?
+    /// ブックフォルダか [IF-17][IF-01]。**フォルダ表示モードでだけ意味を持つ**
+    /// ——ライブラリ表示モードでは 1 冊として 1 行に出ており、印の出番が無い。
+    /// 判定は DB（`isBookFolder`）が出したもので、その場では計算しない。
+    var isBookFolder: Bool = false
 
     /// 一覧に出す名前 [IV-05][IV-07]。ライブラリ表示モードではタイトル、
     /// 無ければファイル名。フォルダ表示モードでは常にファイル名。
@@ -2713,7 +2761,8 @@ extension FolderEntry {
             creationDate: row.file.createdAt,
             addedDate: nil,
             isLocked: false,
-            libraryRow: row.file)
+            libraryRow: row.file,
+            userCoverURL: row.userCoverURL)     // [IV-02①]
     }
 }
 

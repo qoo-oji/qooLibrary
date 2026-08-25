@@ -66,6 +66,18 @@ struct LibraryBasicsSettingsView: View {
                 Toggle("librarySettings.basics.caseSensitive", isOn: $draft.caseSensitive)
                 Toggle("librarySettings.basics.thumbnailsAlwaysHidden",
                        isOn: $draft.thumbnailsAlwaysHidden)
+                // [IF-18][AS-06] ブックフォルダの「開く」の既定。**偽が既定**で
+                // フォルダを開く（配下の画像一覧を表示する）。ライブラリ単位に
+                // してあるのは、画像フォルダ中心のライブラリとアーカイブ中心の
+                // ライブラリで期待が違うため［ユーザー判断］。
+                VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
+                    Toggle("librarySettings.basics.opensBookFolderWithApp",
+                           isOn: $draft.opensBookFolderWithApp)
+                    Text("librarySettings.basics.opensBookFolderWithAppHint")
+                        .font(.system(size: Tokens.fontSize.caption))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 LabeledContent {
                     TextField("", text: $draft.seriesTitleCompositionFormat)
                         .labelsHidden()

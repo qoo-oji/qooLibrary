@@ -527,6 +527,9 @@ struct MainWindowView: View {
                             searchText: $windowState.searchText,
                             // [TB-01][VM-10〜VM-16] ライブラリ表示モード。
                             displayMode: windowState.displayMode,
+                            // [IF-17][IF-18] フォルダ表示モードでのブックフォルダ。
+                            bookFolderNames: windowState.bookFolders.names,
+                            opensBookFolderWithApp: windowState.bookFolders.opensWithApp,
                             libraryContent: windowState.libraryContent,
                             onLoadMoreLibraryRows: {
                                 guard let library = windowState.currentLibrary else { return }
@@ -568,6 +571,29 @@ struct MainWindowView: View {
                 }
     }
 
+
+    /// ブックフォルダの一覧を読み直す条件 [IF-17][IF-18]。
+    ///
+    /// `contentRevision` を含めるのは、走査が `isBookFolder` を書き換えたとき
+    /// （画像フォルダにサブフォルダができて 1 冊扱いが解除された [IF-05] 等）に
+    /// 印を消すため——実体の変更を見る `DirectoryObservation` では足りない。
+    private struct BookFolderLoadKey: Hashable {
+        let mode: DisplayMode
+        let root: NavigationRoot
+        let relativePath: String?
+        let contentRevision: Int
+        let settingsRevisions: [Int]
+    }
+
+    private var bookFolderLoadKey: BookFolderLoadKey {
+        BookFolderLoadKey(
+            mode: windowState.displayMode,
+            root: windowState.navigationRoot,
+            relativePath: windowState.libraryRelativePath,
+            contentRevision: LibraryServices.shared.contentRevision,
+            // 設定ウインドウで [IF-18] を切り替えたら、その場で効く。
+            settingsRevisions: LibraryServices.shared.libraries.map(\.settingsRevision))
+    }
 
     private var labelFilterLoadKey: LabelFilterLoadKey {
         LabelFilterLoadKey(
@@ -711,6 +737,19 @@ struct MainWindowView: View {
         .task(id: labelFilterResultKey) {
             await windowState.labelFilter.refreshResults(
                 folderRelativePath: windowState.libraryRelativePath,
+                services: LibraryServices.shared)
+        }
+        // フォルダ表示モードでブックフォルダに印を出す [IF-17]、および
+        // 「開く」の既定 [IF-18]。**ライブラリ表示モードでは読まない**
+        // ——あちらでは既に 1 冊として 1 行に出ており、印の出番が無い。
+        .task(id: bookFolderLoadKey) {
+            guard windowState.displayMode == .folder else {
+                windowState.bookFolders.clear()
+                return
+            }
+            await windowState.bookFolders.load(
+                library: windowState.currentLibrary,
+                relativePath: windowState.libraryRelativePath,
                 services: LibraryServices.shared)
         }
         .onChange(of: SessionState.shared.reloadToken) {

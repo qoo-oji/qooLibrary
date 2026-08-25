@@ -1,4 +1,5 @@
 import AppKit
+import QooApplication
 import QooInfrastructure
 import QooKit
 import SwiftUI
@@ -292,6 +293,10 @@ private struct ThumbnailImage: View {
     private struct RequestKey: Equatable {
         let url: URL
         let hidden: Bool
+        /// [IV-02①] ユーザー指定カバーの割り当てが変わったら解決し直す。
+        /// **`nil` になる**（自動へ戻した・⌘Z）ことも変化なので、URL そのものを
+        /// 鍵に含めるだけで両方向を拾える。
+        let userCoverURL: URL?
     }
 
     @State private var image: NSImage?
@@ -329,7 +334,9 @@ private struct ThumbnailImage: View {
             }
         }
         .frame(width: size, height: size)
-        .task(id: RequestKey(url: entry.url, hidden: thumbnailsHidden)) {
+        .bookFolderBadge(entry.isBookFolder, iconSize: size)   // [IF-17]
+        .task(id: RequestKey(url: entry.url, hidden: thumbnailsHidden,
+                             userCoverURL: entry.userCoverURL)) {
             image = nil
             folderCovers = []
             // [DS-01] 非表示中は汎用アイコン（上の `else` 側）のまま。
@@ -346,8 +353,28 @@ private struct ThumbnailImage: View {
                 )
                 folderCovers = images.map(Self.nsImage(from:))
             } else {
+                // [IV-02] **ライブラリ表示モードのときだけ**カバーを解決する
+                // （①ユーザー指定 → ②サイドカー → ③先頭画像）。フォルダ表示
+                // モードでは従来どおり先頭画像のまま［ユーザー判断: 要件が
+                // 「ライブラリ表示モードでは」と限定しているため。フォルダ表示
+                // モードで②のサイドカー探索を走らせずに済む利点もある］。
+                //
+                // **サイドカー探索を親フォルダ単位でまとめる細工はしない。**
+                // 解決するのは可視セルのぶんだけで、しかも直後に走る
+                // サムネイル生成（アーカイブを開く）のほうが桁で高い。
+                // ネットワークでも SMB クライアント自身がディレクトリを
+                // キャッシュする [NV-100 の実測]。
+                let target: URL
+                if let row = entry.libraryRow {
+                    target = await CoverResolution.resolve(
+                        url: entry.url, assignment: CoverAssignment(row),
+                        userCoverURL: entry.userCoverURL
+                    ).previewURL(for: entry.url)
+                } else {
+                    target = entry.url
+                }
                 guard let cgImage = await ThumbnailService.shared.thumbnail(
-                    for: entry.url, maxPixelSize: Int(size * 2)
+                    for: target, maxPixelSize: Int(size * 2)
                 ) else { return }
                 image = Self.nsImage(from: cgImage)
             }

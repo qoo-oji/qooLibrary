@@ -150,7 +150,10 @@ extension ManagedFileRecord {
             relativePath: snapshot.relativePath,
             filename: snapshot.filename,
             normalizedName: TextNormalizer.normalize(stem, options: options),
-            searchKey: TextNormalizer.searchKey(stem, options: options),
+            // 挿入時点ではタイトル・シリーズはまだ無い（走査は upsert の
+            // **あと**に `applyParsedFields` を呼ぶ）。そちらが最終形を書く。
+            searchKey: ManagedFileSearchKey.make(stem: stem, title: nil,
+                                                 seriesName: nil, options: options),
             fileSize: snapshot.fileSize,
             createdAt: snapshot.createdAt.timeIntervalSinceReferenceDate,
             modifiedAt: snapshot.modifiedAt.timeIntervalSinceReferenceDate,
@@ -257,6 +260,9 @@ struct LibrarySettingsPayload: Codable, Sendable {
     var readsEmbeddedMetadata: Bool = true
     /// `ComicInfo.xml` の巻数をどちらの要素から取るか [EM-30]。
     var comicInfoVolumeSource: ComicInfoVolumeSource = .ask
+    /// ブックフォルダの「開く」を関連付けアプリに任せるか [IF-18][AS-06]。
+    /// **既定は偽**（＝フォルダを開く）——要件が既定をそう定めている。
+    var opensBookFolderWithApp: Bool = false
 
     static let empty = LibrarySettingsPayload()
 
@@ -265,7 +271,8 @@ struct LibrarySettingsPayload: Codable, Sendable {
     init(targetExtensions: [String], imageExtensions: [String], delimiters: DelimiterSet,
          semanticBindings: [String: Int], seriesTitleCompositionFormat: String,
          labelGroupOrder: [Int], readsEmbeddedMetadata: Bool,
-         comicInfoVolumeSource: ComicInfoVolumeSource) {
+         comicInfoVolumeSource: ComicInfoVolumeSource,
+         opensBookFolderWithApp: Bool) {
         self.targetExtensions = targetExtensions
         self.imageExtensions = imageExtensions
         self.delimiters = delimiters
@@ -274,6 +281,7 @@ struct LibrarySettingsPayload: Codable, Sendable {
         self.labelGroupOrder = labelGroupOrder
         self.readsEmbeddedMetadata = readsEmbeddedMetadata
         self.comicInfoVolumeSource = comicInfoVolumeSource
+        self.opensBookFolderWithApp = opensBookFolderWithApp
     }
 
     /// **すべてのキーを `decodeIfPresent` で読む。**
@@ -297,5 +305,12 @@ struct LibrarySettingsPayload: Codable, Sendable {
         labelGroupOrder = try value(.labelGroupOrder, [])
         readsEmbeddedMetadata = try value(.readsEmbeddedMetadata, true)
         comicInfoVolumeSource = try value(.comicInfoVolumeSource, .ask)
+        opensBookFolderWithApp = try value(.opensBookFolderWithApp, false)
+        // **フィールドを足したら、ここへ 1 行足すこと。**`CodingKeys` は
+        // プロパティから合成されるので鍵は増えるが、この本体に書き忘れても
+        // コンパイラは何も言わず、**読まれないまま既定値に落ちる**
+        // ——保存はできているのに読み戻せない、という最も分かりにくい形になる
+        // （実際 [IF-18] を足したときにこの穴へ落ちた）。忘れたら
+        // `LibrarySettingsPayloadTests.everyFieldSurvivesARoundTrip` が落ちる。
     }
 }

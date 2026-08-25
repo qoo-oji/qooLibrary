@@ -102,23 +102,14 @@ public final class CoverEditorModel {
             let userCoverURL = assignment.ref.map {
                 services.userCoverURL(ref: $0, library: library)
             }
-            // **実体を触るのは 1 回の `FileIO.perform` にまとめる** [NV6-02]。
-            // 複製の存在確認（ローカル）とサイドカーの探索（ライブラリの
-            // ボリューム＝ネットワークかもしれない）を別々に逃がすと、
-            // 選択を動かすたびに 2 回待つことになる。
-            let resolved = await FileIO.perform { () -> (URL?, CoverSource) in
-                if assignment.source == .userSpecified, let userCoverURL,
-                   FileManager.default.fileExists(atPath: userCoverURL.path) {
-                    return (userCoverURL, .userSpecified)                       // ①
-                }
-                if let sidecar = SidecarCoverLocator.locate(for: url) {
-                    return (sidecar, .sidecar)                                  // ②
-                }
-                return (nil, .auto)                                             // ③
-            }
+            // **①②③ の順序は `CoverResolution` が持つ** [IV-03]。ライブラリ
+            // 表示モードの一覧のセルも同じ関数を通る——同じに見えるものに
+            // 独立した実装を 2 つ作らない。
+            let resolved = await CoverResolution.resolve(
+                url: url, assignment: assignment, userCoverURL: userCoverURL)
             state = .ready(Subject(
                 id: row.id, url: url, filename: row.filename, assignment: assignment,
-                imageURL: resolved.0, resolvedSource: resolved.1,
+                imageURL: resolved.imageURL, resolvedSource: resolved.source,
                 canPickFromArchive: Self.canPickFromArchive(url)))
         } catch {
             // **取り消しは失敗ではない**［2-9 の実機検証でユーザーが発見］。

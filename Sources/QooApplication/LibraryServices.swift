@@ -463,6 +463,25 @@ public final class LibraryServices {
         return try await repository.matchingChildNames(q)
     }
 
+    /// 現在フォルダ直下のブックフォルダの名前 [IF-17]。
+    public func bookFolderChildNames(libraryID: LibraryID,
+                                     relativePath: String) async throws -> Set<String> {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        return try await repository.bookFolderChildNames(libraryID: libraryID,
+                                                         relativePath: relativePath)
+    }
+
+    /// ブックフォルダの「開く」を関連付けアプリに任せるか [IF-18][AS-06]。
+    ///
+    /// **設定 1 つのために `LibrarySettingsSnapshot` 全体を公開しない**——
+    /// あれはフォーマットのコンパイル結果を抱えており、上位が触ってよい
+    /// 形ではない（`LibrarySettingsDraft` と使い分ける理由と同じ）。
+    public func opensBookFolderWithApp(libraryID: LibraryID) async throws -> Bool {
+        guard let libraries = libraryRepository else { throw ServiceError.notReady }
+        return try await libraries.settingsSnapshot(libraryID: libraryID)?
+            .opensBookFolderWithApp ?? false
+    }
+
     /// 候補の相対パスのうち条件に該当するものを返す [LF-14]。
     ///
     /// 中央ペインの**再帰検索の結果**へフィルタを効かせるための経路。

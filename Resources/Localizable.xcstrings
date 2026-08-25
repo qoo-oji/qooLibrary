@@ -2892,6 +2892,23 @@
         }
       }
     },
+    "folder.bookFolderIndicator": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Book folder"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ブックフォルダ"
+          }
+        }
+      }
+    },
     "folder.chooseExtractDestination": {
       "extractionState": "stale",
       "localizations": {
@@ -7202,6 +7219,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "テンプレートは有効化のときに初期値を写すだけの雛形です。ここから先の設定はこのライブラリのもので、いつでも変えられます。"
+          }
+        }
+      }
+    },
+    "librarySettings.basics.opensBookFolderWithApp": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open book folders with the associated app"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ブックフォルダを関連付けアプリで開く"
+          }
+        }
+      }
+    },
+    "librarySettings.basics.opensBookFolderWithAppHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A book folder holds the images of a single book. When off, opening one shows the images inside it."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ブックフォルダは 1 冊分の画像が入ったフォルダです。オフのときは、開くと中の画像が一覧表示されます。"
           }
         }
       }

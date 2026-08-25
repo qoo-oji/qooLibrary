@@ -69,6 +69,41 @@ public enum TextNormalizer {
         return String(out)
     }
 
+    /// 検索キーの部品どうしを隔てる印 [SR-03]。
+    ///
+    /// **空白で繋いではならない。** `normalize` は空白を 1 つに畳むので、
+    /// 部品を空白で連結すると `作品A` と `巻` が `"作品A 巻"` になり、
+    /// **語をまたいだ誤一致**（`"A 巻"` で当たる）が起きる。ここで使う
+    /// U+001F は ①`WidthFolding` の写像域（U+FF01〜FF5E・U+3000）の外
+    /// ②`lowercased()` で変わらない ③`Whitespace.isWhitespace` が偽 —— の
+    /// 3 つを満たすので `normalize` を素通りする。**利用者が検索欄へ打つ
+    /// 手段が無い**ので、問い合わせ側の検索キーには決して現れず、
+    /// `LIKE '%…%'` は必ず 1 つの部品の内側でしか当たらない。
+    public static let searchKeyPartSeparator: Character = "\u{1F}"
+
+    /// 複数の値をまとめた検索用キー [SR-03][SR-06][DB-03]。
+    ///
+    /// ライブラリ表示モードの検索はファイル名だけでなくタイトル・シリーズ名も
+    /// 対象にする [SR-03] ので、`managedFile.searchKey` はそれらを繋いだものに
+    /// なる。**部品ごとに正規化してから繋ぐ**——先に繋ぐと区切りが空白畳み込みの
+    /// 影響を受ける。
+    ///
+    /// `nil`・空・**既に入っている部品と同一のもの**は落とす。ファイル名の
+    /// stem がタイトルと一致する（自動抽出ではごく普通）ときに同じ文字列を
+    /// 2 回持つと、索引 `mf_search` が理由もなく倍の大きさになる。
+    public static func searchKey(joining parts: [String?],
+                                 options: NormalizationOptions = .default) -> String {
+        var out: [String] = []
+        out.reserveCapacity(parts.count)
+        for part in parts {
+            guard let part else { continue }
+            let key = searchKey(part, options: options)
+            guard !key.isEmpty, !out.contains(key) else { continue }
+            out.append(key)
+        }
+        return out.joined(separator: String(searchKeyPartSeparator))
+    }
+
     // MARK: - 内部
 
     /// ひらがな U+3041〜U+3096（`ぁ`〜`ゖ`）と反復記号 U+309D〜U+309E。
