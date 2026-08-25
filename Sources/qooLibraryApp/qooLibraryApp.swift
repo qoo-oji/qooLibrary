@@ -268,6 +268,15 @@ struct QooLibraryApp: App {
         }
         .defaultSize(width: 1240, height: 680)
 
+        // ラベル保管庫の整理 [LAW-01〜LAW-03][15.3 節]。開くのはフォルダツリーの
+        // 「ラベルの保管庫…」と、ラベル編集ウインドウのフッターから
+        // （`LabelVaultNavigation` が対象を渡す）。
+        Window("labelVault.windowTitle", id: "labelVault") {
+            LabelVaultWindow()
+                .appLanguageOverride()
+        }
+        .defaultSize(width: 820, height: 560)
+
         Window("preferences.windowTitle", id: "preferences") {
             PreferencesView()
                 .appLanguageOverride()

@@ -20,6 +20,7 @@ import SwiftUI
 
 struct LabelGroupEditorWindow: View {
     @Environment(\.locale) private var locale
+    @Environment(\.openWindow) private var openWindow
     @State private var model = LabelGroupEditorModel()
     @State private var settings = LibrarySettingsModel()
     /// 中央ペインで選んでいるグループ（草案側の識別子）。
@@ -43,6 +44,18 @@ struct LabelGroupEditorWindow: View {
                 .navigationSplitViewColumnWidth(min: 380, ideal: 460)
         }
         .navigationTitle(Text("labelEditor.windowTitle"))
+        // 保管庫の整理ウインドウへの導線 [15.3 節]。**保管庫へ送る手段が
+        // ここにある以上、送った先を見に行く手段もここに要る**——ツリーへ
+        // 戻らないと開けないのでは、送った直後に確かめられない。
+        .toolbar {
+            ToolbarItem {
+                Button("library.labelVault.menuItem", systemImage: "archivebox") {
+                    guard let id = model.selectedLibraryID else { return }
+                    LabelVaultNavigation.open(libraryID: id, openWindow: openWindow)
+                }
+                .disabled(model.selectedLibraryID == nil)
+            }
+        }
         .frame(minWidth: 1040, minHeight: 540)
         .task { await prepare(preferring: LabelEditorNavigation.shared.pendingLibraryID) }
         // 起動と同時に状態復元で開かれると、DB の準備より先に「未選択」で

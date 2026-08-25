@@ -341,6 +341,15 @@ public final class LibraryServices {
         return try await repository.labels(groupID: groupID, includeArchived: includeArchived)
     }
 
+    /// ライブラリごとのアーカイブ済みラベル件数 [LA-01][15.3 節]。
+    ///
+    /// 保管庫の整理ウインドウが左ペインのグレーアウトに使う。**0 件の
+    /// ライブラリはキーごと現れない**ので `?? 0` で読むこと。
+    public func archivedLabelCounts() async throws -> [LibraryID: Int] {
+        guard let repository = labelRepository else { throw ServiceError.notReady }
+        return try await repository.archivedLabelCounts()
+    }
+
     /// ピン留め [PN-04]。**ライブラリ単位の永続設定で全ウインドウ共有** [ST-23]。
     public func setLabelPinned(_ id: LabelID, _ pinned: Bool) async throws {
         guard let repository = labelRepository else { throw ServiceError.notReady }

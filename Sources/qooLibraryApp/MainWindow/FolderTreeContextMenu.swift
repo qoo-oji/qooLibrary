@@ -352,6 +352,13 @@ struct FolderTreeContextMenu: View {
                 actions.openLabelEditor(folder)
             }
         }
+        if visible.contains(.labelVault) {
+            // ラベル保管庫の整理 [LAW-01〜LAW-03][15.3 節]。ラベル編集と同じく
+            // **オンラインを要らない**——DB のアーカイブ属性を書き換えるだけ。
+            Button("library.labelVault.menuItem", systemImage: "archivebox") {
+                actions.openLabelVault(folder)
+            }
+        }
         if visible.contains(.rescan) {
             Button("library.rescan.menuItem", systemImage: "arrow.clockwise") {
                 actions.rescanLibrary(folder, context.url)
@@ -538,4 +545,6 @@ struct FolderTreeContextMenuActions {
     var openLibrarySettings: (RegisteredFolder) -> Void = { _ in }
     /// ラベルグループ編集ウインドウを開く [LE-01〜LE-12][15.2 節]。
     var openLabelEditor: (RegisteredFolder) -> Void = { _ in }
+    /// ラベル保管庫の整理ウインドウを開く [LAW-01〜LAW-03][15.3 節]。
+    var openLabelVault: (RegisteredFolder) -> Void = { _ in }
 }

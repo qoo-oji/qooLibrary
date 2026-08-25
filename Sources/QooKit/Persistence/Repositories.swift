@@ -429,6 +429,16 @@ public protocol LabelRepository: Sendable {
     func setGroupOrder(_ orderedIDs: [LabelGroupID]) async throws
     func group(libraryID: LibraryID, index: Int) async throws -> LabelGroupSummary?
     func labels(groupID: LabelGroupID, includeArchived: Bool) async throws -> [LabelSummary]
+    /// ライブラリごとのアーカイブ済みラベル件数 [LA-01][15.3 節]。
+    ///
+    /// ラベル保管庫の整理ウインドウが、左ペインで**保管庫が空のライブラリを
+    /// グレーアウトする**ために使う。件数が 0 のライブラリはキーごと現れない。
+    ///
+    /// **1 回の問い合わせで全ライブラリぶんを返す**［設計判断］。ライブラリ
+    /// ごとに `groups` → `labels` と辿ると問い合わせが「ライブラリ数 ×
+    /// グループ数」になり、しかもそれが ⌘Z のたびに走る（このウインドウは
+    /// `operationHistory.count` を鍵に読み直すため）。
+    func archivedLabelCounts() async throws -> [LibraryID: Int]
     /// 無ければ作る。一意性は `(groupID, 正規化名)` [LB-01][N-03][LA-07]。
     func ensureLabel(groupID: LabelGroupID, name: String) async throws -> LabelID
     func assign(fileID: FileID, labelID: LabelID, origin: LabelOrigin) async throws

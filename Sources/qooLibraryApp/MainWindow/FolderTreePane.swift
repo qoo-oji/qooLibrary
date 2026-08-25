@@ -557,7 +557,8 @@ struct FolderTreePane: View {
                             .isEnabled(registrationUUID: entry.folder.id),
                         onDisableLibrary: { disableLibrary(entry.folder) },
                         onOpenLibrarySettings: { openLibrarySettings(entry.folder) },
-                        onOpenLabelEditor: { openLabelEditor(entry.folder) }
+                        onOpenLabelEditor: { openLabelEditor(entry.folder) },
+                        onOpenLabelVault: { openLabelVault(entry.folder) }
                     )
                 }
             }
@@ -637,7 +638,8 @@ struct FolderTreePane: View {
             rescanLibrary: { LibraryEnableAction.rescan(folder: $0, url: $1, locale: locale) },
             disableLibrary: { LibraryEnableAction.disable(folder: $0) },
             openLibrarySettings: { openLibrarySettings($0) },
-            openLabelEditor: { openLabelEditor($0) }
+            openLabelEditor: { openLabelEditor($0) },
+            openLabelVault: { openLabelVault($0) }
         )
     }
 
@@ -841,6 +843,18 @@ struct FolderTreePane: View {
         guard let summary = LibraryServices.shared.library(registrationUUID: folder.id) else { return }
         LabelEditorNavigation.shared.pendingLibraryID = summary.id
         openWindow(id: "labelEditor")
+    }
+
+    /// ラベル保管庫の整理ウインドウを開く [LAW-01〜LAW-03][15.3 節]。
+    ///
+    /// `openLabelEditor` と同じく、**登録ルート行が 2 つある**ことに注意
+    /// （通常の `FolderTreeContextMenu` と縮退した
+    /// `DegradedRegisteredFolderRow`）。配線は別々なので両方に要る。
+    private func openLabelVault(_ folder: RegisteredFolder) {
+        guard let summary = LibraryServices.shared.library(registrationUUID: folder.id) else { return }
+        // **受け皿へ置く順序をここで書き直さない** [CP-02]。写すと、入口が
+        // 増えたときに片方だけ直して取り残す（このリポジトリで 3 度起きた形）。
+        LabelVaultNavigation.open(libraryID: summary.id, openWindow: openWindow)
     }
 
     /// ライブラリ機能だけを無効にする（登録フォルダは残す）。
@@ -1229,6 +1243,7 @@ private struct DegradedRegisteredFolderRow: View {
     /// ラベルグループ編集ウインドウ [LE-01〜LE-12]。**縮退状態でこそ要る**
     /// ——外付けが無い間に表記ゆれを片付けられる（DB しか触らない）。
     let onOpenLabelEditor: () -> Void
+    let onOpenLabelVault: () -> Void
 
     /// `.offline` だけ薄くする。ゴミ箱・消失は「気づいてほしい」状態なので
     /// 薄めない——未接続は待てば戻る日常的な状態で、そちらこそ目立たない
@@ -1309,6 +1324,11 @@ private struct DegradedRegisteredFolderRow: View {
             }
             if libraryItems.contains(.labels) {
                 Button("library.labels.menuItem", systemImage: "tag") { onOpenLabelEditor() }
+            }
+            if libraryItems.contains(.labelVault) {
+                Button("library.labelVault.menuItem", systemImage: "archivebox") {
+                    onOpenLabelVault()
+                }
             }
             if libraryItems.contains(.disable) {
                 Button("library.disable.menuItem", systemImage: "books.vertical.circle") {

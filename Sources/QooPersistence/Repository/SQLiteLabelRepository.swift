@@ -81,6 +81,25 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
         }
     }
 
+    /// ライブラリごとのアーカイブ済みラベル件数 [LA-01][15.3 節]。
+    ///
+    /// **0 件のライブラリはキーごと現れない**（`GROUP BY` の性質そのもの）。
+    /// 呼び出し側は `counts[id] ?? 0` で読むこと。
+    public func archivedLabelCounts() async throws -> [LibraryID: Int] {
+        try await database.writer.read { db in
+            var result: [LibraryID: Int] = [:]
+            for row in try Row.fetchAll(db, sql: """
+                SELECT labelGroup.libraryId AS libraryId, COUNT(*) AS n
+                FROM label JOIN labelGroup ON labelGroup.id = label.labelGroupId
+                WHERE label.isArchived = 1
+                GROUP BY labelGroup.libraryId
+                """) {
+                result[LibraryID(rawValue: row["libraryId"])] = row["n"]
+            }
+            return result
+        }
+    }
+
     static func summary(_ r: LabelRecord) -> LabelSummary {
         LabelSummary(id: LabelID(rawValue: r.id ?? 0), groupID: LabelGroupID(rawValue: r.labelGroupId),
                      name: r.name, normalizedName: r.normalizedName, colorHex: r.colorHex,

@@ -6176,6 +6176,108 @@
         }
       }
     },
+    "labelVault.archivedCount": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d in vault"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保管庫に %d 件"
+          }
+        }
+      }
+    },
+    "labelVault.editInLabelEditor": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit Labels…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ラベルを編集…"
+          }
+        }
+      }
+    },
+    "labelVault.empty": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The vault is empty"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保管庫は空です"
+          }
+        }
+      }
+    },
+    "labelVault.emptyHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Labels you move to the vault stay linked to their files but are hidden from the label filter."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保管庫へ移したラベルは、ファイルとの紐づけを保ったままラベルフィルタから隠れます。"
+          }
+        }
+      }
+    },
+    "labelVault.restoreHelp": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move this label out of the vault"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このラベルを保管庫から戻します"
+          }
+        }
+      }
+    },
+    "labelVault.windowTitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Label Vault"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ラベル保管庫"
+          }
+        }
+      }
+    },
     "library.disable.failed": {
       "extractionState": "manual",
       "localizations": {
@@ -6274,6 +6376,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "ライブラリとして有効にする"
+          }
+        }
+      }
+    },
+    "library.labelVault.menuItem": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Label Vault…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ラベルの保管庫…"
           }
         }
       }
