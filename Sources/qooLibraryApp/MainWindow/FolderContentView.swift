@@ -119,6 +119,23 @@ struct FolderContentView: View {
     /// （`TabState.searchText`。1-3 の時点から型としてはあったが、この節まで
     /// どこからも書き込まれない状態だった）。
     @Binding var searchText: String
+    /// 中央ペインの表示モード [TB-01][VM-01][VM-10]。**一覧の源が変わる**
+    /// ——フォルダ表示モードは実体を絞り、ライブラリ表示モードは DB の行を描く。
+    let displayMode: DisplayMode
+    /// ライブラリ表示モードの一覧 [VM-10〜VM-16]。`displayMode == .library` の
+    /// ときだけ意味を持つ。読み直しを駆動するのは `MainWindowView` の
+    /// `.task(id:)`（`labelFilter` と同じ形）。
+    let libraryContent: LibraryContentModel
+    /// 一覧の末尾が見えたら次のページを求める [FI-05][PF-10]。**何度呼ばれても
+    /// よい**——受け側（`LibraryContentModel.loadNextPage`）が番人を持つ。
+    let onLoadMoreLibraryRows: () -> Void
+    /// ライブラリ表示モードの一覧を読み直す [VM-10〜VM-12][VM-15]。
+    ///
+    /// **並べ替えだけはこのビューが持っている**（`sortOrder` は `Table` の
+    /// カラムヘッダが直接書き換える `@State`）ので、他の条件を知っている
+    /// `MainWindowView` へ「この順で読んでほしい」と渡す形にした。フォルダ
+    /// 表示モードのときは呼ばれても一覧を空にするだけ。
+    let loadLibraryRows: (FileQuery.SortSpec) async -> Void
 
     @State private var entries: [FolderEntry] = []
     /// 再帰検索の結果 [ユーザー要望: サブフォルダも再帰的に検索する]。
@@ -225,6 +242,12 @@ struct FolderContentView: View {
     /// 元から既定 true）。
     @AppStorage("qoo.folderList.showCreationDateColumn") private var showCreationDateColumn = false
     @AppStorage("qoo.folderList.showAddedDateColumn") private var showAddedDateColumn = false
+    /// ライブラリ表示モードでだけ出る列 [LV-04]。値は DB が持つ。
+    /// **フォルダ表示モードでは出さない**——実体の一覧しか無いので常に空になる。
+    @AppStorage("qoo.libraryList.showTitleColumn") private var showTitleColumn = true
+    @AppStorage("qoo.libraryList.showSeriesColumn") private var showSeriesColumn = true
+    @AppStorage("qoo.libraryList.showVolumeColumn") private var showVolumeColumn = true
+    @AppStorage("qoo.libraryList.showRatingColumn") private var showRatingColumn = true
     @AppStorage("qoo.folderList.groupFoldersAtTop") private var groupFoldersAtTop = true
     /// 隠しファイルを表示するか [ユーザー要望、Finder の ⇧⌘. 相当]。
     /// ステータスバー左端のボタンで切り替える。一覧の読み込み（`reload()`）と
@@ -372,6 +395,11 @@ struct FolderContentView: View {
                     }
                     .width(min: 160, ideal: nameColumnWidth)
 
+                    // [LV-04] ライブラリ表示モードの列。まとめて切り出して
+                    // ある——`Table` の中身をこれ以上増やすと型検査が
+                    // 時間切れになる（このコードベースで繰り返し起きている）。
+                    libraryColumns
+
                     if showModificationDateColumn {
                         TableColumn("column.modificationDate", sortUsing: FolderSortComparator(key: .modificationDate)) { entry in
                             rowCell(entry, isRenaming: renamingEntry?.url == entry.url) {
@@ -396,7 +424,13 @@ struct FolderContentView: View {
                         TableColumn("column.size", sortUsing: FolderSortComparator(key: .size)) { entry in
                             // [ユーザー要望: Finder に合わせてサイズ列は右詰め]
                             rowCell(entry, isRenaming: renamingEntry?.url == entry.url, alignment: .trailing) {
-                                Text(entry.isDirectory ? "—" : Self.sizeFormatter.string(fromByteCount: entry.fileSize ?? 0))
+                                // ブックフォルダは実体がディレクトリだが 1 冊
+                                // [IF-10]。DB がサイズを持っているので出す
+                                // ——ここで「—」にすると、同じ一覧に並ぶ
+                                // アーカイブ 1 冊との比較ができない。
+                                Text(entry.isDirectory && entry.libraryRow == nil
+                                     ? "—"
+                                     : Self.sizeFormatter.string(fromByteCount: entry.fileSize ?? 0))
                                     .font(.system(size: Tokens.fontSize.body))
                                     .foregroundStyle(.secondary)
                             }
@@ -404,7 +438,12 @@ struct FolderContentView: View {
                         .width(min: sizeColumnWidth, max: sizeColumnWidth)
                     }
 
-                    if showKindColumn {
+                    // [LV-04 の判断] 「種類」と「追加日」はライブラリ表示
+                    // モードでは出さない——どちらも `managedFile` が値を持たず、
+                    // SQL で並べ替えられない。ページングする一覧 [FI-05] で
+                    // メモリ上だけ並べ替えると、読み込んだぶんの中でだけ正しい
+                    // 順序になる。
+                    if displayMode == .folder, showKindColumn {
                         TableColumn("column.kind", sortUsing: FolderSortComparator(key: .kind)) { entry in
                             rowCell(entry, isRenaming: renamingEntry?.url == entry.url) {
                                 Text(entry.kindDescription)
@@ -426,7 +465,7 @@ struct FolderContentView: View {
                         .width(min: creationDateColumnWidth, max: creationDateColumnWidth)
                     }
 
-                    if showAddedDateColumn {
+                    if displayMode == .folder, showAddedDateColumn {
                         TableColumn("column.addedDate", sortUsing: FolderSortComparator(key: .addedDate)) { entry in
                             rowCell(entry, isRenaming: renamingEntry?.url == entry.url) {
                                 Text(entry.addedDate.map { Self.dateFormatter.string(from: $0) } ?? "—")
@@ -489,7 +528,10 @@ struct FolderContentView: View {
                 // [DD-02][設計判断] `URL` は既に `Transferable`。ドラッグされた行の
                 // `containerItemID`（＝ URL 自身）の配列がそのままペイロードになる。
                 .dragContainer(for: URL.self, itemID: \.self, in: dragNamespace) { draggedItemIDs in
-                    draggedItemIDs
+                    // [VM-13] ライブラリ表示モードでは持ち出させない——同一
+                    // ボリュームへのドロップは移動になり、フラットな一覧から
+                    // 実体を動かすことになる。空を返せばドラッグ自体が成立しない。
+                    allowsStructuralOperations ? draggedItemIDs : []
                 }
                 .dragContainerSelection(Array(selection), containerNamespace: dragNamespace)
                 // `Table`/`List` 専用の選択集合ベースのコンテキストメニュー
@@ -546,6 +588,25 @@ struct FolderContentView: View {
                     )
                     .background(.background)
                 }
+                // [VM-10] ライブラリ表示モードの空・失敗。**この 2 つを分ける**
+                // ——問い合わせに失敗したのに黙って 0 件を見せると「このフォルダ
+                // には 1 冊も無い」と読めてしまう [ER-01]。
+                if displayMode == .library, !hasActiveSearch, loadError == nil {
+                    switch libraryContent.state {
+                    case .failed(let message):
+                        PlaceholderPane(
+                            title: String(localized: "library.listFailed", locale: locale),
+                            subtitle: message)
+                            .background(.background)
+                    case .ready where libraryContent.rows.isEmpty:
+                        PlaceholderPane(
+                            title: String(localized: "library.listEmpty", locale: locale),
+                            subtitle: String(localized: "library.listEmptyHint", locale: locale))
+                            .background(.background)
+                    case .inactive, .loading, .ready:
+                        EmptyView()
+                    }
+                }
             }
 
             bottomBars
@@ -579,10 +640,12 @@ struct FolderContentView: View {
             // 保持していることがあり、`goToParent`/`pasteFromPasteboard` で
             // 過去に同種のバグが実際に踏まれている。この経路だけ移行漏れが
             // あった]。
-            guard let folder = currentFolder() else { return false }
+            // [VM-13] ライブラリ表示モードでは受け取らない。一覧は配下から
+            // フラットに集めたものなので、「どこへ」置くのかが決まらない。
+            guard allowsStructuralOperations, let folder = currentFolder() else { return false }
             DropHandling.performDrop(items, into: folder, operations: operations, onComplete: { reload() }, onFailure: { presentFailureMessage($0) })
             return true
-        } isTargeted: { isDropTargeted = $0 }
+        } isTargeted: { isDropTargeted = allowsStructuralOperations && $0 }
         // File/Edit メニューバーへの橋渡し [`FolderMenuActions` 参照]。
         // 再帰検索 [ユーザー要望]。`.task(id:)` はキーが変わると前のタスクを
         // 自動でキャンセルしてから始めるので、打鍵のたびに走査が積み上がらない。
@@ -613,6 +676,13 @@ struct FolderContentView: View {
             appliedSearchGeneration = searchWatch.generation
         }
         .focusedSceneValue(\.folderMenuActions, currentFolderMenuActions)
+        // [VM-10〜VM-12][VM-15] ライブラリ表示モードの一覧。条件（モード・
+        // 場所・並び順・フィルタ・検索）のどれかが変われば先頭ページから
+        // 読み直す——`ORDER BY` も `WHERE` も変わるので、途中のページを
+        // 継ぎ足しても意味のある一覧にならない。
+        .task(id: libraryLoadKey) {
+            await loadLibraryRows(sortOrder.first?.librarySortSpec ?? .byFilename)
+        }
         .task(id: folder) {
             reload()
             // ⌘↑・戻る・進む・ツリークリック等、クリック以外の経路でナビゲート
@@ -656,6 +726,16 @@ struct FolderContentView: View {
         // ツールバーのボタンからの合図でダイアログを出す
         // [`newFolderRequests` 参照]。
         .onChange(of: newFolderRequests) { _, _ in presentNewFolderDialog() }
+        // ライブラリ表示モードで一覧が入れ替わったら、消えた行の選択を落とす。
+        // `reload()` が実体の一覧に対して同じことをしている [フェーズ1完了時の
+        // 監査で発見した「ゴミ箱に入れたのに右ペインが表示し続ける」の対処]
+        // ——**あちらは `entries` を見るので、DB 由来の一覧には効かない。**
+        // フィルタを変えて消えた行が選ばれたままだと、右ペインが一覧に無い
+        // ファイルの情報を出し続ける。
+        .onChange(of: libraryContent.rows) { _, rows in
+            guard displayMode == .library else { return }
+            selection.formIntersection(Set(rows.map(\.url)))
+        }
         // 「戻る」「1階層上へ」で親フォルダへ移動した直後のスクロール
         // [`WindowState.pendingRevealURL` 参照、ユーザー要望]。既存の
         // `pendingScrollTarget` 経路へそのまま橋渡しする。
@@ -720,7 +800,13 @@ struct FolderContentView: View {
             StatusBarView(
                 folder: folder,
                 // 絞り込み中は一致件数を出す（Finder の検索結果表示と同じ）。
-                itemCount: displayedEntries.count,
+                // [VM-10][LF-11] ライブラリ表示モードでは**総数**を出す
+                // ——一覧はページングで小出しに読む [FI-05] ので、
+                // `displayedEntries.count` は「いま読み込んだぶん」でしかなく、
+                // スクロールするたびに件数が増えていくように見える。
+                itemCount: displayMode == .library
+                    ? libraryContent.totalCount
+                    : displayedEntries.count,
                 selectedCount: selection.count,
                 refreshToken: folderWatch.generation,
                 isSearching: isSearching,
@@ -766,6 +852,9 @@ struct FolderContentView: View {
             isRenameFieldFocused: $isRenameFieldFocused,
             onCommitRename: { commitRename() },
             onCancelRename: { cancelRename() },
+            // [FI-05][PF-10] ライブラリ表示モードのときだけ追加読み込みを繋ぐ。
+            allowsStructuralOperations: allowsStructuralOperations, // [VM-13]
+            onReachEnd: displayMode == .library ? { onLoadMoreLibraryRows() } : nil,
             isFocused: isListFocused
         )
         // `Table` は標準でキーボードフォーカスを受け取れるが、
@@ -830,10 +919,12 @@ struct FolderContentView: View {
             ) {
                 onGoForward()
             }
-            KeyBindingButtons(action: .makeAlias, store: keyBindingStore, isDisabled: selection.isEmpty) {
+            KeyBindingButtons(action: .makeAlias, store: keyBindingStore,
+                              isDisabled: selection.isEmpty || !allowsStructuralOperations) { // [VM-13]
                 createAliases(for: Array(selection))
             }
-            KeyBindingButtons(action: .compress, store: keyBindingStore, isDisabled: selection.isEmpty) {
+            KeyBindingButtons(action: .compress, store: keyBindingStore,
+                              isDisabled: selection.isEmpty || !allowsStructuralOperations) { // [VM-13]
                 compressHere(Array(selection))
             }
         }
@@ -873,24 +964,25 @@ struct FolderContentView: View {
         var actions = FolderMenuActions()
         actions.canOpen = !selection.isEmpty
         actions.canQuickLook = !selection.isEmpty // [QL-01]
-        actions.canNewFolder = folder != nil
-        actions.canNewFolderWithSelection = folder != nil && !selection.isEmpty
+        // [VM-13] 構造を変える操作はライブラリ表示モードでは無効。
+        actions.canNewFolder = allowsStructuralOperations && folder != nil
+        actions.canNewFolderWithSelection = allowsStructuralOperations && folder != nil && !selection.isEmpty
         // 複数選択でも「名前を変更…」を出す（一括リネームのシートが開く）。
         actions.canRename = !selection.isEmpty
-        actions.canDuplicate = !selection.isEmpty
-        actions.canMakeAlias = !selection.isEmpty
-        actions.canCompress = !selection.isEmpty
+        actions.canDuplicate = allowsStructuralOperations && !selection.isEmpty
+        actions.canMakeAlias = allowsStructuralOperations && !selection.isEmpty
+        actions.canCompress = allowsStructuralOperations && !selection.isEmpty
         // [Finder 対比監査] 既定の圧縮形式が暗号化に対応していなければ、
         // 選択があっても実行させない（パスワードを尋ねておきながら平文の
         // アーカイブを作ってしまうため、`FolderOperations` のコメント参照）。
-        actions.canCompressWithPassword = !selection.isEmpty && operations.canCompressWithPassword
+        actions.canCompressWithPassword = allowsStructuralOperations && !selection.isEmpty && operations.canCompressWithPassword
         actions.canMoveToTrash = !selection.isEmpty
         actions.canDeletePermanently = !selection.isEmpty // [FM-14]
         actions.canCopyPath = !selection.isEmpty // [FM-10]
         actions.canCopy = !selection.isEmpty
-        actions.canCut = !selection.isEmpty
-        actions.canPaste = canPaste && folder != nil
-        actions.canSelectAll = !entries.isEmpty
+        actions.canCut = allowsStructuralOperations && !selection.isEmpty // カットは移動の一種
+        actions.canPaste = allowsStructuralOperations && canPaste && folder != nil
+        actions.canSelectAll = !displayedEntries.isEmpty
         actions.canDeselectAll = !selection.isEmpty
         actions.canRevealInFinder = !selection.isEmpty
         actions.canOpenInTerminal = folder != nil // 選択が無ければ現在のフォルダが対象
@@ -898,9 +990,9 @@ struct FolderContentView: View {
         // メニューバーからは辿れなかったもの。判定条件はコンテキストメニュー側と
         // 同じにする（新規ウインドウで開く＝フォルダのみ、展開＝アーカイブのみ、
         // このアプリケーションで開く＝単一選択のみ）。
-        let selectedEntries = entries.filter { selection.contains($0.url) }
+        let selectedEntries = displayedEntries.filter { selection.contains($0.url) }
         actions.canOpenInNewWindow = !selection.isEmpty && selectedEntries.allSatisfy(\.isNavigableFolder)
-        actions.canExtract = !selection.isEmpty && isExtractable(selected)
+        actions.canExtract = allowsStructuralOperations && !selection.isEmpty && isExtractable(selected)
         if selection.count == 1, let only = selectedEntries.first {
             actions.openWithTarget = (url: only.url, isDirectory: only.isNavigableFolder)
             actions.extractNamedTitle = actions.canExtract ? archiveBaseName(only.url) : nil
@@ -961,6 +1053,13 @@ struct FolderContentView: View {
         }
         actions.visibleColumns = visibleColumns
         actions.setColumnVisible = { column, isVisible in setColumnVisible(column, isVisible) }
+        // [LV-02][LV-04][VM-15] 表示モードで選べるものだけを並べる。
+        actions.availableColumns = FolderColumn.allCases.filter {
+            displayMode == .library ? $0.isAvailableInLibraryMode : $0.isAvailableInFolderMode
+        }
+        actions.availableSortKeys = FolderSortComparator.Key.allCases.filter {
+            displayMode == .library ? $0.isAvailableInLibraryMode : $0.isAvailableInFolderMode
+        }
         actions.groupFoldersAtTop = groupFoldersAtTop
         actions.setGroupFoldersAtTop = { groupFoldersAtTop = $0 }
         return actions
@@ -975,6 +1074,10 @@ struct FolderContentView: View {
         if showKindColumn { result.insert(.kind) }
         if showCreationDateColumn { result.insert(.creationDate) }
         if showAddedDateColumn { result.insert(.addedDate) }
+        if showTitleColumn { result.insert(.title) }
+        if showSeriesColumn { result.insert(.series) }
+        if showVolumeColumn { result.insert(.volume) }
+        if showRatingColumn { result.insert(.rating) }
         return result
     }
 
@@ -985,6 +1088,10 @@ struct FolderContentView: View {
         case .kind: showKindColumn = isVisible
         case .creationDate: showCreationDateColumn = isVisible
         case .addedDate: showAddedDateColumn = isVisible
+        case .title: showTitleColumn = isVisible
+        case .series: showSeriesColumn = isVisible
+        case .volume: showVolumeColumn = isVisible
+        case .rating: showRatingColumn = isVisible
         }
     }
 
@@ -1027,6 +1134,11 @@ struct FolderContentView: View {
         // 倒して 24pt へ増やした。
         let padding: CGFloat = Tokens.spacing.xl
 
+        // **画面に出ている一覧を測る** [code-review 指摘]。ライブラリ表示
+        // モードでは `entries`（実体の直下）と表示内容が別物で、素の
+        // `entries` を測ると列幅が中身と合わない。
+        let measured = displayMode == .library ? displayedEntries : entries
+
         func fitWidth(header: String.LocalizationValue, values: [String]) -> CGFloat {
             let headerWidth = Self.measuredWidth(String(localized: header, locale: locale))
             let contentWidth = values.map(Self.measuredWidth).max() ?? 0
@@ -1036,28 +1148,28 @@ struct FolderContentView: View {
         if showModificationDateColumn {
             modificationDateColumnWidth = fitWidth(
                 header: "column.modificationDate",
-                values: entries.map { $0.modificationDate.map { Self.dateFormatter.string(from: $0) } ?? "—" }
+                values: measured.map { $0.modificationDate.map { Self.dateFormatter.string(from: $0) } ?? "—" }
             )
         }
         if showSizeColumn {
             sizeColumnWidth = fitWidth(
                 header: "column.size",
-                values: entries.map { $0.isDirectory ? "—" : Self.sizeFormatter.string(fromByteCount: $0.fileSize ?? 0) }
+                values: measured.map { $0.isDirectory && $0.libraryRow == nil ? "—" : Self.sizeFormatter.string(fromByteCount: $0.fileSize ?? 0) }
             )
         }
-        if showKindColumn {
-            kindColumnWidth = fitWidth(header: "column.kind", values: entries.map(\.kindDescription))
+        if displayMode == .folder, showKindColumn {
+            kindColumnWidth = fitWidth(header: "column.kind", values: measured.map(\.kindDescription))
         }
         if showCreationDateColumn {
             creationDateColumnWidth = fitWidth(
                 header: "column.creationDate",
-                values: entries.map { $0.creationDate.map { Self.dateFormatter.string(from: $0) } ?? "—" }
+                values: measured.map { $0.creationDate.map { Self.dateFormatter.string(from: $0) } ?? "—" }
             )
         }
-        if showAddedDateColumn {
+        if displayMode == .folder, showAddedDateColumn {
             addedDateColumnWidth = fitWidth(
                 header: "column.addedDate",
-                values: entries.map { $0.addedDate.map { Self.dateFormatter.string(from: $0) } ?? "—" }
+                values: measured.map { $0.addedDate.map { Self.dateFormatter.string(from: $0) } ?? "—" }
             )
         }
         if hasActiveSearch {
@@ -1078,14 +1190,32 @@ struct FolderContentView: View {
     /// 名前列以外の、現在表示中の列の合計幅 [`nameColumnWidth` 参照]。
     private var otherColumnsWidth: CGFloat {
         var total: CGFloat = 0
+        // [LV-04] ライブラリ表示モードの列。**数えないと名前列が最小幅まで
+        // 潰れる**——横スクロールは切ってあるので、合計が実幅を超えたぶんは
+        // 名前列から削られる [code-review 指摘]。
+        if displayMode == .library {
+            if showTitleColumn { total += Self.titleColumnWidth }
+            if showSeriesColumn { total += Self.seriesColumnWidth }
+            if showVolumeColumn { total += Self.volumeColumnWidth }
+            if showRatingColumn { total += Self.ratingColumnWidth }
+        }
         if showModificationDateColumn { total += modificationDateColumnWidth }
         if showSizeColumn { total += sizeColumnWidth }
-        if showKindColumn { total += kindColumnWidth }
+        // 「種類」「追加日」はライブラリ表示モードでは描かれない。
+        if displayMode == .folder, showKindColumn { total += kindColumnWidth }
         if showCreationDateColumn { total += creationDateColumnWidth }
-        if showAddedDateColumn { total += addedDateColumnWidth }
+        if displayMode == .folder, showAddedDateColumn { total += addedDateColumnWidth }
         if hasActiveSearch { total += locationColumnWidth }
         return total
     }
+
+    /// ライブラリ表示モードの列の幅 [LV-04]。**`ideal` は macOS の `Table`
+    /// では無視される**（既存の列と同じ事情）ので、実際に効く値をそのまま
+    /// 使い、`otherColumnsWidth` もこれで数える。
+    private static let titleColumnWidth: CGFloat = 220
+    private static let seriesColumnWidth: CGFloat = 180
+    private static let volumeColumnWidth: CGFloat = 90
+    private static let ratingColumnWidth: CGFloat = 110
 
     /// `Table` の実測幅（`.onGeometryChange` から渡される）。列の表示/非表示
     /// 切替時にも `nameColumnWidth` を再計算できるよう保持しておく。
@@ -1142,6 +1272,16 @@ struct FolderContentView: View {
     /// （走査の完了を待たずに出しはじめる）。上限に達したら打ち切り、
     /// 打ち切ったことを UI に出す。
     private func runSearch() async {
+        // [VM-12][SR-02] ライブラリ表示モードの絞り込みは**SQL に入っている**。
+        // ここで実体の再帰検索も走らせると、同じ絞り込みのために配下を丸ごと
+        // 走査することになり、しかも結果は使われない（`displayedEntries` は
+        // DB の一覧を返す）。
+        guard displayMode == .folder else {
+            searchResults = []
+            isSearching = false
+            searchTruncated = false
+            return
+        }
         guard hasActiveSearch, let folder else {
             searchResults = []
             isSearching = false
@@ -1333,7 +1473,123 @@ struct FolderContentView: View {
     /// 適用した、実際に `Table` へ渡す並び。`filter` は相対順序を保つため、
     /// グルーピングを先にソートした結果へ適用しても各グループ内の順序は
     /// 崩れない。
+    /// ライブラリ表示モードの一覧を読み直す条件 [VM-10〜VM-12][VM-15]。
+    private struct LibraryLoadKey: Hashable {
+        let mode: DisplayMode
+        let folder: URL?
+        let sort: FolderSortComparator
+        let filterRevision: Int
+        let searchText: String
+        /// DB を触る操作（⌘Z を含む）のたびに増える [`CommandStack` 参照]。
+        /// **含めないと ⌘Z で評価やタイトルを戻しても一覧が古いまま**になる
+        /// ——右ペインが `.task(id:)` の鍵に同じものを混ぜているのと同じ理由。
+        let operationCount: Int
+        /// 走査が DB を書き換えるたびに増える
+        /// [`LibraryServices.contentRevision`]。**実体の変更を見る
+        /// `DirectoryObservation` では足りない**——ライブラリ表示モードが
+        /// 描いているのは DB の行なので、走査が書き終わるまで出す材料が無い。
+        let contentRevision: Int
+    }
+
+    /// いまの表示モードで選べる並び替えキー [LV-01][LV-04][VM-15]。
+    private var availableSortKeys: [FolderSortComparator.Key] {
+        FolderSortComparator.Key.allCases.filter {
+            displayMode == .library ? $0.isAvailableInLibraryMode : $0.isAvailableInFolderMode
+        }
+    }
+
+    /// 構造を変える操作を許すか [VM-13]。
+    ///
+    /// ライブラリ表示モードでは**リネームと削除だけ**を残し、移動・コピー・
+    /// 圧縮／展開・新規フォルダ作成は無効にする。一覧が配下からフラットに
+    /// 集めたものなので、「どこへ」置くのかが決まらない——現在のフォルダ直下に
+    /// 置くと、一覧では隣に並んで見えるのに実際は別の階層、という状態を
+    /// 作ってしまう。ドラッグ＆ドロップも同じ理由で外す。
+    ///
+    /// **`FolderTreeContextMenu` の同名プロパティと役割を揃えてある**
+    /// ——条件を View の式に散らすと、経路が増えたときに片方だけ取り残される。
+    private var allowsStructuralOperations: Bool { displayMode == .folder }
+
+    private var libraryLoadKey: LibraryLoadKey {
+        LibraryLoadKey(mode: displayMode,
+                       folder: folder,
+                       sort: sortOrder.first ?? FolderSortComparator(key: .name),
+                       filterRevision: labelFilterRevision,
+                       searchText: searchText,
+                       operationCount: CommandStack.shared.operationHistory.count,
+                       contentRevision: LibraryServices.shared.contentRevision)
+    }
+
+    /// ライブラリ表示モードでだけ現れる列 [LV-04]。
+    ///
+    /// **`Table` の本体から切り出してある**——中身を増やすと「型検査に時間が
+    /// かかりすぎる」でビルドが落ちる（`body`/`bottomBars` で繰り返し踏んだ形）。
+    @TableColumnBuilder<FolderEntry, FolderSortComparator>
+    private var libraryColumns: some TableColumnContent<FolderEntry, FolderSortComparator> {
+                // [LV-04] ライブラリ表示モードの列。**名前列はファイル名の
+                // まま**にして、タイトルは独立した列で見せる——両方を並べて
+                // 見られるほうが、どちらを直すべきか分かる（アイコン表示は
+                // 場所が無いのでタイトルだけを出す [IV-05]）。
+                if displayMode == .library, showTitleColumn {
+                    TableColumn("column.title", sortUsing: FolderSortComparator(key: .title)) { entry in
+                        rowCell(entry, isRenaming: renamingEntry?.url == entry.url) {
+                            Text(entry.displayName)
+                                .font(.system(size: Tokens.fontSize.body))
+                                .truncationMode(nameTruncationMode.swiftUIMode)
+                        }
+                    }
+                    .width(min: 120, ideal: Self.titleColumnWidth)
+                }
+
+                if displayMode == .library, showSeriesColumn {
+                    TableColumn("column.series", sortUsing: FolderSortComparator(key: .series)) { entry in
+                        rowCell(entry, isRenaming: renamingEntry?.url == entry.url) {
+                            Text(entry.libraryRow?.seriesName ?? "—")
+                                .font(.system(size: Tokens.fontSize.body))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .width(min: 100, ideal: Self.seriesColumnWidth)
+                }
+
+                if displayMode == .library, showVolumeColumn {
+                    TableColumn("column.volume", sortUsing: FolderSortComparator(key: .volume)) { entry in
+                        // 巻数は右詰め（数の列なので、Finder のサイズ列と同じ扱い）。
+                        rowCell(entry, isRenaming: renamingEntry?.url == entry.url, alignment: .trailing) {
+                            // **原文表記を出す** [CR-23]——`第01巻` の綴りを
+                            // 数字へ潰すと、全角や巻表記の違いが見えなくなる。
+                            Text(entry.libraryRow?.volume.raw ?? "—")
+                                .font(.system(size: Tokens.fontSize.body))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .width(min: 60, max: Self.volumeColumnWidth)
+                }
+
+                if displayMode == .library, showRatingColumn {
+                    TableColumn("column.rating", sortUsing: FolderSortComparator(key: .rating)) { entry in
+                        rowCell(entry, isRenaming: renamingEntry?.url == entry.url) {
+                            // **表示専用**——星を押せるようにすると、行を
+                            // 選ぶつもりのクリックが評価を書き換える。
+                            // 評価の変更は右ペインから行う [RA-01]。
+                            RatingStars(filled: entry.libraryRow?.rating ?? 0,
+                                        tint: .secondary)
+                        }
+                    }
+                    .width(min: 90, max: Self.ratingColumnWidth)
+                }
+    }
+
     private var displayedEntries: [FolderEntry] {
+        // [VM-10〜VM-12][VM-15] ライブラリ表示モードは DB の一覧をそのまま描く。
+        // 絞り込み（ラベル・評価・検索）も並べ替えも SQL 側で済んでいるので、
+        // ここでは何も足さない——**メモリ上で並べ替え直すと、読み込んだぶんの
+        // 中でだけ正しい順序**になり、ページング [FI-05] と両立しない。
+        // 「フォルダを上にまとめる」[LV-03] も適用しない（フォルダは並ばない
+        // ——ブックフォルダは実体がディレクトリだが 1 冊として扱う [IF-10]）。
+        if displayMode == .library {
+            return libraryContent.rows.map { FolderEntry(libraryRow: $0) }
+        }
         // 検索中は**再帰的に集めた結果**を一覧の元にする [ユーザー要望:
         // サブフォルダも再帰的に検索する]。Finder の検索と同じく、現在の
         // フォルダを起点に配下すべてが対象になる。走査は `searchTask` が
@@ -1391,6 +1647,16 @@ struct FolderContentView: View {
         } else {
             content()
                 .frame(maxWidth: .infinity, alignment: alignment)
+                // [FI-05][PF-10] 末尾が見えたら次のページを求める。**列の数だけ
+                // 呼ばれる**（`Table` はセルごとに独立）が、受け側が
+                // `isLoadingMore` で弾くので実際に問い合わせるのは 1 回。
+                // `displayedEntries` ではなく `libraryContent.rows` を見るのは、
+                // 前者が毎回組み立て直される計算プロパティのため。
+                .onAppear {
+                    guard displayMode == .library,
+                          entry.url == libraryContent.rows.last?.url else { return }
+                    onLoadMoreLibraryRows()
+                }
                 .contentShape(Rectangle())
                 .onTapGesture(count: 2) {
                     pendingRenameGeneration += 1 // ダブルクリックなら保留中のリネームは取り消す
@@ -1578,17 +1844,16 @@ struct FolderContentView: View {
                 .labelsHidden()
             }
             Menu("common.sortBy", systemImage: "arrow.up.arrow.down") { // [LV-01]
+                // [LV-04][VM-15] 表示モードで選べるキーだけを並べる。
                 Picker("common.sortBy", selection: sortKeyBinding) {
-                    Text("column.name").tag(FolderSortComparator.Key.name)
-                    Text("column.modificationDate").tag(FolderSortComparator.Key.modificationDate)
-                    Text("column.size").tag(FolderSortComparator.Key.size)
-                    Text("column.kind").tag(FolderSortComparator.Key.kind)
-                    Text("column.creationDate").tag(FolderSortComparator.Key.creationDate)
-                    Text("column.addedDate").tag(FolderSortComparator.Key.addedDate)
+                    ForEach(availableSortKeys, id: \.self) { key in
+                        Text(key.localizationKey).tag(key)
+                    }
                 }
                 .pickerStyle(.inline)
                 .labelsHidden()
             }
+            if allowsStructuralOperations { // [VM-13]
             Divider()
             Button("action.newFolder", systemImage: "folder.badge.plus") {
                 presentNewFolderDialog()
@@ -1601,6 +1866,7 @@ struct FolderContentView: View {
                     Button("folder.moveItemsHere", systemImage: "folder") { moveItemsHere() }
                         .disabled(!canPaste)
                 }
+            }
             // Finder は空きスペースの右クリックにも「すべて選択」を出す
             // [Finder/Edit メニュー整備の一環で追加]。
             // 現在いるフォルダをターミナルで開く [ユーザー要望]。
@@ -1609,7 +1875,7 @@ struct FolderContentView: View {
                 Button("folder.openInTerminal", systemImage: "terminal") { operations.openInTerminal([folder]) }
             }
             Button("action.selectAll", systemImage: "character.textbox") { selectAllInCurrentFolder() }
-                .disabled(entries.isEmpty)
+                .disabled(displayedEntries.isEmpty)
                 // Finder と同じく ⌥ で「すべてを選択解除」に入れ替わる
                 // [Finder 対比監査]。
                 .modifierKeyAlternate(.option) {
@@ -1618,7 +1884,11 @@ struct FolderContentView: View {
                 }
         } else {
             let targets = Array(urls)
-            let targetEntries = entries.filter { urls.contains($0.url) }
+            // **`entries` ではなく `displayedEntries`。** ライブラリ表示モードの
+            // 行は実体の一覧に含まれない（配下からフラットに集めたもの）ので、
+            // `entries` から引くと空になり「開く」が何もしない・「名前を変更…」
+            // が消える・`allSatisfy` が真になって的外れな項目が出る。
+            let targetEntries = displayedEntries.filter { urls.contains($0.url) }
             Button("action.open", systemImage: "arrow.up.forward.app") { openEntries(targetEntries) } // [KB-02 相当]
             // [QL-01] 右クリックした対象が現在の選択と違う場合は、まず選択を
             // 合わせてから開く——Quick Look の対象は「現在の選択」であり
@@ -1663,7 +1933,9 @@ struct FolderContentView: View {
             } else if targets.count > 1 {
                 Button("menu.renameItems", systemImage: "pencil") { beginBulkRename(targets) }
             }
-            Button("folder.duplicate", systemImage: "plus.square.on.square") { duplicate(targets) } // [FM-02]
+            if allowsStructuralOperations { // [VM-13]
+                Button("folder.duplicate", systemImage: "plus.square.on.square") { duplicate(targets) } // [FM-02]
+            }
             Button("action.copy", systemImage: "document.on.document") { copySelectionToPasteboard(targets) } // [KB-02 相当、⌘C]
                 // Finder と同じく ⌥ で「パス名をコピー」に入れ替わる [FM-10]
                 // [Finder 対比監査。⌥ 代替の一覧と、対応しなかった項目の理由は
@@ -1671,11 +1943,13 @@ struct FolderContentView: View {
                 .modifierKeyAlternate(.option) {
                     Button("folder.copyPath", systemImage: "document.on.document") { copyPaths(targets) }
                 }
-            Button("action.cut", systemImage: "scissors") { cutSelectionToPasteboard(targets) } // [Finder/Edit メニュー整備、⌘X]
+            if allowsStructuralOperations { // [VM-13] カットは移動の一種
+                Button("action.cut", systemImage: "scissors") { cutSelectionToPasteboard(targets) } // [Finder/Edit メニュー整備、⌘X]
             // Finder の「選択項目で新規フォルダを作成」[Finder/Edit メニュー整備]。
             // 移動先を作る操作のため、フォルダ自身が対象に混ざっていても
             // Finder と同じく無条件に出す。
-            Button("action.newFolderWithSelection") { newFolderWithSelection(targets) }
+                Button("action.newFolderWithSelection") { newFolderWithSelection(targets) }
+            }
             Divider()
             Button("folder.moveToTrash", systemImage: "trash", role: .destructive) { moveToTrash(targets) } // [FM-04]
                 // Finder と同じく ⌥ で「すぐに削除…」に入れ替わる [FM-14]
@@ -1688,6 +1962,9 @@ struct FolderContentView: View {
                 }
             Divider()
             // 圧縮・展開関連をサブメニューにまとめる [ユーザー要望]。
+            // [VM-13] ライブラリ表示モードでは出さない——展開は「どこへ」を
+            // 決められず、圧縮は一覧に無い新しいファイルを作る。
+            if allowsStructuralOperations {
             Menu("folder.compressExtractSubmenu", systemImage: "zipper.page") {
                 Button("folder.compressHere", systemImage: "zipper.page") { compressHere(targets) } // [AR-10]
                     // Finder と同じく ⌥ で「パスワード付きで圧縮」に入れ替わる
@@ -1710,13 +1987,16 @@ struct FolderContentView: View {
                     Button("folder.extractEllipsis", systemImage: "shippingbox.and.arrow.backward") { extractToChosenDestination(targets) } // [AR-22]
                 }
             }
+            }
             Divider()
             Button("folder.revealInFinder", systemImage: "macwindow") { NSWorkspace.shared.activateFileViewerSelecting(targets) } // [FM-09]
             // ターミナルで開く [ユーザー要望]。ファイルを選んでいる場合は
             // その親フォルダを開く（`FolderOperations.openInTerminal` 参照）。
             Button("folder.openInTerminal", systemImage: "terminal") { operations.openInTerminal(targets) }
             ShareLink(items: targets) { Label("folder.shareEllipsis", systemImage: "square.and.arrow.up") } // [共有、既定ラベルが英語 "Share..." になるため明示的に指定]
-            Button("folder.createAlias", systemImage: "square.on.square.dashed") { createAliases(for: targets) }
+            if allowsStructuralOperations { // [VM-13] 一覧に無いファイルを作る
+                Button("folder.createAlias", systemImage: "square.on.square.dashed") { createAliases(for: targets) }
+            }
             Divider()
             Button(targetEntries.allSatisfy(\.isLocked) ? "folder.unlock" : "folder.lock",
                    systemImage: targetEntries.allSatisfy(\.isLocked) ? "lock.open" : "lock") {
@@ -1868,8 +2148,15 @@ struct FolderContentView: View {
             // id（＝ URL 自体）が変わらないため削除前の情報を表示し続けて
             // いた]。選択が空になれば `InspectorPane` は現在のフォルダ自身の
             // 情報表示にフォールバックする（既存の設計）。
-            let currentURLs = Set(entries.map(\.url))
-            selection.formIntersection(currentURLs)
+            // **ライブラリ表示モードでは触らない** [code-review 指摘]。
+            // あちらの一覧は配下からフラットに集めたもので、サブフォルダの
+            // 行は `entries`（現在フォルダの直下だけ）に無い——素通しすると
+            // FSEvents が動くたびに選択が消える。DB 由来の一覧に対する
+            // 同じ後始末は `.onChange(of: libraryContent.rows)` が行う。
+            if displayMode == .folder {
+                let currentURLs = Set(entries.map(\.url))
+                selection.formIntersection(currentURLs)
+            }
         case let .failed(message, isAccessDenied):
             // 表示中のフォルダ自体が消えている場合（ツリーや別ウインドウから
             // ゴミ箱へ入れた・名前を変更した、アプリ外の Finder で削除した等）は、
@@ -1956,8 +2243,13 @@ struct FolderContentView: View {
 
     /// `⌘A`/空きスペースの右クリック「すべて選択」[Finder/Edit メニュー整備]。
     private func selectAllInCurrentFolder() {
-        guard !entries.isEmpty else { return }
-        selection = Set(entries.map(\.url))
+        // **`entries` ではなく `displayedEntries`**——ライブラリ表示モードでは
+        // 実体の一覧（`entries`）と画面の一覧が別物で、素の `entries` を使うと
+        // **画面に出ていない項目まで選ばれる**。フォルダ表示モードでも、
+        // フィルタや検索で絞っている間は同じことが起きる。
+        let visible = displayedEntries
+        guard !visible.isEmpty else { return }
+        selection = Set(visible.map(\.url))
     }
 
     /// Finder の「選択項目で新規フォルダを作成」[Finder/Edit メニュー整備]。
@@ -2021,7 +2313,9 @@ struct FolderContentView: View {
 
     private func beginRenameFromShortcut() {
         guard selection.count == 1, let url = selection.first,
-              let entry = entries.first(where: { $0.url == url })
+              // 画面に出ている一覧から引く（ライブラリ表示モードの行は
+              // `entries` に無い）[code-review 指摘]。
+              let entry = displayedEntries.first(where: { $0.url == url })
         else { return }
         beginRename(entry)
     }
@@ -2031,7 +2325,7 @@ struct FolderContentView: View {
     /// 同時に移動できないため、ファイルだけを開く。
     private func openSelection() {
         guard !selection.isEmpty else { return }
-        openEntries(entries.filter { selection.contains($0.url) })
+        openEntries(displayedEntries.filter { selection.contains($0.url) })
     }
 
     /// コンテキストメニューの「開く」用 [KB-02 相当]。`openSelection()` と同じ
@@ -2138,7 +2432,7 @@ struct FolderContentView: View {
     /// [AR-20〜AR-23]。フォルダが混じっている場合は展開メニューを出さない。
     private func isExtractable(_ urls: [URL]) -> Bool {
         guard !urls.isEmpty else { return false }
-        let matching = entries.filter { urls.contains($0.url) }
+        let matching = displayedEntries.filter { urls.contains($0.url) }
         return matching.count == urls.count && matching.allSatisfy { $0.archiveFormat != nil }
     }
 
@@ -2333,6 +2627,23 @@ struct FolderEntry: Identifiable {
     /// [ユーザー要望: 絞り込まれたファイルがどの階層のものか分かるようにしたい]。
     /// 起点の直下にある項目は空文字（＝「ここ」）。通常の一覧では常に空。
     var relativeLocation: String = ""
+    /// ライブラリ表示モードのときだけ入る DB の行 [VM-10]。フォルダ表示モードでは
+    /// 常に `nil`（`relativeLocation` と同じ「そのモードのときだけ意味を持つ」形）。
+    ///
+    /// これが非 `nil` であること自体が「この行は DB の一覧から来た」という印で、
+    /// 表示名 [IV-05]・列 [LV-04]・操作の可否 [VM-13] の分岐がこれを見る。
+    var libraryRow: FileRow?
+
+    /// 一覧に出す名前 [IV-05][IV-07]。ライブラリ表示モードではタイトル、
+    /// 無ければファイル名。フォルダ表示モードでは常にファイル名。
+    ///
+    /// **`name` は必ずファイル名のまま**にしてある——リネーム [VM-13]・
+    /// 検索・パスの組み立てがこれを使うので、表示のためにここを書き換えると
+    /// 「タイトルでファイル名を上書きする」事故になる [IV-10][RP-10]。
+    var displayName: String {
+        guard let libraryRow else { return name }
+        return LibraryContentModel.displayName(for: libraryRow)
+    }
 
     /// **フォルダとして中へ入れるか** [ユーザー要望: `.app` はダブルクリックで
     /// 起動し、中を見るのはコンテキストメニューから]。
@@ -2346,7 +2657,14 @@ struct FolderEntry: Identifiable {
     /// 副次的に、写真・ミュージックライブラリ（`.photoslibrary` 等）の中へ
     /// 降りなくなるので、そこで出ていた TCC の許可ダイアログも止まる
     /// [CLAUDE.md に未着手として残っていた件]。
-    var isNavigableFolder: Bool { isDirectory && !isPackage }
+    var isNavigableFolder: Bool {
+        // ライブラリ表示モードの行は**中へ降りない**［ユーザー判断: 階層移動は
+        // しない。ブックフォルダは関連付けアプリで開くだけでよい］。ブックフォルダは
+        // 実体がディレクトリだが 1 冊として並んでおり [IF-10]、降りても中の画像は
+        // 表示対象外 [IF-12] なので一覧が空になるだけ。ドロップ先にもならない。
+        if libraryRow != nil { return false }
+        return isDirectory && !isPackage
+    }
 
     /// zip/7z/rar/tar.gz（cbz/cb7/cbr のエイリアス含む）と認識できるファイル
     /// [AR-20〜AR-23]。フォルダは対象外。
@@ -2369,6 +2687,33 @@ struct FolderEntry: Identifiable {
         }
         guard !ext.isEmpty else { return String(localized: "kind.document", locale: locale) }
         return String(format: String(localized: "kind.extensionFile", locale: locale), ext.uppercased())
+    }
+}
+
+extension FolderEntry {
+    /// ライブラリ表示モードの行から作る [VM-10]。
+    ///
+    /// **実体を stat しない**——一覧の値はすべて DB が持っており [VM-10]、
+    /// 数百件ぶんの `stat(2)` をメインスレッドで撃つと応答しない共有では
+    /// そのまま停止になる [NV6-02]。代償として `isLocked` と `addedDate` は
+    /// 分からない（前者はロックされた本のリネームが実行時に失敗する形で表に
+    /// 出る。後者は列を出さない [LV-04 の判断]）。
+    init(libraryRow row: LibraryContentModel.Row) {
+        self.init(
+            url: row.url,
+            // **`name` はファイル名のまま**。表示名は `displayName` が
+            // タイトルへ差し替える [IV-05][IV-10]。
+            name: row.file.filename,
+            // ブックフォルダは実体がディレクトリ [IF-10]。中へ降りないことは
+            // `isNavigableFolder` が別に決める。
+            isDirectory: row.file.isBookFolder,
+            isPackage: false,
+            fileSize: row.file.fileSize,
+            modificationDate: row.file.modifiedAt,
+            creationDate: row.file.createdAt,
+            addedDate: nil,
+            isLocked: false,
+            libraryRow: row.file)
     }
 }
 
@@ -2401,11 +2746,79 @@ extension FolderSortComparator {
     }
 }
 
+extension FolderSortComparator {
+    /// ライブラリ表示モードの並べ替え [VM-15]。**SQL の `ORDER BY` に渡す**
+    /// ——ページングする一覧 [FI-05] をメモリ上で並べ替えると、読み込んだ
+    /// ぶんの中でだけ正しい順序になってしまう。
+    ///
+    /// 使えないキー（種類・追加日）は名前へ落とす。列を出さないので普通は
+    /// 選ばれないが、フォルダ表示モードで選んだままモードを切り替えると
+    /// ここへ来る——**「並べ替えられないので空にする」より、名前順で出す
+    /// ほうが害が小さい。**
+    var librarySortSpec: FileQuery.SortSpec {
+        let mapped: FileQuery.SortKey = switch key {
+        case .name: .filename
+        case .modificationDate: .modifiedAt
+        case .size: .fileSize
+        case .creationDate: .createdAt
+        case .title: .title
+        case .series: .series
+        case .volume: .volume
+        case .rating: .rating
+        case .kind, .addedDate: .filename
+        }
+        return FileQuery.SortSpec(key: mapped, ascending: order == .forward)
+    }
+}
+
 struct FolderSortComparator: SortComparator {
     /// `String` を rawValue にしているのは、並び順を `UserDefaults` へ
     /// 保存できるようにするため（`ListStyle` と同じ理由）。
     enum Key: String, Hashable, CaseIterable {
-        case name, modificationDate, size, kind, creationDate, addedDate
+        // 並び順がそのままメニューの並びになる。`rawValue` は `UserDefaults`
+        // へ保存するので変えない。
+        case name
+        // [LV-04] ライブラリ表示モードでだけ選べる列。値は DB が持つ。
+        case title, series, volume, rating
+        case modificationDate, size, kind, creationDate, addedDate
+
+        /// フォルダ表示モードで選べるか。`title` 以降は DB の行を要するので、
+        /// 実体の一覧しか無いフォルダ表示モードでは意味を持たない。
+        var isAvailableInFolderMode: Bool {
+            switch self {
+            case .name, .modificationDate, .size, .kind, .creationDate, .addedDate: true
+            case .title, .series, .volume, .rating: false
+            }
+        }
+
+        /// メニューに出す名前。カラムヘッダと同じ鍵を使い回す。
+        var localizationKey: LocalizedStringKey {
+            switch self {
+            case .name: "column.name"
+            case .title: "column.title"
+            case .series: "column.series"
+            case .volume: "column.volume"
+            case .rating: "column.rating"
+            case .modificationDate: "column.modificationDate"
+            case .size: "column.size"
+            case .kind: "column.kind"
+            case .creationDate: "column.creationDate"
+            case .addedDate: "column.addedDate"
+            }
+        }
+
+        /// ライブラリ表示モードで選べるか [LV-04][VM-15]。
+        ///
+        /// **「種類」と「追加日」は選べない**——どちらも `managedFile` が値を
+        /// 持たず、SQL で並べ替えられない。ページングする一覧 [FI-05] で
+        /// メモリ上だけ並べ替えると「読み込んだぶんの中でだけ正しい」順序に
+        /// なるので、**列そのものを出さない**（14章 §14.3 に書き戻し済み）。
+        var isAvailableInLibraryMode: Bool {
+            switch self {
+            case .kind, .addedDate: false
+            default: true
+            }
+        }
     }
 
     var key: Key
@@ -2435,6 +2848,24 @@ struct FolderSortComparator: SortComparator {
         case .addedDate:
             let l = lhs.addedDate ?? .distantPast
             let r = rhs.addedDate ?? .distantPast
+            result = l == r ? .orderedSame : (l < r ? .orderedAscending : .orderedDescending)
+        // [LV-04] ライブラリ表示モードの列。**実際にはこの比較は使われない**
+        // ——あちらの並べ替えは SQL が行い、`displayedEntries` はメモリ上の
+        // 並べ替えを飛ばす [VM-15]。DB の行を持たない相手（フォルダ表示モードの
+        // 行）と混ざっても壊れないよう、素直な実装だけ置いてある。
+        case .title:
+            result = lhs.displayName.localizedStandardCompare(rhs.displayName)
+        case .series:
+            let l = lhs.libraryRow?.seriesName ?? ""
+            let r = rhs.libraryRow?.seriesName ?? ""
+            result = l.localizedStandardCompare(r)
+        case .volume:
+            let l = lhs.libraryRow?.volume.sortKey ?? .greatestFiniteMagnitude
+            let r = rhs.libraryRow?.volume.sortKey ?? .greatestFiniteMagnitude
+            result = l == r ? .orderedSame : (l < r ? .orderedAscending : .orderedDescending)
+        case .rating:
+            let l = lhs.libraryRow?.rating ?? 0
+            let r = rhs.libraryRow?.rating ?? 0
             result = l == r ? .orderedSame : (l < r ? .orderedAscending : .orderedDescending)
         }
         guard order == .reverse else { return result }

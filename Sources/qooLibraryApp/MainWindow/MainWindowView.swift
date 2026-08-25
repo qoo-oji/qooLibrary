@@ -408,6 +408,27 @@ struct MainWindowView: View {
                 // 収めることより実ツールバーとしての見た目・高さを優先する
                 // [ユーザー判断、既知のトレードオフとして受け入れ]。
                 ToolbarItemGroup(placement: .primaryAction) {
+                    // [TB-01] フォルダ表示モード／ライブラリ表示モードのシーソー。
+                    // **ライブラリを開いているときだけ有効**——ボリューム・
+                    // テンポラリでは `managedFile` の行が無く、空の一覧しか
+                    // 出せない。無効時はツールチップで理由を示す [MX-04]。
+                    Picker("mainWindow.displayMode", selection: Binding(
+                        get: { windowState.displayMode },
+                        // **必ず `setDisplayMode` を通す**——ライブラリ →
+                        // フォルダの切替では、選んでいた本のフォルダへ移動する
+                        // 必要がある [VM-20〜VM-23]。素の束縛にすると素通りする。
+                        set: { windowState.setDisplayMode($0) }
+                    )) {
+                        Image(systemName: "folder").tag(DisplayMode.folder)
+                        Image(systemName: "books.vertical").tag(DisplayMode.library)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .disabled(!windowState.canUseLibraryDisplayMode)
+                    .help(windowState.canUseLibraryDisplayMode
+                          ? "mainWindow.displayModeHelp"
+                          : "mainWindow.displayModeUnavailable")
+
                     // 検索 [1-16]。**表示切替の左**に置く [ユーザー要望]。
                     searchControl
 
@@ -503,7 +524,30 @@ struct MainWindowView: View {
                             isStatusBarVisible: isStatusBarVisible,
                             thumbnailHiddenReason: windowState.thumbnailHiddenReason, // [DS-01][DS-07]
                             onToggleThumbnails: { ThumbnailVisibility.shared.toggleGlobal() },
-                            searchText: $windowState.searchText
+                            searchText: $windowState.searchText,
+                            // [TB-01][VM-10〜VM-16] ライブラリ表示モード。
+                            displayMode: windowState.displayMode,
+                            libraryContent: windowState.libraryContent,
+                            onLoadMoreLibraryRows: {
+                                guard let library = windowState.currentLibrary else { return }
+                                Task {
+                                    await windowState.libraryContent.loadNextPage(
+                                        library: library, services: LibraryServices.shared)
+                                }
+                            },
+                            loadLibraryRows: { sort in
+                                windowState.libraryContent.setSort(sort)
+                                // モードがフォルダ側なら `library: nil` になり、
+                                // モデルは一覧を捨てて `.inactive` へ戻る。
+                                await windowState.libraryContent.load(
+                                    library: windowState.displayMode == .library
+                                        ? windowState.currentLibrary : nil,
+                                    relativePath: windowState.libraryRelativePath,
+                                    labelSelection: windowState.labelFilter.selection,
+                                    ratingFilter: windowState.labelFilter.ratingFilter,
+                                    searchText: windowState.searchText,
+                                    services: LibraryServices.shared)
+                            }
                         )
                 }
                 .inspector(isPresented: Binding(
@@ -530,7 +574,8 @@ struct MainWindowView: View {
             root: windowState.navigationRoot,
             libraries: LibraryServices.shared.libraries.map {
                 "\($0.id.rawValue):\($0.settingsRevision)"
-            })
+            },
+            contentRevision: LibraryServices.shared.contentRevision)
     }
 
     private var labelFilterResultKey: LabelFilterResultKey {
@@ -759,6 +804,14 @@ private struct PaneWidthPersisting: ViewModifier {
 private struct LabelFilterLoadKey: Hashable {
     let root: NavigationRoot
     let libraries: [String]
+    /// 走査が DB を書き換えるたびに増える [`LibraryServices.contentRevision`]。
+    ///
+    /// **これが無いとラベルが一覧に出ない**［2-9 の実機検証で発見］。有効化と
+    /// 初回走査は同時に走るので、`libraries` が空 → 1 件に変わった時点で
+    /// 一度読み込まれ、そのときはまだラベルが 1 件も無い。走査が終わっても
+    /// `settingsRevision` は変わらないため鍵が動かず、**アプリを再起動する
+    /// まで「このライブラリにはまだラベルがありません」のまま**だった。
+    let contentRevision: Int
 }
 
 /// 件数と絞り込み結果を数え直す条件。

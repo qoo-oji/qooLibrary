@@ -82,6 +82,13 @@ struct IconGridView<MenuContent: View>: View {
     var isRenameFieldFocused: FocusState<Bool>.Binding
     let onCommitRename: () -> Void
     let onCancelRename: () -> Void
+    /// 構造を変える操作を許すか [VM-13]。ライブラリ表示モードでは偽になり、
+    /// ドラッグでの持ち出しとフォルダ行へのドロップを止める。
+    var allowsStructuralOperations = true
+    /// 一覧の末尾が見えたときに呼ぶ [FI-05][PF-10]。ライブラリ表示モードの
+    /// 追加読み込みだけが使う——フォルダ表示モードは一度に全件を読むので
+    /// `nil` が渡る。
+    var onReachEnd: (() -> Void)?
     /// 選択ハイライトの濃淡切り替え用 [実機検証時のユーザー指摘: 独自の
     /// 半透明アクセントカラーだと Finder のような青にならない]。`Table` は
     /// AppKit がフォーカス状態に応じて濃い青（フォーカスあり）と灰色
@@ -102,6 +109,12 @@ struct IconGridView<MenuContent: View>: View {
             LazyVGrid(columns: columns, spacing: Tokens.spacing.l) { // [PF-10] 可視範囲のみ描画
                 ForEach(entries) { entry in
                     cell(for: entry)
+                        // [FI-05][PF-10] 末尾が見えたら次のページを求める
+                        // （ライブラリ表示モードのときだけ、呼び出し側が
+                        // 非 `nil` のクロージャを渡す）。
+                        .onAppear {
+                            if entry.url == entries.last?.url { onReachEnd?() }
+                        }
                 }
             }
             .padding(Tokens.spacing.m)
@@ -116,7 +129,9 @@ struct IconGridView<MenuContent: View>: View {
         // [DD-02][設計判断] `URL` は既に `Transferable`。ドラッグされたセルの
         // `containerItemID`（＝ URL 自身）の配列がそのままペイロードになる。
         .dragContainer(for: URL.self, itemID: \.self, in: dragNamespace) { draggedItemIDs in
-            draggedItemIDs
+            // [VM-13] ライブラリ表示モードでは持ち出させない（`Table` 側と同じ）。
+            // 判定そのものは呼び出し側が渡す——同じ条件を 2 か所で書かない。
+            allowsStructuralOperations ? draggedItemIDs : []
         }
         .dragContainerSelection(Array(selection), containerNamespace: dragNamespace)
     }
@@ -150,7 +165,10 @@ struct IconGridView<MenuContent: View>: View {
                     }
                     .frame(height: Tokens.fontSize.caption * 2.4)
             } else {
-                Text(entry.name)
+                // [IV-05] ライブラリ表示モードでは**ファイル名でなく
+                // タイトル**を出す（`displayName` が判断する。フォルダ表示
+                // モードでは常にファイル名）。
+                Text(entry.displayName)
                     .font(.system(size: Tokens.fontSize.caption))
                     .lineLimit(2)
                     .truncationMode(nameTruncationMode.swiftUIMode) // [ユーザー要望] 名前列と同じ設定を共有する。

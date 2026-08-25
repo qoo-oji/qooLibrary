@@ -48,6 +48,20 @@ public final class LibraryServices {
     /// ストアを開けなかった理由。`nil` なら正常。
     public private(set) var startupFailure: StoreStartupFailure?
 
+    /// DB の中身が変わるたびに増える [VM-10]。
+    ///
+    /// **ライブラリ表示モードの一覧は実体ではなく DB を描く**ので、
+    /// `DirectoryObservation`（実体の変更）だけでは追随できない——外部で
+    /// ファイルが増えても、走査が DB へ書き込むまで一覧に出る材料が無い。
+    /// 走査が 1 本終わるたびにここを進め、中央ペインが `.task(id:)` の鍵に
+    /// 混ぜて読み直す。
+    ///
+    /// **評価・ラベル・タイトルの編集はここを進めない**——あちらは
+    /// `CommandStack.operationHistory.count` が同じ役目を果たしており、
+    /// 2 つの合図を 1 つに畳むと「どちらで起きた変化か」が読めなくなる。
+    public private(set) var contentRevision = 0
+
+
     /// ライブラリ機能が使えるか。UI はこれを見てメニュー項目の有効／無効を決める。
     public var isReady: Bool { database != nil }
 
@@ -149,6 +163,13 @@ public final class LibraryServices {
                 return try await engine.scan(mode, root: url)
             },
             fullScanInterval: Self.configuredFullScanInterval()))
+        // 自動走査は `ScanEngine` を直に呼ぶので `scan(libraryID:)` を通らない。
+        // **ここで拾わないと、外部でファイルが増えてもライブラリ表示モードの
+        // 一覧が古いまま**になる（この受け口の最初の利用者）。
+        sync?.onScanFinished = { [weak self] _, summary in
+            guard summary.added > 0 || summary.updated > 0 || summary.orphaned > 0 else { return }
+            Task { @MainActor in self?.contentRevision &+= 1 }
+        }
     }
 
     /// 起動時にフルスキャンし直すまでの間隔 [SY-05]。環境設定で変更でき、
@@ -411,6 +432,22 @@ public final class LibraryServices {
     public func fileCount(_ q: FileQuery) async throws -> Int {
         guard let repository = fileRepository else { throw ServiceError.notReady }
         return try await repository.count(q)
+    }
+
+    /// ライブラリ表示モードの一覧 [VM-10〜VM-12][FI-05]。
+    ///
+    /// **`matchingChildNames` とは向きが逆**——あちらは「実体の一覧を絞る」ため
+    /// 名前だけを返すが、こちらは**DB の行そのものを描く**ので `FileRow` を返す。
+    /// フォルダ表示モードでファイル操作がすべて可能でなければならない [VM-03]
+    /// という制約はライブラリ表示モードには無く [VM-13]、逆に対象拡張子外の
+    /// ファイルは出してはならない [VM-10] ので、実体ではなく DB が一覧の源になる。
+    ///
+    /// **必ずページングする** [FI-05][PF-10]——`q.limit`/`q.offset` をそのまま
+    /// 渡すこと。`FilePage.totalCount` は絞り込み後の総数なので、呼び出し側は
+    /// 「あと何件あるか」を数え直さずに済む。
+    public func files(_ q: FileQuery) async throws -> FilePage {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        return try await repository.query(q)
     }
 
     /// フォルダ表示モードで残す子の名前 [VM-02]。
@@ -723,6 +760,7 @@ public final class LibraryServices {
                                  eventID: eventID, mode: scanMode)
         }
         await refreshLibraries()
+        contentRevision &+= 1
         return summary
     }
 

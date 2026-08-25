@@ -17,26 +17,37 @@ struct RatingStars: View {
     let filled: Int
     var tint: Color = .accentColor
     var isEnabled: Bool = true
-    /// 押された星（1〜5）。
-    let onSelect: (Int) -> Void
+    /// 押された星（1〜5）。**`nil` なら表示専用**——一覧の列 [LV-04] のように
+    /// 星そのものが操作の対象でない場所で使う。ボタンのままそこへ置くと、
+    /// 星を踏んだクリックが行の選択に届かない（Finder の一覧で列の中身を
+    /// クリックしても行が選ばれるのと食い違う）。
+    var onSelect: ((Int) -> Void)?
 
     var body: some View {
         HStack(spacing: Tokens.spacing.xs) {
             ForEach(1...5, id: \.self) { star in
-                Button {
-                    onSelect(star)
-                } label: {
-                    Image(systemName: star <= filled ? "star.fill" : "star")
-                        .foregroundStyle(tint)
-                        // 星形は中央が細く抜けているので、グリフの矩形全体を
-                        // 当たり判定にする。無いと「押したのに反応しない」が
-                        // 起きる（1-6 で `List` 行について踏んだのと同じ形）。
-                        .contentShape(Rectangle())
+                if let onSelect {
+                    Button {
+                        onSelect(star)
+                    } label: {
+                        glyph(star)
+                            // 星形は中央が細く抜けているので、グリフの矩形全体を
+                            // 当たり判定にする。無いと「押したのに反応しない」が
+                            // 起きる（1-6 で `List` 行について踏んだのと同じ形）。
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!isEnabled)
+                } else {
+                    glyph(star)
                 }
-                .buttonStyle(.plain)
-                .disabled(!isEnabled)
             }
         }
         .font(.system(size: Tokens.fontSize.body))
+    }
+
+    private func glyph(_ star: Int) -> some View {
+        Image(systemName: star <= filled ? "star.fill" : "star")
+            .foregroundStyle(tint)
     }
 }

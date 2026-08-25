@@ -1,6 +1,7 @@
 import Foundation
 import QooApplication
 import QooInfrastructure
+import QooKit
 import SwiftUI
 
 /// 現在のタブがどちらの入口から辿り着いたかを表す [ユーザー要望: 実体として
@@ -85,8 +86,17 @@ struct TabHistoryEntry: Sendable, Equatable {
     let navigationRoot: NavigationRoot
 }
 
-public enum DisplayMode: Sendable, Equatable {
-    case folder // [VM-01 以降] ライブラリ表示モードは 2-9 でラベル基盤ができてから
+/// 中央ペインの表示モード [VM-01〜VM-23]。**シーソーで切り替える** [TB-01]。
+///
+/// 2 つは「一覧の源」が逆になっている。フォルダ表示モードは**実体の一覧を
+/// 絞る**（フィルタ全 OFF なら DB に載っていないものも見え、ファイル操作が
+/// すべて可能 [VM-01][VM-03]）。ライブラリ表示モードは**DB の行そのものを
+/// 描く**（対象拡張子ファイルとブックフォルダだけを配下からフラットに
+/// 集め、構造を変える操作は無効 [VM-10][VM-13]）。
+public enum DisplayMode: Sendable, Hashable {
+    case folder
+    /// [VM-10〜VM-16]。ライブラリを開いているときだけ選べる [TB-01]。
+    case library
 }
 
 /// `String` を rawValue にしているのは、1-12 環境設定「表示」タブの既定表示
@@ -148,6 +158,11 @@ public final class WindowState {
     /// そのままにする。
     public var navigationCameFromTree = false
     public var displayMode: DisplayMode = .folder // [ST-22]
+    /// ライブラリ表示モードの一覧 [VM-10〜VM-16]。**ウインドウ固有**
+    /// [ST-20][ST-22]——同じライブラリを 2 枚開けば別々に並べ替えられる。
+    /// `labelFilter` と同じく、駆動する（読み直す）のは `MainWindowView` の
+    /// `.task(id:)`。
+    public let libraryContent = LibraryContentModel()
     // 既定は `.list`。1-12 で、この既定値自体を環境設定「表示」タブから変更
     // できるようにした（`DisplayPreferencesTab.swift` 参照）。ウインドウ固有
     // 状態自体は引き続き DB に保存しない [ST-20] が、「次に開くウインドウの
@@ -212,6 +227,13 @@ public final class WindowState {
         // 「最近使った」一覧の順序が入れ替わるのは Finder の挙動とも直感とも
         // ずれるため、意図してこの共通経路だけに置いている。
         RecentFoldersStore.shared.record(url)
+        // [TB-01] ライブラリの外へ出たらフォルダ表示モードへ戻す。**シーソー
+        // 自体が無効になる場所でライブラリ表示モードのまま留まると、一覧が
+        // 空のまま戻す手段が無くなる**（中央ペインからは階層移動できない
+        // ［ユーザー判断］ので、余計に抜け出せない）。
+        if displayMode == .library, !canUseLibraryDisplayMode {
+            setDisplayMode(.folder)
+        }
     }
 
     /// 入口と行き先の不変条件を保つ [`NavigationRoot.favorites` 参照]。
@@ -277,6 +299,14 @@ public final class WindowState {
     /// 挙動が変わり得る、意図した設計]。
     public var canGoToParent: Bool {
         guard let folder else { return false }
+        // [VM-10][VM-11]［ユーザー判断: 階層移動はしない］ライブラリ表示モードは
+        // 「いまのフォルダ配下を 1 枚に並べて見る」ためのもので、そこから上下へ
+        // 動く操作は持たない。**中央ペインにフォルダ行が出ない**（対象拡張子
+        // ファイルとブックフォルダだけ [VM-10]）ので、⌘↑ だけ効くと
+        // 「降りられないのに上がれる」非対称な状態になる。
+        // 左ペインのツリー・移動メニューからの移動は従来どおり効き、行き先が
+        // 同じライブラリの配下ならモードを保つ（`navigate(to:)` 参照）。
+        if displayMode == .library { return false }
         if folder.standardizedFileURL == Self.sandboxHomeDirectory { return false }
         // よく使う項目から入ったときは**実ホームが天井** [ユーザー判断]。
         // ダウンロードから ⌘↑ でホームへは上がれるが、ホームからは上がれない
@@ -343,6 +373,58 @@ public final class WindowState {
     ///
     /// **移動元のフォルダをハイライトしてスクロールする**［ユーザー要望、
     /// `goBack()` と同じ。こちらは常に親フォルダへの移動のため無条件］。
+    // MARK: - 表示モード [TB-01][VM-10〜VM-23]
+
+    /// いまライブラリ表示モードを選べるか [TB-01]。
+    ///
+    /// **ボリューム／テンポラリ／よく使う項目では選べない**——ライブラリ表示
+    /// モードが描くのは `managedFile` の行なので、DB に載らない場所では
+    /// 空の一覧しか出せない。無効時はツールチップで理由を示す [MX-04]。
+    public var canUseLibraryDisplayMode: Bool {
+        guard case .registeredFolder(let uuid, _) = navigationRoot else { return false }
+        // 現在地が根の配下にあること。`libraryRelativePath` はパスバー等で
+        // 根より上へ出たときに `nil` を返すので、その判定をそのまま使う。
+        guard libraryRelativePath != nil else { return false }
+        return LibraryServices.shared.isEnabled(registrationUUID: uuid)
+    }
+
+    /// 表示中のライブラリ [RA-01][LF-01 と同じ解決経路]。
+    public var currentLibrary: LibrarySummary? {
+        navigationRoot.registrationUUID
+            .flatMap { LibraryServices.shared.library(registrationUUID: $0) }
+    }
+
+    /// 表示モードを切り替える [TB-01][VM-20〜VM-23]。
+    ///
+    /// **ライブラリ → フォルダのときだけ行き先を動かす** [VM-20]——ライブラリ
+    /// 表示モードでは配下がフラットに並ぶので、選んでいた本が実際にどこに
+    /// あるかはフォルダ表示モードへ戻った瞬間に見失う。選択中の本のフォルダへ
+    /// 移動し、その本を選択したままにする（左ペインの展開は既存の
+    /// 「現在のフォルダまで展開」が引き受ける [VM-21]）。
+    public func setDisplayMode(_ mode: DisplayMode) {
+        guard mode != displayMode else { return }
+        if mode == .folder, displayMode == .library,
+           let target = firstSelectedLibraryRow() {
+            // [VM-22] 複数選択なら**一覧の表示順で**先頭のもの。`selection` は
+            // `Set` で順序を持たないので、必ず一覧の側から引く（一括リネームの
+            // 連番が表示順に振られていなかった件と同じ形の間違いを避ける）。
+            let parent = target.url.deletingLastPathComponent()
+            if parent != folder { navigate(to: parent) }
+            selection = [target.url]
+            pendingRevealURL = target.url
+        }
+        // [VM-23] 選択が無ければ現在のフォルダに留まる（ここで何もしない）。
+        displayMode = mode
+        if mode == .folder { libraryContent.clear() }
+    }
+
+    /// 一覧の表示順で最初に選ばれている行 [VM-22]。判定は
+    /// `LibraryContentModel` 側の純粋関数に置いてある（このファイルは
+    /// アプリターゲットで `swift test` から触れないため）。
+    private func firstSelectedLibraryRow() -> LibraryContentModel.Row? {
+        LibraryContentModel.firstSelected(in: libraryContent.rows, selection: selection)
+    }
+
     public func goToParent() {
         guard canGoToParent, let folder else { return }
         let parent = folder.deletingLastPathComponent()

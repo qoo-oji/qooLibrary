@@ -116,6 +116,16 @@ public final class TitleEditorModel {
                                    title: row.title, titleOrigin: row.titleOrigin,
                                    seriesName: row.seriesName, volume: row.volume))
         } catch {
+            // **取り消しは失敗ではない**［2-9 の実機検証でユーザーが発見］。
+            // `.task(id:)` は鍵が変わると前のタスクを取り消すので、選択を
+            // 素早く変えたり読み直しの合図（`operationHistory.count`・
+            // `contentRevision`）が続けて来たりすると、ここへ
+            // `CancellationError` が届く。そのまま出すと画面に
+            // 「タイトル: CancellationError()」という、利用者にとって
+            // 意味の無い赤字が残る——**直後に新しい読み込みが正しい値を
+            // 入れる**ので、出しても一瞬で消える（あるいは消えない）という
+            // 最も分かりにくい形になる。状態は次の読み込みが上書きする。
+            guard !CommandStack.isCancellation(error) else { return }
             current = nil
             state = .failed(String(describing: error))
         }

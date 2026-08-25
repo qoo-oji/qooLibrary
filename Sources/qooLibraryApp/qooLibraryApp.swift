@@ -546,12 +546,11 @@ private struct ViewMenuCommands: View {
         Divider()
         Menu("common.sortBy", systemImage: "arrow.up.arrow.down") { // [LV-01]
             Picker("common.sortBy", selection: sortKeyBinding) {
-                Text("column.name").tag(FolderSortComparator.Key.name)
-                Text("column.modificationDate").tag(FolderSortComparator.Key.modificationDate)
-                Text("column.size").tag(FolderSortComparator.Key.size)
-                Text("column.kind").tag(FolderSortComparator.Key.kind)
-                Text("column.creationDate").tag(FolderSortComparator.Key.creationDate)
-                Text("column.addedDate").tag(FolderSortComparator.Key.addedDate)
+                ForEach(folder?.availableSortKeys
+                        ?? FolderSortComparator.Key.allCases.filter(\.isAvailableInFolderMode),
+                        id: \.self) { key in
+                    Text(key.localizationKey).tag(key)
+                }
             }
             .pickerStyle(.inline)
             .labelsHidden()
@@ -566,7 +565,8 @@ private struct ViewMenuCommands: View {
         }
         .disabled(folder == nil)
         Menu("folder.visibleColumns", systemImage: "tablecells") { // [LV-02]
-            ForEach(FolderColumn.allCases) { column in
+            // [LV-04][VM-15] 表示モードで選べる列だけを並べる。
+            ForEach(folder?.availableColumns ?? FolderColumn.allCases.filter(\.isAvailableInFolderMode)) { column in
                 Toggle(column.localizationKey, isOn: columnBinding(column))
             }
             Divider()

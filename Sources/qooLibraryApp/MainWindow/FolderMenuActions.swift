@@ -102,6 +102,14 @@ struct FolderMenuActions {
     var setSortAscending: (Bool) -> Void = { _ in }
     /// カラムの表示/非表示 [LV-02]。
     var visibleColumns: Set<FolderColumn> = []
+    /// いまの表示モードで選べる列 [LV-02][LV-04]。**`allCases` をそのまま
+    /// 並べない**——ライブラリの列（タイトル・シリーズ・巻数・評価）は
+    /// フォルダ表示モードでは常に空になり、逆に「種類」「追加日」は
+    /// ライブラリ表示モードで並べ替えられない。
+    var availableColumns: [FolderColumn] = FolderColumn.allCases.filter(\.isAvailableInFolderMode)
+    /// いまの表示モードで選べる並び替えキー [LV-01][LV-04][VM-15]。
+    var availableSortKeys: [FolderSortComparator.Key] =
+        FolderSortComparator.Key.allCases.filter(\.isAvailableInFolderMode)
     var setColumnVisible: (FolderColumn, Bool) -> Void = { _, _ in }
     /// フォルダを上にまとめる [LV-03]。
     var groupFoldersAtTop = false
@@ -118,12 +126,38 @@ struct FolderMenuActions {
 /// 3 箇所が同じ `UserDefaults` キーを共有しており、この enum はそのキーを
 /// 1 箇所にまとめて取り違えを防ぐためのもの [1-16]。
 enum FolderColumn: String, CaseIterable, Identifiable, Sendable {
+    // 並び順がそのままメニューの並びになる。**「名前」の次に来てほしい**
+    // ライブラリの列を先に置く（`rawValue` は永続化に使うので変えない）。
+    case title, series, volume, rating   // [LV-04] ライブラリ表示モードのみ
     case modificationDate, size, kind, creationDate, addedDate
 
     var id: String { rawValue }
 
+    /// この列が意味を持つ表示モード [LV-04][VM-15]。
+    ///
+    /// **「種類」と「追加日」がライブラリ表示モードで出ない**のは、どちらも
+    /// `managedFile` が値を持たず SQL で並べ替えられないため（ページングする
+    /// 一覧をメモリ上だけ並べ替えると、読み込んだぶんの中でだけ正しくなる）。
+    var isAvailableInLibraryMode: Bool {
+        switch self {
+        case .kind, .addedDate: false
+        default: true
+        }
+    }
+
+    var isAvailableInFolderMode: Bool {
+        switch self {
+        case .title, .series, .volume, .rating: false
+        default: true
+        }
+    }
+
     var storageKey: String {
         switch self {
+        case .title: "qoo.libraryList.showTitleColumn"
+        case .series: "qoo.libraryList.showSeriesColumn"
+        case .volume: "qoo.libraryList.showVolumeColumn"
+        case .rating: "qoo.libraryList.showRatingColumn"
         case .modificationDate: "qoo.folderList.showModificationDateColumn"
         case .size: "qoo.folderList.showSizeColumn"
         case .kind: "qoo.folderList.showKindColumn"
@@ -140,6 +174,10 @@ enum FolderColumn: String, CaseIterable, Identifiable, Sendable {
         case .kind: "column.kind"
         case .creationDate: "column.creationDate"
         case .addedDate: "column.addedDate"
+        case .title: "column.title"
+        case .series: "column.series"
+        case .volume: "column.volume"
+        case .rating: "column.rating"
         }
     }
 }
