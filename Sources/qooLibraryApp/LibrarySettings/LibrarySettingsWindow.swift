@@ -32,6 +32,16 @@ struct LibrarySettingsWindow: View {
             guard model.selectedLibraryID == nil else { return }
             model.syncSelection()
         }
+        // ⌘Z / ⇧⌘Z は View を通らずに DB を変える。**同一性の判断 [ID-05] を
+        // 取り消すと確認待ちが戻る**ので、含めないと「基本」の導線が復活しない
+        // ——実機検証で踏んだ（適用したあと ⌘Z しても「確認する…」が出てこず、
+        // 設定ウインドウからは二度と開けなくなった）。
+        //
+        // このウインドウは元来「草案を編集して保存する」画面で、DB 操作の
+        // Undo を想定していなかった。**DB を触る導線を足したら、この鍵も足す。**
+        .onChange(of: CommandStack.shared.operationHistory.count) { _, _ in
+            Task { await model.loadPendingVolumeDecisions() }
+        }
         .onChange(of: LibrarySettingsNavigation.shared.pendingLibraryID) {
             guard let pending = LibrarySettingsNavigation.shared.pendingLibraryID else { return }
             LibrarySettingsNavigation.shared.pendingLibraryID = nil
@@ -165,6 +175,17 @@ struct LibrarySettingsWindow: View {
         }
     }
 
+    /// 同一性の確認ダイアログ [ID-05][ID-12]。
+    ///
+    /// **一覧はダイアログ側が開く時点で読み直す**——巻数の確認と違い、
+    /// ここでは件数しか持っていない（導線を出すかどうかの判断にしか使わない）。
+    private func presentIdentityDecision() {
+        guard let libraryID = model.selectedLibraryID else { return }
+        IdentityDecisionAction.present(libraryID: libraryID, locale: locale) {
+            Task { await model.loadPendingVolumeDecisions() }
+        }
+    }
+
     @ViewBuilder
     private var sectionEditor: some View {
         // 草案は `@Bindable` ではなく `Binding` を組み立てて渡す。`draft` は
@@ -173,7 +194,11 @@ struct LibrarySettingsWindow: View {
             get: { model.draft ?? LibrarySettingsDraft() },
             set: { model.draft = $0 })
         switch model.section {
-        case .basics:          LibraryBasicsSettingsView(draft: bound)
+        case .basics:
+            LibraryBasicsSettingsView(
+                draft: bound,
+                pendingIdentityMatches: model.pendingIdentityMatches,
+                onReviewIdentity: presentIdentityDecision)
         case .extensions:      LibraryExtensionsSettingsView(draft: bound)
         case .labelGroups:     LibraryLabelGroupsSettingsView(draft: bound)
         case .filenameFormats:

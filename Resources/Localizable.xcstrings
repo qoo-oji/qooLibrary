@@ -4522,6 +4522,176 @@
         }
       }
     },
+    "identityDecision.carries": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "carries %d labels"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ラベル %d 件を引き継ぐ"
+          }
+        }
+      }
+    },
+    "identityDecision.explanation": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "These files have the same name as a record in the library, but different contents — they were probably replaced. Keep the checkbox on to carry over what qooLibrary remembers (labels, rating, edited title, chosen cover)."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "以下のファイルは、ライブラリの記録と同じ名前で中身が違います。差し替えられたものと思われます。チェックを入れたままにすると、qooLibrary が覚えている内容（ラベル・評価・編集したタイトル・選んだカバー）を引き継ぎます。"
+          }
+        }
+      }
+    },
+    "identityDecision.failed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not load the files to review."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "確認する対象を読み込めませんでした。"
+          }
+        }
+      }
+    },
+    "identityDecision.section.elsewhere": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Different location — moved, or a different work with the same file name"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "別の場所にある — 移動したか、同じファイル名の別の作品"
+          }
+        }
+      }
+    },
+    "identityDecision.section.samePath": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Same location — almost certainly the same book"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同じ場所にある — ほぼ確実に同じ本"
+          }
+        }
+      }
+    },
+    "identityDecision.selectAll": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select All"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "すべて選択"
+          }
+        }
+      }
+    },
+    "identityDecision.selectNone": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select None"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "すべて解除"
+          }
+        }
+      }
+    },
+    "identityDecision.selectedCount": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$d of %2$d selected"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$d 件中 %1$d 件を選択"
+          }
+        }
+      }
+    },
+    "identityDecision.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Replaced Files"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "差し替えの確認"
+          }
+        }
+      }
+    },
+    "identityDecision.unchecked": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Files you uncheck are treated as different files and will not be asked about again. To decide later, press Cancel — nothing changes and you will be asked next time."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "チェックを外したものは別のファイルとして扱い、以後は確認しません。あとで決めたいときは「キャンセル」を押してください——何も変わらず、次回また確認します。"
+          }
+        }
+      }
+    },
     "inspector.containedFileCount": {
       "extractionState": "stale",
       "localizations": {
@@ -6662,6 +6832,40 @@
         }
       }
     },
+    "library.scan.identityMatches": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d file(s) have the same name as a record but different contents. They may have been replaced."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d 件が、記録と同じ名前で中身が違います。差し替えられた可能性があります。"
+          }
+        }
+      }
+    },
+    "library.scan.identityTitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Files may have been replaced"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ファイルが差し替えられた可能性があります"
+          }
+        }
+      }
+    },
     "library.scan.orphaned": {
       "extractionState": "manual",
       "localizations": {
@@ -6692,6 +6896,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "「%@」をスキャンしています…"
+          }
+        }
+      }
+    },
+    "library.scan.reviewIdentity": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Review…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "確認する…"
           }
         }
       }
@@ -8086,6 +8307,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "この階層のフォルダ名は読み取りません。"
+          }
+        }
+      }
+    },
+    "librarySettings.identityPending": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d file(s) are waiting to be confirmed as replaced."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d 件のファイルが、差し替えかどうかの確認を待っています。"
           }
         }
       }

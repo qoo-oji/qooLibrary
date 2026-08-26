@@ -203,6 +203,19 @@ enum LibraryEnableAction {
                 title: String(localized: "library.scan.reviewVolumes", locale: locale),
                 kind: .openWindow(Self.reviewVolumesActionID)))
         }
+        // **同一性の確認待ち** [ID-05]。名前は同じだが inode が違うので、
+        // 自動では紐づけない。走り切ってからまとめて聞く——差し替え
+        // （スキャン版を電子版へ、など）は日常的に起こるので、1 件ずつ
+        // 止めていては使い物にならない。
+        if summary.candidatesForReview > 0 {
+            lines.append(String(format: String(localized: "library.scan.identityMatches",
+                                               locale: locale),
+                                summary.candidatesForReview))
+            actions.append(RecoveryAction(
+                id: Self.reviewIdentityActionID,
+                title: String(localized: "library.scan.reviewIdentity", locale: locale),
+                kind: .openWindow(Self.reviewIdentityActionID)))
+        }
         guard !lines.isEmpty else { return }
 
         let chosen = await NotificationRouter.shared.present(NotificationItem(
@@ -220,7 +233,47 @@ enum LibraryEnableAction {
         if chosen?.id == Self.reviewVolumesActionID, let libraryID {
             VolumeDecisionAction.present(libraryID: libraryID, locale: locale)
         }
+        if chosen?.id == Self.reviewIdentityActionID, let libraryID {
+            IdentityDecisionAction.present(libraryID: libraryID, locale: locale)
+        }
     }
+
+    /// 自動走査（FSEvents の追随・定期フルスキャン）の結果を受けて、
+    /// **判断が要るものだけ**を知らせる [ID-05]［ユーザー判断、2026-08］。
+    ///
+    /// **孤立・未解決・1 冊扱いの解除は出さない。** それらは「知らせるだけ」
+    /// なので、自動で走るたびに出すと雑音になる——利用者が自分で消した
+    /// ファイルに「N 件が見つからなくなりました」と言うことになる。
+    /// 差し替えの確認は**放置すると記録が失われたままになる**ので別扱い。
+    ///
+    /// **同じ確認待ちを何度も出すことにはならない。** `candidatesForReview` は
+    /// 走査が `.nameOnly` [ID-03]③ を新しく検出したときにしか数えられず、
+    /// 既に確認待ちのものは次の走査では（新しい行が同一性で引けるので）
+    /// この経路を通らない。
+    @MainActor
+    static func notifyAutomaticScan(libraryID: LibraryID, summary: ScanSummary,
+                                    locale: Locale) {
+        guard summary.candidatesForReview > 0 else { return }
+        Task {
+            let chosen = await NotificationRouter.shared.present(NotificationItem(
+                category: .warning,
+                severity: .sheet,
+                title: String(localized: "library.scan.identityTitle", locale: locale),
+                body: String(format: String(localized: "library.scan.identityMatches",
+                                            locale: locale), summary.candidatesForReview),
+                actions: [RecoveryAction(
+                    id: Self.reviewIdentityActionID,
+                    title: String(localized: "library.scan.reviewIdentity", locale: locale),
+                    kind: .openWindow(Self.reviewIdentityActionID))]))
+            if chosen?.id == Self.reviewIdentityActionID {
+                IdentityDecisionAction.present(libraryID: libraryID, locale: locale)
+            }
+        }
+    }
+
+    /// 走査結果の通知から同一性の確認を開くアクションの識別子 [ID-05]。
+    /// **ドットを含めない**（上の理由と同じ）。
+    private static let reviewIdentityActionID = "review-identity-matches"
 
     /// 走査結果の通知から巻数の確認を開くアクションの識別子 [EM-32]。
     ///

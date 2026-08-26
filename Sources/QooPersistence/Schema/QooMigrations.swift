@@ -15,6 +15,7 @@ public enum QooMigrations {
     /// 登録順の識別子。`v<連番>_<内容>` 形式で時系列に並ぶこと [SC-03]。
     public static let identifiers: [String] = [
         "v1_initial", "v2_regexPatterns", "v3_embeddedMetadata", "v4_fsEventsCheckpoint",
+        "v5_identityRejection",
     ]
 
     public static var migrator: DatabaseMigrator {
@@ -24,6 +25,7 @@ public enum QooMigrations {
         m.registerMigration(identifiers[1], migrate: v2RegexPatterns)
         m.registerMigration(identifiers[2], migrate: v3EmbeddedMetadata)
         m.registerMigration(identifiers[3], migrate: v4FSEventsCheckpoint)
+        m.registerMigration(identifiers[4], migrate: v5IdentityRejection)
         return m
     }
 
@@ -70,6 +72,29 @@ public enum QooMigrations {
         }
         try db.execute(sql: "UPDATE storeMetadata SET schemaVersion = ? WHERE id = 1",
                        arguments: [identifiers[3]])
+    }
+
+    // MARK: - v5
+
+    /// 「同じ名前だが別のファイルだ」という判断を覚える [ID-11]。
+    ///
+    /// 走査は「名前が同じで inode が違う」組を見つけるたびに一括確認へ回す
+    /// [ID-05] が、**一度「別物」と答えた組を毎回聞き直しては使い物にならない**
+    /// ——`第01巻.cbz` のように複数シリーズに存在しうる名前では、走査のたびに
+    /// 同じ組が挙がってくる。ラベルの `manuallyRemoved` [RC-04] と同じ考え方で、
+    /// 「付いていない」ではなく「**付けないと決めた**」を明示的に持つ。
+    ///
+    /// **どちらの行が消えれば記録も消える**（`ON DELETE CASCADE`）——組の片方が
+    /// 無くなれば、その判断はもう意味を持たない。
+    static func v5IdentityRejection(_ db: Database) throws {
+        try db.create(table: "identityRejection") { t in
+            t.belongsTo("orphanFile", inTable: "managedFile", onDelete: .cascade).notNull()
+            t.belongsTo("candidateFile", inTable: "managedFile", onDelete: .cascade).notNull()
+            t.column("decidedAt", .double).notNull()
+            t.primaryKey(["orphanFileId", "candidateFileId"])
+        }
+        try db.execute(sql: "UPDATE storeMetadata SET schemaVersion = ? WHERE id = 1",
+                       arguments: [identifiers[4]])
     }
 
     // MARK: - v3

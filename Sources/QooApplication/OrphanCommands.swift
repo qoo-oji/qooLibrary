@@ -14,56 +14,58 @@ import Foundation
 import QooInfrastructure
 import QooKit
 
-/// 孤立レコードを実ファイルへ結び直す [OR-02][OR-03][ID-04]。
+/// 同一性の確認の結果をまとめて適用する [ID-05][ID-11]。
 ///
-/// 候補一覧からのワンクリック [OR-02] と手動選択 [OR-03] は**同じこのコマンド**
-/// を通る——観測結果（`FileSnapshot`）を誰が作ったかだけが違う。同じ操作に
-/// 独立した経路を 2 つ作らない（1-12 のアプリ関連付けで実際に取り残した形）。
+/// **1 回の「適用」が 1 つの Undo 単位** [UD-04]。承認と却下を同じコマンドに
+/// 入れてあるのは、利用者から見て 1 度の操作だから——分けると、⌘Z を 2 回
+/// 押さないと元に戻らない画面になる。
+///
+/// 却下も戻せるようにしてあるのが要点。**一度「別物」と答えると以後聞かれ
+/// なくなる** [ID-11] ので、間違えたときに取り消せないと行き止まりになる。
 @MainActor
-public final class ReattachOrphanCommand: Command {
-    private let orphanID: FileID
-    private let orphanName: String
-    private let snapshot: FileSnapshot
+public final class ApplyIdentityDecisionsCommand: Command {
+    private let accepted: [IdentityMatch]
+    private let rejected: [IdentityMatch]
     private let services: LibraryServices
     /// `execute()` が控える。`undo()` はこれを戻す。
     private var before: [ManagedFileSnapshot] = []
 
-    public init(orphanID: FileID, orphanName: String,
-                to snapshot: FileSnapshot, services: LibraryServices) {
-        self.orphanID = orphanID
-        self.orphanName = orphanName
-        self.snapshot = snapshot
+    public init(accepted: [IdentityMatch], rejected: [IdentityMatch],
+                services: LibraryServices) {
+        self.accepted = accepted
+        self.rejected = rejected
         self.services = services
     }
 
-    public var displayName: String { "「\(orphanName)」の記録の紐づけ" }
-    /// **ファイル名は利用者由来の語なので、そのまま診断ログへ書かない** [LG2-06]
-    /// ——ここで持っているのは相対パスとファイル名だけで、絶対パスではないため
-    /// 匿名化の対象にならない。`Log.redactable(_:)` の印で包む。
+    public var displayName: String {
+        accepted.count == 1 && rejected.isEmpty
+            ? "1 件のファイルの記録の引き継ぎ"
+            : "\(accepted.count + rejected.count) 件のファイルの同一性の判断"
+    }
+    /// **ファイル名は書かない**——ここで持っているのは行 ID だけなので、
+    /// そもそも利用者由来の語が入らない [LG2-06]。
     public var logDescription: String {
-        "reattachOrphan: \(Log.redactable(orphanName)) → \(Log.redactable(snapshot.relativePath))"
+        "applyIdentityDecisions: 承認 \(accepted.count) / 却下 \(rejected.count)"
     }
     public let isUndoable = true
 
     public func execute() async throws -> CommandResult {
+        guard !accepted.isEmpty || !rejected.isEmpty else { return .success }
         // **写しは実行の直前に取る**（`DeleteLabelsCommand` と同じ理由）。
-        // 組み立ててから実行するまでの間に、走査や右ペインが値を変えうる。
-        var targets = [orphanID]
-        // **消される側を、消える前に控える。** `reattachOrphan` は消した ID を
-        // 返すが、そのときにはもう写しを取れない。
-        if let duplicate = try await services.findFile(identity: snapshot.identity),
-           duplicate != orphanID {
-            targets.append(duplicate)
-        }
-        before = try await services.fileSnapshots(ids: targets)
-        try await services.reattachOrphan(orphanID, to: snapshot)
+        // 承認は孤立側と候補側の**両方**を動かすので、両方を控える。
+        let touched = accepted.flatMap { [$0.orphanID, $0.candidateID] }
+        before = try await services.fileSnapshots(ids: touched)
+        try await services.acceptIdentityMatches(accepted)
+        try await services.rejectIdentityMatches(rejected)
         return .success
     }
 
     public func undo() async throws -> UndoResult {
-        guard !before.isEmpty else { return .impossible(reason: "元に戻す対象がありません") }
         do {
-            try await services.restoreFiles(before)
+            if !before.isEmpty { try await services.restoreFiles(before) }
+            // **却下の記録も消す。** 残したままだと、⌘Z のあと同じ組が
+            // 二度と確認に出てこない（「別物」の判断だけが生き残る）。
+            try await services.clearIdentityRejections(rejected)
             return .complete
         } catch {
             return .impossible(reason: error.localizedDescription)

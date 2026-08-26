@@ -164,6 +164,13 @@ public struct OrphanCandidate: Sendable, Hashable, Identifiable {
     public let relativePath: String
     public let filename: String
     public let fileSize: Int64
+    /// 孤立レコードと**同じ相対パス**か [ID-09]。
+    ///
+    /// **確信度がまったく違う。** 同じ場所の同じ名前なら差し替え（スキャン版を
+    /// 電子版へ、低画質を高画質へ、破損したものを取り直す）がほぼ確実だが、
+    /// 別の場所の同名ファイルは「移動」かもしれないし「別シリーズの同じ巻数」
+    /// かもしれない——`第01巻.cbz` は複数のシリーズに存在しうる。
+    public let samePath: Bool
     /// 孤立レコードと同じ大きさか。**名前だけの一致 [ID-03]③ より、大きさも
     /// 一致するほうが確からしい**ので並べ替えに使う（`ID-03` の①②は走査が
     /// 自動で紐づけ済みなので、ここへ来るのは原則③だけ）。
@@ -172,11 +179,30 @@ public struct OrphanCandidate: Sendable, Hashable, Identifiable {
     public var id: FileID { fileID }
 
     public init(fileID: FileID, relativePath: String, filename: String,
-                fileSize: Int64, sizeMatches: Bool) {
+                fileSize: Int64, samePath: Bool = false, sizeMatches: Bool) {
         self.fileID = fileID
         self.relativePath = relativePath
         self.filename = filename
         self.fileSize = fileSize
+        self.samePath = samePath
         self.sizeMatches = sizeMatches
+    }
+}
+
+/// 「この孤立レコードは、この実ファイルのことかもしれない」という組 [ID-05]。
+///
+/// 走査は名前が同じで inode が違うものを見つけても**自動では紐づけない**。
+/// 走り切ってから一括の確認ダイアログでまとめて問い合わせ、承認された組だけを
+/// 確定する。**組そのものを記録する必要は無い**——「孤立していて、同じ名前の
+/// 生きている行がある」という状態が DB にそのまま表れているため。
+public struct IdentityMatch: Sendable, Hashable {
+    /// 実体を失った側（ラベル・評価・手動タイトルを持っている）。
+    public let orphanID: FileID
+    /// 実際に観測された側（走査が新規として作った行）。
+    public let candidateID: FileID
+
+    public init(orphanID: FileID, candidateID: FileID) {
+        self.orphanID = orphanID
+        self.candidateID = candidateID
     }
 }

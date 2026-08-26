@@ -94,6 +94,9 @@ final class LibrarySettingsModel {
 
     /// 巻数の判断待ち [EM-31]。設定を開いたときと、判断を確定したあとに読み直す。
     private(set) var pendingVolumeDecisions: [VolumeDecisionCandidate] = []
+    /// 同一性の確認待ちの件数 [ID-05][ID-12]。一覧そのものはダイアログが
+    /// 開く時点で読み直す——ここでは導線を出すかどうかだけを決める。
+    private(set) var pendingIdentityMatches: Int = 0
 
     var isDirty: Bool {
         guard let draft, let savedDraft else { return false }
@@ -189,6 +192,8 @@ final class LibrarySettingsModel {
         // 出すには重すぎる。件数が 0 に見えるだけで、判断は次のスキャンでまた出る。
         pendingVolumeDecisions =
             (try? await LibraryServices.shared.filesAwaitingVolumeDecision(libraryID: id)) ?? []
+        pendingIdentityMatches = (try? await LibraryServices.shared
+            .identityMatchesAwaitingDecision(libraryID: id).count) ?? 0
     }
 
     /// 不備をクリックしたら、その設定項目へ移動する。

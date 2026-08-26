@@ -1,5 +1,9 @@
 //
-//  孤立ファイルの整理ウインドウ [OR-01〜OR-05][ID-05][ID-07][15.7 節]。
+//  「見つからないファイル」の整理ウインドウ [OR-01][OR-04][ID-07][15.7 節]。
+//
+//  **触れるのは一覧と削除だけ**［ユーザー判断、2026-08］。実体を結び直す手段は
+//  ここに置かない——同じ inode で復活すれば走査が自動で戻し [ID-02]、名前が
+//  同じで inode が違えば**一括の確認ダイアログ** [ID-05] が引き受ける。
 //
 //  2 ペイン: 左＝ライブラリ一覧（孤立件数／オフラインはグレーアウト）／
 //  右＝孤立レコードの一覧。`LabelVaultWindow` と同じ `NavigationSplitView` で
@@ -15,7 +19,6 @@
 //  `OrphanCleanupModel` が持ち、ここは描くだけ。**この分担を崩さないこと**
 //  ——View に判定を書くと `swift test` から触れなくなる。
 //
-import AppKit
 import QooApplication
 import QooKit
 import SwiftUI
@@ -232,55 +235,14 @@ struct OrphanCleanupWindow: View {
                 .foregroundStyle(.secondary)
             }
             Spacer(minLength: Tokens.spacing.s)
-            reattachControl(file)
         }
         .padding(.vertical, 2)
     }
 
-    /// 再照合候補 [OR-02]。**候補が無ければ何も出さない**——押せないボタンを
-    /// 置いても、手動選択（コンテキストメニュー）へ導かない。
-    @ViewBuilder
-    private func reattachControl(_ file: OrphanedFile) -> some View {
-        if file.candidates.count == 1 {
-            Button("orphanCleanup.reattach") {
-                perform { try await model.reattach(file, to: file.candidates[0]) }
-            }
-            .buttonStyle(.borderless)
-            .font(.system(size: Tokens.fontSize.caption))
-            .help(file.candidates[0].relativePath)
-        } else if file.candidates.count > 1 {
-            // **複数あるときは選ばせる。** どれに結ぶかで引き継ぐ先が変わるので、
-            // 「先頭を勝手に採る」形にはしない。
-            Menu(String(format: String(localized: "orphanCleanup.reattachCandidates",
-                                       locale: locale), file.candidates.count)) {
-                ForEach(file.candidates) { candidate in
-                    Button(candidate.relativePath) {
-                        perform { try await model.reattach(file, to: candidate) }
-                    }
-                }
-            }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .font(.system(size: Tokens.fontSize.caption))
-        }
-    }
-
+    /// 行のメニュー。**削除だけ** [OR-04]。結び直す手段はここに置かない
+    /// （上のコメント参照）。
     @ViewBuilder
     private func rowMenu(_ file: OrphanedFile) -> some View {
-        if !file.candidates.isEmpty {
-            ForEach(file.candidates) { candidate in
-                Button(String(format: String(localized: "orphanCleanup.reattachTo",
-                                             locale: locale), candidate.relativePath),
-                       systemImage: "arrow.uturn.backward") {
-                    perform { try await model.reattach(file, to: candidate) }
-                }
-            }
-            Divider()
-        }
-        Button("orphanCleanup.chooseFile", systemImage: "folder") {
-            chooseFile(for: file)
-        }
-        Divider()
         Button("orphanCleanup.delete", systemImage: "trash", role: .destructive) {
             confirmDelete([file])
         }
@@ -318,26 +280,6 @@ struct OrphanCleanupWindow: View {
         .layoutPriority(1)
     }
 
-    // MARK: - 手動での再紐づけ [OR-03]
-
-    /// **起点はライブラリの根**——選ぶのはその配下のファイルだけなので
-    /// [ユーザー判断]、そこから開けば余計な階層を辿らずに済む。根の外を
-    /// 選んだ場合は `OrphanEditError.outsideLibrary` が理由を返す。
-    private func chooseFile(for file: OrphanedFile) {
-        guard let library = model.selectedLibrary else { return }
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = true
-        // ブックフォルダ [IF-01] も 1 冊なので、フォルダも選べる必要がある。
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.directoryURL = URL(fileURLWithPath: library.resolvedPath)
-        panel.message = String(format: String(localized: "orphanCleanup.choosePrompt",
-                                              locale: locale), file.row.filename)
-        panel.prompt = String(localized: "orphanCleanup.chooseConfirm", locale: locale)
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        perform { try await model.reattach(file, toFileAt: url) }
-    }
-
     // MARK: - 確認
 
     /// **削除は取り消せるが、確認は挟む。** 何を失うか（覚えていたラベルの
@@ -358,26 +300,12 @@ struct OrphanCleanupWindow: View {
             do {
                 try await work()
                 errorText = nil
-            } catch let error as OrphanEditError {
-                errorText = Self.message(for: error, locale: locale)
             } catch {
                 errorText = error.localizedDescription
             }
         }
     }
 
-    /// **「次に何ができるか」まで書く** [ER-03]。ケースを足すとコンパイラが
-    /// ここを指摘する。
-    static func message(for error: OrphanEditError, locale: Locale) -> String {
-        switch error {
-        case .outsideLibrary(let name):
-            return String(format: String(localized: "orphanCleanup.error.outsideLibrary",
-                                         locale: locale), name)
-        case .unreadable(let path):
-            return String(format: String(localized: "orphanCleanup.error.unreadable",
-                                         locale: locale), path)
-        }
-    }
 }
 
 /// 削除の確認 [OR-04]。

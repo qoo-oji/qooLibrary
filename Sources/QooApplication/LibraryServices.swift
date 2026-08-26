@@ -65,6 +65,21 @@ public final class LibraryServices {
     /// ライブラリ機能が使えるか。UI はこれを見てメニュー項目の有効／無効を決める。
     public var isReady: Bool { database != nil }
 
+    /// 自動走査が終わったときに UI へ知らせる受け口 [ID-05]。
+    ///
+    /// **「自動走査はダイアログを出さない」という方針は、判断が要るものに
+    /// 限って緩める**［ユーザー判断、2026-08］。孤立や未解決の件数は
+    /// 「知らせるだけ」なので黙っていてよい——利用者が自分で消したファイルに
+    /// 「N 件が見つからなくなりました」と出すのは雑音である。だが**差し替えの
+    /// 確認 [ID-05] は放置すると記録が失われたままになる**ので、性質が違う。
+    ///
+    /// **FSEvents の自動追随が先に拾ってしまうため、これが無いと通知が実質
+    /// 出ない**——実機検証で、差し替えたあと手動で再スキャンしても通知が
+    /// 出ないことを確認した（既に新しい行があるので `.nameOnly` の経路を
+    /// 通らない）。恒常的な到達手段がライブラリ設定だけになっていた。
+    @ObservationIgnored
+    public var onAutomaticScanFinished: ((LibraryID, ScanSummary) -> Void)?
+
     // MARK: - 内部
 
     private var database: QooDatabase?
@@ -166,9 +181,13 @@ public final class LibraryServices {
         // 自動走査は `ScanEngine` を直に呼ぶので `scan(libraryID:)` を通らない。
         // **ここで拾わないと、外部でファイルが増えてもライブラリ表示モードの
         // 一覧が古いまま**になる（この受け口の最初の利用者）。
-        sync?.onScanFinished = { [weak self] _, summary in
-            guard summary.added > 0 || summary.updated > 0 || summary.orphaned > 0 else { return }
-            Task { @MainActor in self?.contentRevision &+= 1 }
+        sync?.onScanFinished = { [weak self] id, summary in
+            Task { @MainActor in
+                if summary.added > 0 || summary.updated > 0 || summary.orphaned > 0 {
+                    self?.contentRevision &+= 1
+                }
+                self?.onAutomaticScanFinished?(id, summary)
+            }
         }
         // 着脱で `isOnline` が変わったら**一覧の写しを取り直す** [VD-03][VD-05]。
         // これが無いと、開いたままの画面が古い状態を見続ける（孤立の整理
@@ -443,6 +462,34 @@ public final class LibraryServices {
         return try await repository.orphanedFiles(libraryID: libraryID)
     }
 
+    // MARK: - 同一性の確認 [ID-05][ID-09〜ID-12]
+    //
+    // **Undo は `ApplyIdentityDecisionsCommand` が担う**ので、UI から直接
+    // `acceptIdentityMatches` / `rejectIdentityMatches` を呼ばないこと。
+
+    public func identityMatchesAwaitingDecision(libraryID: LibraryID) async throws
+        -> [OrphanedFile]
+    {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        return try await repository.identityMatchesAwaitingDecision(libraryID: libraryID)
+    }
+
+    @discardableResult
+    public func acceptIdentityMatches(_ matches: [IdentityMatch]) async throws -> [FileID] {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        return try await repository.acceptIdentityMatches(matches)
+    }
+
+    public func rejectIdentityMatches(_ matches: [IdentityMatch]) async throws {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        try await repository.rejectIdentityMatches(matches)
+    }
+
+    public func clearIdentityRejections(_ matches: [IdentityMatch]) async throws {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        try await repository.clearIdentityRejections(matches)
+    }
+
     public func orphanedFileCounts() async throws -> [LibraryID: Int] {
         guard let repository = fileRepository else { throw ServiceError.notReady }
         return try await repository.orphanedFileCounts()
@@ -453,12 +500,6 @@ public final class LibraryServices {
     public func findFile(identity: FileIdentity) async throws -> FileID? {
         guard let repository = fileRepository else { throw ServiceError.notReady }
         return try await repository.find(identity: identity)
-    }
-
-    @discardableResult
-    public func reattachOrphan(_ id: FileID, to snapshot: FileSnapshot) async throws -> FileID? {
-        guard let repository = fileRepository else { throw ServiceError.notReady }
-        return try await repository.reattachOrphan(id, to: snapshot)
     }
 
     public func deleteFiles(_ ids: [FileID]) async throws {
@@ -476,65 +517,6 @@ public final class LibraryServices {
     public func restoreFiles(_ snapshots: [ManagedFileSnapshot]) async throws {
         guard let repository = fileRepository else { throw ServiceError.notReady }
         try await repository.restoreFiles(snapshots)
-    }
-
-    /// 候補として提示した行から「観測結果」を組み立てる [OR-02]。
-    ///
-    /// 候補は**走査が実体を見て作った行**なので、DB の値をそのまま使えば
-    /// 実ファイルに触らずに済む。**`isBookFolder` も走査の判定をそのまま運ぶ**
-    /// ——ここで判定し直すと [IF-01] の規則が 2 箇所になる。
-    public func observation(ofCandidate id: FileID) async throws -> FileSnapshot? {
-        guard let repository = fileRepository else { throw ServiceError.notReady }
-        guard let row = try await repository.row(id: id),
-              let identity = try await repository.identity(of: id) else { return nil }
-        return FileSnapshot(identity: identity, libraryID: row.libraryID,
-                            relativePath: row.relativePath, filename: row.filename,
-                            fileSize: row.fileSize, createdAt: row.createdAt,
-                            modifiedAt: row.modifiedAt, isBookFolder: row.isBookFolder)
-    }
-
-    /// 手動で選んだファイルから「観測結果」を組み立てる [OR-03]。
-    ///
-    /// - **ライブラリの根の外は断る**［ユーザー判断］。外を指すレコードを作ると
-    ///   相対パスの前提が壊れ、次の走査で必ず孤立し直す。
-    /// - **`isBookFolder` は孤立レコードの現在値を運ぶ**——結び直す先は「同じ
-    ///   本」のはずなので現状維持が素直で、[IF-01] の規則をここへ写さずに済む。
-    /// - `stat(2)` と属性の読み取りを伴うので `FileIO` の上で行う [NV6-02]。
-    public func observation(at url: URL, in library: LibrarySummary,
-                            keeping orphan: FileRow) async throws -> FileSnapshot {
-        let root = URL(fileURLWithPath: library.resolvedPath)
-        guard let relative = Self.relativePath(of: url, under: root) else {
-            throw OrphanEditError.outsideLibrary(libraryName: library.displayName)
-        }
-        let observed: (FileIdentity, Int64, Date, Date)? = await FileIO.perform {
-            guard let identity = LibraryFileIdentity.of(url, volumeUUID: library.volumeUUID),
-                  let values = try? url.resourceValues(forKeys: [
-                    .fileSizeKey, .creationDateKey, .contentModificationDateKey])
-            else { return nil }
-            return (identity, Int64(values.fileSize ?? 0),
-                    values.creationDate ?? Date(),
-                    values.contentModificationDate ?? Date())
-        }
-        guard let observed else { throw OrphanEditError.unreadable(path: url.path) }
-        return FileSnapshot(identity: observed.0, libraryID: library.id,
-                            relativePath: relative,
-                            filename: url.lastPathComponent,
-                            fileSize: observed.1, createdAt: observed.2,
-                            modifiedAt: observed.3, isBookFolder: orphan.isBookFolder)
-    }
-
-    /// ライブラリの根からの相対パス。根の外なら `nil`。
-    ///
-    /// **成分の境界で判定する**——素の `hasPrefix` だと `…/Doc` が
-    /// `…/Documents` を覆う（`VolumeAccessStore.hasGrant` で同じ罠を踏んでいる）。
-    nonisolated static func relativePath(of url: URL, under root: URL) -> String? {
-        let rootComponents = root.standardizedFileURL.pathComponents
-        let components = url.standardizedFileURL.pathComponents
-        guard components.count > rootComponents.count,
-              Array(components.prefix(rootComponents.count)) == rootComponents else {
-            return nil
-        }
-        return components.dropFirst(rootComponents.count).joined(separator: "/")
     }
 
     // MARK: - 一覧の問い合わせ [FI-01〜FI-05][VM-02]

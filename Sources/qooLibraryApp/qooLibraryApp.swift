@@ -115,6 +115,17 @@ struct QooLibraryApp: App {
         // ライブラリとして有効化した登録フォルダだけで、有効化は
         // `LibraryEnableAction` からしか起こらない。
         Task { @MainActor in
+            // 自動走査の結果のうち、**判断が要るものだけ**を知らせる [ID-05]
+            // ［ユーザー判断］。孤立・未解決は従来どおり黙る——詳細は
+            // `LibraryEnableAction.notifyAutomaticScan` の doc。
+            //
+            // **`bootstrap()` より前に配線する。** 起動直後の追随でも
+            // 取りこぼさないため（`startSync()` はこの後）。
+            LibraryServices.shared.onAutomaticScanFinished = { id, summary in
+                LibraryEnableAction.notifyAutomaticScan(
+                    libraryID: id, summary: summary,
+                    locale: AppLanguage.effectiveLocale)
+            }
             await LibraryServices.shared.bootstrap()
             // **実体への追随を始める** [SY-01][VD-01]。ここまで来ると
             // FSEvents の監視とボリュームの着脱検知が動き出し、外部での変更が

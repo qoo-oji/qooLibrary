@@ -29,11 +29,30 @@ struct SettingsSectionHeader: View {
 
 struct LibraryBasicsSettingsView: View {
     @Binding var draft: LibrarySettingsDraft
+    /// 同一性の確認待ちの件数 [ID-12]。**0 なら何も出さない**——判断すべき
+    /// ものが無いときに空の導線を置かない。
+    var pendingIdentityMatches: Int = 0
+    var onReviewIdentity: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.l) {
             SettingsSectionHeader(title: "librarySettings.section.basics",
                                   explanation: "librarySettings.basics.explanation")
+            // **後回しにできる** [ID-12]。走査完了の通知を閉じてしまっても、
+            // ここからいつでも開ける（巻数の確認 [EM-35] と同じ扱い）。
+            if pendingIdentityMatches > 0 {
+                HStack(spacing: Tokens.spacing.s) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .foregroundStyle(Color.accentColor)
+                    Text(String(format: String(localized: "librarySettings.identityPending"),
+                                pendingIdentityMatches))
+                    Spacer()
+                    Button("library.scan.reviewIdentity") { onReviewIdentity() }
+                }
+                .padding(Tokens.spacing.m)
+                .background(RoundedRectangle(cornerRadius: Tokens.radius.s)
+                    .fill(Color(nsColor: .textBackgroundColor)))
+            }
             // **入力欄には必ず `.editableFieldChrome()` を付ける** [ユーザー指摘、
             // 2 度目]。`Form` の中の素の `TextField` は、値が右端に寄った
             // ただのテキストにしか見えず、**そこが入力できる場所だと気づけない**

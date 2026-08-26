@@ -190,7 +190,23 @@ public protocol ManagedFileRepository: Sendable {
     /// 行の同一性 [ID-01]。候補として提示した行から「観測結果」を組み立てるのに使う
     /// ——`FileRow` は inode を持たない（一覧の表示に要らないため）。
     func identity(of id: FileID) async throws -> FileIdentity?
-    /// 孤立レコードを、実際に観測されたファイルへ結び直す [OR-02][OR-03][ID-04]。
+    /// 同一性の確認待ち [ID-05]。**名前が同じで inode が違う組**を返す。
+    ///
+    /// `orphanedFiles` と同じ引き直しを使うが、**却下済みの組は除く** [ID-11]。
+    func identityMatchesAwaitingDecision(libraryID: LibraryID) async throws -> [OrphanedFile]
+    /// 承認された組を確定する [ID-05]。候補側の行を消し、孤立側を実体へ移す。
+    ///
+    /// **1 トランザクションで行う**——途中で切れると、同じ実体を指す行が 2 つ
+    /// 残るか、どちらも指さない状態になる。
+    /// - Returns: 消した候補側の ID（Undo が復元する対象）。
+    @discardableResult
+    func acceptIdentityMatches(_ matches: [IdentityMatch]) async throws -> [FileID]
+    /// 「別のファイルだ」という判断を記録する [ID-11]。以後の走査では問い合わせない。
+    func rejectIdentityMatches(_ matches: [IdentityMatch]) async throws
+    /// 却下の記録を取り消す（Undo 用）。
+    func clearIdentityRejections(_ matches: [IdentityMatch]) async throws
+
+    /// 孤立レコードを、実際に観測されたファイルへ結び直す [ID-04]。
     ///
     /// **同じ同一性を持つ別のレコードがあれば、それを消してから結び直す**
     /// ［ユーザー判断］。孤立レコード側のラベル・評価・手動タイトル・カバー指定を
@@ -446,21 +462,6 @@ public enum LabelEditError: Error, Sendable, Hashable {
     /// 別のラベルグループへは統合できない [LB-07]。
     case crossGroupMerge
     case labelNotFound(LabelID)
-}
-
-/// 孤立ファイルの再紐づけで、利用者に伝えるべき理由がある失敗 [OR-03]。
-///
-/// **「次に何ができるか」を言えるものだけを case にする** [ER-03]。素の
-/// エラーのまま投げると「そのファイルは選べません」としか出せない。
-public enum OrphanEditError: Error, Sendable, Hashable {
-    /// 選んだファイルがこのライブラリの根の外にある [OR-03]。
-    ///
-    /// 外を指すレコードを作ると相対パスの前提が壊れ（差分走査の孤立判定は
-    /// パスの接頭辞照合で行う）、次の走査で必ず孤立し直す。
-    case outsideLibrary(libraryName: String)
-    /// 選んだファイルの同一性を取れない（読めない・消えた・ボリューム識別子が
-    /// 取れない [NV3-01]）。
-    case unreadable(path: String)
 }
 
 /// 1 ファイル 1 ラベルぶんの紐づけの変更 [RL-01][RL-07]。

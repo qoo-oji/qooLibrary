@@ -1,5 +1,10 @@
 //
-//  孤立ファイルの整理ウインドウ [OR-01〜OR-05][ID-05][ID-07][15.7 節]。
+//  「見つからないファイル」の整理ウインドウ [OR-01][OR-04][ID-07][15.7 節]。
+//
+//  **触れるのは一覧と削除だけ**［ユーザー判断、2026-08］。実体を結び直す手段は
+//  ここに置かない——同じ inode で復活すれば走査が自動で戻し [ID-02]、名前が
+//  同じで inode が違えば**一括の確認ダイアログ** [ID-05] が引き受ける。
+//  ここに再紐づけを置くと、同じ操作が 2 箇所に生まれる（OR-02/OR-03 は撤回）。
 //
 //  **`qooLibraryApp` ではなく `QooApplication` に置く**——アプリターゲットの
 //  コードは `swift test` から触れないため、判定（既定で選ぶライブラリ・検索・
@@ -183,34 +188,6 @@ public final class OrphanCleanupModel {
     }
 
     // MARK: - 操作（すべて CommandStack を通す）
-
-    /// 候補へワンクリックで再紐づけ [OR-02]。
-    public func reattach(_ file: OrphanedFile, to candidate: OrphanCandidate) async throws {
-        guard let services else { return }
-        guard let snapshot = try await services.observation(ofCandidate: candidate.fileID) else {
-            // 候補の行が消えていた（他所の走査・別ウインドウの操作）。読み直せば
-            // 候補も消えるので、黙って一覧を更新して終わる。
-            await reload()
-            return
-        }
-        _ = try await commands.run(ReattachOrphanCommand(
-            orphanID: file.row.id, orphanName: file.row.filename,
-            to: snapshot, services: services))
-        await reload()
-    }
-
-    /// 手動で選んだファイルへ再紐づけ [OR-03]。
-    ///
-    /// **ライブラリの根の外は `OrphanEditError.outsideLibrary` で断る**
-    /// ［ユーザー判断］。呼び出し側が理由を提示する。
-    public func reattach(_ file: OrphanedFile, toFileAt url: URL) async throws {
-        guard let services, let library = selectedLibrary else { return }
-        let snapshot = try await services.observation(at: url, in: library, keeping: file.row)
-        _ = try await commands.run(ReattachOrphanCommand(
-            orphanID: file.row.id, orphanName: file.row.filename,
-            to: snapshot, services: services))
-        await reload()
-    }
 
     /// 削除 [OR-04]。**確認は呼び出し側**——何件のラベルが外れるかを見せてから
     /// 決めさせる（ラベル削除と同じ）。
