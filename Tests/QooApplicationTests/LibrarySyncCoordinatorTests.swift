@@ -33,7 +33,19 @@ final class FakeLibraryRepository: LibraryRepository, @unchecked Sendable {
 
     func watchStates() async throws -> [LibraryWatchState] { withLock { _states } }
     func setOnline(_ online: Bool, libraryID: LibraryID) async throws {
-        withLock { onlineWrites.append((libraryID, online)) }
+        withLock {
+            onlineWrites.append((libraryID, online))
+            // **書いた値を反映する。** 記録するだけだと `watchStates()` が古い
+            // 値を返し続け、「同じ状態なら書かない・知らせない」という性質を
+            // どのテストも検査できない（実 DB は当然反映する）。
+            guard let i = _states.firstIndex(where: { $0.id == libraryID }) else { return }
+            let old = _states[i]
+            _states[i] = LibraryWatchState(
+                id: old.id, uuid: old.uuid, displayName: old.displayName,
+                resolvedPath: old.resolvedPath, volumeUUID: old.volumeUUID,
+                isOnline: online, checkpoint: old.checkpoint,
+                lastFullScanAt: old.lastFullScanAt)
+        }
     }
     func setResolvedPath(_ path: String, libraryID: LibraryID) async throws {
         withLock { pathWrites.append((libraryID, path)) }
@@ -97,6 +109,14 @@ final class ScanRecorder: @unchecked Sendable {
     var incrementalPaths: [[String]] {
         calls.compactMap { if case .incremental(_, let p) = $0 { return p }; return nil }
     }
+}
+
+/// 呼ばれた回数を数えるだけの入れ物（`@Sendable` なクロージャから触る）。
+final class Counter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    func increment() { lock.lock(); count += 1; lock.unlock() }
+    var value: Int { lock.lock(); defer { lock.unlock() }; return count }
 }
 
 @MainActor
@@ -165,6 +185,33 @@ struct LibrarySyncCoordinatorTests {
         #expect(repo.onlineWrites.count == 1)
         #expect(repo.onlineWrites.first?.1 == false)
         #expect(recorder.calls.isEmpty, "オフラインのライブラリは走査しない [SY-08]")
+    }
+
+    /// **DB を書き換えるだけでは上位に届かない**（実機検証で発見）。
+    ///
+    /// `LibraryServices.libraries` は問い合わせた時点の写しなので、着脱を
+    /// 知らせないと開いたままの画面が古い `isOnline` を見続ける——「見つから
+    /// ないファイル」の整理ウインドウが取り出しに追随せず、**見えなくなった
+    /// ボリュームの記録を削除できてしまった**（OR2-06 が防ごうとしている
+    /// 事故そのもの、15章 §15.7）。
+    @Test("オンライン／オフラインの遷移を上位へ知らせる [VD-03][VD-05]")
+    func notifiesUpstreamWhenOnlineStateChanges() async throws {
+        let uuid = UUID()
+        let recorder = ScanRecorder()
+        let (coordinator, _, _) = makeCoordinator(
+            states: [state(id: 1, uuid: uuid, path: "/どこか", isOnline: true)],
+            locations: [uuid: .unavailable("ボリュームが接続されていない")],
+            recorder: recorder)
+        let notifications = Counter()
+        coordinator.onOnlineStateChanged = { notifications.increment() }
+
+        await coordinator.resync()
+        #expect(notifications.value == 1)
+
+        // **変化が無ければ知らせない**——`libraries` の読み直しは DB への
+        // 往復を伴うので、突き合わせのたびに走らせない。
+        await coordinator.resync()
+        #expect(notifications.value == 1, "同じ状態のままなら通知しない")
     }
 
     @Test("接続されたライブラリをオンラインに戻す [VD-03]")

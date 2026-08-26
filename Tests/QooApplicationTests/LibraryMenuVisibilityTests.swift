@@ -20,10 +20,10 @@ struct LibraryMenuVisibilityTests {
         #expect(LibraryMenuVisibility.items(isEnabled: false, isOnline: false).isEmpty)
     }
 
-    @Test("有効・オンライン → 設定・ラベル編集・保管庫・再スキャン・無効化")
+    @Test("有効・オンライン → 設定・ラベル編集・保管庫・孤立の整理・再スキャン・無効化")
     func enabledAndOnline() {
         #expect(LibraryMenuVisibility.items(isEnabled: true, isOnline: true)
-                == [.settings, .labels, .labelVault, .rescan, .disable])
+                == [.settings, .labels, .labelVault, .orphanCleanup, .rescan, .disable])
     }
 
     /// **この 1 件が本命。** 無効化は DB の行を消すだけでボリュームを要らない。
@@ -40,6 +40,12 @@ struct LibraryMenuVisibilityTests {
         // 保管庫の整理も同じ [LAW-01〜03][15.3 節]。アーカイブ属性を書き換える
         // だけなので、外付けが無い間にこそ片付けたいことがある。
         #expect(items.contains(.labelVault), "保管庫の整理は DB しか触らないので開けなければならない")
+        // 孤立の整理も DB しか触らない [OR-01〜05][15.7 節]。そのライブラリの
+        // 一覧は出せない [OR2-06] が、**ウインドウは全ライブラリを持つので
+        // 行き止まりにならず**、「オフラインの間は孤立と判定していない」ことを
+        // 読み取れること自体に意味がある [R-01]。
+        #expect(items.contains(.orphanCleanup),
+                "孤立の整理は DB しか触らないので開けなければならない")
         #expect(!items.contains(.rescan), "実ファイルを列挙できないので再スキャンは出さない")
         #expect(!items.contains(.enable))
     }

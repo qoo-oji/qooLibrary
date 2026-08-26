@@ -277,6 +277,16 @@ struct QooLibraryApp: App {
         }
         .defaultSize(width: 820, height: 560)
 
+        // 孤立ファイルの整理 [OR-01〜OR-05][15.7 節]。開くのはフォルダツリーの
+        // 「孤立ファイルを整理…」から（`OrphanCleanupNavigation` が対象を渡す）。
+        // **登録ルート行は 2 種類ある**ので、通常の行と縮退した行の両方に
+        // 配線してある。
+        Window("orphanCleanup.windowTitle", id: "orphanCleanup") {
+            OrphanCleanupWindow()
+                .appLanguageOverride()
+        }
+        .defaultSize(width: 880, height: 560)
+
         Window("preferences.windowTitle", id: "preferences") {
             PreferencesView()
                 .appLanguageOverride()

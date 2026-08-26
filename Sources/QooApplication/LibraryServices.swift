@@ -170,6 +170,12 @@ public final class LibraryServices {
             guard summary.added > 0 || summary.updated > 0 || summary.orphaned > 0 else { return }
             Task { @MainActor in self?.contentRevision &+= 1 }
         }
+        // 着脱で `isOnline` が変わったら**一覧の写しを取り直す** [VD-03][VD-05]。
+        // これが無いと、開いたままの画面が古い状態を見続ける（孤立の整理
+        // ウインドウが取り出しに追随しなかった。実機検証で発見）。
+        sync?.onOnlineStateChanged = { [weak self] in
+            Task { @MainActor in await self?.refreshLibraries() }
+        }
     }
 
     /// 起動時にフルスキャンし直すまでの間隔 [SY-05]。環境設定で変更でき、
@@ -424,6 +430,111 @@ public final class LibraryServices {
     public func restoreLabels(_ snapshots: [LabelSnapshot]) async throws {
         guard let repository = labelRepository else { throw ServiceError.notReady }
         try await repository.restore(snapshots)
+    }
+
+    // MARK: - 孤立ファイルの整理 [OR-01〜OR-05][ID-05][ID-07]
+    //
+    // **Undo は `OrphanCommands` のコマンドが担う**ので、UI から直接
+    // `reattachOrphan` / `deleteFiles` を呼ばないこと（呼ぶと ⌘Z で戻せない
+    // 操作ができる。`setRating` / `deleteLabels` と同じ約束）。
+
+    public func orphanedFiles(libraryID: LibraryID) async throws -> [OrphanedFile] {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        return try await repository.orphanedFiles(libraryID: libraryID)
+    }
+
+    public func orphanedFileCounts() async throws -> [LibraryID: Int] {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        return try await repository.orphanedFileCounts()
+    }
+
+    /// 同一性で行を引く [ID-02]。再紐づけのコマンドが「消される側」を
+    /// **消す前に**控えるために使う。
+    public func findFile(identity: FileIdentity) async throws -> FileID? {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        return try await repository.find(identity: identity)
+    }
+
+    @discardableResult
+    public func reattachOrphan(_ id: FileID, to snapshot: FileSnapshot) async throws -> FileID? {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        return try await repository.reattachOrphan(id, to: snapshot)
+    }
+
+    public func deleteFiles(_ ids: [FileID]) async throws {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        try await repository.deleteFiles(ids)
+    }
+
+    /// 削除・再紐づけを戻すための写し [ManagedFileSnapshot]。
+    public func fileSnapshots(ids: [FileID]) async throws -> [ManagedFileSnapshot] {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        return try await repository.fileSnapshots(ids: ids)
+    }
+
+    /// 写しの状態へちょうど戻す [ManagedFileSnapshot]。
+    public func restoreFiles(_ snapshots: [ManagedFileSnapshot]) async throws {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        try await repository.restoreFiles(snapshots)
+    }
+
+    /// 候補として提示した行から「観測結果」を組み立てる [OR-02]。
+    ///
+    /// 候補は**走査が実体を見て作った行**なので、DB の値をそのまま使えば
+    /// 実ファイルに触らずに済む。**`isBookFolder` も走査の判定をそのまま運ぶ**
+    /// ——ここで判定し直すと [IF-01] の規則が 2 箇所になる。
+    public func observation(ofCandidate id: FileID) async throws -> FileSnapshot? {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        guard let row = try await repository.row(id: id),
+              let identity = try await repository.identity(of: id) else { return nil }
+        return FileSnapshot(identity: identity, libraryID: row.libraryID,
+                            relativePath: row.relativePath, filename: row.filename,
+                            fileSize: row.fileSize, createdAt: row.createdAt,
+                            modifiedAt: row.modifiedAt, isBookFolder: row.isBookFolder)
+    }
+
+    /// 手動で選んだファイルから「観測結果」を組み立てる [OR-03]。
+    ///
+    /// - **ライブラリの根の外は断る**［ユーザー判断］。外を指すレコードを作ると
+    ///   相対パスの前提が壊れ、次の走査で必ず孤立し直す。
+    /// - **`isBookFolder` は孤立レコードの現在値を運ぶ**——結び直す先は「同じ
+    ///   本」のはずなので現状維持が素直で、[IF-01] の規則をここへ写さずに済む。
+    /// - `stat(2)` と属性の読み取りを伴うので `FileIO` の上で行う [NV6-02]。
+    public func observation(at url: URL, in library: LibrarySummary,
+                            keeping orphan: FileRow) async throws -> FileSnapshot {
+        let root = URL(fileURLWithPath: library.resolvedPath)
+        guard let relative = Self.relativePath(of: url, under: root) else {
+            throw OrphanEditError.outsideLibrary(libraryName: library.displayName)
+        }
+        let observed: (FileIdentity, Int64, Date, Date)? = await FileIO.perform {
+            guard let identity = LibraryFileIdentity.of(url, volumeUUID: library.volumeUUID),
+                  let values = try? url.resourceValues(forKeys: [
+                    .fileSizeKey, .creationDateKey, .contentModificationDateKey])
+            else { return nil }
+            return (identity, Int64(values.fileSize ?? 0),
+                    values.creationDate ?? Date(),
+                    values.contentModificationDate ?? Date())
+        }
+        guard let observed else { throw OrphanEditError.unreadable(path: url.path) }
+        return FileSnapshot(identity: observed.0, libraryID: library.id,
+                            relativePath: relative,
+                            filename: url.lastPathComponent,
+                            fileSize: observed.1, createdAt: observed.2,
+                            modifiedAt: observed.3, isBookFolder: orphan.isBookFolder)
+    }
+
+    /// ライブラリの根からの相対パス。根の外なら `nil`。
+    ///
+    /// **成分の境界で判定する**——素の `hasPrefix` だと `…/Doc` が
+    /// `…/Documents` を覆う（`VolumeAccessStore.hasGrant` で同じ罠を踏んでいる）。
+    nonisolated static func relativePath(of url: URL, under root: URL) -> String? {
+        let rootComponents = root.standardizedFileURL.pathComponents
+        let components = url.standardizedFileURL.pathComponents
+        guard components.count > rootComponents.count,
+              Array(components.prefix(rootComponents.count)) == rootComponents else {
+            return nil
+        }
+        return components.dropFirst(rootComponents.count).joined(separator: "/")
     }
 
     // MARK: - 一覧の問い合わせ [FI-01〜FI-05][VM-02]

@@ -170,6 +170,43 @@ public protocol ManagedFileRepository: Sendable {
                               seen: Set<FileID>) async throws -> Int
     /// 1 冊扱いを解除する [IF-05]。**ラベル紐づけは維持し、孤立にもしない**。
     func releaseBookFolder(_ id: FileID) async throws
+
+    // MARK: - 孤立ファイルの整理 [OR-01〜OR-05][ID-05][ID-07]
+
+    /// 孤立レコードと、その再照合候補 [OR-01][OR-02]。
+    ///
+    /// **候補は保存されていないのでここで引き直す** [ID-05]。走査は
+    /// `.nameOnly` でしか一致しなかったものを数えるだけで、その実ファイルは
+    /// 新規レコードとして別に入っている——同じ名前の生きているレコードが
+    /// その候補である。
+    ///
+    /// **オフラインのライブラリは呼び出し側が除く** [OR2-06][ID-08][SB-05]。
+    /// ここで弾かないのは、リポジトリがボリュームの接続状態を知らないため。
+    func orphanedFiles(libraryID: LibraryID) async throws -> [OrphanedFile]
+    /// ライブラリごとの孤立件数。**左ペインの出し分けに使う**ので 1 問い合わせで
+    /// 返す（`archivedLabelCounts` と同じ理由——ライブラリごとに辿ると、
+    /// ⌘Z のたびに走る読み直しが件数ぶんの往復になる）。0 件はキーごと現れない。
+    func orphanedFileCounts() async throws -> [LibraryID: Int]
+    /// 行の同一性 [ID-01]。候補として提示した行から「観測結果」を組み立てるのに使う
+    /// ——`FileRow` は inode を持たない（一覧の表示に要らないため）。
+    func identity(of id: FileID) async throws -> FileIdentity?
+    /// 孤立レコードを、実際に観測されたファイルへ結び直す [OR-02][OR-03][ID-04]。
+    ///
+    /// **同じ同一性を持つ別のレコードがあれば、それを消してから結び直す**
+    /// ［ユーザー判断］。孤立レコード側のラベル・評価・手動タイトル・カバー指定を
+    /// 生かすため——候補側は原則スキャン直後の新規レコードで、失うものが少ない。
+    /// 1 トランザクションで行う（片方だけ済んだ状態を残さない）。
+    ///
+    /// - Returns: 消した重複レコードの ID。無ければ `nil`。
+    @discardableResult
+    func reattachOrphan(_ id: FileID, to snapshot: FileSnapshot) async throws -> FileID?
+    /// 不要になった孤立レコードを消す [OR-04]。紐づけは cascade で消える。
+    func deleteFiles(_ ids: [FileID]) async throws
+    /// 削除・再紐づけの前に控える写し [UD-03]。存在しない ID は飛ばす。
+    func fileSnapshots(ids: [FileID]) async throws -> [ManagedFileSnapshot]
+    /// 写しの状態へちょうど戻す。**`id` を明示して `INSERT` する**
+    /// （`managedFile.id` は AUTOINCREMENT なので元の ID が空いたまま残る）。
+    func restoreFiles(_ snapshots: [ManagedFileSnapshot]) async throws
     /// パーサの結果を書き戻す [RC-01]。
     func applyParsedFields(_ fields: ParsedFileFields?, to id: FileID) async throws
 
@@ -409,6 +446,21 @@ public enum LabelEditError: Error, Sendable, Hashable {
     /// 別のラベルグループへは統合できない [LB-07]。
     case crossGroupMerge
     case labelNotFound(LabelID)
+}
+
+/// 孤立ファイルの再紐づけで、利用者に伝えるべき理由がある失敗 [OR-03]。
+///
+/// **「次に何ができるか」を言えるものだけを case にする** [ER-03]。素の
+/// エラーのまま投げると「そのファイルは選べません」としか出せない。
+public enum OrphanEditError: Error, Sendable, Hashable {
+    /// 選んだファイルがこのライブラリの根の外にある [OR-03]。
+    ///
+    /// 外を指すレコードを作ると相対パスの前提が壊れ（差分走査の孤立判定は
+    /// パスの接頭辞照合で行う）、次の走査で必ず孤立し直す。
+    case outsideLibrary(libraryName: String)
+    /// 選んだファイルの同一性を取れない（読めない・消えた・ボリューム識別子が
+    /// 取れない [NV3-01]）。
+    case unreadable(path: String)
 }
 
 /// 1 ファイル 1 ラベルぶんの紐づけの変更 [RL-01][RL-07]。

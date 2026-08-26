@@ -195,6 +195,104 @@ extension ManagedFileRecord {
             isArchived: isArchived,
             isBookFolder: isBookFolder)
     }
+
+    // MARK: - 孤立レコードの Undo 用の写し [OR-02][OR-04][UD-03]
+
+    /// 行の**全列**を写す。
+    ///
+    /// Undo の契約は「ちょうど戻す」ことなので、再生成可能な列 [DB-03] も
+    /// 含める——孤立レコードには実体が無く、走査が埋め直す機会が来ない。
+    ///
+    /// **列を足したらここと `init(undoSnapshot:)` の両方に足すこと。** 忘れると
+    /// ⌘Z のあと黙って値が変わる。それを機械的に捕まえるため、往復テスト
+    /// （`OrphanRepositoryTests.everyColumnSurvivesADeleteAndRestore`）が
+    /// 「削除 → 復元 → レコードが一致」を検査している。
+    func snapshotForUndo(labels: [ManagedFileSnapshot.LabelAssignment]) -> ManagedFileSnapshot {
+        ManagedFileSnapshot(
+            id: FileID(rawValue: id ?? 0),
+            libraryID: LibraryID(rawValue: libraryId),
+            identity: FileIdentity(volumeUUID: volumeUUID, inode: UInt64(bitPattern: inode)),
+            relativePath: relativePath,
+            filename: filename,
+            normalizedName: normalizedName,
+            searchKey: searchKey,
+            fileSize: fileSize,
+            createdAt: Date(timeIntervalSinceReferenceDate: createdAt),
+            modifiedAt: Date(timeIntervalSinceReferenceDate: modifiedAt),
+            title: title,
+            titleOrigin: ValueOrigin(rawValue: titleOrigin) ?? .auto,
+            seriesName: seriesName,
+            seriesKey: seriesKey,
+            volume: VolumeValue(kind: VolumeValue.Kind(rawValue: volumeKind) ?? .none,
+                                number: volumeNumber, raw: volumeRaw),
+            authorName: authorName,
+            rating: rating,
+            coverImageRef: coverImageRef,
+            coverImageSource: CoverSource(rawValue: coverImageSource) ?? .auto,
+            isArchived: isArchived,
+            archivedFromPath: archivedFromPath,
+            archivedAt: archivedAt.map { Date(timeIntervalSinceReferenceDate: $0) },
+            isBookFolder: isBookFolder,
+            isDuplicateRepresentativePinned: isDuplicateRepresentativePinned,
+            pageCount: pageCount,
+            subfolderCount: subfolderCount,
+            firstImageWidth: firstImageWidth,
+            firstImageHeight: firstImageHeight,
+            trashedAt: trashedAt.map { Date(timeIntervalSinceReferenceDate: $0) },
+            state: FileState(rawValue: state) ?? .active,
+            lastParsedFormatID: lastParsedFormatID,
+            libraryTypeMismatch: libraryTypeMismatch,
+            metadataStamp: metadataStamp,
+            metadataSource: metadataSource,
+            metadataJSON: metadataJSON,
+            hasVolumeConflict: hasVolumeConflict,
+            labels: labels)
+    }
+
+    /// 写しから行を組み立て直す。**`id` を明示する**——AUTOINCREMENT なので
+    /// 削除された ID は空いたまま残っており、そのまま取り戻せる［実測］。
+    init(undoSnapshot s: ManagedFileSnapshot) {
+        self.init(
+            id: s.id.rawValue,
+            libraryId: s.libraryID.rawValue,
+            inode: Int64(bitPattern: s.identity.inode),
+            volumeUUID: s.identity.volumeUUID,
+            relativePath: s.relativePath,
+            filename: s.filename,
+            normalizedName: s.normalizedName,
+            searchKey: s.searchKey,
+            fileSize: s.fileSize,
+            createdAt: s.createdAt.timeIntervalSinceReferenceDate,
+            modifiedAt: s.modifiedAt.timeIntervalSinceReferenceDate,
+            title: s.title,
+            titleOrigin: s.titleOrigin.rawValue,
+            seriesName: s.seriesName,
+            seriesKey: s.seriesKey,
+            volumeNumber: s.volume.number,
+            volumeKind: s.volume.kind.rawValue,
+            volumeRaw: s.volume.raw,
+            authorName: s.authorName,
+            rating: s.rating,
+            coverImageRef: s.coverImageRef,
+            coverImageSource: s.coverImageSource.rawValue,
+            isArchived: s.isArchived,
+            archivedFromPath: s.archivedFromPath,
+            archivedAt: s.archivedAt?.timeIntervalSinceReferenceDate,
+            isBookFolder: s.isBookFolder,
+            isDuplicateRepresentativePinned: s.isDuplicateRepresentativePinned,
+            pageCount: s.pageCount,
+            subfolderCount: s.subfolderCount,
+            firstImageWidth: s.firstImageWidth,
+            firstImageHeight: s.firstImageHeight,
+            trashedAt: s.trashedAt?.timeIntervalSinceReferenceDate,
+            state: s.state.rawValue,
+            lastParsedFormatID: s.lastParsedFormatID,
+            libraryTypeMismatch: s.libraryTypeMismatch,
+            metadataStamp: s.metadataStamp,
+            metadataSource: s.metadataSource,
+            metadataJSON: s.metadataJSON,
+            hasVolumeConflict: s.hasVolumeConflict)
+    }
 }
 
 // MARK: - フォーマット類

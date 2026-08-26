@@ -558,7 +558,8 @@ struct FolderTreePane: View {
                         onDisableLibrary: { disableLibrary(entry.folder) },
                         onOpenLibrarySettings: { openLibrarySettings(entry.folder) },
                         onOpenLabelEditor: { openLabelEditor(entry.folder) },
-                        onOpenLabelVault: { openLabelVault(entry.folder) }
+                        onOpenLabelVault: { openLabelVault(entry.folder) },
+                        onOpenOrphanCleanup: { openOrphanCleanup(entry.folder) }
                     )
                 }
             }
@@ -639,7 +640,8 @@ struct FolderTreePane: View {
             disableLibrary: { LibraryEnableAction.disable(folder: $0) },
             openLibrarySettings: { openLibrarySettings($0) },
             openLabelEditor: { openLabelEditor($0) },
-            openLabelVault: { openLabelVault($0) }
+            openLabelVault: { openLabelVault($0) },
+            openOrphanCleanup: { openOrphanCleanup($0) }
         )
     }
 
@@ -855,6 +857,17 @@ struct FolderTreePane: View {
         // **受け皿へ置く順序をここで書き直さない** [CP-02]。写すと、入口が
         // 増えたときに片方だけ直して取り残す（このリポジトリで 3 度起きた形）。
         LabelVaultNavigation.open(libraryID: summary.id, openWindow: openWindow)
+    }
+
+    /// 孤立ファイルの整理ウインドウを開く [OR-01〜OR-05][15.7 節]。
+    ///
+    /// `openLabelVault` と同じく、**登録ルート行が 2 つある**ことに注意
+    /// （通常の `FolderTreeContextMenu` と縮退した
+    /// `DegradedRegisteredFolderRow`）。配線は別々なので両方に要る。
+    private func openOrphanCleanup(_ folder: RegisteredFolder) {
+        guard let summary = LibraryServices.shared.library(registrationUUID: folder.id) else { return }
+        // **受け皿へ置く順序をここで書き直さない** [CP-02]。
+        OrphanCleanupNavigation.open(libraryID: summary.id, openWindow: openWindow)
     }
 
     /// ライブラリ機能だけを無効にする（登録フォルダは残す）。
@@ -1244,6 +1257,10 @@ private struct DegradedRegisteredFolderRow: View {
     /// ——外付けが無い間に表記ゆれを片付けられる（DB しか触らない）。
     let onOpenLabelEditor: () -> Void
     let onOpenLabelVault: () -> Void
+    /// 孤立ファイルの整理ウインドウ [OR-01〜OR-05]。**縮退状態でこそ開きたい**
+    /// ——「孤立していないか」を確かめられる（オフラインの間は判定しない
+    /// [OR2-06][ID-08] ことが、開けば読み取れる）。
+    let onOpenOrphanCleanup: () -> Void
 
     /// `.offline` だけ薄くする。ゴミ箱・消失は「気づいてほしい」状態なので
     /// 薄めない——未接続は待てば戻る日常的な状態で、そちらこそ目立たない
@@ -1328,6 +1345,11 @@ private struct DegradedRegisteredFolderRow: View {
             if libraryItems.contains(.labelVault) {
                 Button("library.labelVault.menuItem", systemImage: "archivebox") {
                     onOpenLabelVault()
+                }
+            }
+            if libraryItems.contains(.orphanCleanup) {
+                Button("library.orphanCleanup.menuItem", systemImage: "questionmark.folder") {
+                    onOpenOrphanCleanup()
                 }
             }
             if libraryItems.contains(.disable) {

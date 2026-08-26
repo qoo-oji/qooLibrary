@@ -65,6 +65,14 @@ public final class LibrarySyncCoordinator {
     /// 本当に見てほしい 1 枚まで読み飛ばされるようになる [ER-11 の精神]。
     /// 要約は診断ログに残り、どのファイルかは整理ウインドウ [OR-01〜05] で見る。
     public var onScanFinished: ((LibraryID, ScanSummary) -> Void)?
+    /// オンライン／オフラインが切り替わったときに呼ぶ [VD-03][VD-05]。
+    ///
+    /// **DB を書き換えるだけでは上位に届かない。** `LibraryServices.libraries`
+    /// は問い合わせた時点の写しなので、ここで知らせないと開いたままの画面が
+    /// 古い `isOnline` を見続ける——孤立の整理ウインドウが取り出しに追随せず、
+    /// **見えないボリュームの孤立を削除できてしまった**（実機検証で発見、
+    /// 15章 §15.7）。
+    public var onOnlineStateChanged: (() -> Void)?
 
     public init(dependencies: Dependencies) {
         self.deps = dependencies
@@ -165,6 +173,7 @@ public final class LibrarySyncCoordinator {
         do {
             if state.isOnline != location.isOnline {
                 try await deps.libraries.setOnline(location.isOnline, libraryID: state.id)
+                onOnlineStateChanged?()
                 // [VD-10] 状態遷移を記録する。専用の履歴ウインドウはまだ無いので
                 // 診断ログに残す（`OperationLogRecord` はフェーズ 2 後半）。
                 Log.watch.info(location.isOnline

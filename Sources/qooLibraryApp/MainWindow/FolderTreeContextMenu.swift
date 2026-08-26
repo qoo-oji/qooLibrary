@@ -359,6 +359,14 @@ struct FolderTreeContextMenu: View {
                 actions.openLabelVault(folder)
             }
         }
+        if visible.contains(.orphanCleanup) {
+            // 孤立ファイルの整理 [OR-01〜OR-05][15.7 節]。**オンラインを
+            // 要らない**——そのライブラリの一覧は出せない [OR2-06] が、
+            // ウインドウは全ライブラリを持つので行き止まりにならない。
+            Button("library.orphanCleanup.menuItem", systemImage: "questionmark.folder") {
+                actions.openOrphanCleanup(folder)
+            }
+        }
         if visible.contains(.rescan) {
             Button("library.rescan.menuItem", systemImage: "arrow.clockwise") {
                 actions.rescanLibrary(folder, context.url)
@@ -547,4 +555,5 @@ struct FolderTreeContextMenuActions {
     var openLabelEditor: (RegisteredFolder) -> Void = { _ in }
     /// ラベル保管庫の整理ウインドウを開く [LAW-01〜LAW-03][15.3 節]。
     var openLabelVault: (RegisteredFolder) -> Void = { _ in }
+    var openOrphanCleanup: (RegisteredFolder) -> Void = { _ in }
 }

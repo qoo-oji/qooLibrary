@@ -29,6 +29,24 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
         return id.map { FileID(rawValue: $0) }
     }
 
+    /// 対象ファイルに紐づくラベルの、非正規化件数 [DB-02] を作り直す。
+    ///
+    /// **`fileCount` は「生きていて保管庫にも入っていない」ファイルだけを
+    /// 数える**（`SQLiteLabelRepository.recount`）ので、`state` が変わるか
+    /// 行が消えるたびに直さないと、ラベルフィルタと編集ウインドウの件数が
+    /// 実態からずれていく。
+    ///
+    /// **消す・変える「前」に呼んで ID を集めること**——`fileLabel` は cascade
+    /// で消えるので、後からでは誰を数え直せばよいか分からなくなる。
+    static func labelIDsAttached(_ db: Database, to ids: [FileID]) throws -> [LabelID] {
+        guard !ids.isEmpty else { return [] }
+        let raw = try Int64.fetchAll(db, sql: """
+            SELECT DISTINCT labelId FROM fileLabel
+            WHERE managedFileId IN (\(placeholders(ids.count)))
+            """, arguments: StatementArguments(ids.map(\.rawValue)))
+        return raw.map { LabelID(rawValue: $0) }
+    }
+
     /// `searchKey` を行の現在値から作り直す [SR-03]。
     ///
     /// タイトル・シリーズ名を書き換えた**あと**に呼ぶこと。**書いた値ではなく
@@ -171,9 +189,13 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
     public func setState(_ state: FileState, ids: [FileID]) async throws {
         guard !ids.isEmpty else { return }
         try await database.writer.write { db in
+            // **先に集める**——`state` が変われば `fileCount` の母数が変わる
+            // ので、変更後のラベルを引き直すのではなく変更前の紐づけから引く。
+            let labels = try Self.labelIDsAttached(db, to: ids)
             try db.execute(sql: """
                 UPDATE managedFile SET state = ? WHERE id IN (\(Self.placeholders(ids.count)))
                 """, arguments: StatementArguments([state.rawValue] + ids.map(\.rawValue)) ?? StatementArguments())
+            try SQLiteLabelRepository.recount(db, labelIDs: labels)
         }
     }
 
@@ -235,8 +257,15 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
         try await database.writer.write { db in
             try Self.fillSeenTable(db, seen)
             let (clause, args) = Self.unseenClause(libraryID: libraryID, scope: scope)
+            // 孤立にする前に、影響を受けるラベルを控える [DB-02]。
+            let labels = try Int64.fetchAll(db, sql: """
+                SELECT DISTINCT labelId FROM fileLabel
+                WHERE managedFileId IN (SELECT id FROM managedFile WHERE \(clause))
+                """, arguments: StatementArguments(args.map { Optional($0) }))
+                .map { LabelID(rawValue: $0) }
             try db.execute(sql: "UPDATE managedFile SET state = 'orphaned' WHERE \(clause)",
                            arguments: StatementArguments(args.map { Optional($0) }))
+            try SQLiteLabelRepository.recount(db, labelIDs: labels)
             return db.changesCount
         }
     }
