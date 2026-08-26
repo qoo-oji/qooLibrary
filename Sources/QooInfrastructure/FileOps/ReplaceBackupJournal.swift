@@ -61,8 +61,16 @@ public final class ReplaceBackupJournal: @unchecked Sendable {
         // 読み、**ユーザーの本物のファイルを動かしてしまう**。
         let base: URL
         if RuntimeEnvironment.isRunningTests {
+            // **実行ごとに分ける。** 共有すると、異常終了したテスト（や
+            // 後片付けに失敗した使い捨てボリューム）が残した記録を次の実行が
+            // 読み、「まだ退避が残っている」と誤って判定する——実際、
+            // 消えたボリュームを指す記録が 1 件残ったせいで
+            // `theBackupIsRecordedWhileTheCopyIsInFlight` が落ち続け、
+            // 製品の退行かどうかの切り分けに時間を使った。
             base = FileManager.default.temporaryDirectory
-                .appendingPathComponent("qooLibraryTests", isDirectory: true)
+                .appendingPathComponent(
+                    "qooLibraryTests-\(ProcessInfo.processInfo.processIdentifier)",
+                    isDirectory: true)
         } else {
             base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
                 ?? FileManager.default.temporaryDirectory

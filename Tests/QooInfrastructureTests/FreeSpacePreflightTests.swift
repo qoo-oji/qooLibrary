@@ -88,6 +88,7 @@ struct TinyVolume {
     ///   `"ExFAT"` などを渡すと、永続ファイル ID を持たないボリュームを作れる
     ///   （登録の可否を確かめるのに使う）。
     static func make(megabytes: Int, fileSystem: String = "APFS") -> TinyVolume? {
+        reapStaleVolumesOnce
         let name = "QooTest\(UUID().uuidString.prefix(8))"
         let image = FileManager.default.temporaryDirectory.appendingPathComponent("\(name).dmg")
         guard run("/usr/bin/hdiutil", [
@@ -109,6 +110,40 @@ struct TinyVolume {
         }
         return TinyVolume(mountPoint: mountPoint, imagePath: image)
     }
+
+    /// **前の実行が残した使い捨てボリュームを片付ける。**
+    ///
+    /// `destroy()` は `defer` から呼ばれるので、テストが異常終了したり
+    /// 中断されたりすると通らない。残ったボリュームはマウント表に居座り、
+    /// `MountTable` を読む検証や実測の前提を静かに汚す——実際に **10 本
+    /// （イメージ約 1 GB）溜まり、利用者に指摘されて気づいた**。しかも
+    /// `ReplaceBackupJournal` の記録がそのうちの 1 本を指したまま残り、
+    /// 無関係なテストが落ち続ける原因にもなった。
+    ///
+    /// **同じ実行中のものを巻き込まないよう、十分に古いものだけを対象にする。**
+    /// テストスイートは数十秒で終わるので、1 時間あれば取り違えようがない。
+    /// `SecureExtractor.cleanupResidualStaging()` と同じ考え方——後片付けを
+    /// 「必ず通る場所」に置けないなら、次の起動で拾う。
+    private static let reapStaleVolumesOnce: Void = {
+        let fileManager = FileManager.default
+        let temp = fileManager.temporaryDirectory
+        let cutoff = Date().addingTimeInterval(-3600)
+        guard let entries = try? fileManager.contentsOfDirectory(
+            at: temp, includingPropertiesForKeys: [.contentModificationDateKey]) else { return }
+        for image in entries where image.lastPathComponent.hasPrefix("QooTest")
+            && image.pathExtension == "dmg"
+        {
+            let modified = (try? image.resourceValues(forKeys: [.contentModificationDateKey]))?
+                .contentModificationDate
+            guard let modified, modified < cutoff else { continue }
+            let name = image.deletingPathExtension().lastPathComponent
+            let mount = URL(fileURLWithPath: "/Volumes/\(name)", isDirectory: true)
+            if isMounted(mount) {
+                _ = run("/usr/bin/hdiutil", ["detach", "-quiet", "-force", mount.path])
+            }
+            try? fileManager.removeItem(at: image)
+        }
+    }()
 
     /// **外れたことを確かめるまで試し直し、それでも駄目なら黙らない。**
     ///
