@@ -148,13 +148,33 @@ public struct FilePage: Sendable {
 
 /// 再照合の候補 [ID-03][ID-05]。
 public struct ReidentificationCandidate: Sendable, Hashable {
-    public enum Confidence: Sendable, Hashable, Comparable {
+    /// 確度。**宣言順が確度の高い順**で、`Comparable` はそれに従う。
+    ///
+    /// どこまでを自動で引き継ぐかは `IdentityMatchPolicy` が決める [ID-13]。
+    /// ここは「何がどう一致したか」だけを表し、判断は持たない。
+    public enum Confidence: Sendable, Hashable, Comparable, CaseIterable {
         /// 同一相対パス + 同一サイズ [ID-03]①
         case pathAndSize
-        /// 同一ファイル名 + 同一サイズ [ID-03]②
+        /// 同一ファイル名 + 同一サイズ [ID-03]② — 場所が変わっただけ
         case nameAndSize
-        /// 同一ファイル名のみ [ID-03]③ — **自動では紐づけない** [ID-05]
+        /// 同一相対パス、サイズは違う [ID-03]③a — **同じ場所での差し替え**
+        case pathOnly
+        /// 同一ファイル名のみ [ID-03]③b — 移動と差し替えが同時か、別作品の同名
         case nameOnly
+
+        /// 孤立一覧の候補（`OrphanCandidate`）から確度を復元する。
+        ///
+        /// **走査とあとからの引き直しで同じ物差しを使うため**にここへ置く。
+        /// 呼び出し側で `samePath ? .pathOnly : .nameOnly` のように畳むと、
+        /// サイズも一致している組が実際より低い確度に落ちる。
+        public init(samePath: Bool, sizeMatches: Bool) {
+            switch (samePath, sizeMatches) {
+            case (true, true):   self = .pathAndSize
+            case (false, true):  self = .nameAndSize
+            case (true, false):  self = .pathOnly
+            case (false, false): self = .nameOnly
+            }
+        }
     }
 
     public let fileID: FileID

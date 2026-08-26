@@ -31,7 +31,8 @@ struct LibrarySettingsPayloadTests {
             labelGroupOrder: [3, 1, 2],
             readsEmbeddedMetadata: false,
             comicInfoVolumeSource: .number,
-            opensBookFolderWithApp: true)
+            opensBookFolderWithApp: true,
+            identityMatchPolicy: .alwaysConfirm)      // 既定は .sameName [ID-13]
     }
 
     /// 足したフィールドが**読み戻される**ことを、フィールドを列挙せずに固定する。
@@ -60,5 +61,6 @@ struct LibrarySettingsPayloadTests {
         #expect(payload.targetExtensions == ["cbz"])
         #expect(payload.readsEmbeddedMetadata)          // 既定 true
         #expect(!payload.opensBookFolderWithApp)        // 既定 false [IF-18]
+        #expect(payload.identityMatchPolicy == .sameName)  // 既定 [ID-13]
     }
 }

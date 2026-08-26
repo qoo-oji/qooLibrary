@@ -145,6 +145,12 @@ struct OrphanCleanupModelIntegrationTests {
             try w.write("旧/(同人誌) [サークル値\(i) (著者値\(i))] 作品タイトル\(i) (ジャンル値1).cbz")
         }
         let id = try await w.enable("builtin.doujinshi-a")
+        // **孤立が生まれる設定にしてから走査する** [ID-13]。既定の
+        // `.sameName` は「名前が同じなら黙って引き継ぐ」なので、下で作る
+        // 「別の場所へ、サイズを変えて移した」状態は自動的に解消されてしまう
+        // ——このスイートが確かめたいのは孤立の一覧なので、それでは
+        // 主張が成り立つ前提が無いことになる。
+        try await w.editSettings(id) { $0.identityMatchPolicy = .alwaysConfirm }
         _ = try await w.services.scan(libraryID: id, root: w.libraryRoot)
 
         if moving {

@@ -36,6 +36,7 @@ final class ScanWorkspace {
     init(preset: String = "builtin.doujinshi-a", targetExtensions: Set<String> = ["cbz"],
          metadata: (any EmbeddedMetadataReading)? = nil,
          readsEmbeddedMetadata: Bool = true,
+         identityMatchPolicy: IdentityMatchPolicy = .default,
          isDataless: (@Sendable (URL) -> Bool)? = nil) async throws {
         root = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("qoo-scan-\(UUID().uuidString)")
@@ -63,6 +64,7 @@ final class ScanWorkspace {
         draft.targetExtensions = Array(targetExtensions)
         draft.imageExtensions = Array(BookFolderDetector.defaultImageExtensions)
         draft.readsEmbeddedMetadata = readsEmbeddedMetadata
+        draft.identityMatchPolicy = identityMatchPolicy                  // [ID-13]
         try await libraries.updateSettings(draft, libraryID: libraryID)
         engine = ScanEngine(dependencies: .init(
             libraries: libraries, files: files, labels: labels,
@@ -260,10 +262,16 @@ struct ScanIntegrationTests {
         #expect(try await w.libraries.totalFileCount() == 1)
     }
 
-    /// 同名だがサイズが違うものは**自動で紐づけない** [ID-05][ID3-03]。
-    @Test("ファイル名だけの一致は自動で紐づけない [ID-05]")
-    func nameOnlyIsNotAutoLinked() async throws {
-        let w = try await ScanWorkspace()
+    /// 同じ場所での差し替え [ID-03]③a を**設定が「必ず確認する」なら**
+    /// 自動で紐づけない [ID-05][ID3-03][ID-13]。
+    ///
+    /// **既定ではこうならない。** 既定 `.sameName` は黙って引き継ぐ
+    /// ——差し替えは日常的に起きるので、既定で尋ねると邪魔になる
+    /// ［ユーザー判断］。設定ごとの網羅は
+    /// `IdentityMatchPolicyScanTests` が持つ。
+    @Test("必ず確認する設定なら、差し替えを自動で紐づけない [ID-05][ID-13]")
+    func nameOnlyIsNotAutoLinkedWhenConfirming() async throws {
+        let w = try await ScanWorkspace(identityMatchPolicy: .alwaysConfirm)
         try w.write("(同人誌) [サークルA] 作品 (オリジナル).cbz", bytes: 64)
         _ = try await w.scanFull()
         try w.remove("(同人誌) [サークルA] 作品 (オリジナル).cbz")
@@ -274,6 +282,25 @@ struct ScanIntegrationTests {
         #expect(summary.candidatesForReview == 1, "候補ありとして提示すべき")
         #expect(summary.added == 1)
         #expect(summary.orphaned == 1, "元のレコードは孤立へ")
+    }
+
+    /// **既定の挙動**。同じ場所で中身が入れ替わっても、ラベル・評価・
+    /// 手で直したタイトルはそのまま引き継がれる [ID-13]。
+    @Test("既定では、同じ場所での差し替えを黙って引き継ぐ [ID-13]")
+    func replacementIsCarriedOverByDefault() async throws {
+        let w = try await ScanWorkspace()
+        try w.write("(同人誌) [サークルA] 作品 (オリジナル).cbz", bytes: 64)
+        _ = try await w.scanFull()
+        let before = try #require(try await w.rows().first)
+        try w.remove("(同人誌) [サークルA] 作品 (オリジナル).cbz")
+        try w.write("(同人誌) [サークルA] 作品 (オリジナル).cbz", bytes: 999)
+
+        let summary = try await w.scanFull()
+        #expect(summary.reidentified == 1)
+        #expect(summary.candidatesForReview == 0, "既定では尋ねない")
+        #expect(summary.orphaned == 0)
+        let after = try #require(try await w.rows().first)
+        #expect(after.id == before.id, "同じレコードであるべき（ラベルが維持される）")
     }
 
     @Test("ブックフォルダを 1 冊として登録する [IF-01][IF-10][IF-12]")

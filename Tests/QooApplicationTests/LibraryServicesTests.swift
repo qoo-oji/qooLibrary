@@ -59,6 +59,21 @@ final class ServicesWorkspace {
         try #require(services.presetTemplates.first { $0.key == key })
     }
 
+    /// 設定を 1 項目だけ変えて保存する。
+    ///
+    /// **草案を読んでから変えること。**`LibrarySettingsDraft` を新しく組み立てて
+    /// 差し替える補助コードは、書いた時点では存在しなかった項目（意味束縛・
+    /// ラベルグループの並び）を黙って落とす——`ScanWorkspace.init` で実際に
+    /// 踏んで、「著者ラベルだけが付かない」という形で表面化した。
+    func editSettings(_ id: LibraryID,
+                      _ change: (inout LibrarySettingsDraft) -> Void) async throws {
+        guard var draft = try await services.settingsDraft(libraryID: id) else {
+            throw ServicesWorkspaceError.noSettings
+        }
+        change(&draft)
+        try await services.updateSettings(draft, libraryID: id)
+    }
+
     @discardableResult
     func enable(_ key: String = "builtin.doujinshi-a") async throws -> LibraryID {
         try await services.enable(
@@ -69,6 +84,8 @@ final class ServicesWorkspace {
             template: try template(key))
     }
 }
+
+enum ServicesWorkspaceError: Error { case noSettings }
 
 @Suite("合成根 LibraryServices", .serialized)
 struct LibraryServicesTests {

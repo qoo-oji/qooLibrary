@@ -4579,13 +4579,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Different location — moved, or a different work with the same file name"
+            "value": "Different location — moved, or a different file that happens to have the same name"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "別の場所にある — 移動したか、同じファイル名の別の作品"
+            "value": "別の場所にある — 移動したか、たまたま同じ名前の別のファイル"
           }
         }
       }
@@ -4596,13 +4596,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Same location — almost certainly the same book"
+            "value": "Same location — almost certainly a replacement of the same file"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "同じ場所にある — ほぼ確実に同じ本"
+            "value": "同じ場所にある — ほぼ確実に同じファイルの差し替え"
           }
         }
       }
@@ -7457,6 +7457,91 @@
           "stringUnit": {
             "state": "translated",
             "value": "テンプレートは有効化のときに初期値を写すだけの雛形です。ここから先の設定はこのライブラリのもので、いつでも変えられます。"
+          }
+        }
+      }
+    },
+    "librarySettings.basics.identityMatch": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When to Treat Files as the Same"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同じファイルとみなす条件"
+          }
+        }
+      }
+    },
+    "librarySettings.basics.identityMatch.alwaysConfirm": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Always confirm when the contents changed"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "中身が変わっていたら必ず確認する"
+          }
+        }
+      }
+    },
+    "librarySettings.basics.identityMatch.sameName": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Don’t confirm if the name matches"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "名前が同じなら確認しない"
+          }
+        }
+      }
+    },
+    "librarySettings.basics.identityMatch.samePath": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Don’t confirm if it is in the same location"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同じ場所にあるなら確認しない"
+          }
+        }
+      }
+    },
+    "librarySettings.basics.identityMatchHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "What happens when a file in the library is replaced by different contents under the same name. Treating it as the same file carries over what qooLibrary remembers (labels, rating, edited title, chosen cover). Choosing to confirm lets you review the list first. With “Don’t confirm if the name matches”, the record can be carried over to a file with the same name in a different location."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ライブラリのファイルが、同じ名前のまま中身の違うものに置き換わったときの扱いです。同じファイルとみなすと、qooLibrary が覚えている内容（ラベル・評価・編集したタイトル・選んだカバー）を引き継ぎます。確認する設定にすると、引き継ぐ前に一覧で確かめられます。「名前が同じなら確認しない」では、別の場所にある同じ名前のファイルへ引き継がれることがあります。"
           }
         }
       }

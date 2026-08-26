@@ -313,6 +313,41 @@ public actor ScanEngine {
             }
         }
 
+        // ⑤ 設定が許すものを黙って引き継ぐ [ID-13]。
+        //
+        // **④ のあとでなければならない。** このスキャンで新しく孤立になった
+        // ものも対象にするため。あわせて、設定を緩めた直後の走査で
+        // **前の設定で溜まっていた確認待ちもここで片付く**
+        // ［ユーザー判断: 次の走査で自動適用］——④ までの経路だけでは、
+        // 既に新しい行が `active` として存在するので `findCandidates` を
+        // 通らず、いつまでも孤立のまま残ってしまう。
+        //
+        // 却下された組（`identityRejection`）は候補に挙がらないので、
+        // 「別のファイルだ」という利用者の判断がこの設定に上書きされることはない。
+        if !summary.cancelled, settings.identityMatchPolicy != .alwaysConfirm {
+            var accepted: [IdentityMatch] = []
+            for orphan in try await deps.files
+                .identityMatchesAwaitingDecision(libraryID: library.id)
+            {
+                guard let best = orphan.candidates.first else { continue }
+                let confidence = ReidentificationCandidate.Confidence(
+                    samePath: best.samePath, sizeMatches: best.sizeMatches)
+                guard settings.identityMatchPolicy.acceptsAutomatically(confidence)
+                else { continue }
+                accepted.append(IdentityMatch(orphanID: orphan.id,
+                                              candidateID: best.fileID))
+            }
+            if !accepted.isEmpty {
+                try await deps.files.acceptIdentityMatches(accepted)
+                summary.reidentified += accepted.count
+                // ここで引き継いだぶんは確認の対象ではなくなる。数え漏らすと
+                // 「確認してください」と言いながら一覧が空になる。
+                summary.candidatesForReview =
+                    max(0, summary.candidatesForReview - accepted.count)
+                summary.orphaned = max(0, summary.orphaned - accepted.count)
+            }
+        }
+
         Log.scan.info("""
             スキャン完了 \(Log.redactable(library.displayName)): \
             追加 \(summary.added) / 更新 \(summary.updated) / 孤立 \(summary.orphaned) \
@@ -464,15 +499,14 @@ public actor ScanEngine {
         for snapshot in snapshots where existing[snapshot.identity] == nil {
             let candidates = try await deps.files.findCandidates(for: snapshot)
             guard let best = candidates.first else { continue }
-            switch best.confidence {
-            case .pathAndSize, .nameAndSize:
+            if settings.identityMatchPolicy.acceptsAutomatically(best.confidence) {
                 // inode を更新して既存レコードとみなす。ラベルは維持される [ID-04]。
                 try await deps.files.reidentify(best.fileID, to: snapshot.identity)
                 existing[snapshot.identity] = best.fileID
                 outcome.reidentified += 1
-            case .nameOnly:
-                // **自動では紐づけない** [ID-05][ID3-03]。新規として作り、
-                // 孤立ファイル一覧に「候補あり」として出す。
+            } else {
+                // **この設定では自動で紐づけない** [ID-05][ID-13]。新規として作り、
+                // 走査後にまとめて確認してもらう [ID-09]。
                 outcome.candidatesForReview += 1
             }
         }

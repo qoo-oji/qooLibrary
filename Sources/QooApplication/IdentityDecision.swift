@@ -47,7 +47,7 @@ public enum IdentityDecision {
     /// 区画 [ID-09]。**確信度がまったく違うものを混ぜない。**
     public struct Section: Identifiable, Sendable, Hashable {
         public enum Kind: String, Sendable, Hashable {
-            /// 同じ相対パス＝差し替え。ほぼ確実に同じ本。
+            /// 同じ相対パス＝差し替え。ほぼ確実に同じファイル。
             case samePath
             /// 別の場所。移動かもしれないし、別シリーズの同名ファイルかもしれない。
             case elsewhere

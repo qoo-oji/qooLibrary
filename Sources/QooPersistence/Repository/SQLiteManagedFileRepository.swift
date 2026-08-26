@@ -68,8 +68,11 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
 
     /// 再照合の候補を確度の高い順に返す [ID-03][ID3-02]。
     ///
-    /// ① 同一相対パス + 同一サイズ ② 同一ファイル名 + 同一サイズ ③ 同一ファイル名のみ。
-    /// **③ のみの一致は自動で紐づけない** [ID-05][ID3-03]——呼び出し側が判断する。
+    /// ① 同一相対パス + 同一サイズ ② 同一ファイル名 + 同一サイズ
+    /// ③a 同一相対パス（サイズ違い）③b 同一ファイル名のみ。
+    ///
+    /// **どこまでを自動で紐づけるかはここでは決めない** [ID-05][ID3-03]。
+    /// 呼び出し側が `IdentityMatchPolicy.acceptsAutomatically(_:)` に委ねる [ID-13]。
     public func findCandidates(for snapshot: FileSnapshot) async throws
         -> [ReidentificationCandidate]
     {
@@ -103,10 +106,16 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
                 confidence = .pathAndSize
             } else if name == snapshot.filename, size == snapshot.fileSize {
                 confidence = .nameAndSize
+            } else if path == snapshot.relativePath {
+                // 同じ場所にあるがサイズが違う＝**その場での差し替え** [ID-03]③a。
+                // 相対パスが同じならファイル名も必ず同じなので、`.nameOnly` の
+                // 判定より**前**に見ること——逆にすると ③a が ③b に埋もれ、
+                // 「同じ場所か」で出し分ける設定 [ID-13] が効かなくなる。
+                confidence = .pathOnly
             } else if name == snapshot.filename {
                 confidence = .nameOnly
             } else {
-                continue                      // 相対パスは同じだがサイズが違う → 別物
+                continue
             }
             out.append(ReidentificationCandidate(
                 fileID: FileID(rawValue: row["id"]), confidence: confidence,

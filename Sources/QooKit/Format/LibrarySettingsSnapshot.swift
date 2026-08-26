@@ -45,6 +45,8 @@ public struct LibrarySettingsSnapshot: Sendable {
     public let comicInfoVolumeSource: ComicInfoVolumeSource
     /// ブックフォルダの「開く」を関連付けアプリに任せるか [IF-18][AS-06]。
     public let opensBookFolderWithApp: Bool
+    /// どこまでを黙って同じファイルとみなすか [ID-13]。
+    public let identityMatchPolicy: IdentityMatchPolicy
 
     public init(libraryID: LibraryID,
                 settingsRevision: Int = 0,
@@ -65,7 +67,8 @@ public struct LibrarySettingsSnapshot: Sendable {
                 maxLabelGroups: Int = AppLimits.Format.maxLabelGroups,
                 readsEmbeddedMetadata: Bool = true,
                 comicInfoVolumeSource: ComicInfoVolumeSource = .ask,
-                opensBookFolderWithApp: Bool = false) {
+                opensBookFolderWithApp: Bool = false,
+                identityMatchPolicy: IdentityMatchPolicy = .default) {
         self.libraryID = libraryID
         self.settingsRevision = settingsRevision
         self.displayName = displayName
@@ -86,6 +89,7 @@ public struct LibrarySettingsSnapshot: Sendable {
         self.readsEmbeddedMetadata = readsEmbeddedMetadata
         self.comicInfoVolumeSource = comicInfoVolumeSource
         self.opensBookFolderWithApp = opensBookFolderWithApp
+        self.identityMatchPolicy = identityMatchPolicy
     }
 
     /// フォーマットのコンパイルに渡す文脈を組み立てる。

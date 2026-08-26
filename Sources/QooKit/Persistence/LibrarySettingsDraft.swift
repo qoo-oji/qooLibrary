@@ -138,6 +138,8 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
     /// ブックフォルダの「開く」を関連付けアプリに任せるか [IF-18][AS-06]。
     /// 偽なら既定どおりフォルダを開く（配下の画像一覧を表示する）。
     public var opensBookFolderWithApp: Bool
+    /// どこまでを黙って同じファイルとみなすか [ID-13]。
+    public var identityMatchPolicy: IdentityMatchPolicy
 
     // --- 照合の文脈（編集不可） ---
     /// **この**ライブラリを除いた他ライブラリの型名・表示名。型付き照合 [TY-01]
@@ -163,6 +165,7 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
                 readsEmbeddedMetadata: Bool = true,
                 comicInfoVolumeSource: ComicInfoVolumeSource = .ask,
                 opensBookFolderWithApp: Bool = false,
+                identityMatchPolicy: IdentityMatchPolicy = .default,
                 otherLibraryTypeNames: [String] = [],
                 otherLibraryDisplayNames: [String] = []) {
         self.displayName = displayName
@@ -182,6 +185,7 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
         self.readsEmbeddedMetadata = readsEmbeddedMetadata
         self.comicInfoVolumeSource = comicInfoVolumeSource
         self.opensBookFolderWithApp = opensBookFolderWithApp
+        self.identityMatchPolicy = identityMatchPolicy
         self.otherLibraryTypeNames = otherLibraryTypeNames
         self.otherLibraryDisplayNames = otherLibraryDisplayNames
     }

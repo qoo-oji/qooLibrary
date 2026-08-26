@@ -361,6 +361,9 @@ struct LibrarySettingsPayload: Codable, Sendable {
     /// ブックフォルダの「開く」を関連付けアプリに任せるか [IF-18][AS-06]。
     /// **既定は偽**（＝フォルダを開く）——要件が既定をそう定めている。
     var opensBookFolderWithApp: Bool = false
+    /// どこまでを黙って同じファイルとみなすか [ID-13]。
+    /// **既定は `.sameName`**（＝確認しない）——要件が既定をそう定めている。
+    var identityMatchPolicy: IdentityMatchPolicy = .default
 
     static let empty = LibrarySettingsPayload()
 
@@ -370,7 +373,8 @@ struct LibrarySettingsPayload: Codable, Sendable {
          semanticBindings: [String: Int], seriesTitleCompositionFormat: String,
          labelGroupOrder: [Int], readsEmbeddedMetadata: Bool,
          comicInfoVolumeSource: ComicInfoVolumeSource,
-         opensBookFolderWithApp: Bool) {
+         opensBookFolderWithApp: Bool,
+         identityMatchPolicy: IdentityMatchPolicy) {
         self.targetExtensions = targetExtensions
         self.imageExtensions = imageExtensions
         self.delimiters = delimiters
@@ -380,6 +384,7 @@ struct LibrarySettingsPayload: Codable, Sendable {
         self.readsEmbeddedMetadata = readsEmbeddedMetadata
         self.comicInfoVolumeSource = comicInfoVolumeSource
         self.opensBookFolderWithApp = opensBookFolderWithApp
+        self.identityMatchPolicy = identityMatchPolicy
     }
 
     /// **すべてのキーを `decodeIfPresent` で読む。**
@@ -404,6 +409,7 @@ struct LibrarySettingsPayload: Codable, Sendable {
         readsEmbeddedMetadata = try value(.readsEmbeddedMetadata, true)
         comicInfoVolumeSource = try value(.comicInfoVolumeSource, .ask)
         opensBookFolderWithApp = try value(.opensBookFolderWithApp, false)
+        identityMatchPolicy = try value(.identityMatchPolicy, .default)
         // **フィールドを足したら、ここへ 1 行足すこと。**`CodingKeys` は
         // プロパティから合成されるので鍵は増えるが、この本体に書き忘れても
         // コンパイラは何も言わず、**読まれないまま既定値に落ちる**

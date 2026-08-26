@@ -105,6 +105,29 @@ struct LibraryBasicsSettingsView: View {
                 } label: {
                     Text("librarySettings.basics.seriesComposition")
                 }
+                // [ID-13] どこまでを黙って同じファイルとみなすか。**既定は
+                // 「名前が同じなら確認しない」**——差し替えは日常的に起きるので、
+                // 既定で尋ねると邪魔になる［ユーザー判断］。厳しくしたい人だけが
+                // 上の 2 つを選ぶ。判断の実体は `IdentityMatchPolicy` にある。
+                VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
+                    Text("librarySettings.basics.identityMatch")
+                    Picker("", selection: $draft.identityMatchPolicy) {
+                        Text("librarySettings.basics.identityMatch.alwaysConfirm")
+                            .tag(IdentityMatchPolicy.alwaysConfirm)
+                        Text("librarySettings.basics.identityMatch.samePath")
+                            .tag(IdentityMatchPolicy.samePath)
+                        Text("librarySettings.basics.identityMatch.sameName")
+                            .tag(IdentityMatchPolicy.sameName)
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.radioGroup)
+                    // **何が引き継がれるかを書く。** 選択肢の名前だけでは
+                    // 「確認しない」と何が起きるのかが読み取れない。
+                    Text("librarySettings.basics.identityMatchHint")
+                        .font(.system(size: Tokens.fontSize.caption))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .formStyle(.grouped)
             .frame(maxWidth: 560)
