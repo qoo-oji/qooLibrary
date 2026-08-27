@@ -2314,6 +2314,414 @@
         }
       }
     },
+    "duplicates.confirmBody": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$d file(s) will be removed. “%2$@” will be kept."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$d 件のファイルを取り除きます。「%2$@」は残ります。"
+          }
+        }
+      }
+    },
+    "duplicates.confirmButton": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "削除"
+          }
+        }
+      }
+    },
+    "duplicates.confirmTitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete the other copies?"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "他のファイルを削除しますか？"
+          }
+        }
+      }
+    },
+    "duplicates.deleteOthers": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete the Rest…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "残りを削除…"
+          }
+        }
+      }
+    },
+    "duplicates.deletesPermanently": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "There is no Trash on this volume, so the files are deleted permanently. This cannot be undone."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このボリュームにはゴミ箱が無いため、ファイルは完全に削除されます。この操作は取り消せません。"
+          }
+        }
+      }
+    },
+    "duplicates.field.folder": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Folder"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所在"
+          }
+        }
+      }
+    },
+    "duplicates.field.format": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Format"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "形式"
+          }
+        }
+      }
+    },
+    "duplicates.field.pages": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pages"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ページ数"
+          }
+        }
+      }
+    },
+    "duplicates.field.rating": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rating"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "評価"
+          }
+        }
+      }
+    },
+    "duplicates.field.resolution": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resolution"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "解像度"
+          }
+        }
+      }
+    },
+    "duplicates.field.size": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Size"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サイズ"
+          }
+        }
+      }
+    },
+    "duplicates.inheritMetadata": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Carry labels and rating over to the kept file"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ラベルと評価を、残すファイルへ引き継ぐ"
+          }
+        }
+      }
+    },
+    "duplicates.keepRule": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep:"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "残す基準:"
+          }
+        }
+      }
+    },
+    "duplicates.keepThisOne": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep this one"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "これを残す"
+          }
+        }
+      }
+    },
+    "duplicates.loadFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't load this group"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この組を読み込めませんでした"
+          }
+        }
+      }
+    },
+    "duplicates.movesToTrash": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The files move to the Trash. You can undo this with ⌘Z."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ファイルはゴミ箱へ移ります。⌘Z で取り消せます。"
+          }
+        }
+      }
+    },
+    "duplicates.noLongerDuplicated": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No duplicates here"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重複はありません"
+          }
+        }
+      }
+    },
+    "duplicates.noLongerDuplicatedHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only one file has this title now. It may have been removed or renamed elsewhere."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このタイトルのファイルは 1 件だけになりました。別の場所で削除されたか、名前が変わった可能性があります。"
+          }
+        }
+      }
+    },
+    "duplicates.rule.highestRating": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Highest rating"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "評価が最高"
+          }
+        }
+      }
+    },
+    "duplicates.rule.highestResolution": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Highest resolution"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "解像度が最大"
+          }
+        }
+      }
+    },
+    "duplicates.rule.largestSize": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Largest"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サイズが最大"
+          }
+        }
+      }
+    },
+    "duplicates.rule.mostPages": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Most pages"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ページ数が最多"
+          }
+        }
+      }
+    },
+    "duplicates.rule.preferFormats": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preferred format"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "形式を優先"
+          }
+        }
+      }
+    },
+    "duplicates.windowTitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compare Duplicates"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重複ファイルの比較"
+          }
+        }
+      }
+    },
     "eject.failed": {
       "extractionState": "stale",
       "localizations": {
@@ -3317,6 +3725,23 @@
         }
       }
     },
+    "folder.compareDuplicates": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compare Duplicates…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重複を比較…"
+          }
+        }
+      }
+    },
     "folder.compressEllipsis": {
       "extractionState": "stale",
       "localizations": {
@@ -3517,6 +3942,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "複製"
+          }
+        }
+      }
+    },
+    "folder.duplicateGroupIndicator": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Several files share this title. Open the comparison window to choose which to keep."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同じタイトルのファイルが複数あります。比較ウインドウでどれを残すか選べます。"
           }
         }
       }
@@ -4014,6 +4456,40 @@
         }
       }
     },
+    "folder.pinDuplicateFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't change the representative file"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "代表ファイルを変更できませんでした"
+          }
+        }
+      }
+    },
+    "folder.pinDuplicateRepresentative": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Always Show This One"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この 1 件を代表にする"
+          }
+        }
+      }
+    },
     "folder.renameEllipsis": {
       "extractionState": "stale",
       "localizations": {
@@ -4133,6 +4609,23 @@
         }
       }
     },
+    "folder.showDuplicatesOnly": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show Duplicates Only"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重複のみを表示"
+          }
+        }
+      }
+    },
     "folder.showPackageContents": {
       "extractionState": "manual",
       "localizations": {
@@ -4163,6 +4656,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "ロック解除"
+          }
+        }
+      }
+    },
+    "folder.unpinDuplicateRepresentative": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop Always Showing This One"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "代表の固定を解除"
           }
         }
       }
@@ -8001,6 +8511,91 @@
           "stringUnit": {
             "state": "translated",
             "value": "表示名"
+          }
+        }
+      }
+    },
+    "librarySettings.basics.duplicateGrouping": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Group duplicate files"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重複ファイルをまとめて表示"
+          }
+        }
+      }
+    },
+    "librarySettings.basics.duplicateGrouping.byTitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Group files with the same title"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "タイトルが同じものをまとめる"
+          }
+        }
+      }
+    },
+    "librarySettings.basics.duplicateGrouping.byTitleAndVolume": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Group files with the same title and volume"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "タイトルと巻数が同じものをまとめる"
+          }
+        }
+      }
+    },
+    "librarySettings.basics.duplicateGrouping.off": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show every file separately"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "すべて個別に表示する"
+          }
+        }
+      }
+    },
+    "librarySettings.basics.duplicateGroupingHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Grouped files appear as a single row with a count badge. Nothing is deleted — use the comparison window to decide which copy to keep."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "まとめた組は件数バッジの付いた 1 行として表示されます。ファイルは削除されません——どれを残すかは比較ウインドウで選びます。"
           }
         }
       }

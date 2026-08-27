@@ -128,6 +128,27 @@ struct LibraryBasicsSettingsView: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                // [DU-01][DU-02] 同じ作品のファイルを 1 行に畳むか。**既定は
+                // 無効**——畳むのは表示を減らす操作なので、頼まれていないのに
+                // 始めない。判定キーの違いは「同じタイトルの別の巻を同じ組と
+                // 見るかどうか」だけ。
+                VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
+                    Text("librarySettings.basics.duplicateGrouping")
+                    Picker("", selection: $draft.duplicateGrouping) {
+                        Text("librarySettings.basics.duplicateGrouping.off")
+                            .tag(DuplicateGrouping.off)
+                        Text("librarySettings.basics.duplicateGrouping.byTitleAndVolume")
+                            .tag(DuplicateGrouping.byTitleAndVolume)
+                        Text("librarySettings.basics.duplicateGrouping.byTitle")
+                            .tag(DuplicateGrouping.byTitle)
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.radioGroup)
+                    Text("librarySettings.basics.duplicateGroupingHint")
+                        .font(.system(size: Tokens.fontSize.caption))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .formStyle(.grouped)
             .frame(maxWidth: 560)

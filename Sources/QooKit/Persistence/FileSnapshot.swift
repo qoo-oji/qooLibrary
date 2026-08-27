@@ -115,6 +115,14 @@ public struct FileRow: Sendable, Hashable, Identifiable {
     /// 保管庫へ移した日時 [FAW-05]。
     public let archivedAt: Date?
     public let isBookFolder: Bool
+    /// 代表を手で固定したか [DU-08]。**再生成不可能**なので JSON にも入る [MG-22]。
+    public let isDuplicateRepresentativePinned: Bool
+    /// ページ数（画像ファイル数）[DU-21]。アーカイブを開かないと分からないので
+    /// **遅延取得**し、`nil` は「まだ数えていない」を意味する [DU-22][MD-01]。
+    public let pageCount: Int?
+    /// 先頭画像の解像度 [DU-21]。`pageCount` と同じく遅延取得。
+    public let firstImageWidth: Int?
+    public let firstImageHeight: Int?
 
     public init(id: FileID, libraryID: LibraryID, relativePath: String, filename: String,
                 fileSize: Int64, createdAt: Date, modifiedAt: Date, title: String?,
@@ -125,7 +133,10 @@ public struct FileRow: Sendable, Hashable, Identifiable {
                 state: FileState,
                 isArchived: Bool,
                 archivedFromPath: String? = nil, archivedAt: Date? = nil,
-                isBookFolder: Bool) {
+                isBookFolder: Bool,
+                isDuplicateRepresentativePinned: Bool = false,
+                pageCount: Int? = nil,
+                firstImageWidth: Int? = nil, firstImageHeight: Int? = nil) {
         self.id = id
         self.libraryID = libraryID
         self.relativePath = relativePath
@@ -146,6 +157,30 @@ public struct FileRow: Sendable, Hashable, Identifiable {
         self.archivedFromPath = archivedFromPath
         self.archivedAt = archivedAt
         self.isBookFolder = isBookFolder
+        self.isDuplicateRepresentativePinned = isDuplicateRepresentativePinned
+        self.pageCount = pageCount
+        self.firstImageWidth = firstImageWidth
+        self.firstImageHeight = firstImageHeight
+    }
+
+    /// 数え終わった遅延メタデータを写した複製を返す [DU-22][MD-02]。
+    ///
+    /// **同じ事実を 2 箇所で持たないために要る。** 比較ビューは測った結果を
+    /// 行に持つが、残す 1 件を選ぶ規則 [DU-25] は `FileRow` を見るので、
+    /// 反映しないと**「ページ数が最多」を選んでもページ数を見ていない**という、
+    /// 画面からは絶対に気づけない形になる（しかもその判断が取り消せない
+    /// 削除を駆動する）。
+    public func withArchiveMetadata(pageCount: Int?, width: Int?, height: Int?) -> FileRow {
+        FileRow(id: id, libraryID: libraryID, relativePath: relativePath,
+                filename: filename, fileSize: fileSize, createdAt: createdAt,
+                modifiedAt: modifiedAt, title: title, titleOrigin: titleOrigin,
+                seriesName: seriesName, volume: volume, authorName: authorName,
+                rating: rating, coverImageRef: coverImageRef,
+                coverImageSource: coverImageSource, state: state,
+                isArchived: isArchived, archivedFromPath: archivedFromPath,
+                archivedAt: archivedAt, isBookFolder: isBookFolder,
+                isDuplicateRepresentativePinned: isDuplicateRepresentativePinned,
+                pageCount: pageCount, firstImageWidth: width, firstImageHeight: height)
     }
 
     /// 拡張子を除いたファイル名。**`FileSnapshot` と同じ導出**（`FilenameStem`）
@@ -157,11 +192,17 @@ public struct FileRow: Sendable, Hashable, Identifiable {
 /// ページと総件数を一度に返す。総件数を毎回数え直さないため。
 public struct FilePage: Sendable {
     public let rows: [FileRow]
+    /// 絞り込み後の総数。**グループ化しているときはグループ数** [DU-06]。
     public let totalCount: Int
+    /// 代表行 → その組の件数 [DU-06]。**2 件以上の組だけを持つ**ので、
+    /// 「入っていない ＝ 重複していない」と読める。
+    public let duplicateCounts: [FileID: Int]
 
-    public init(rows: [FileRow], totalCount: Int) {
+    public init(rows: [FileRow], totalCount: Int,
+                duplicateCounts: [FileID: Int] = [:]) {
         self.rows = rows
         self.totalCount = totalCount
+        self.duplicateCounts = duplicateCounts
     }
 }
 

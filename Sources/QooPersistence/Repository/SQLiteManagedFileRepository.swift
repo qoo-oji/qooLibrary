@@ -64,23 +64,31 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
         return raw.map { LabelID(rawValue: $0) }
     }
 
-    /// `searchKey` を行の現在値から作り直す [SR-03]。
+    /// タイトルから導く鍵（`searchKey` [SR-03] と `titleKey` [DU-02]）を
+    /// 行の現在値から作り直す。
     ///
     /// タイトル・シリーズ名を書き換えた**あと**に呼ぶこと。**書いた値ではなく
     /// 行を読み直す**のが要点——`applyParsedFields` の `title` は
     /// `CASE WHEN titleOrigin = 'manual'` で据え置かれることがあるので、
     /// 渡された値から組み立てると手動編集した行だけ鍵が実態とずれる。
-    static func refreshSearchKey(_ db: Database, id: FileID,
-                                 options: NormalizationOptions) throws {
+    ///
+    /// **2 つの鍵を 1 回で書く。** どちらも「タイトルが変わったら作り直す」
+    /// という同じ条件で、別々の関数に分けると片方だけ呼ぶ経路がいずれできる
+    /// ——`searchKey` は 2-9 の時点で実際にそうなっていた（CLAUDE.md）。
+    static func refreshDerivedKeys(_ db: Database, id: FileID,
+                                   options: NormalizationOptions) throws {
         let stmt = try db.cachedStatement(sql:
             "SELECT filename, title, seriesName FROM managedFile WHERE id = ?")
         guard let row = try Row.fetchOne(stmt, arguments: [id.rawValue]) else { return }
         let filename: String = row["filename"]
+        let title: String? = row["title"]
         let key = ManagedFileSearchKey.make(
             stem: ManagedFileSearchKey.stem(ofFilename: filename),
-            title: row["title"], seriesName: row["seriesName"], options: options)
-        try db.execute(sql: "UPDATE managedFile SET searchKey = ? WHERE id = ?",
-                       arguments: [key, id.rawValue])
+            title: title, seriesName: row["seriesName"], options: options)
+        // `nil` は「グループ化の対象外」——空文字にしてはならない [DU-02]。
+        let titleKey = DuplicateGroupKey.titleKey(title: title, options: options)
+        try db.execute(sql: "UPDATE managedFile SET searchKey = ?, titleKey = ? WHERE id = ?",
+                       arguments: [key, titleKey, id.rawValue])
     }
 
     /// 再照合の候補を確度の高い順に返す [ID-03][ID3-02]。
@@ -362,7 +370,7 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
                     """, arguments: [id.rawValue])
                 // タイトルは `titleOrigin = 'manual'` なら残るので、消した枝でも
                 // 鍵は作り直す [SR-03]。
-                try Self.refreshSearchKey(db, id: id,
+                try Self.refreshDerivedKeys(db, id: id,
                                           options: try Self.normalizationOptions(db, fileID: id))
                 return
             }
@@ -387,7 +395,7 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
                     id.rawValue])
             // タイトル・シリーズ名も検索対象 [SR-03]。**書いた値ではなく行を
             // 読み直す**（上の `CASE WHEN titleOrigin = 'manual'` があるため）。
-            try Self.refreshSearchKey(db, id: id, options: options)
+            try Self.refreshDerivedKeys(db, id: id, options: options)
         }
     }
 
@@ -598,7 +606,7 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
             // 手で直したタイトル・シリーズ名も、その場で検索に出る [SR-03]。
             // ここを忘れると「直したのに検索で見つからない」という、
             // 画面からは理由の読み取れない形になる。
-            try Self.refreshSearchKey(db, id: id, options: options)
+            try Self.refreshDerivedKeys(db, id: id, options: options)
         }
     }
 
@@ -634,17 +642,133 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
     public func query(_ q: FileQuery) async throws -> FilePage {
         try await database.writer.read { db in
             let (where_, args) = Self.whereClause(q)
-            let total = try Int.fetchOne(
-                db, sql: "SELECT COUNT(*) FROM managedFile WHERE \(where_)",
-                arguments: StatementArguments(args.map { Optional($0) })) ?? 0
-            var pageArgs = args
+            guard let grouped = Self.groupedSubquery(q, where_: where_) else {
+                // グループ化しない従来の経路。
+                let total = try Int.fetchOne(
+                    db, sql: "SELECT COUNT(*) FROM managedFile WHERE \(where_)",
+                    arguments: StatementArguments(args.map { Optional($0) })) ?? 0
+                var pageArgs = args
+                pageArgs.append(q.limit)
+                pageArgs.append(q.offset)
+                let rows = try ManagedFileRecord.fetchAll(db, sql: """
+                    SELECT * FROM managedFile WHERE \(where_)
+                    ORDER BY \(Self.orderClause(q)) LIMIT ? OFFSET ?
+                    """, arguments: StatementArguments(pageArgs.map { Optional($0) }))
+                return FilePage(rows: rows.map(\.fileRow), totalCount: total)
+            }
+            // グループ化する経路 [DU-04〜DU-06][DU-11]。**総数はグループ数**
+            // ——行数を出すと、畳んだぶんだけ一覧より大きい数がステータスバーへ出る。
+            // 条件が UNION ALL の両側に現れるので、引数もその回数だけ繰り返す。
+            let groupArgs = Array(repeating: args, count: grouped.repeatsWhereArgs).flatMap { $0 }
+            var pageArgs = groupArgs
             pageArgs.append(q.limit)
             pageArgs.append(q.offset)
-            let rows = try ManagedFileRecord.fetchAll(db, sql: """
-                SELECT * FROM managedFile WHERE \(where_)
+            // **総数は同じ問い合わせの中で数える。** 別に
+            // `SELECT COUNT(*) FROM (…)` を撃つと、**高い窓関数をページごとに
+            // 2 回走らせる**ことになる［実測: 5 万件で 131 ms → 298 ms と
+            // 倍以上になっていた］。`COUNT(*) OVER ()` は絞り込んだ後の
+            // 行数を同じ走査で返す。
+            let raw = try Row.fetchAll(db, sql: """
+                SELECT *, COUNT(*) OVER () AS totalGroups FROM (\(grouped.sql))
                 ORDER BY \(Self.orderClause(q)) LIMIT ? OFFSET ?
                 """, arguments: StatementArguments(pageArgs.map { Optional($0) }))
-            return FilePage(rows: rows.map(\.fileRow), totalCount: total)
+            // 行が 1 つも返らなければ総数を読む先が無い（末尾より後ろを
+            // 要求した場合）。そのときだけ数え直す——**0 と決めつけない。**
+            let total: Int = try raw.first.map { $0["totalGroups"] ?? 0 }
+                ?? (Int.fetchOne(db, sql: "SELECT COUNT(*) FROM (\(grouped.sql))",
+                                 arguments: StatementArguments(
+                                    groupArgs.map { Optional($0) })) ?? 0)
+            var rows: [FileRow] = []
+            var counts: [FileID: Int] = [:]
+            rows.reserveCapacity(raw.count)
+            for r in raw {
+                let row = try ManagedFileRecord(row: r).fileRow
+                rows.append(row)
+                let n: Int = r["dupCount"] ?? 1
+                if n > 1 { counts[row.id] = n }      // 1 件だけの組は「重複」ではない
+            }
+            return FilePage(rows: rows, totalCount: total, duplicateCounts: counts)
+        }
+    }
+
+    /// 同じ作品を 1 行に畳む問い合わせ [DU-02][DU-05][DU-06]。
+    ///
+    /// グループ化しないときは `nil`——呼び出し側は従来の経路を通る。
+    /// 返り値の `repeatsWhereArgs` が 2 のときは、`where_` の引数を
+    /// **2 回続けて**渡すこと（下の UNION ALL が両側で同じ条件を使う）。
+    ///
+    /// **タイトルの有無で 2 つに割ってある。**「タイトルが無い行は決して
+    /// 畳まない」[DU-02] を、`COALESCE(titleKey, …)` という一区画一意な式では
+    /// なく**問い合わせの形そのもの**で表す——不変条件が式の細工に依存せず、
+    /// 読み手にも分かりやすい。
+    ///
+    /// **［実測］この分割は速度のためには効かなかった。** `COALESCE` が索引を
+    /// 使えないのは事実で（`USE TEMP B-TREE FOR ORDER BY` → 素の列なら
+    /// `mf_lib_titlekey` を使い `LAST TERM OF ORDER BY` だけになる）、そこが
+    /// 5 万件で 308 ms の原因だと見込んで割ったが、**計画は変わったのに時間は
+    /// 300 ms でほとんど動かなかった**。支配的なのは窓関数そのもの——
+    /// `COUNT(*) OVER` と `ROW_NUMBER()` は区画全体を見るので、`LIMIT` を
+    /// 先に効かせられず、ページを送るたびに全件を処理する。
+    ///
+    /// 現状は目標（500 ms）の内側なので、この形のまま受け入れている。
+    /// **グループ化は既定で無効** [DU-01] なので、費用を払うのは自分で
+    /// 有効にした利用者だけである。速くするなら「代表かどうか」を列として
+    /// 持たせるしかないが、**評価を変えると代表が変わる** [DU-05] ため
+    /// 古くなりやすく、割に合うかは別途測ってから決めること。
+    ///
+    /// **代表の決定順は `DuplicateSelection.precedes` と 1 対 1 で対応する。**
+    /// 食い違うと、一覧に出る代表と比較ビューの並びが噛み合わなくなる。
+    /// 自然順は専用の照合（`QooDatabase.naturalOrder`）で、Swift 側と
+    /// **同じ `localizedStandardCompare`** を呼ぶ。一致は
+    /// `DuplicateGroupingQueryTests` が固定している。
+    static func groupedSubquery(_ q: FileQuery, where_: String)
+        -> (sql: String, repeatsWhereArgs: Int)?
+    {
+        guard let partition = partitionExpression(q.grouping) else { return nil }
+        let onlyDuplicates = q.duplicatesOnly ? " AND dupCount > 1" : ""
+        let folded = """
+            SELECT * FROM (
+              SELECT managedFile.*,
+                     COUNT(*) OVER dupWindow AS dupCount,
+                     ROW_NUMBER() OVER (
+                       PARTITION BY \(partition)
+                       ORDER BY isDuplicateRepresentativePinned DESC,
+                                rating DESC, fileSize DESC,
+                                filename COLLATE qooNaturalOrder ASC, id ASC
+                     ) AS dupRank
+                FROM managedFile
+               WHERE \(where_) AND titleKey IS NOT NULL
+              WINDOW dupWindow AS (PARTITION BY \(partition))
+            ) WHERE dupRank = 1\(onlyDuplicates)
+            """
+        // 「重複のみ」[DU-11] のときは、タイトルの無い行は定義上 1 件の組
+        // なので出さない——2 本目そのものを付けない。
+        guard !q.duplicatesOnly else { return (folded, 1) }
+        return ("""
+            \(folded)
+            UNION ALL
+            SELECT managedFile.*, 1 AS dupCount, 1 AS dupRank
+              FROM managedFile
+             WHERE \(where_) AND titleKey IS NULL
+            """, 2)
+    }
+
+    /// 区画の式 [DU-02]。
+    ///
+    /// **タイトルを取れなかった行は、1 行ずつ独立した区画にする。**
+    /// SQLite の `PARTITION BY` は NULL どうしを同じ区画と見なすので、素の
+    /// `titleKey` で区切ると**タイトルの無いファイル全部が 1 グループに畳まれ、
+    /// 1 行を残して画面から消える**——未解決ファイル [AL-30] は蔵書によっては
+    /// 数千件あるので、実害になる。`DuplicateGroupKey.make` が `nil` を返すのと
+    /// 同じ判断を、SQL 側でも守る。
+    static func partitionExpression(_ mode: DuplicateGrouping) -> String? {
+        // **`titleKey IS NOT NULL` に絞った側でしか使わない**ので、素の列で
+        // よい（NULL の行は別の枝を通り、畳まれない）。素の列にしておくと
+        // 索引 `mf_lib_titlekey` がそのまま効く。
+        switch mode {
+        case .off:              return nil
+        case .byTitle:          return "titleKey"
+        case .byTitleAndVolume: return "titleKey, volumeNumber, volumeKind"
         }
     }
 

@@ -25,9 +25,23 @@ public final class QooDatabase: Sendable {
             .appendingPathComponent("qooLibrary.sqlite")
     }
 
+    /// ファイル名の**自然順**照合 [DU-05]。
+    ///
+    /// 重複グループの代表を SQL の窓関数で決める [DU2-03] ときに、Swift 側の
+    /// `DuplicateSelection.precedes` とまったく同じ比較を使うために要る
+    /// ——素の BINARY 照合だと `第10巻` が `第2巻` より前に来て、一覧に出る
+    /// 代表と比較ビューの並びが食い違う。**同じ規則を 2 通りに書かない**ため、
+    /// どちらも `localizedStandardCompare` を呼ぶ。
+    ///
+    /// 一致は `NaturalOrderCollationTests` が固定している。
+    public static let naturalOrder = DatabaseCollation("qooNaturalOrder") { lhs, rhs in
+        lhs.localizedStandardCompare(rhs)
+    }
+
     public static func configuration() -> Configuration {
         var config = Configuration()
         config.prepareDatabase { db in
+            db.add(collation: naturalOrder)
             // WAL は open 時に一度設定すれば永続する（ファイルの属性）。
             try db.execute(sql: "PRAGMA journal_mode = WAL")
             // NORMAL は WAL と組で使う既定。電源断でも DB は壊れず、

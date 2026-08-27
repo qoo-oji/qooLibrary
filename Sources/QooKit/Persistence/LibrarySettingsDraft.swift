@@ -108,6 +108,18 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
     public var libraryTypeName: String
     public var caseSensitive: Bool             // [N-04]
     public var thumbnailsAlwaysHidden: Bool    // [DS-04]
+    /// 重複ファイルをまとめて表示するか [DU-01][DU-02]。**既定は `.off`。**
+    ///
+    /// **モードの切り替えそのものに再スキャンは要らない**——鍵
+    /// （`managedFile.titleKey`）はモードに関わらず常に書いてあり、ここで
+    /// 選ぶのは「問い合わせのときに巻数まで見るかどうか」だけ。
+    ///
+    /// **ただし v6 より前からある行は `titleKey` が NULL** で、走査が埋め直す
+    /// まで組に加わらない（移行時に埋めないのは、正規化がライブラリごとの
+    /// `caseSensitive` に依存するのに、移行はその設定を読む前に走るため）。
+    /// **既存のライブラリで初めて有効にしたときは、一度再スキャンするまで
+    /// 何も畳まれない。**
+    public var duplicateGrouping: DuplicateGrouping  // [DU-01][DU-02]
 
     // --- 対象 ---
     public var targetExtensions: [String]      // [AL-11][IF-01]
@@ -152,6 +164,7 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
                 libraryTypeName: String = "",
                 caseSensitive: Bool = false,
                 thumbnailsAlwaysHidden: Bool = false,
+                duplicateGrouping: DuplicateGrouping = .off,
                 targetExtensions: [String] = [],
                 imageExtensions: [String] = [],
                 delimiters: DelimiterSet = .default,
@@ -172,6 +185,7 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
         self.libraryTypeName = libraryTypeName
         self.caseSensitive = caseSensitive
         self.thumbnailsAlwaysHidden = thumbnailsAlwaysHidden
+        self.duplicateGrouping = duplicateGrouping
         self.targetExtensions = targetExtensions
         self.imageExtensions = imageExtensions
         self.delimiters = delimiters

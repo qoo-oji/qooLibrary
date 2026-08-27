@@ -47,6 +47,7 @@ public struct ManagedFileSnapshot: Sendable, Hashable {
     public let filename: String
     public let normalizedName: String          // 再生成可能 [DB-03]
     public let searchKey: String               // 再生成可能 [SR-06]
+    public let titleKey: String?               // 再生成可能 [DU-02][DU-03]
     public let fileSize: Int64
     public let createdAt: Date
     public let modifiedAt: Date
@@ -80,7 +81,7 @@ public struct ManagedFileSnapshot: Sendable, Hashable {
 
     public init(id: FileID, libraryID: LibraryID, identity: FileIdentity,
                 relativePath: String, filename: String,
-                normalizedName: String, searchKey: String,
+                normalizedName: String, searchKey: String, titleKey: String? = nil,
                 fileSize: Int64, createdAt: Date, modifiedAt: Date,
                 title: String?, titleOrigin: ValueOrigin,
                 seriesName: String?, seriesKey: String?,
@@ -101,6 +102,7 @@ public struct ManagedFileSnapshot: Sendable, Hashable {
         self.filename = filename
         self.normalizedName = normalizedName
         self.searchKey = searchKey
+        self.titleKey = titleKey
         self.fileSize = fileSize
         self.createdAt = createdAt
         self.modifiedAt = modifiedAt

@@ -335,6 +335,7 @@ private struct ThumbnailImage: View {
         }
         .frame(width: size, height: size)
         .bookFolderBadge(entry.isBookFolder, iconSize: size)   // [IF-17]
+        .duplicateCountBadge(entry.duplicateCount, iconSize: size)  // [DU-06]
         .task(id: RequestKey(url: entry.url, hidden: thumbnailsHidden,
                              userCoverURL: entry.userCoverURL)) {
             image = nil

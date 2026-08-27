@@ -52,12 +52,20 @@ public final class LibraryContentModel {
         /// ここで持つのは**パスの組み立てだけ**（`UserCoverStore.url(forRef:)`
         /// は純粋な計算）なので、200 行ぶん作っても費用が無い。
         public let userCoverURL: URL?
+        /// この行が代表している組の件数 [DU-06]。**1 は「重複していない」**。
+        /// バッジを出すかどうかはこの値だけで決まる。
+        public let duplicateCount: Int
         public var id: URL { url }
 
-        public init(file: FileRow, url: URL, userCoverURL: URL? = nil) {
+        /// 重複の組を代表しているか [DU-06][DU-12]。
+        public var isDuplicateRepresentative: Bool { duplicateCount > 1 }
+
+        public init(file: FileRow, url: URL, userCoverURL: URL? = nil,
+                    duplicateCount: Int = 1) {
             self.file = file
             self.url = url
             self.userCoverURL = userCoverURL
+            self.duplicateCount = duplicateCount
         }
 
         /// 一覧に出す名前 [IV-05][IV-07]。
@@ -113,13 +121,22 @@ public final class LibraryContentModel {
             clear()
             return
         }
+        // グループ化の可否は**ライブラリの設定**が決める [DU-01][DU-02]。
+        // `clear()` で戻さずここで毎回入れ直すのは、設定ウインドウで変えた
+        // 直後の読み直しでも新しい値が効くようにするため（`settingsRevision`
+        // が上がると呼び出し側が読み直す）。
+        grouping = library.duplicateGrouping
+        // 畳んでいないのに「重複のみ」は意味を持たない [DU-11]。
+        let onlyDuplicates = grouping.isEnabled && duplicatesOnly
         let query = Self.makeQuery(libraryID: library.id,
                                    relativePath: relativePath,
                                    labelSelection: labelSelection,
                                    ratingFilter: ratingFilter,
                                    searchText: searchText,
                                    sort: sort,
-                                   offset: 0)
+                                   offset: 0,
+                                   grouping: grouping,
+                                   duplicatesOnly: onlyDuplicates)
         generation &+= 1
         let mine = generation
         activeQuery = query
@@ -129,7 +146,8 @@ public final class LibraryContentModel {
             let page = try await services.files(query)
             guard mine == generation else { return }
             rows = Self.rows(from: page.rows, libraryRootPath: library.resolvedPath,
-                             userCoverURL: { services.userCoverURL(ref: $0, library: library) })
+                             userCoverURL: { services.userCoverURL(ref: $0, library: library) },
+                             duplicateCounts: page.duplicateCounts)
             totalCount = page.totalCount
             state = .ready
         } catch {
@@ -163,7 +181,8 @@ public final class LibraryContentModel {
             // 「まだあるのに止まる」のどちらかになる。
             totalCount = page.totalCount
             let more = Self.rows(from: page.rows, libraryRootPath: library.resolvedPath,
-                                 userCoverURL: { services.userCoverURL(ref: $0, library: library) })
+                                 userCoverURL: { services.userCoverURL(ref: $0, library: library) },
+                                 duplicateCounts: page.duplicateCounts)
             // 同じ行が二度入らないようにする。ページの境目で走査が行を挿すと
             // `offset` がずれて重複し得る（`Identifiable` の id が衝突すると
             // SwiftUI が実行時に文句を言う）。
@@ -187,6 +206,19 @@ public final class LibraryContentModel {
         sort = spec
     }
 
+    /// 「重複のみを表示」[DU-11]。**ウインドウ固有の表示状態** [ST-20] なので
+    /// DB には保存しない——別のウインドウで同じライブラリを開いたときに
+    /// 巻き込まれない。
+    public private(set) var duplicatesOnly = false
+
+    public func setDuplicatesOnly(_ on: Bool) {
+        duplicatesOnly = on
+    }
+
+    /// 一覧がいま組を畳んでいるか [DU-04]。
+    /// バッジ・コンテキストメニューの出し分けはこれを見る。
+    public private(set) var grouping: DuplicateGrouping = .off
+
     /// 一覧を捨てて `.inactive` に戻す。モードをフォルダ側へ切り替えたとき、
     /// ライブラリの外へ出たときに呼ぶ。
     public func clear() {
@@ -195,6 +227,10 @@ public final class LibraryContentModel {
         rows = []
         totalCount = 0
         isLoadingMore = false
+        // **モードも戻す** [DU-04]。残したままだとフォルダ表示モードの
+        // 空きスペースに「重複のみを表示」が出続け、そこで切り替えた値が
+        // ライブラリ表示へ戻ったときに黙って一覧を絞る。
+        grouping = .off
         state = .inactive
     }
 
@@ -212,7 +248,9 @@ public final class LibraryContentModel {
                                  ratingFilter: FileQuery.RatingFilter?,
                                  searchText: String?,
                                  sort: FileQuery.SortSpec,
-                                 offset: Int) -> FileQuery {
+                                 offset: Int,
+                                 grouping: DuplicateGrouping = .off,
+                                 duplicatesOnly: Bool = false) -> FileQuery {
         let text = searchText?.trimmingCharacters(in: .whitespacesAndNewlines)
         return FileQuery(
             libraryID: libraryID,
@@ -221,6 +259,8 @@ public final class LibraryContentModel {
             labelSelection: labelSelection,
             ratingFilter: ratingFilter,
             searchText: (text?.isEmpty == false) ? text : nil,
+            duplicatesOnly: duplicatesOnly,
+            grouping: grouping,
             sort: sort,
             offset: offset,
             limit: AppLimits.Query.defaultPageSize)
@@ -255,7 +295,8 @@ public final class LibraryContentModel {
     /// **`isDirectory` はブックフォルダかどうかで決める** [IF-10]——ブックフォルダは
     /// 実体がディレクトリだが `managedFile` の 1 行として 1 冊分を表す。
     nonisolated static func rows(from files: [FileRow], libraryRootPath: String,
-                                 userCoverURL: (String) -> URL?) -> [Row] {
+                                 userCoverURL: (String) -> URL?,
+                                 duplicateCounts: [FileID: Int] = [:]) -> [Row] {
         let root = URL(fileURLWithPath: libraryRootPath, isDirectory: true)
         return files.map { file in
             Row(file: file,
@@ -263,7 +304,8 @@ public final class LibraryContentModel {
                                                  isDirectory: file.isBookFolder),
                 // [IV-02①] 参照があるときだけ場所を組み立てる。I/O は無い。
                 userCoverURL: file.coverImageSource == .userSpecified
-                    ? file.coverImageRef.flatMap(userCoverURL) : nil)
+                    ? file.coverImageRef.flatMap(userCoverURL) : nil,
+                duplicateCount: duplicateCounts[file.id] ?? 1)
         }
     }
 }

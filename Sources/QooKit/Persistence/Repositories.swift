@@ -22,10 +22,16 @@ public struct LibrarySummary: Sendable, Hashable, Identifiable {
     public let isReadOnlyDueToFS: Bool        // [FS-08]
     public let fileCount: Int
     public let settingsRevision: Int          // [VT-02]
+    /// 同じ作品のファイルを 1 行に畳むか [DU-01][DU-02]。**既定は無効。**
+    ///
+    /// 一覧を組み立てるたびに要るので設定の要約に載せてある——ここに
+    /// 無いと、行を描く直前に設定を読み直す経路を新しく作ることになる。
+    public let duplicateGrouping: DuplicateGrouping
 
     public init(id: LibraryID, uuid: UUID, displayName: String, resolvedPath: String,
                 volumeUUID: String, libraryTypeID: LibraryTypeID, libraryTypeName: String,
-                isOnline: Bool, isReadOnlyDueToFS: Bool, fileCount: Int, settingsRevision: Int) {
+                isOnline: Bool, isReadOnlyDueToFS: Bool, fileCount: Int, settingsRevision: Int,
+                duplicateGrouping: DuplicateGrouping = .off) {
         self.id = id
         self.uuid = uuid
         self.displayName = displayName
@@ -37,6 +43,7 @@ public struct LibrarySummary: Sendable, Hashable, Identifiable {
         self.isReadOnlyDueToFS = isReadOnlyDueToFS
         self.fileCount = fileCount
         self.settingsRevision = settingsRevision
+        self.duplicateGrouping = duplicateGrouping
     }
 }
 
@@ -199,6 +206,19 @@ public protocol ManagedFileRepository: Sendable {
     func archivedFiles(libraryID: LibraryID) async throws -> [ArchivedFile]
     /// ライブラリごとの保管庫の件数。左ペインの出し分けに使う（1 問い合わせ）。
     func archivedFileCounts() async throws -> [LibraryID: Int]
+
+    // --- 重複ファイル [DU-05][DU-08][DU-20][DU-22] ---
+
+    /// 同じ組の全メンバーを**代表順**で [DU-20]。
+    func duplicateGroupMembers(containing id: FileID,
+                               mode: DuplicateGrouping) async throws -> [FileRow]
+    /// 代表の手動固定 [DU-08]。同じ組の他の固定は外れる。
+    func setDuplicateRepresentativePinned(_ pinned: Bool, for id: FileID,
+                                          mode: DuplicateGrouping) async throws
+    /// 数え終わった遅延メタデータを控える [MD-02][DU-22]。
+    func cacheArchiveMetadata(pageCount: Int, subfolderCount: Int,
+                              firstImageWidth: Int?, firstImageHeight: Int?,
+                              for id: FileID) async throws
     /// 保管庫の出入りを記録する [FA-04][FA-05]。
     ///
     /// **実ファイルを動かした「あと」に呼ぶこと。** `relativePath` は受領書から

@@ -17,6 +17,8 @@ struct FolderContentView: View {
     /// `String(localized:)`/`NotificationItem` 等 `Text` の `LocalizedStringKey`
     /// 解決を経由しない箇所向け [1-12 ローカライズ方針、CLAUDE.md 参照]。
     @Environment(\.locale) private var locale
+    /// 重複の比較ウインドウを開くため [DU-29]。
+    @Environment(\.openWindow) private var openWindow
     let folder: URL?
     /// `folder` の「実行時点で常に最新」版 [実機検証で発見したバグの修正、
     /// `onGoToParent` のコメントと同種の問題]。`folder`（`let` で受け取った
@@ -374,6 +376,8 @@ struct FolderContentView: View {
                                     .resizable()
                                     .frame(width: 16, height: 16)
                                     .bookFolderBadge(entry.isBookFolder, iconSize: 16)  // [IF-17]
+                                    .duplicateCountBadge(entry.duplicateCount,
+                                                         iconSize: 16)  // [DU-06]
                                 if renamingEntry?.url == entry.url {
                                     // Finder 流のインライン名前編集 [ユーザー要望]。
                                     TextField("column.name", text: $renameText)
@@ -1894,6 +1898,30 @@ struct FolderContentView: View {
         return only.url
     }
 
+    /// 代表の手動固定を切り替える [DU-08][DG-04]。
+    ///
+    /// **切り替えたら一覧を読み直す**——代表が変われば、その組を表す行そのものが
+    /// 別のファイルに入れ替わる。
+    private func togglePinnedRepresentative(_ row: FileRow) {
+        let mode = libraryContent.grouping
+        let pinned = row.isDuplicateRepresentativePinned
+        let id = row.id
+        let sort = sortOrder.first?.librarySortSpec ?? .byFilename
+        Task {
+            do {
+                try await LibraryServices.shared.setDuplicateRepresentativePinned(
+                    !pinned, for: id, mode: mode)
+                await loadLibraryRows(sort)
+            } catch {
+                await NotificationRouter.shared.presentError(
+                    error,
+                    whatHappened: String(localized: "folder.pinDuplicateFailed",
+                                         locale: locale))
+            }
+        }
+    }
+
+
     /// `.contextMenu(forSelectionType:)` から呼ばれる。`urls` は AppKit が
     /// 解決済みの対象集合（右クリックした行が選択に含まれていればその選択全体、
     /// 含まれていなければその1行だけ、何もない場所なら空集合）[Finder と同じ規則、
@@ -1948,6 +1976,20 @@ struct FolderContentView: View {
                 Divider()
                 Button("folder.openInTerminal", systemImage: "terminal") { operations.openInTerminal([folder]) }
             }
+            // [DU-11] 重複の棚卸し。**畳んでいるときだけ出す**——off なら
+            // 「重複」が定義されない。
+            if libraryContent.grouping.isEnabled {
+                Divider()
+                Toggle("folder.showDuplicatesOnly", isOn: Binding(
+                    get: { libraryContent.duplicatesOnly },
+                    set: { on in
+                        libraryContent.setDuplicatesOnly(on)
+                        Task {
+                            await loadLibraryRows(
+                                sortOrder.first?.librarySortSpec ?? .byFilename)
+                        }
+                    }))
+            }
             Button("action.selectAll", systemImage: "character.textbox") { selectAllInCurrentFolder() }
                 .disabled(displayedEntries.isEmpty)
                 // Finder と同じく ⌥ で「すべてを選択解除」に入れ替わる
@@ -1977,6 +2019,23 @@ struct FolderContentView: View {
             // ベース／`public.folder` ベースの候補列挙を切り替える
             // [ユーザー指摘: フォルダの右クリックメニューにも「このアプリ
             // ケーションで開く」が無いのはおかしい]。
+            // [DU-07][DU-29][DG-02][DG-04] 重複の組を代表している行だけ。
+            // **畳んでいないときは出さない**——組が存在しないので比較する
+            // ものが無い。
+            if targets.count == 1, let only = targetEntries.first,
+               only.duplicateCount > 1, let row = only.libraryRow {
+                Button("folder.compareDuplicates", systemImage: "rectangle.on.rectangle") {
+                    DuplicateComparisonNavigation.open(
+                        file: row.id, library: row.libraryID, openWindow: openWindow)
+                }
+                Button(row.isDuplicateRepresentativePinned
+                       ? "folder.unpinDuplicateRepresentative"
+                       : "folder.pinDuplicateRepresentative",
+                       systemImage: row.isDuplicateRepresentativePinned ? "pin.slash" : "pin") {
+                    togglePinnedRepresentative(row)
+                }
+                Divider()
+            }
             if targets.count == 1, let only = targetEntries.first {
                 OpenWithMenu(url: only.url, isDirectory: only.isNavigableFolder)
                 // **パッケージの中を見る唯一の導線** [ユーザー要望、Finder 準拠]。
@@ -2731,6 +2790,9 @@ struct FolderEntry: Identifiable {
     /// ——ライブラリ表示モードでは 1 冊として 1 行に出ており、印の出番が無い。
     /// 判定は DB（`isBookFolder`）が出したもので、その場では計算しない。
     var isBookFolder: Bool = false
+    /// 代表している重複グループの件数 [DU-06]。**1 は「重複していない」。**
+    /// ライブラリ表示モードで畳んでいるときだけ 2 以上になる [DU-04]。
+    var duplicateCount: Int = 1
 
     /// 一覧に出す名前 [IV-05][IV-07]。ライブラリ表示モードではタイトル、
     /// 無ければファイル名。フォルダ表示モードでは常にファイル名。
@@ -2813,6 +2875,7 @@ extension FolderEntry {
             isLocked: false,
             libraryRow: row.file,
             userCoverURL: row.userCoverURL)     // [IV-02①]
+        self.duplicateCount = row.duplicateCount        // [DU-06]
     }
 }
 

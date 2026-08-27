@@ -304,6 +304,15 @@ struct QooLibraryApp: App {
         }
         .defaultSize(width: 900, height: 560)
 
+        // 重複の比較 [DU-20〜DU-29][15.14 節]。開くのは中央ペインの行の
+        // 「重複を比較…」から（`DuplicateComparisonNavigation` が対象を渡す）。
+        // **1 つの組だけを扱う**ので、他の整理ウインドウと違い左ペインは無い。
+        Window("duplicates.windowTitle", id: "duplicateComparison") {
+            DuplicateComparisonWindow()
+                .appLanguageOverride()
+        }
+        .defaultSize(width: 820, height: 560)
+
         // 孤立ファイルの整理 [OR-01〜OR-05][15.7 節]。開くのはフォルダツリーの
         // 「孤立ファイルを整理…」から（`OrphanCleanupNavigation` が対象を渡す）。
         // **登録ルート行は 2 種類ある**ので、通常の行と縮退した行の両方に

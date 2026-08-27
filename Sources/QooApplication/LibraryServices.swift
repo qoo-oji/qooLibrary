@@ -561,6 +561,44 @@ public final class LibraryServices {
         return try await repository.archivedFiles(libraryID: libraryID)
     }
 
+    // MARK: - 重複ファイル [DU-01〜DU-29]
+
+    /// 同じ組の全メンバーを代表順で [DU-20]。
+    public func duplicateGroupMembers(containing id: FileID,
+                                      mode: DuplicateGrouping) async throws -> [FileRow] {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        return try await repository.duplicateGroupMembers(containing: id, mode: mode)
+    }
+
+    /// 代表の手動固定 [DU-08]。
+    public func setDuplicateRepresentativePinned(
+        _ pinned: Bool, for id: FileID, mode: DuplicateGrouping) async throws
+    {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        try await repository.setDuplicateRepresentativePinned(pinned, for: id, mode: mode)
+    }
+
+    /// 容器を開いてページ数と解像度を数え、DB へ控える [DU-21][DU-22][MD-02]。
+    ///
+    /// **数えられなければ何も書かない**——`nil` のままにしておけば、次に開いた
+    /// ときに数え直す機会が残る。0 を書くと「数えた結果 0 件」と区別が付かない。
+    @discardableResult
+    public func measureArchiveMetadata(for url: URL, id: FileID) async throws
+        -> ArchiveMetadata?
+    {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        guard let metadata = await ArchiveMetadataService.shared.metadata(for: url) else {
+            return nil
+        }
+        try await repository.cacheArchiveMetadata(
+            pageCount: metadata.imageCount,
+            subfolderCount: metadata.subfolderCount,
+            firstImageWidth: metadata.firstImageSize.map { Int($0.width) },
+            firstImageHeight: metadata.firstImageSize.map { Int($0.height) },
+            for: id)
+        return metadata
+    }
+
     public func archivedFileCounts() async throws -> [LibraryID: Int] {
         guard let repository = fileRepository else { throw ServiceError.notReady }
         return try await repository.archivedFileCounts()

@@ -15,7 +15,7 @@ public enum QooMigrations {
     /// 登録順の識別子。`v<連番>_<内容>` 形式で時系列に並ぶこと [SC-03]。
     public static let identifiers: [String] = [
         "v1_initial", "v2_regexPatterns", "v3_embeddedMetadata", "v4_fsEventsCheckpoint",
-        "v5_identityRejection",
+        "v5_identityRejection", "v6_duplicateTitleKey",
     ]
 
     public static var migrator: DatabaseMigrator {
@@ -26,6 +26,7 @@ public enum QooMigrations {
         m.registerMigration(identifiers[2], migrate: v3EmbeddedMetadata)
         m.registerMigration(identifiers[3], migrate: v4FSEventsCheckpoint)
         m.registerMigration(identifiers[4], migrate: v5IdentityRejection)
+        m.registerMigration(identifiers[5], migrate: v6DuplicateTitleKey)
         return m
     }
 
@@ -95,6 +96,32 @@ public enum QooMigrations {
         }
         try db.execute(sql: "UPDATE storeMetadata SET schemaVersion = ? WHERE id = 1",
                        arguments: [identifiers[4]])
+    }
+
+    // MARK: - v6
+
+    /// 重複判定のための**正規化済みタイトル** [DU-02][DU-03]。
+    ///
+    /// **グループ化を SQL で行うために要る。** 正規化（N-01〜N-03 + WS-06）は
+    /// 全角畳み込みと NFC 化を伴うので SQLite の式では書けず、書き込み時に
+    /// 畳んでおくしかない——`searchKey` / `seriesKey` と同じ形にしてある。
+    ///
+    /// **既存の行は NULL のままで、次の走査が埋める**（再生成可能 [DB-03] なので
+    /// JSON にも持たない）。移行時に埋めないのは、正規化がライブラリごとの
+    /// `caseSensitive` 設定に依存するのに、移行はストアを開く前＝設定を読む前に
+    /// 走るため——**ここで埋めると、大小を区別する設定のライブラリだけ
+    /// 間違った鍵が入る。**
+    ///
+    /// 索引は `(libraryId, titleKey)`。グループ化は必ずライブラリ単位で
+    /// 絞ってから行う [DU-04]。
+    static func v6DuplicateTitleKey(_ db: Database) throws {
+        try db.alter(table: "managedFile") { t in
+            t.add(column: "titleKey", .text)               // 再生成可能 [DU-02][DU-03]
+        }
+        try db.create(index: "mf_lib_titlekey", on: "managedFile",
+                      columns: ["libraryId", "titleKey"])
+        try db.execute(sql: "UPDATE storeMetadata SET schemaVersion = ? WHERE id = 1",
+                       arguments: [identifiers[5]])
     }
 
     // MARK: - v3

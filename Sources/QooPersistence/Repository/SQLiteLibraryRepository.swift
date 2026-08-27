@@ -74,7 +74,9 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                 isOnline: row["isOnline"],
                 isReadOnlyDueToFS: row["isReadOnlyDueToFS"],
                 fileCount: row["fileCount"],
-                settingsRevision: row["settingsRevision"])
+                settingsRevision: row["settingsRevision"],
+                duplicateGrouping: DuplicateGrouping(
+                    storedValue: row["duplicateGrouping"]))
         }
     }
 
@@ -225,7 +227,7 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                 libraryTypeVersion: template?.version ?? 1,
                 settingsJSON: payloadJSON,
                 caseSensitive: draft.caseSensitive,
-                duplicateGrouping: "off",
+                duplicateGrouping: draft.duplicateGrouping.rawValue,
                 thumbnailsAlwaysHidden: draft.thumbnailsAlwaysHidden,
                 lastFSEventID: 0, lastFullScanAt: nil,
                 isOnline: true, isReadOnlyDueToFS: false, settingsRevision: 0)
@@ -448,6 +450,8 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                 libraryTypeName: type.libraryTypeName,
                 caseSensitive: library.caseSensitive,
                 thumbnailsAlwaysHidden: library.thumbnailsAlwaysHidden,
+                duplicateGrouping: DuplicateGrouping(
+                    storedValue: library.duplicateGrouping),
                 targetExtensions: payload.targetExtensions.sorted(),
                 imageExtensions: payload.imageExtensions.sorted(),
                 delimiters: payload.delimiters,
@@ -497,6 +501,7 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
             library.displayName = draft.displayName
             library.caseSensitive = draft.caseSensitive
             library.thumbnailsAlwaysHidden = draft.thumbnailsAlwaysHidden
+            library.duplicateGrouping = draft.duplicateGrouping.rawValue
             library.settingsJSON = payloadJSON
             library.settingsRevision += 1        // [VT-02] ここでしか上げない
             try library.update(db)

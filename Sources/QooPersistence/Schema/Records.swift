@@ -100,6 +100,9 @@ struct ManagedFileRecord: Codable, FetchableRecord, MutablePersistableRecord, Se
     var filename: String
     var normalizedName: String
     var searchKey: String
+    /// 正規化済みタイトル。重複グループの鍵 [DU-02][DU-03]。
+    /// `nil` は「タイトルが無い＝グループ化の対象外」[DU2-08 の趣旨]。
+    var titleKey: String?
     var fileSize: Int64
     var createdAt: Double
     var modifiedAt: Double
@@ -154,6 +157,7 @@ extension ManagedFileRecord {
             // **あと**に `applyParsedFields` を呼ぶ）。そちらが最終形を書く。
             searchKey: ManagedFileSearchKey.make(stem: stem, title: nil,
                                                  seriesName: nil, options: options),
+            titleKey: nil,
             fileSize: snapshot.fileSize,
             createdAt: snapshot.createdAt.timeIntervalSinceReferenceDate,
             modifiedAt: snapshot.modifiedAt.timeIntervalSinceReferenceDate,
@@ -199,7 +203,11 @@ extension ManagedFileRecord {
             isArchived: isArchived,
             archivedFromPath: archivedFromPath,
             archivedAt: archivedAt.map { Date(timeIntervalSinceReferenceDate: $0) },
-            isBookFolder: isBookFolder)
+            isBookFolder: isBookFolder,
+            isDuplicateRepresentativePinned: isDuplicateRepresentativePinned,
+            pageCount: pageCount,
+            firstImageWidth: firstImageWidth,
+            firstImageHeight: firstImageHeight)
     }
 
     // MARK: - 孤立レコードの Undo 用の写し [OR-02][OR-04][UD-03]
@@ -222,6 +230,7 @@ extension ManagedFileRecord {
             filename: filename,
             normalizedName: normalizedName,
             searchKey: searchKey,
+            titleKey: titleKey,
             fileSize: fileSize,
             createdAt: Date(timeIntervalSinceReferenceDate: createdAt),
             modifiedAt: Date(timeIntervalSinceReferenceDate: modifiedAt),
@@ -267,6 +276,7 @@ extension ManagedFileRecord {
             filename: s.filename,
             normalizedName: s.normalizedName,
             searchKey: s.searchKey,
+            titleKey: s.titleKey,
             fileSize: s.fileSize,
             createdAt: s.createdAt.timeIntervalSinceReferenceDate,
             modifiedAt: s.modifiedAt.timeIntervalSinceReferenceDate,

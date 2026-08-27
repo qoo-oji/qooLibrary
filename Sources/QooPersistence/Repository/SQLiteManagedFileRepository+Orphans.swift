@@ -254,7 +254,7 @@ extension SQLiteManagedFileRepository {
         // 直後に `applyParsedFields` が最終形を書く対になっているが、ここには
         // その対が無いので自分で作り直す——さもないとタイトル・シリーズ名で
         // 検索したときだけこの 1 件が出てこなくなる [SR-03]。
-        try refreshSearchKey(db, id: id, options: options)
+        try refreshDerivedKeys(db, id: id, options: options)
         try SQLiteLabelRepository.recount(db, labelIDs: Array(Set(affected)))
         return removed
     }

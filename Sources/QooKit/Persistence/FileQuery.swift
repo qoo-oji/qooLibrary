@@ -65,7 +65,15 @@ public struct FileQuery: Sendable, Hashable {
     public var ratingFilter: RatingFilter?
     public var searchText: String?
     public var includeArchived: Bool
+    /// **`grouping` が `.off` のときは効かない**——グループが無ければ
+    /// 「重複」も定義できないため [DU-11]。
     public var duplicatesOnly: Bool          // [DU-11]
+    /// 同じ作品のファイルを 1 行に畳むか [DU-01][DU-02]。
+    ///
+    /// **ライブラリ表示モードでしか効かせない** [DU-04]——呼び出し側が
+    /// `.folder` のときは `.off` を渡すこと。フォルダ表示モードは実体の
+    /// 一覧なので、畳むと「ディスクにある物と画面が食い違う」ことになる。
+    public var grouping: DuplicateGrouping   // [DU-01][DU-04]
     public var sort: SortSpec
     public var offset: Int
     /// 遅延読み込み [PF-10]。**全件を materialize しない** [FI-05]。
@@ -79,6 +87,7 @@ public struct FileQuery: Sendable, Hashable {
                 searchText: String? = nil,
                 includeArchived: Bool = false,
                 duplicatesOnly: Bool = false,
+                grouping: DuplicateGrouping = .off,
                 sort: SortSpec = .byFilename,
                 offset: Int = 0,
                 limit: Int = AppLimits.Query.defaultPageSize) {
@@ -90,6 +99,7 @@ public struct FileQuery: Sendable, Hashable {
         self.searchText = searchText
         self.includeArchived = includeArchived
         self.duplicatesOnly = duplicatesOnly
+        self.grouping = grouping
         self.sort = sort
         self.offset = offset
         self.limit = limit
