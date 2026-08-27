@@ -21,6 +21,7 @@
 //  フォルダから来たか」はパスから読める。フォルダという単位を別に持たない。
 //
 import Foundation
+import QooInfrastructure
 import Observation
 import QooKit
 
@@ -236,36 +237,106 @@ public final class FileVaultModel {
         try await restore(selectedFiles)
     }
 
-    /// 削除 [FAW-03]。**実ファイルをゴミ箱へ送り、記録も消す**［ユーザー判断］。
+    /// 削除の下ごしらえ [FAW-03][NV4-01]。
+    ///
+    /// **ゴミ箱があるかを、確認ダイアログを出す「前」に確かめる**
+    /// ［実機検証で発見］。`FolderOperations.moveToTrash` が同じことをしている
+    /// のに、こちらは `TrashCommand` を直に呼んでいた——**ゴミ箱を持たない
+    /// 場所では削除が丸ごと失敗し、「『すぐに削除』をお使いください」と
+    /// 案内されるのに、この画面にはその項目が無い**という行き止まりだった。
+    ///
+    /// **これは共有だけの話ではない。** `TrashAvailability` は `.trashDirectory`
+    /// を `create: false` で尋ねるので、**まだ一度も何も捨てていない外付け
+    /// ボリュームでも「ゴミ箱なし」になる**（1-17 の実測、8章 §8.7.1）。
+    public func planDelete() async -> DeletePlan? {
+        guard let library = selectedLibrary, library.isOnline else { return nil }
+        let targets = selectedFiles
+        guard !targets.isEmpty else { return nil }
+        let root = URL(fileURLWithPath: library.resolvedPath)
+        let urls = targets.map { root.appendingPathComponent($0.row.relativePath) }
+        // 判定は実測 0.01 秒だが実 I/O なので、メインスレッドでは行わない
+        // [NV6-02]——無応答の共有では 30 秒ブロックしうる。
+        let usesTrash = await FileIO.perform { TrashAvailability.hasTrash(forAll: urls) }
+        return DeletePlan(files: targets, usesTrash: usesTrash)
+    }
+
+    /// 削除 [FAW-03]。**実ファイルを捨て、記録も消す**［ユーザー判断］。
     ///
     /// 記録だけ消すと、`.qooarchive` は走査の対象 [SY-10] なので**次の走査で
     /// 必ず復活する**——しかもラベルを失った状態で。「保管庫から削除した」の
     /// 意味は「本当に捨てる」であって、記録の付け替えではない。
     ///
-    /// ゴミ箱を経由するので Finder から取り戻せるし、⌘Z も効く。
+    /// ゴミ箱がある場所なら Finder から取り戻せるし ⌘Z も効く。無ければ
+    /// 完全削除へ振り替える [NV4-01]——**`isUndoable == false` の子が入るので、
+    /// `CompositeCommand` 全体も自動的に取り消せなくなる**（`allSatisfy`）。
+    /// 確認ダイアログがそれを先に伝える責任を持つ。
+    ///
     /// **確認は呼び出し側**——何件のラベルが外れるかを見せてから決めさせる。
-    public func deleteSelected() async throws {
+    public func deleteSelected(_ plan: DeletePlan) async throws {
         guard let services, let library = selectedLibrary, library.isOnline else { return }
-        let targets = selectedFiles
+        let targets = plan.files
         guard !targets.isEmpty else { return }
         let root = URL(fileURLWithPath: library.resolvedPath)
         let urls = targets.map { root.appendingPathComponent($0.row.relativePath) }
         let name = targets.count == 1
             ? "「\(targets[0].row.filename)」を削除"
             : "\(targets.count) 件のファイルを削除"
-        // **実体をゴミ箱へ → 記録を消す、の順**。逆にすると、ゴミ箱への移動に
+        // **実体を捨てる → 記録を消す、の順**。逆にすると、捨てるほうに
         // 失敗したときに記録だけが消えて実体が保管庫に残る（次の走査で
-        // ラベルを失った行として戻ってくる）。
-        let command = CompositeCommand(displayName: name, children: [
-            TrashCommand(items: urls),
-            DeleteOrphanedFilesCommand(fileIDs: targets.map(\.id),
-                                       names: targets.map { $0.row.filename },
-                                       services: services),
-        ])
+        // ラベルを失った行として戻ってくる）。`CompositeCommand` は子が
+        // 投げるとそこで止めるので、この順序が守られている限り
+        // 「記録だけ消えた」は起こらない。
+        // **サイドカーのカバー画像も一緒に捨てる**［実機検証で発見］。
+        // 保管庫へは連れて行く [FA-14] のに捨てるときだけ置き去りにすると、
+        // **一覧が「保管庫は空です」と言っているのに `.qooarchive` には
+        // 画像が残る**——誰も参照しておらず、画面からは見えず、片付ける手段も
+        // 無い。同じコマンドに入れるので ⌘Z でも一緒に戻る。
+        let sidecars = await FileIO.perform {
+            urls.compactMap { SidecarCoverLocator.locate(for: $0) }
+        }
+        let command = Self.makeDeleteCommand(
+            plan: plan, displayName: name, items: urls + sidecars, services: services)
         _ = try await commands.run(command)
         // `reload()` も一覧に無い選択を落とすが、読み取りに失敗すると
         // （`state = .failed` で早期に返るため）そこへ届かない。失敗経路のために残す。
         selection = []
         await reload()
+    }
+}
+
+extension FileVaultModel {
+    /// 削除の 1 単位を組み立てる [FAW-03][NV4-01]。
+    ///
+    /// **切り出してあるのは、`isUndoable` がゴミ箱の有無で変わるから**
+    /// ——`CompositeCommand.isUndoable` は子の `allSatisfy` なので、完全削除
+    /// [PD-05] が混ざると自動的に取り消せなくなる。確認ダイアログが
+    /// 「取り消せません」と言うのはその性質に基づいており、**両者がずれると
+    /// いちばん取り返しのつかない場面で嘘をつく**ことになる。テストで固定する。
+    static func makeDeleteCommand(plan: DeletePlan, displayName: String,
+                                  items: [URL], services: LibraryServices) -> CompositeCommand {
+        let removal: any Command = plan.usesTrash
+            ? TrashCommand(items: items)
+            : DeletePermanentlyCommand(items: items)
+        return CompositeCommand(displayName: displayName, children: [
+            removal,
+            DeleteOrphanedFilesCommand(fileIDs: plan.files.map(\.id),
+                                       names: plan.files.map { $0.row.filename },
+                                       services: services),
+        ])
+    }
+}
+
+/// 削除の下ごしらえの結果 [FAW-03][NV4-01]。
+///
+/// **確認ダイアログの文言を決めるのはこれ。** 取り消せるかどうかが変わるので、
+/// 「ゴミ箱へ移します」と「完全に削除します。取り消せません」を言い分ける。
+public struct DeletePlan: Sendable, Equatable {
+    public let files: [ArchivedFile]
+    /// ゴミ箱を経由できるか。`false` なら完全削除になり、**⌘Z は効かない** [PD-05]。
+    public let usesTrash: Bool
+
+    public init(files: [ArchivedFile], usesTrash: Bool) {
+        self.files = files
+        self.usesTrash = usesTrash
     }
 }

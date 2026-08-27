@@ -17,9 +17,10 @@ struct DeleteVaultFilesDialog: View {
     @Environment(\.locale) private var locale
     @Environment(\.dialogDismiss) private var dismiss
 
-    let files: [ArchivedFile]
+    let plan: DeletePlan
     let onConfirm: () -> Void
 
+    private var files: [ArchivedFile] { plan.files }
     /// 紐づけが外れるファイルの延べ件数。
     private var affectedLabels: Int { files.reduce(0) { $0 + $1.labelCount } }
 
@@ -42,7 +43,11 @@ struct DeleteVaultFilesDialog: View {
                               files.count))
                     .fixedSize(horizontal: false, vertical: true)
 
-                Text("fileVault.deleteMovesToTrash")
+                // **ゴミ箱がある場所と無い場所で言い分ける** [NV4-01]
+                // ［実機検証で発見: 無い場所では削除が丸ごと失敗していた］。
+                // 取り消せるかどうかが変わるので、同じ文言では嘘になる。
+                Text(plan.usesTrash ? "fileVault.deleteMovesToTrash"
+                                    : "fileVault.deleteWithoutTrash")
                     .foregroundStyle(Color("DangerText"))
                     .fixedSize(horizontal: false, vertical: true)
 
@@ -52,9 +57,13 @@ struct DeleteVaultFilesDialog: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                Text("labelEditor.deleteUndoable")
+                // 完全削除は取り消せない [PD-05]——「⌘Z で戻せます」と
+                // 書いたまま出すと、いちばん取り返しのつかない場面で嘘をつく。
+                Text(plan.usesTrash ? "labelEditor.deleteUndoable"
+                                    : "fileVault.deleteIrreversible")
                     .font(.system(size: Tokens.fontSize.caption))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(plan.usesTrash ? AnyShapeStyle(.secondary)
+                                                    : AnyShapeStyle(Color("DangerText")))
                     .fixedSize(horizontal: false, vertical: true)
             }
         }

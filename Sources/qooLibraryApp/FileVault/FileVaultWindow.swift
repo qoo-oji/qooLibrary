@@ -50,6 +50,20 @@ struct FileVaultWindow: View {
         .onChange(of: model.selectedLibraryID) { _, _ in
             Task { await model.reload() }
         }
+        // **着脱に追随する** [SB-05]［実機検証で発見: この配線が抜けていた］。
+        // 一覧は DB だけで作れるのでオフラインでも出し続けるが、**戻す・削除は
+        // 実ファイルを動かす**ので `canModify` が偽にならなければならない
+        // ——`model.libraries` は `reload()` でしか更新されず、`contentRevision`
+        // も `operationHistory` もイジェクトでは動かないので、開いたままだと
+        // 押せるボタンが残り、押した瞬間に失敗する。
+        //
+        // **§15.7（見つからないファイル）が同じ穴を 2-14 で塞いでいる。**
+        // あちらを写したつもりで、**その前例が何によって守られているかを
+        // 写しきれていなかった**（ラベル保管庫 [§15.3] にはこの配線が無く、
+        // あちらは最後まで DB だけで済むので要らない）。
+        .onChange(of: LibraryServices.shared.libraries) { _, _ in
+            Task { await model.reload() }
+        }
         // ⌘Z / ⇧⌘Z は View を通らずに DB を変える。含めないと、取り消した
         // 結果（戻したファイルが保管庫へ返ってくる等）が画面に出ない。
         .onChange(of: CommandStack.shared.operationHistory.count) { _, _ in
@@ -231,6 +245,12 @@ struct FileVaultWindow: View {
             .font(.system(size: Tokens.fontSize.caption))
             .disabled(!model.canModify)
         }
+        // **2 行の行には縦の余白を明示する**［実機検証で発見］。無いと
+        // `List` が計算する行の高さが中身より低くなり、**選択したときに
+        // 2 行目（しまった日時 [FAW-05] とラベル件数）が選択の帯に切られて
+        // 読めなくなる**——一括で戻す [FAW-04] には選択が要るので、
+        // いちばん見たいときに見えなくなる形だった。
+        .padding(.vertical, 3)
     }
 
     /// **削除はコンテキストメニューからのみ** [FAW-03]。押しやすい場所に
@@ -285,13 +305,16 @@ struct FileVaultWindow: View {
     /// **削除は取り消せるが、確認は挟む。** 何件のラベルが外れるかと、
     /// **実ファイルがゴミ箱へ行く**ことを見せる［ユーザー判断］。
     private func confirmDelete() {
-        let targets = model.selectedFiles
-        guard !targets.isEmpty else { return }
-        DialogWindowPresenter.shared.present(
-            title: String(localized: "fileVault.deleteTitle", locale: locale)
-        ) { _ in
-            DeleteVaultFilesDialog(files: targets) {
-                perform { try await model.deleteSelected() }
+        Task {
+            // **ゴミ箱があるかを先に確かめる** [NV4-01]。文言も、取り消せるか
+            // どうかも変わるので、ダイアログを出す前に決める必要がある。
+            guard let plan = await model.planDelete() else { return }
+            DialogWindowPresenter.shared.present(
+                title: String(localized: "fileVault.deleteTitle", locale: locale)
+            ) { _ in
+                DeleteVaultFilesDialog(plan: plan) {
+                    perform { try await model.deleteSelected(plan) }
+                }
             }
         }
     }

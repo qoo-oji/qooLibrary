@@ -2977,6 +2977,23 @@
         }
       }
     },
+    "fileVault.deleteIrreversible": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This cannot be undone."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この操作は取り消せません。"
+          }
+        }
+      }
+    },
     "fileVault.deleteMany": {
       "extractionState": "manual",
       "localizations": {
@@ -3041,6 +3058,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "ファイルを削除"
+          }
+        }
+      }
+    },
+    "fileVault.deleteWithoutTrash": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This volume has no Trash, so the files are deleted outright and their library records are removed."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このボリュームにはゴミ箱がありません。ファイルは完全に削除され、ライブラリの記録も消えます。"
           }
         }
       }

@@ -6,6 +6,7 @@
 //
 import Testing
 import Foundation
+import QooInfrastructure
 import QooKit
 @testable import QooApplication
 
@@ -140,6 +141,61 @@ struct FileVaultModelTests {
             Self.archived(".qooarchive/作者A/x.cbz", id: 1, from: "作者A/x.cbz"),
         ], sortedBy: .name, matching: "一致しない語")
         #expect(sections.isEmpty)
+    }
+
+    // MARK: - 削除の組み立て [FAW-03][NV4-01]
+
+    /// **ゴミ箱がある場所とない場所で、取り消せるかどうかが変わる**
+    /// ［実機検証で発見］。以前は `TrashCommand` を直に呼んでおり、
+    /// **ゴミ箱を持たない場所では削除が丸ごと失敗していた**——しかも
+    /// 「『すぐに削除』をお使いください」と案内されるのに、この画面には
+    /// その項目が無いという行き止まりだった。
+    ///
+    /// **共有だけの話ではない。** `TrashAvailability` は `.trashDirectory` を
+    /// `create: false` で尋ねるので、**まだ一度も何も捨てていない外付け
+    /// ボリュームでも「ゴミ箱なし」になる**（1-17 の実測、8章 §8.7.1）。
+    @MainActor
+    @Test("ゴミ箱があるなら取り消せる [FAW-03]")
+    func deletingThroughTheTrashStaysUndoable() async throws {
+        let w = try ServicesWorkspace()
+        let plan = DeletePlan(files: [Self.archived(".qooarchive/A/x.cbz", id: 1)],
+                              usesTrash: true)
+        let command = FileVaultModel.makeDeleteCommand(
+            plan: plan, displayName: "削除", items: [URL(fileURLWithPath: "/tmp/x.cbz")],
+            services: w.services)
+        #expect(command.isUndoable)
+    }
+
+    /// **完全削除は取り消せない** [PD-05]。`CompositeCommand.isUndoable` は
+    /// 子の `allSatisfy` なので、ここが自動的に偽になる——確認ダイアログの
+    /// 「この操作は取り消せません」はこの性質に基づいている。
+    @MainActor
+    @Test("ゴミ箱が無ければ取り消せない [NV4-01][PD-05]")
+    func deletingWithoutATrashIsNotUndoable() async throws {
+        let w = try ServicesWorkspace()
+        let plan = DeletePlan(files: [Self.archived(".qooarchive/A/x.cbz", id: 1)],
+                              usesTrash: false)
+        let command = FileVaultModel.makeDeleteCommand(
+            plan: plan, displayName: "削除", items: [URL(fileURLWithPath: "/tmp/x.cbz")],
+            services: w.services)
+        #expect(!command.isUndoable)
+    }
+
+    /// **実体を捨てる → 記録を消す、の順** [FAW-03]。逆にすると、捨てるほうに
+    /// 失敗したときに記録だけが消えて実体が保管庫に残る（次の走査でラベルを
+    /// 失った行として戻ってくる）。`CompositeCommand` は子が投げるとそこで
+    /// 止めるので、この順序が守られている限り「記録だけ消えた」は起こらない。
+    @MainActor
+    @Test("実体を捨ててから記録を消す [FAW-03]")
+    func removalRunsBeforeTheRecordIsDeleted() async throws {
+        let w = try ServicesWorkspace()
+        let plan = DeletePlan(files: [Self.archived(".qooarchive/A/x.cbz", id: 1)],
+                              usesTrash: true)
+        let command = FileVaultModel.makeDeleteCommand(
+            plan: plan, displayName: "削除", items: [URL(fileURLWithPath: "/tmp/x.cbz")],
+            services: w.services)
+        #expect(command.children.first is TrashCommand)
+        #expect(command.children.last is DeleteOrphanedFilesCommand)
     }
 
     // MARK: - 既定のライブラリ
