@@ -29,6 +29,23 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
         return id.map { FileID(rawValue: $0) }
     }
 
+    /// 走査の upsert 用。`id` と**現在の** `isArchived` を 1 回の問い合わせで取る。
+    ///
+    /// **別に SELECT を足さないための形。** 保管庫の出入りが起きた行だけ
+    /// ラベル件数を数え直す [DB-02] 必要があるが、そのために 1 ファイルにつき
+    /// 問い合わせを 1 本増やすと、5 万件の走査で実測 0.036 ms × 5 万 ≒ 1.8 秒が
+    /// 上乗せされる。既に引いている行から一緒に読めば費用はゼロ。
+    static func findForUpsert(_ db: Database, identity: FileIdentity) throws
+        -> (id: FileID, isArchived: Bool)?
+    {
+        let stmt = try db.cachedStatement(sql:
+            "SELECT id, isArchived FROM managedFile WHERE volumeUUID = ? AND inode = ?")
+        guard let row = try Row.fetchOne(stmt, arguments: [identity.volumeUUID,
+                                                           Int64(bitPattern: identity.inode)])
+        else { return nil }
+        return (FileID(rawValue: row["id"]), row["isArchived"])
+    }
+
     /// 対象ファイルに紐づくラベルの、非正規化件数 [DB-02] を作り直す。
     ///
     /// **`fileCount` は「生きていて保管庫にも入っていない」ファイルだけを
@@ -142,16 +159,37 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
             let options = try Self.normalizationOptions(db, libraryID: snapshots[0].libraryID)
             var out: [FileID] = []
             out.reserveCapacity(snapshots.count)
+            // 保管庫の出入りが起きた行 [FA-05]。ラベルの非正規化件数 [DB-02] は
+            // 「生きていて保管庫にも入っていない」ファイルだけを数えるので、
+            // ここを数え直さないとフィルタと編集ウインドウの件数がずれていく。
+            // **`state` について 2-14 で直したのと同じ穴**——外部で
+            // `.qooarchive` へ出し入れされると走査だけで値が変わる。
+            var vaultFlipped: [FileID] = []
             for snapshot in snapshots {
-                if let existing = try Self.find(db, identity: snapshot.identity) {
+                if let existing = try Self.findForUpsert(db, identity: snapshot.identity) {
+                    if existing.isArchived != snapshot.isArchived {
+                        vaultFlipped.append(existing.id)
+                    }
                     // パス・ファイル名の変化を追従更新する [ID-02]
-                    try Self.updateInPlace(db, id: existing, snapshot: snapshot, options: options)
-                    out.append(existing)
+                    try Self.updateInPlace(db, id: existing.id, snapshot: snapshot,
+                                           options: options)
+                    out.append(existing.id)
                 } else {
                     var record = ManagedFileRecord(snapshot: snapshot, options: options)
                     try record.insert(db)
                     out.append(FileID(rawValue: record.id ?? 0))
                 }
+            }
+            // 変えた**あと**でよい——`fileLabel` の行は消えないので、
+            // 誰を数え直すかは後からでも分かる（削除の経路とは事情が違う）。
+            // 900 件ずつに区切るのは、フォルダごと外から出し入れされると
+            // 一度に数千件が変わりうるため（ホスト変数の上限が低いビルドで
+            // 落ちる。壊れるのは上限の低い環境だけなので、通ることを理由に
+            // 外さないこと）。
+            for chunk in stride(from: 0, to: vaultFlipped.count, by: 900) {
+                let slice = Array(vaultFlipped[chunk..<min(chunk + 900, vaultFlipped.count)])
+                let labels = try Self.labelIDsAttached(db, to: slice)
+                try SQLiteLabelRepository.recount(db, labelIDs: labels)
             }
             return out
         }
@@ -164,6 +202,10 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
             UPDATE managedFile SET
                 relativePath = ?, filename = ?, normalizedName = ?, searchKey = ?,
                 fileSize = ?, modifiedAt = ?, isBookFolder = ?,
+                -- 保管庫の中かは**観測した位置**が決める [SY-10][FA-05]。外部で
+                -- 出し入れされても次の走査で追随する。`archivedFromPath` には
+                -- 触れない——元の場所を知っているのは移した操作だけ [FA-04]。
+                isArchived = ?,
                 -- ゴミ箱から元の場所へ戻った場合は active へ戻す [TR-04]
                 state = CASE WHEN state IN ('orphaned', 'offline') THEN 'active' ELSE state END,
                 trashedAt = CASE WHEN state IN ('orphaned', 'offline') THEN NULL ELSE trashedAt END
@@ -181,7 +223,7 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
                                       options: options),
             snapshot.fileSize,
             snapshot.modifiedAt.timeIntervalSinceReferenceDate,
-            snapshot.isBookFolder, id.rawValue])
+            snapshot.isBookFolder, snapshot.isArchived, id.rawValue])
     }
 
     /// 同一性が変わったレコードの inode を差し替える [ID-04]。ラベルは維持される。

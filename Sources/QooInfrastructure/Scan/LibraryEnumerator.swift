@@ -64,11 +64,22 @@ public struct LibraryEnumerator: Sendable {
                 if Cancellation.isRequested { return }
                 // シンボリックリンク・エイリアスは対象外 [SL-03]
                 if child.entry.isSymbolicLink { continue }
-                if child.entry.name.hasPrefix(".") { continue }
+                // **保管庫だけは隠し名でも降りる** [SY-10][FA2-12]。降りないと
+                // 保管庫へ移したファイルが次の走査で「見なかったもの」になり、
+                // **アーカイブしただけで孤立レコードになる**（`markUnseenAsOrphaned`
+                // は `state = 'active'` を無条件に拾う）。認めるのは
+                // **ライブラリ根の直下にある 1 つだけ** [FA-02] ——深い場所の
+                // 同名フォルダまで降りると、利用者が自分で置いた隠しフォルダを
+                // 蔵書として取り込むことになる。
+                let isVaultRoot = child.entry.isDirectory
+                    && child.entry.name == VaultPath.folderName
+                    && directory.standardizedFileURL.path == rootPath
+                if child.entry.name.hasPrefix("."), !isVaultRoot { continue }
 
                 if child.entry.isDirectory {
                     guard options.recursive || directory == start else { continue }
-                    // `covers` は走査対象外。`.qooarchive` は**対象に含める** [SY-10]
+                    // `covers` は走査対象外——保管庫の中でも同じ [FA-14]。
+                    // サイドカー画像そのものは蔵書ではない。
                     if child.entry.name == "covers" { continue }
                     if options.recursive { stack.append(child.url) }
                     continue

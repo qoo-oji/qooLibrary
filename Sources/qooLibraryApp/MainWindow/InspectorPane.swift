@@ -72,6 +72,8 @@ private struct SingleItemInspector: View {
     @State private var cover = CoverEditorModel()
     /// ラベル設定 [RL-01〜RL-07]。同上。
     @State private var labels = LabelEditorModel()
+    /// 保管庫 [FA-01][FA-07][DT-11]。
+    @State private var vault = VaultEditorModel()
     /// 書き込みのあと一覧と件数を読み直すための合図。**`.task(id:)` の鍵に
     /// 入れる**——`operationHistory` の増分でも読み直せるが、ダイアログから
     /// 作った新しいラベルは一覧に無いので、書いた側から明示的に促す。
@@ -144,6 +146,7 @@ private struct SingleItemInspector: View {
 
                     InspectorRatingSection(model: rating) // [RA-01〜RA-08]
                     InspectorLabelSection(model: labels) { labelRevision &+= 1 } // [RL-01〜RL-07]
+                    InspectorVaultSection(model: vault) // [FA-01][FA-07][DT-11]
 
                     Divider()
                     LabeledContent("inspector.location") {
@@ -220,6 +223,11 @@ private struct SingleItemInspector: View {
                                commandRevision: CommandStack.shared.operationHistory.count,
                                revision: labelRevision)) {
             await labels.load(urls: [url], library: library, services: LibraryServices.shared)
+        }
+        // 保管庫の状態を読む [FA-01][DT-11]。鍵の考え方は評価と同じ。
+        .task(id: RowLoadKey(url: url, libraryID: library?.id,
+                                commandRevision: CommandStack.shared.operationHistory.count)) {
+            await vault.load(url: url, library: library, services: LibraryServices.shared)
         }
         .onChange(of: url, initial: true) { _, newValue in
             parentWatch.watch(newValue.deletingLastPathComponent(), scope: .shallow)

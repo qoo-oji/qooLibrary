@@ -20,11 +20,11 @@ struct LibraryMenuVisibilityTests {
         #expect(LibraryMenuVisibility.items(isEnabled: false, isOnline: false).isEmpty)
     }
 
-    @Test("有効・オンライン → 設定・ラベル編集・保管庫・孤立・未解決・再スキャン・無効化")
+    @Test("有効・オンライン → 設定・ラベル編集・2 つの保管庫・孤立・未解決・再スキャン・無効化")
     func enabledAndOnline() {
         #expect(LibraryMenuVisibility.items(isEnabled: true, isOnline: true)
-                == [.settings, .labels, .labelVault, .orphanCleanup, .unresolvedFiles,
-                    .rescan, .disable])
+                == [.settings, .labels, .labelVault, .fileVault,
+                    .orphanCleanup, .unresolvedFiles, .rescan, .disable])
     }
 
     /// **この 1 件が本命。** 無効化は DB の行を消すだけでボリュームを要らない。
@@ -52,6 +52,12 @@ struct LibraryMenuVisibilityTests {
         // しなかった」という照合の結果で、実体を 1 度も見ないため。
         #expect(items.contains(.unresolvedFiles),
                 "未解決の整理は実体を見ないので開けなければならない")
+        // ファイル保管庫の**一覧**も DB しか見ない [FAW-01][15.4 節]。戻す・
+        // 削除は実ファイルを動かすのでボリュームが要るが、それはウインドウ側が
+        // `canModify` で無効にする——開けなくすると「何をしまったか」を
+        // 確かめる手段まで消える。
+        #expect(items.contains(.fileVault),
+                "ファイル保管庫の一覧は実体を見ないので開けなければならない")
         #expect(!items.contains(.rescan), "実ファイルを列挙できないので再スキャンは出さない")
         #expect(!items.contains(.enable))
     }

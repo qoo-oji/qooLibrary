@@ -2892,6 +2892,329 @@
         }
       }
     },
+    "error.vaultArchiveFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move to Vault failed"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保管庫への移動に失敗しました"
+          }
+        }
+      }
+    },
+    "error.vaultRestoreFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restore from Vault failed"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保管庫からの復元に失敗しました"
+          }
+        }
+      }
+    },
+    "fileVault.archivedAtUnknown": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Date stored unknown"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "しまった日時は不明"
+          }
+        }
+      }
+    },
+    "fileVault.archivedCount": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d in vault"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保管庫に %d 件"
+          }
+        }
+      }
+    },
+    "fileVault.deleteAffectsLabels": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d label assignments are removed."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ラベルの紐づけが %d 件外れます。"
+          }
+        }
+      }
+    },
+    "fileVault.deleteMany": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete %d files?"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d 件のファイルを削除しますか？"
+          }
+        }
+      }
+    },
+    "fileVault.deleteMovesToTrash": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The files are moved to the Trash and their library records are removed."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ファイルをゴミ箱へ移し、ライブラリの記録も削除します。"
+          }
+        }
+      }
+    },
+    "fileVault.deleteOne": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete “%@”?"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「%@」を削除しますか？"
+          }
+        }
+      }
+    },
+    "fileVault.deleteTitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete files"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ファイルを削除"
+          }
+        }
+      }
+    },
+    "fileVault.empty": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The vault is empty"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保管庫は空です"
+          }
+        }
+      }
+    },
+    "fileVault.emptyHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Files you move to the vault are kept here, out of the library listing. Their labels and ratings are preserved."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保管庫へ移したファイルはここに残り、蔵書の一覧からは外れます。ラベルと評価はそのまま保たれます。"
+          }
+        }
+      }
+    },
+    "fileVault.labelCount": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d labels"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ラベル %d 件"
+          }
+        }
+      }
+    },
+    "fileVault.libraryRoot": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Top level of the library"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ライブラリ直下"
+          }
+        }
+      }
+    },
+    "fileVault.noMatches": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No files match"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一致するファイルがありません"
+          }
+        }
+      }
+    },
+    "fileVault.offline": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Offline"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "オフライン"
+          }
+        }
+      }
+    },
+    "fileVault.searchPlaceholder": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search files"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ファイルを検索"
+          }
+        }
+      }
+    },
+    "fileVault.sort.archivedAt": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "By Date Stored"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "しまった日時順"
+          }
+        }
+      }
+    },
+    "fileVault.sort.name": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "By Name"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "名前順"
+          }
+        }
+      }
+    },
+    "fileVault.windowTitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "File Vault"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ファイルの保管庫"
+          }
+        }
+      }
+    },
     "folder.alwaysOpenWithSubmenu": {
       "extractionState": "stale",
       "localizations": {
@@ -3368,6 +3691,23 @@
         }
       }
     },
+    "folder.moveFolderToVault": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move Folder to Vault"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "フォルダを保管庫に移動"
+          }
+        }
+      }
+    },
     "folder.moveItemsHere": {
       "extractionState": "stale",
       "localizations": {
@@ -3398,6 +3738,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "ゴミ箱に入れる"
+          }
+        }
+      }
+    },
+    "folder.moveToVault": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move to Vault"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保管庫に移動"
           }
         }
       }
@@ -3653,6 +4010,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "名前を変更しています…"
+          }
+        }
+      }
+    },
+    "folder.restoreFromVault": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restore from Vault"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保管庫から戻す"
           }
         }
       }
@@ -5406,6 +5780,74 @@
         }
       }
     },
+    "inspector.vault": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vault"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保管庫"
+          }
+        }
+      }
+    },
+    "inspector.vault.inVault": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This file is in the vault, so it does not appear in the library listing."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このファイルは保管庫にあります。蔵書の一覧には出ません。"
+          }
+        }
+      }
+    },
+    "inspector.vault.offline": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The volume is not connected, so the file cannot be moved."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ボリュームが接続されていないため、ファイルを移動できません。"
+          }
+        }
+      }
+    },
+    "inspector.vault.originalLocation": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Original location"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "元の場所"
+          }
+        }
+      }
+    },
     "inspector.volume": {
       "extractionState": "manual",
       "localizations": {
@@ -6644,6 +7086,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "ライブラリとして有効にする"
+          }
+        }
+      }
+    },
+    "library.fileVault.menuItem": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "File Vault…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ファイルの保管庫…"
           }
         }
       }
@@ -13953,6 +14412,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "ファイル名フォーマットに一致しないファイル"
+          }
+        }
+      }
+    },
+    "vault.notInLibrary": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "These items are not part of the library, so they cannot be moved to the vault. Only files the library has imported can be stored."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ライブラリに取り込まれていないため、保管庫へ移せません。保管庫にしまえるのは、ライブラリが取り込んだファイルだけです。"
           }
         }
       }

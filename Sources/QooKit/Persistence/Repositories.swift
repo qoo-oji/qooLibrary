@@ -187,6 +187,37 @@ public protocol ManagedFileRepository: Sendable {
     /// 返す（`archivedLabelCounts` と同じ理由——ライブラリごとに辿ると、
     /// ⌘Z のたびに走る読み直しが件数ぶんの往復になる）。0 件はキーごと現れない。
     func orphanedFileCounts() async throws -> [LibraryID: Int]
+
+    // MARK: - ファイル保管庫 [FA-01〜FA-17][FAW-01〜FAW-05]
+
+    /// 保管庫にあるファイル [FAW-01]。元のフォルダ・名前の順に返す。
+    ///
+    /// **オンラインを要らない**——`isArchived` は DB の属性で、実体を 1 度も
+    /// 見ない（孤立 [OR2-06] とは逆に、オフラインでも正しく一覧できる）。
+    /// ただし**戻す操作は実ファイルを動かす**ので、そちらは呼び出し側が
+    /// オンラインを確かめること。
+    func archivedFiles(libraryID: LibraryID) async throws -> [ArchivedFile]
+    /// ライブラリごとの保管庫の件数。左ペインの出し分けに使う（1 問い合わせ）。
+    func archivedFileCounts() async throws -> [LibraryID: Int]
+    /// 保管庫の出入りを記録する [FA-04][FA-05]。
+    ///
+    /// **実ファイルを動かした「あと」に呼ぶこと。** `relativePath` は受領書から
+    /// 作る——衝突で連番が付く [FA-13] ことがあるので、予定のパスを書くと
+    /// 実体とずれる。
+    ///
+    /// ラベルの非正規化件数 [DB-02] はここで数え直す——`fileCount` は
+    /// 「生きていて保管庫にも入っていない」ファイルだけを数えるので、
+    /// 忘れるとフィルタと編集ウインドウの件数が実態からずれる。
+    func setArchived(_ moves: [VaultMove], archived: Bool) async throws
+    /// フォルダ配下の行（相対パス付き）[FDA-01]。
+    ///
+    /// フォルダを丸ごと運んだあと、配下の行の相対パスを付け替えるために使う
+    /// ——1 回の `rename(2)` で運ぶ [FDA-01] ので、動いたことを DB へ写す側は
+    /// 「どの行が中に居たか」を自分で知る必要がある。
+    ///
+    /// `folderRelativePath` が空文字ならライブラリ全体。ゴミ箱の行は含めない。
+    func filesUnder(libraryID: LibraryID, folderRelativePath: String) async throws
+        -> [FileID: String]
     /// 行の同一性 [ID-01]。候補として提示した行から「観測結果」を組み立てるのに使う
     /// ——`FileRow` は inode を持たない（一覧の表示に要らないため）。
     func identity(of id: FileID) async throws -> FileIdentity?

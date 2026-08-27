@@ -26,7 +26,7 @@ public enum LibraryMenuVisibility {
         // オンライン条件で塞がない——無効化をオンライン条件で囲って「外付けを
         // 失うと二度と片付けられない」欠陥を作った前例がある。
         // 再スキャンだけが実ファイルの列挙を伴うのでオンラインを要る。
-        let offline: Set<Item> = [.settings, .labels, .labelVault,
+        let offline: Set<Item> = [.settings, .labels, .labelVault, .fileVault,
                                   .orphanCleanup, .unresolvedFiles, .disable]
         return isOnline ? offline.union([.rescan]) : offline
     }
@@ -40,6 +40,13 @@ public enum LibraryMenuVisibility {
         /// **`labels` と同じくオンラインを要らない。** DB のアーカイブ属性を
         /// 書き換えるだけなので、外付けが無い間にこそ片付けたいことがある。
         case labelVault
+        /// ファイル保管庫の整理ウインドウ [FAW-01〜FAW-05][15.4 節]。
+        ///
+        /// **一覧はオンラインを要らない**——`isArchived` は DB の属性で、
+        /// 実体を 1 度も見ない。ただし**戻す・削除は実ファイルを動かす**ので
+        /// そちらはウインドウ側が `canModify` で無効にする（ラベル保管庫
+        /// [LAW-01] が最後まで DB だけで済むのとは事情が違う）。
+        case fileVault
         /// 孤立ファイルの整理ウインドウ [OR-01〜OR-05][15.7 節]。
         ///
         /// **オンラインを要らない。** そのライブラリの一覧は出せない

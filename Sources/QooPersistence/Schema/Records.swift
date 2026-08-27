@@ -162,7 +162,11 @@ extension ManagedFileRecord {
             volumeNumber: nil, volumeKind: VolumeValue.Kind.none.rawValue, volumeRaw: nil,
             authorName: nil, rating: 0,
             coverImageRef: nil, coverImageSource: CoverSource.auto.rawValue,
-            isArchived: false, archivedFromPath: nil, archivedAt: nil,
+            // 保管庫の中にあるかは**観測した位置**が決める [SY-10][FA-05]。
+            // `archivedFromPath` は走査では書かない——元の場所を知って
+            // いるのは保管庫へ移した操作だけで、外部で `.qooarchive` へ
+            // 入れられたものは `VaultPath.original` から導く [FA-03]。
+            isArchived: snapshot.isArchived, archivedFromPath: nil, archivedAt: nil,
             isBookFolder: snapshot.isBookFolder,
             isDuplicateRepresentativePinned: false,
             pageCount: nil, subfolderCount: nil,
@@ -193,6 +197,8 @@ extension ManagedFileRecord {
             coverImageSource: CoverSource(rawValue: coverImageSource) ?? .auto,
             state: FileState(rawValue: state) ?? .active,
             isArchived: isArchived,
+            archivedFromPath: archivedFromPath,
+            archivedAt: archivedAt.map { Date(timeIntervalSinceReferenceDate: $0) },
             isBookFolder: isBookFolder)
     }
 

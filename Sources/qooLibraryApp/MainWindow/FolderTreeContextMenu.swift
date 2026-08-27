@@ -300,6 +300,21 @@ struct FolderTreeContextMenu: View {
             // 効かせる仕組み（`NavigationRoot`）も両者で共通で、テンポラリだけ
             // 出さない理由が無い（取り込み直後の大量ファイルでサムネイル生成を
             // 止めたい、はむしろテンポラリで起きやすい）。
+            // フォルダを丸ごと保管庫へ移す [FDA-01][FDA-03]。**ライブラリ配下の
+            // ふつうのフォルダ行だけ**——登録ルート自身を保管庫へ入れると
+            // ライブラリの根がその中へ消える。**戻す操作は出さない** [FDA-04]
+            // ——中のファイルをすべて戻せば同じ結果になるので、整理ウインドウ
+            // 側がファイル単位でだけ扱う [FDA-05]。
+            //
+            // `.qooarchive` はツリーに出ない [LP-08]（`.skipsHiddenFiles`）ので、
+            // 「既に保管庫の中」の行はここに現れない。
+            if context.group == .library, context.role == .plainFolder,
+               context.allowsWriting, let library = actions.libraryForRow(context) {
+                Divider()
+                Button("folder.moveFolderToVault", systemImage: "archivebox") {
+                    actions.archiveFolderToVault(context, library)
+                }
+            }
             if context.role == .registeredRoot, let folder = context.registeredFolder {
                 Divider()
                 if context.group == .library {
@@ -357,6 +372,13 @@ struct FolderTreeContextMenu: View {
             // **オンラインを要らない**——DB のアーカイブ属性を書き換えるだけ。
             Button("library.labelVault.menuItem", systemImage: "archivebox") {
                 actions.openLabelVault(folder)
+            }
+        }
+        if visible.contains(.fileVault) {
+            // ファイル保管庫の整理 [FAW-01〜FAW-05][15.4 節]。**一覧は
+            // オンラインを要らない**——戻す・削除だけがボリュームを要る。
+            Button("library.fileVault.menuItem", systemImage: "archivebox.fill") {
+                actions.openFileVault(folder)
             }
         }
         if visible.contains(.orphanCleanup) {
@@ -564,6 +586,15 @@ struct FolderTreeContextMenuActions {
     var openLabelEditor: (RegisteredFolder) -> Void = { _ in }
     /// ラベル保管庫の整理ウインドウを開く [LAW-01〜LAW-03][15.3 節]。
     var openLabelVault: (RegisteredFolder) -> Void = { _ in }
+    /// ファイル保管庫の整理ウインドウを開く [FAW-01〜FAW-05][15.4 節]。
+    var openFileVault: (RegisteredFolder) -> Void = { _ in }
     var openOrphanCleanup: (RegisteredFolder) -> Void = { _ in }
     var openUnresolvedFiles: (RegisteredFolder) -> Void = { _ in }
+    /// この行が属する、有効でオンラインのライブラリ [FDA-03]。
+    ///
+    /// `isLibraryEnabled` と同じ理由でクロージャにしてある——メニューの
+    /// 組み立ては同期的で `await` できないため、`actor` からは読めない。
+    var libraryForRow: (FolderTreeRowContext) -> LibrarySummary? = { _ in nil }
+    /// フォルダを丸ごと保管庫へ移す [FDA-01][FDA-03]。
+    var archiveFolderToVault: (FolderTreeRowContext, LibrarySummary) -> Void = { _, _ in }
 }

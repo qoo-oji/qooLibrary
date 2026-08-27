@@ -531,6 +531,7 @@ struct MainWindowView: View {
                             bookFolderNames: windowState.bookFolders.names,
                             opensBookFolderWithApp: windowState.bookFolders.opensWithApp,
                             libraryContent: windowState.libraryContent,
+                            library: windowState.currentLibrary,   // [FA-01][LF-01]
                             onLoadMoreLibraryRows: {
                                 guard let library = windowState.currentLibrary else { return }
                                 Task {

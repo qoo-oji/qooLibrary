@@ -442,6 +442,57 @@ final class FolderOperations {
         }
     }
 
+    // MARK: - ファイル保管庫 [FA-01][FA-07][FDA-03]
+
+    /// 選んだファイルを保管庫へ出し入れする [FA-01][FA-07]。
+    ///
+    /// **DB に行のあるものだけが対象**［ユーザー判断］——保管庫は「蔵書を
+    /// 一覧から外す」機能で、蔵書でないもの（対象拡張子外のメモ等）には
+    /// 意味が無い。評価・ラベル・タイトルと同じ判断で、1 件も残らなければ
+    /// 理由を伝えて終わる。
+    func setArchived(_ urls: [URL], archived: Bool, library: LibrarySummary,
+                     onSuccess: @escaping @MainActor () -> Void = {}) {
+        guard !urls.isEmpty else { return }
+        Task {
+            let root = URL(fileURLWithPath: library.resolvedPath)
+            do {
+                let rows = try await LibraryServices.shared.fileRows(at: urls, in: library)
+                let targets = urls.compactMap { url -> SetFileArchivedCommand.Target? in
+                    guard let row = rows[url] else { return nil }
+                    return SetFileArchivedCommand.Target(
+                        id: row.id, relativePath: row.relativePath,
+                        archivedFromPath: row.archivedFromPath, archivedAt: row.archivedAt)
+                }
+                guard !targets.isEmpty else {
+                    await NotificationRouter.shared.present(NotificationItem(
+                        category: .warning, severity: .sheet,
+                        title: String(localized: "error.operationFailed", locale: locale),
+                        body: String(localized: "vault.notInLibrary", locale: locale)))
+                    return
+                }
+                run(SetFileArchivedCommand(targets: targets, archived: archived, root: root),
+                    failure: archived ? "error.vaultArchiveFailed" : "error.vaultRestoreFailed",
+                    onSuccess: onSuccess)
+            } catch {
+                await NotificationRouter.shared.presentError(
+                    error, whatHappened: String(localized: "error.operationFailed", locale: locale))
+            }
+        }
+    }
+
+    /// フォルダを丸ごと保管庫へ移す [FDA-01][FDA-03]。
+    ///
+    /// **戻す操作は提供しない** [FDA-04]。中のファイルをすべて戻せば同じ
+    /// 結果になるので、整理ウインドウ側はファイル単位でだけ扱う [FDA-05]。
+    func archiveFolder(_ url: URL, library: LibrarySummary,
+                       onSuccess: @escaping @MainActor () -> Void = {}) {
+        let root = URL(fileURLWithPath: library.resolvedPath)
+        guard let relative = FileVault.relativePath(of: url, under: root),
+              !VaultPath.isInside(relative) else { return }
+        run(ArchiveFolderCommand(libraryID: library.id, folderRelativePath: relative, root: root),
+            failure: "error.vaultArchiveFailed", onSuccess: onSuccess)
+    }
+
     // MARK: - 完全削除 [FM-14〜FM-18、8章 §8.5]
 
     /// [FM-14] ゴミ箱を経由しない完全削除。**必ず確認シートを挟む**

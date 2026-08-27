@@ -559,6 +559,7 @@ struct FolderTreePane: View {
                         onOpenLibrarySettings: { openLibrarySettings(entry.folder) },
                         onOpenLabelEditor: { openLabelEditor(entry.folder) },
                         onOpenLabelVault: { openLabelVault(entry.folder) },
+                        onOpenFileVault: { openFileVault(entry.folder) },
                         onOpenOrphanCleanup: { openOrphanCleanup(entry.folder) },
                         onOpenUnresolvedFiles: { openUnresolvedFiles(entry.folder) }
                     )
@@ -644,8 +645,19 @@ struct FolderTreePane: View {
             openLibrarySettings: { openLibrarySettings($0) },
             openLabelEditor: { openLabelEditor($0) },
             openLabelVault: { openLabelVault($0) },
+            openFileVault: { openFileVault($0) },
             openOrphanCleanup: { openOrphanCleanup($0) },
-            openUnresolvedFiles: { openUnresolvedFiles($0) }
+            openUnresolvedFiles: { openUnresolvedFiles($0) },
+            // [FDA-03] ライブラリ配下のフォルダを丸ごと保管庫へ。
+            libraryForRow: { context in
+                guard case .registeredFolder(let id, _) = context.navigationRoot,
+                      let library = LibraryServices.shared.library(registrationUUID: id),
+                      library.isOnline else { return nil }
+                return library
+            },
+            archiveFolderToVault: { context, library in
+                operations.archiveFolder(context.url, library: library)
+            }
         )
     }
 
@@ -861,6 +873,13 @@ struct FolderTreePane: View {
         // **受け皿へ置く順序をここで書き直さない** [CP-02]。写すと、入口が
         // 増えたときに片方だけ直して取り残す（このリポジトリで 3 度起きた形）。
         LabelVaultNavigation.open(libraryID: summary.id, openWindow: openWindow)
+    }
+
+    /// ファイル保管庫の整理ウインドウを開く [FAW-01〜FAW-05][15.4 節]。
+    private func openFileVault(_ folder: RegisteredFolder) {
+        guard let summary = LibraryServices.shared.library(registrationUUID: folder.id) else { return }
+        // **受け皿へ置く順序をここで書き直さない** [CP-02]。
+        FileVaultNavigation.open(libraryID: summary.id, openWindow: openWindow)
     }
 
     /// 孤立ファイルの整理ウインドウを開く [OR-01〜OR-05][15.7 節]。
@@ -1272,6 +1291,7 @@ private struct DegradedRegisteredFolderRow: View {
     /// ——外付けが無い間に表記ゆれを片付けられる（DB しか触らない）。
     let onOpenLabelEditor: () -> Void
     let onOpenLabelVault: () -> Void
+    let onOpenFileVault: () -> Void
     /// 孤立ファイルの整理ウインドウ [OR-01〜OR-05]。**縮退状態でこそ開きたい**
     /// ——「孤立していないか」を確かめられる（オフラインの間は判定しない
     /// [OR2-06][ID-08] ことが、開けば読み取れる）。
@@ -1363,6 +1383,11 @@ private struct DegradedRegisteredFolderRow: View {
             if libraryItems.contains(.labelVault) {
                 Button("library.labelVault.menuItem", systemImage: "archivebox") {
                     onOpenLabelVault()
+                }
+            }
+            if libraryItems.contains(.fileVault) {
+                Button("library.fileVault.menuItem", systemImage: "archivebox.fill") {
+                    onOpenFileVault()
                 }
             }
             if libraryItems.contains(.orphanCleanup) {

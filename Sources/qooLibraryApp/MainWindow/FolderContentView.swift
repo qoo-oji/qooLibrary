@@ -132,6 +132,10 @@ struct FolderContentView: View {
     /// ときだけ意味を持つ。読み直しを駆動するのは `MainWindowView` の
     /// `.task(id:)`（`labelFilter` と同じ形）。
     let libraryContent: LibraryContentModel
+    /// いま見ているライブラリ [LF-01]。**ライブラリ経由で入ったときだけ**
+    /// 非 `nil`（`NavigationRoot` が決める）——保管庫へ移す [FA-01] のような
+    /// 蔵書の操作は、同じフォルダでもボリューム経由では出さない。
+    let library: LibrarySummary?
     /// 一覧の末尾が見えたら次のページを求める [FI-05][PF-10]。**何度呼ばれても
     /// よい**——受け側（`LibraryContentModel.loadNextPage`）が番人を持つ。
     let onLoadMoreLibraryRows: () -> Void
@@ -1845,6 +1849,51 @@ struct FolderContentView: View {
         return true
     }
 
+    // MARK: - 保管庫 [FA-01][FA-07][FDA-03]
+
+    /// 保管庫への出し入れ。**ライブラリ経由でオンラインのときだけ出す。**
+    ///
+    /// 実ファイルを `.qooarchive` へ動かす操作なので、ボリュームが要る
+    /// ——ラベルの保管庫 [LA-01] が DB だけを触るのとは事情が違う。
+    @ViewBuilder
+    private func vaultSection(for targetEntries: [FolderEntry]) -> some View {
+        if let library, library.isOnline, !targetEntries.isEmpty {
+            let root = URL(fileURLWithPath: library.resolvedPath)
+            let relatives = targetEntries.compactMap {
+                FileVault.relativePath(of: $0.url, under: root)
+            }
+            // 根の外が混ざっていたら出さない（ライブラリの一覧に居るはずだが、
+            // 検索結果やシンボリックリンク越しの経路で起こりうる）。
+            if relatives.count == targetEntries.count,
+               let archived = VaultDirection.forSelection(relatives) {
+                Divider()
+                if archived, let folder = plainFolderTarget(targetEntries) {
+                    // フォルダ丸ごと [FDA-01][FDA-03]。**ブックフォルダは
+                    // 1 冊＝ 1 行なのでファイル側で扱う**——`bookFolderNames`
+                    // で見分ける（`isNavigableFolder` だけでは区別できない）。
+                    Button("folder.moveFolderToVault", systemImage: "archivebox") {
+                        operations.archiveFolder(folder, library: library) { selection.removeAll() }
+                    }
+                } else {
+                    Button(archived ? "folder.moveToVault" : "folder.restoreFromVault",
+                           systemImage: archived ? "archivebox" : "arrow.up.bin") {
+                        operations.setArchived(targetEntries.map(\.url), archived: archived,
+                                               library: library) { selection.removeAll() }
+                    }
+                }
+            }
+        }
+    }
+
+    /// 単一選択の「ふつうのフォルダ」——丸ごと保管庫へ移せる対象 [FDA-01]。
+    /// ブックフォルダ（1 冊として DB に載っている）とパッケージは除く。
+    private func plainFolderTarget(_ targetEntries: [FolderEntry]) -> URL? {
+        guard targetEntries.count == 1, let only = targetEntries.first,
+              only.isNavigableFolder,
+              !bookFolderNames.contains(only.name) else { return nil }
+        return only.url
+    }
+
     /// `.contextMenu(forSelectionType:)` から呼ばれる。`urls` は AppKit が
     /// 解決済みの対象集合（右クリックした行が選択に含まれていればその選択全体、
     /// 含まれていなければその1行だけ、何もない場所なら空集合）[Finder と同じ規則、
@@ -1985,6 +2034,7 @@ struct FolderContentView: View {
                         deletePermanently(targets)
                     }
                 }
+            vaultSection(for: targetEntries)
             Divider()
             // 圧縮・展開関連をサブメニューにまとめる [ユーザー要望]。
             // [VM-13] ライブラリ表示モードでは出さない——展開は「どこへ」を

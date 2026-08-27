@@ -139,7 +139,12 @@ public enum ScanUnitPlanner {
     /// 列挙の規則（隠し項目を飛ばす・`covers` へ降りない）をここでも同じく
     /// 適用する。**片方だけ直すと、差分とフルで DB の中身が食い違う。**
     static func isScannable(_ relativePath: String) -> Bool {
-        for component in relativePath.split(separator: "/") {
+        for (index, component) in relativePath.split(separator: "/").enumerated() {
+            // 保管庫は隠し名だが走査対象 [SY-10][FA2-12]。認めるのは
+            // **ライブラリ根の直下の 1 つだけ** [FA-02] ——`LibraryEnumerator`
+            // 側と同じ絞り方にする。片方だけ緩めると、差分では取り込まれるのに
+            // フルスキャンでは孤立になる、という往復が起きる。
+            if index == 0, component == VaultPath.folderName { continue }
             if component.hasPrefix(".") { return false }
             if component == "covers" { return false }
         }

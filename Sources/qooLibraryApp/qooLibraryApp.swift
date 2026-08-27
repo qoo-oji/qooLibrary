@@ -288,6 +288,16 @@ struct QooLibraryApp: App {
         }
         .defaultSize(width: 820, height: 560)
 
+        // ファイル保管庫の整理 [FAW-01〜FAW-05][15.4 節]。開くのはフォルダツリーの
+        // 「ファイルの保管庫…」から（`FileVaultNavigation` が対象を渡す）。
+        // **登録ルート行は 2 種類ある**ので、通常の行と縮退した行の両方に
+        // 配線してある。
+        Window("fileVault.windowTitle", id: "fileVault") {
+            FileVaultWindow()
+                .appLanguageOverride()
+        }
+        .defaultSize(width: 900, height: 560)
+
         // 孤立ファイルの整理 [OR-01〜OR-05][15.7 節]。開くのはフォルダツリーの
         // 「孤立ファイルを整理…」から（`OrphanCleanupNavigation` が対象を渡す）。
         // **登録ルート行は 2 種類ある**ので、通常の行と縮退した行の両方に

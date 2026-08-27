@@ -533,6 +533,40 @@ public final class LibraryServices {
         return try await repository.orphanedFileCounts()
     }
 
+    // MARK: - ファイル保管庫 [FA-01〜FA-17][FAW-01〜FAW-05]
+
+    public func archivedFiles(libraryID: LibraryID) async throws -> [ArchivedFile] {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        return try await repository.archivedFiles(libraryID: libraryID)
+    }
+
+    public func archivedFileCounts() async throws -> [LibraryID: Int] {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        return try await repository.archivedFileCounts()
+    }
+
+    public func filesUnder(libraryID: LibraryID, folderRelativePath: String) async throws
+        -> [FileID: String]
+    {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        return try await repository.filesUnder(libraryID: libraryID,
+                                               folderRelativePath: folderRelativePath)
+    }
+
+    /// 保管庫の出入りを DB へ記録する [FA-04][FA-05]。**実ファイルを動かした
+    /// あとに呼ぶこと**（`FileVault.relocate` が返した着地点を渡す）。
+    ///
+    /// **`contentRevision` を進める。** 評価・ラベル・タイトルの編集では
+    /// 進めない（あちらは `operationHistory.count` が同じ役目を果たす）が、
+    /// 保管庫の出入りは**蔵書の一覧そのものが変わる** [FA-05][FA-12] ので、
+    /// 走査と同じ扱いにする——さもないと左ペインのラベル件数が、次の走査まで
+    /// 古いまま残る（`labelFilterLoadKey` は `operationHistory` を見ない）。
+    public func setFileArchived(_ moves: [VaultMove], archived: Bool) async throws {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        try await repository.setArchived(moves, archived: archived)
+        contentRevision &+= 1
+    }
+
     /// 同一性で行を引く [ID-02]。再紐づけのコマンドが「消される側」を
     /// **消す前に**控えるために使う。
     public func findFile(identity: FileIdentity) async throws -> FileID? {

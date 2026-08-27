@@ -34,6 +34,12 @@ public struct FileSnapshot: Sendable, Hashable {
 
     /// 拡張子を除いたファイル名。パーサへ渡す値。
     public var nameWithoutExtension: String { FilenameStem.of(filename) }
+
+    /// 保管庫の中にあるか [FA-05][SY-10]。**相対パスから導く**——観測した
+    /// 実体の位置が真実なので、初期化子の引数として受け取らない（食い違った
+    /// スナップショットを作れる余地を残さない）。外部（Finder 等）で
+    /// `.qooarchive` へ出し入れされた場合も、次の走査でこの値が追随する。
+    public var isArchived: Bool { VaultPath.isInside(relativePath) }
 }
 
 public enum FileState: String, Sendable, Codable, Hashable, CaseIterable {
@@ -102,6 +108,12 @@ public struct FileRow: Sendable, Hashable, Identifiable {
     public let coverImageSource: CoverSource
     public let state: FileState
     public let isArchived: Bool
+    /// 保管庫へ移す前の相対パス [FA-04]。右ペインの表示 [DT-11] と、
+    /// 戻す先の決定 [FA-07] に使う。外部で `.qooarchive` へ入れられたものは
+    /// 記録が無いので `nil`——そのときは `VaultPath.original` が導く [FA-03]。
+    public let archivedFromPath: String?
+    /// 保管庫へ移した日時 [FAW-05]。
+    public let archivedAt: Date?
     public let isBookFolder: Bool
 
     public init(id: FileID, libraryID: LibraryID, relativePath: String, filename: String,
@@ -111,7 +123,9 @@ public struct FileRow: Sendable, Hashable, Identifiable {
                 rating: Int,
                 coverImageRef: String? = nil, coverImageSource: CoverSource = .auto,
                 state: FileState,
-                isArchived: Bool, isBookFolder: Bool) {
+                isArchived: Bool,
+                archivedFromPath: String? = nil, archivedAt: Date? = nil,
+                isBookFolder: Bool) {
         self.id = id
         self.libraryID = libraryID
         self.relativePath = relativePath
@@ -129,6 +143,8 @@ public struct FileRow: Sendable, Hashable, Identifiable {
         self.coverImageSource = coverImageSource
         self.state = state
         self.isArchived = isArchived
+        self.archivedFromPath = archivedFromPath
+        self.archivedAt = archivedAt
         self.isBookFolder = isBookFolder
     }
 
