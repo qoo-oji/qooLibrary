@@ -1,3 +1,4 @@
+import QooApplication
 import QooInfrastructure
 import QooKit
 import SwiftUI
@@ -16,6 +17,7 @@ import SwiftUI
 /// ときにだけ取り直す。
 struct StatusBarView<Trailing: View>: View {
     @Environment(\.locale) private var locale
+    @Environment(\.openWindow) private var openWindow
     let folder: URL?
     let itemCount: Int
     let selectedCount: Int
@@ -65,6 +67,8 @@ struct StatusBarView<Trailing: View>: View {
 
                 Spacer()
 
+                notificationBadge
+
                 trailing()
             }
         }
@@ -73,6 +77,39 @@ struct StatusBarView<Trailing: View>: View {
         .background(.thinMaterial)
         .task(id: TaskKey(folder: folder, refreshToken: refreshToken)) {
             availableCapacity = await Self.availableCapacity(of: folder)
+        }
+    }
+
+    /// 未読の通知バッジ [NT-02][NT-06][13章 §13.5]。
+    ///
+    /// **出すのは未読件数だけ。** 孤立ファイル [OR-05]・ペンディング [PW-14]・
+    /// 再スキャンの警告 [MX-10] の個別バッジは持たない [NT-06]——バッジを
+    /// 機能ごとに散らすと、どれを見れば「何か起きた」と分かるのかが
+    /// 読めなくなる。それぞれは通知として履歴へ落ち、ここに合流する。
+    ///
+    /// **0 件のときは何も出さない。** 常時 0 を表示すると、目に入っても
+    /// 意味が無いものが 1 つ増えるだけになる（履歴自体はウインドウメニュー
+    /// からいつでも開ける）。
+    @ViewBuilder
+    private var notificationBadge: some View {
+        let unread = NotificationRouter.shared.unreadCount
+        if unread > 0 {
+            Button {
+                NotificationHistoryNavigation.open(openWindow: openWindow)
+            } label: {
+                Label {
+                    Text("\(unread)")
+                        .font(.system(size: Tokens.fontSize.caption, weight: .semibold))
+                        .monospacedDigit()
+                } icon: {
+                    Image(systemName: "bell.badge")
+                }
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+            .foregroundStyle(Color.accentColor)
+            .help(String(format: String(localized: "statusBar.unreadNotifications", locale: locale),
+                         unread))
         }
     }
 

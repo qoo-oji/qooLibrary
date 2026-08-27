@@ -206,9 +206,9 @@ enum LibraryEnableAction {
             // **ラベルが 1 つも付かないまま蔵書に埋もれる**ため——ラベル
             // フィルタからは永久に辿り着けない。§4.11 が導線を名指ししている。
             actions.append(RecoveryAction(
-                id: Self.reviewUnresolvedActionID,
+                id: NotificationRouteAction.reviewUnresolved,
                 title: String(localized: "library.scan.reviewUnresolved", locale: locale),
-                kind: .openWindow(Self.reviewUnresolvedActionID)))
+                kind: .openWindow(NotificationRouteAction.reviewUnresolved)))
         }
         if !summary.bookFoldersReleased.isEmpty {
             lines.append(String(format: String(localized: "library.scan.bookFoldersReleased", locale: locale),
@@ -221,9 +221,9 @@ enum LibraryEnableAction {
             lines.append(String(format: String(localized: "library.scan.volumeConflicts", locale: locale),
                                 summary.volumeConflicts))
             actions.append(RecoveryAction(
-                id: Self.reviewVolumesActionID,
+                id: NotificationRouteAction.reviewVolumes,
                 title: String(localized: "library.scan.reviewVolumes", locale: locale),
-                kind: .openWindow(Self.reviewVolumesActionID)))
+                kind: .openWindow(NotificationRouteAction.reviewVolumes)))
         }
         // **同一性の確認待ち** [ID-05]。名前は同じだが inode が違うので、
         // 自動では紐づけない。走り切ってからまとめて聞く——差し替え
@@ -234,17 +234,20 @@ enum LibraryEnableAction {
                                                locale: locale),
                                 summary.candidatesForReview))
             actions.append(RecoveryAction(
-                id: Self.reviewIdentityActionID,
+                id: NotificationRouteAction.reviewIdentity,
                 title: String(localized: "library.scan.reviewIdentity", locale: locale),
-                kind: .openWindow(Self.reviewIdentityActionID)))
+                kind: .openWindow(NotificationRouteAction.reviewIdentity)))
         }
         guard !lines.isEmpty else { return }
 
         let chosen = await NotificationRouter.shared.present(NotificationItem(
             category: .warning,
-            // 判断を促すものなので強度 2 [ER-02]。強度 4（一時通知）は
-            // フェーズ 1 の時点で提示先が無く、ログだけになって届かない。
+            // **手動の再スキャンは従来どおり強度 2（シート）** [ER-02]。
+            // 自分で走らせた操作の結果は、その場で見せるのが素直である
+            // ——強度 4 へ移すと「押したのに何も出ない」ことになる。
+            // 通知履歴には全強度が残る [NT-01 の改訂] ので、後から読み返せる。
             severity: .sheet,
+            target: target(for: libraryID, displayName: displayName),
             title: String(format: String(localized: "library.scan.reviewTitle", locale: locale),
                           displayName),
             body: lines.joined(separator: "\n"),
@@ -252,24 +255,38 @@ enum LibraryEnableAction {
 
         // **ここでダイアログを出す。**要求を View 越しに回すと、メイン
         // ウインドウが閉じているときに黙って何も起きない［既知の失敗］。
-        if chosen?.id == Self.reviewVolumesActionID, let libraryID {
-            VolumeDecisionAction.present(libraryID: libraryID, locale: locale)
-        }
-        if chosen?.id == Self.reviewIdentityActionID, let libraryID {
-            IdentityDecisionAction.present(libraryID: libraryID, locale: locale)
-        }
-        if chosen?.id == Self.reviewUnresolvedActionID, let libraryID {
-            UnresolvedFilesNavigation.open(libraryID: libraryID, openWindow: openWindow)
+        // 行き先の解決は `NotificationRouteAction` 1 箇所——通知履歴の行から
+        // 押したときも同じ経路を通る [NT-05]。
+        if let chosen, let libraryID {
+            NotificationRouteAction.perform(actionID: chosen.id, libraryID: libraryID,
+                                            locale: locale, openWindow: openWindow)
         }
     }
 
-    /// 自動走査（FSEvents の追随・定期フルスキャン）の結果を受けて、
-    /// **判断が要るものだけ**を知らせる [ID-05]［ユーザー判断、2026-08］。
+    /// 通知の対象 [NT-04]。**行 ID ではなく外部識別子（`library.uuid`）を持つ**
+    /// ——登録解除で行 ID は再利用されうるし、通知は登録が消えたあとも残る。
+    @MainActor
+    private static func target(for libraryID: LibraryID?,
+                               displayName: String) -> NotificationTarget? {
+        guard let libraryID,
+              let library = LibraryServices.shared.libraries.first(where: { $0.id == libraryID })
+        else { return nil }
+        return .library(uuid: library.uuid, name: library.displayName)
+    }
+
+    /// 自動走査（FSEvents の追随・定期フルスキャン）の結果を受け取る。
     ///
-    /// **孤立・未解決・1 冊扱いの解除は出さない。** それらは「知らせるだけ」
-    /// なので、自動で走るたびに出すと雑音になる——利用者が自分で消した
-    /// ファイルに「N 件が見つからなくなりました」と言うことになる。
-    /// 差し替えの確認は**放置すると記録が失われたままになる**ので別扱い。
+    /// 出し方を 2 つに分ける［ユーザー判断、2026-08］:
+    ///
+    /// | 何 | どう出すか |
+    /// |---|---|
+    /// | 差し替えの確認待ち [ID-05] | **従来どおりシート**。放置すると記録が失われたままになるので割り込む |
+    /// | 孤立 [ID-06]・未解決 [AL-31]・1 冊扱いの解除 [IF-05] | **強度 4**。履歴とバッジにだけ残し、割り込まない |
+    ///
+    /// **後者は 1-12b の時点では出せなかった。** 「強度 4 は提示先が無く、
+    /// ログだけになって届かない」と記録していたのがそれで、通知履歴と
+    /// ステータスバーのバッジ [NT-02] ができたことで初めて成立する
+    /// ——それまでは**自動走査で孤立が起きても誰も知らなかった**。
     ///
     /// **同じ確認待ちを何度も出すことにはならない。** `candidatesForReview` は
     /// 走査が `.nameOnly` [ID-03]③ を新しく検出したときにしか数えられず、
@@ -278,35 +295,100 @@ enum LibraryEnableAction {
     @MainActor
     static func notifyAutomaticScan(libraryID: LibraryID, summary: ScanSummary,
                                     locale: Locale) {
+        let library = LibraryServices.shared.libraries.first { $0.id == libraryID }
+        let displayName = library?.displayName ?? ""
+        let target = library.map { NotificationTarget.library(uuid: $0.uuid,
+                                                              name: $0.displayName) }
+        recordQuietFindings(summary, libraryID: libraryID, displayName: displayName,
+                            target: target, locale: locale)
+
         guard summary.candidatesForReview > 0 else { return }
         Task {
             let chosen = await NotificationRouter.shared.present(NotificationItem(
                 category: .warning,
                 severity: .sheet,
+                target: target,
                 title: String(localized: "library.scan.identityTitle", locale: locale),
                 body: String(format: String(localized: "library.scan.identityMatches",
                                             locale: locale), summary.candidatesForReview),
                 actions: [RecoveryAction(
-                    id: Self.reviewIdentityActionID,
+                    id: NotificationRouteAction.reviewIdentity,
                     title: String(localized: "library.scan.reviewIdentity", locale: locale),
-                    kind: .openWindow(Self.reviewIdentityActionID))]))
-            if chosen?.id == Self.reviewIdentityActionID {
-                IdentityDecisionAction.present(libraryID: libraryID, locale: locale)
+                    kind: .openWindow(NotificationRouteAction.reviewIdentity))]))
+            if let chosen {
+                // 自動走査の受け口は View の外にいるので `openWindow` を持てない。
+                // ここで出る行き先（同一性の確認）はダイアログなので開ける。
+                NotificationRouteAction.perform(actionID: chosen.id, libraryID: libraryID,
+                                                locale: locale, openWindow: nil)
             }
         }
     }
 
-    /// 走査結果の通知から同一性の確認を開くアクションの識別子 [ID-05]。
-    /// **ドットを含めない**（上の理由と同じ）。
-    private static let reviewIdentityActionID = "review-identity-matches"
-    private static let reviewUnresolvedActionID = "review-unresolved-files"
+    /// 自動走査で同じ知らせを繰り返さないための番人 [NT-07]。
+    /// **`ScanSummary` の件数は差分ではない**——理由は `ScanFindingsDigest` の doc。
+    @MainActor
+    private static let digest = ScanFindingsDigest()
 
-    /// 走査結果の通知から巻数の確認を開くアクションの識別子 [EM-32]。
+    /// 割り込まずに履歴へ残す [OR2-05][UR2-02][IF-05][NT-01]。
     ///
-    /// **ドットを含めない。**`library.volumeDecision` のような形にすると
-    /// 文字列カタログの鍵と見分けが付かず、`check-localization-keys` が
-    /// 「未定義の鍵」として拾う。内部の識別子なので鍵と紛らわしい形にしない。
-    private static let reviewVolumesActionID = "review-volume-decisions"
+    /// **何も無ければ黙る。** 変化があるたびに「12 件を取り込みました」と
+    /// 残すと、外部でファイルを整理するだけで保持上限 1,000 件 [NT-07] を
+    /// 数十回の操作で使い切る［ユーザー判断］。判断軸は手動の再スキャンと
+    /// 同じにしてある——**どちらの経路でも同じものが残る。**
+    ///
+    /// **前回と同じ内容なら黙る** [`ScanFindingsDigest`]。差分走査は
+    /// 恒久的に未解決なファイルを毎回数え直すので、これが無いと同じ行が
+    /// 際限なく積み上がる［レビューで発見］。
+    ///
+    /// **導線は付ける。** 走査結果のシートに孤立の導線を足さないと決めた
+    /// のは 2-14 の判断だが、それは**割り込むモーダルにボタンを増やさない**
+    /// という話で、履歴の行は事情が違う——導線が無ければ、記録を読んでも
+    /// そこから何もできない行き止まりになる。
+    @MainActor
+    private static func recordQuietFindings(_ summary: ScanSummary, libraryID: LibraryID,
+                                            displayName: String,
+                                            target: NotificationTarget?, locale: Locale) {
+        let findings = ScanFindingsDigest.Findings(
+            orphaned: summary.orphaned,
+            unresolved: summary.unresolvedNames,
+            bookFoldersReleased: summary.bookFoldersReleased.count)
+        guard digest.shouldRecord(findings, for: libraryID) else { return }
+
+        var lines: [String] = []
+        var actions: [RecoveryAction] = []
+        if summary.orphaned > 0 {
+            lines.append(String(format: String(localized: "library.scan.orphaned", locale: locale),
+                                summary.orphaned))
+            actions.append(RecoveryAction(
+                id: NotificationRouteAction.reviewOrphans,
+                title: String(localized: "library.scan.reviewOrphans", locale: locale),
+                kind: .openWindow(NotificationRouteAction.reviewOrphans)))
+        }
+        if summary.unresolvedNames > 0 {
+            lines.append(String(format: String(localized: "library.scan.unresolved", locale: locale),
+                                summary.unresolvedNames))
+            actions.append(RecoveryAction(
+                id: NotificationRouteAction.reviewUnresolved,
+                title: String(localized: "library.scan.reviewUnresolved", locale: locale),
+                kind: .openWindow(NotificationRouteAction.reviewUnresolved)))
+        }
+        if !summary.bookFoldersReleased.isEmpty {
+            lines.append(String(format: String(localized: "library.scan.bookFoldersReleased",
+                                               locale: locale),
+                                summary.bookFoldersReleased.count))
+        }
+        guard !lines.isEmpty else { return }
+        let item = NotificationItem(
+            category: .warning,
+            // 強度 4＝一時通知。**提示はされず履歴とバッジにだけ残る** [NT-02]。
+            severity: .transient,
+            target: target,
+            title: String(format: String(localized: "library.scan.reviewTitle", locale: locale),
+                          displayName),
+            body: lines.joined(separator: "\n"),
+            actions: actions)
+        Task { await NotificationRouter.shared.present(item) }
+    }
 
     private static func presentUnavailable(_ failure: StoreStartupFailure?) {
         Task {

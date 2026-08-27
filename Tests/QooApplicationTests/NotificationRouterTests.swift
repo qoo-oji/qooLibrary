@@ -44,9 +44,13 @@ import Testing
         #expect(router.currentModalItem == nil)
     }
 
-    /// [CB-11] 強度4以上（一時通知／ログのみ）だけを履歴に残す。
-    @Test func onlyTransientAndLogOnlySeverityAreRecordedInHistory() async {
+    /// **強度を問わずすべて記録する**［ユーザー判断、2026-08］。要件 NT-01 は
+    /// 「強度 4 以上」と定めていたが、実測すると `.sheet` が 70 箇所超に対し
+    /// `.transient` は 3 箇所しかなく、そのままでは履歴が常に空になる。
+    @Test func everySeverityIsRecordedInHistory() async {
         let router = NotificationRouter()
+        let store = FakeNotificationHistoryStore()
+        await router.attachHistoryStore(store, retentionDays: 0, maxCount: 0)
 
         _ = await router.present(NotificationItem(category: .info, severity: .transient, title: "A", body: ""))
         _ = await router.present(NotificationItem(category: .info, severity: .logOnly, title: "B", body: ""))
@@ -57,8 +61,58 @@ import Testing
         try? await Task.sleep(for: .milliseconds(20))
         router.resolve(nil)
         _ = await modalResult
+        try? await Task.sleep(for: .milliseconds(50))
 
-        #expect(router.history.map(\.title) == ["A", "B"])
+        #expect(await store.titles() == ["A", "B", "C"])
+    }
+
+    /// **未読に数えるのは強度 4 以上だけ** [NT-02]。シートを目の前で閉じた
+    /// 直後にバッジが立つと、「まだ見ていないものがある」というバッジの
+    /// 意味そのものが失われる。
+    @Test func onlyWeakSeveritiesCountAsUnread() async {
+        let router = NotificationRouter()
+        let store = FakeNotificationHistoryStore()
+        await router.attachHistoryStore(store, retentionDays: 0, maxCount: 0)
+
+        _ = await router.present(NotificationItem(category: .info, severity: .transient, title: "A", body: ""))
+        _ = await router.present(NotificationItem(category: .info, severity: .logOnly, title: "B", body: ""))
+        try? await Task.sleep(for: .milliseconds(50))
+
+        async let modalResult: RecoveryAction? = router.present(
+            NotificationItem(category: .error, severity: .sheet, title: "C", body: "")
+        )
+        try? await Task.sleep(for: .milliseconds(20))
+        router.resolve(nil)
+        _ = await modalResult
+        try? await Task.sleep(for: .milliseconds(50))
+
+        #expect(router.unreadCount == 2)
+    }
+
+    /// **ストアが繋がる前の通知を取りこぼさない。** 退避記録の復旧 [NV-92]・
+    /// 登録フォルダの読み込み失敗は `LibraryServices.bootstrap()` より前に走る。
+    @Test func notificationsRaisedBeforeTheStoreIsAttachedAreFlushed() async {
+        let router = NotificationRouter()
+        _ = await router.present(NotificationItem(category: .warning, severity: .transient,
+                                                  title: "起動中", body: ""))
+        let store = FakeNotificationHistoryStore()
+        await router.attachHistoryStore(store, retentionDays: 0, maxCount: 0)
+
+        #expect(await store.titles() == ["起動中"])
+        #expect(router.unreadCount == 1)
+    }
+
+    /// 掃除 [NT-07] は**繋いだ時点で 1 度だけ**走る。追記のたびに走らせると、
+    /// 通知が大量に出た日にその回数だけ削除が走ることになる。
+    @Test func attachingPurgesOnce() async {
+        let router = NotificationRouter()
+        let store = FakeNotificationHistoryStore()
+        await router.attachHistoryStore(store, retentionDays: 30, maxCount: 1_000)
+
+        _ = await router.present(NotificationItem(category: .info, severity: .transient,
+                                                  title: "A", body: ""))
+        try? await Task.sleep(for: .milliseconds(50))
+        #expect(await store.purgeCalls() == 1)
     }
 
     @Test func secondModalItemQueuesUntilFirstIsResolved() async {
@@ -233,4 +287,57 @@ struct NotificationAlertButtonsTests {
         #expect(buttons.count == 2)
         #expect(buttons.last?.kind == .dismiss)
     }
+}
+
+
+/// 通知履歴ストアの試験用実装。**`SQLiteNotificationHistoryStore` を使わない**
+/// ——ここで確かめたいのはルーターの振る舞い（何を記録し、何を未読に数え、
+/// いつ掃除するか）であって、SQL ではない。
+actor FakeNotificationHistoryStore: NotificationHistoryStore {
+    private var rows: [StoredNotification] = []
+    private var nextID: Int64 = 1
+    private var purges = 0
+
+    func titles() -> [String] { rows.map(\.title) }
+    func purgeCalls() -> Int { purges }
+
+    @discardableResult
+    func append(_ item: NotificationItem) async throws -> NotificationID {
+        let id = NotificationID(rawValue: nextID)
+        nextID += 1
+        rows.append(StoredNotification(
+            id: id, date: item.date, category: item.category, severity: item.severity,
+            target: item.target, title: item.title, body: item.body,
+            technicalDetail: item.technicalDetail,
+            links: item.actions.compactMap { action in
+                guard case .openWindow = action.kind else { return nil }
+                return NotificationLink(actionID: action.id, title: action.title)
+            },
+            isRead: false))
+        return id
+    }
+
+    func query(_ filter: NotificationHistoryFilter) async throws -> [StoredNotification] {
+        rows.reversed()
+    }
+
+    func unreadCount() async throws -> Int {
+        rows.filter { !$0.isRead && StoredNotification.countsAsUnread(severity: $0.severity) }.count
+    }
+
+    func markRead(_ ids: [NotificationID]) async throws {
+        for index in rows.indices where ids.contains(rows[index].id) { rows[index].isRead = true }
+    }
+
+    func markAllRead() async throws {
+        for index in rows.indices { rows[index].isRead = true }
+    }
+
+    func delete(_ ids: [NotificationID]) async throws {
+        rows.removeAll { ids.contains($0.id) }
+    }
+
+    func deleteAll() async throws { rows.removeAll() }
+
+    func purgeExpired(retentionDays: Int, maxCount: Int) async throws { purges += 1 }
 }

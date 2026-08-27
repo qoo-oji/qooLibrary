@@ -242,6 +242,12 @@ struct QooLibraryApp: App {
             CommandMenu("menu.go") {
                 GoMenuCommands()
             }
+            // 通知履歴への導線 [13章 §13.7.2「ウインドウ｜…通知履歴…」]。
+            // **ステータスバーのバッジ [NT-02] だけにしない**——未読が 0 のとき
+            // バッジは何も出さないので、履歴を開く手段がその間だけ消えてしまう。
+            CommandGroup(after: .windowList) {
+                NotificationHistoryMenuButton()
+            }
         }
 
         Window("about.windowTitle", id: "about") {
@@ -319,11 +325,30 @@ struct QooLibraryApp: App {
         }
         .defaultSize(width: 980, height: 580)
 
+        // 通知履歴 [NW-01〜NW-08][15章 §15.11]。開くのは**ステータスバーの
+        // 通知バッジ** [NT-02] と**ウインドウメニュー** [13章 §13.7.2] の 2 つ。
+        Window("notifications.windowTitle", id: "notificationHistory") {
+            NotificationHistoryWindow()
+                .appLanguageOverride()
+        }
+        .defaultSize(width: 900, height: 560)
+
         Window("preferences.windowTitle", id: "preferences") {
             PreferencesView()
                 .appLanguageOverride()
         }
         .windowResizability(.contentSize)
+    }
+}
+
+/// ウインドウメニューの「通知履歴」[NT-02][13章 §13.7.2]。
+private struct NotificationHistoryMenuButton: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("notifications.windowTitle", systemImage: "bell") {
+            NotificationHistoryNavigation.open(openWindow: openWindow)
+        }
     }
 }
 

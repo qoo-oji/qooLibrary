@@ -69,12 +69,18 @@ public struct RecoveryAction: Sendable, Identifiable, Equatable {
     }
 }
 
-/// `NotificationRouter.present` に渡す通知1件 [13.1 節]。仕様書の `target`
-/// （ライブラリ／ファイル／処理名）・`operationLogID`（操作履歴へのリンク）は
-/// それぞれ登録フォルダの `libraryID`・操作履歴の DB レコードが前提のため、
-/// フェーズ1にはまだ無い（`target`/`operationLogID` を省いた最小構成）。
+/// `NotificationRouter.present` に渡す通知1件 [13.1 節]。
+///
+/// `target`（ライブラリ／ファイル／処理名）は通知履歴の「対象」列と
+/// 対象ライブラリでの絞り込み [NT-04][NW-01][NW-02] に使う。**省略してよい**
+/// ——ライブラリと無関係な通知（ファイル操作の失敗など）のほうが多い。
+///
+/// 仕様書の `operationLogID`（操作履歴へのリンク [NT-04]）はまだ持たない。
+/// `operationLog` テーブルは v1 からあるが誰も書いておらず、操作履歴は
+/// `CommandStack.operationHistory`（メモリのみ）に留まっている
+/// ——**リンク先の実体が無いものへの参照を先に作らない**。
 public struct NotificationItem: Sendable, Identifiable {
-    public enum Category: Sendable {
+    public enum Category: Sendable, CaseIterable {
         case error, warning, info // [NT-03]
     }
 
@@ -82,6 +88,8 @@ public struct NotificationItem: Sendable, Identifiable {
     public let date: Date
     public let category: Category
     public let severity: NotificationSeverity
+    /// 何についての通知か [NT-04]。通知履歴の絞り込みと「対象」列に使う。
+    public let target: NotificationTarget?
     public let title: String
     public let body: String
     public let technicalDetail: String?
@@ -92,6 +100,7 @@ public struct NotificationItem: Sendable, Identifiable {
         date: Date = Date(),
         category: Category,
         severity: NotificationSeverity,
+        target: NotificationTarget? = nil,
         title: String,
         body: String,
         technicalDetail: String? = nil,
@@ -101,6 +110,7 @@ public struct NotificationItem: Sendable, Identifiable {
         self.date = date
         self.category = category
         self.severity = severity
+        self.target = target
         self.title = title
         self.body = body
         self.technicalDetail = technicalDetail

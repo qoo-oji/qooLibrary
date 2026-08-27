@@ -358,6 +358,37 @@ struct UnresolvedFileRecord: Codable, FetchableRecord, MutablePersistableRecord,
     mutating func didInsert(_ inserted: InsertionSuccess) { id = inserted.rowID }
 }
 
+// MARK: - 通知履歴
+
+struct NotificationRecord: Codable, FetchableRecord, MutablePersistableRecord, Sendable {
+    static let databaseTableName = "notificationRecord"
+    var id: Int64?
+    var date: Double
+    var category: String
+    var severity: Int
+    /// 対象・技術詳細・関連画面への導線をまとめた JSON [NT-04][NT-05]。
+    ///
+    /// **列の名前は v1 の「対象を非正規化して持つ」という意図のまま**だが、
+    /// 実際には `NotificationPayload` を入れている——技術詳細も導線も、
+    /// SQL で絞り込む対象ではなく、行を開いたときにだけ読むものだからで、
+    /// そのために列を 3 つ足す理由が無い（`library.settingsJSON` と同じ判断）。
+    var targetJSON: String?
+    var title: String
+    var body: String
+    var isRead: Bool
+    /// 操作履歴へのリンク [NT-04]。**まだ誰も書かない**——`operationLog` は
+    /// v1 からあるが書き手が無く、操作履歴はメモリのみ（`CommandStack`）。
+    var operationLogID: Int64?
+    mutating func didInsert(_ inserted: InsertionSuccess) { id = inserted.rowID }
+}
+
+/// `notificationRecord.targetJSON` の中身。
+struct NotificationPayload: Codable, Sendable {
+    var target: NotificationTarget?
+    var technicalDetail: String?
+    var links: [NotificationLink] = []
+}
+
 struct ProtectedTokenRecord: Codable, FetchableRecord, MutablePersistableRecord, Sendable {
     static let databaseTableName = "protectedToken"
     var id: Int64?

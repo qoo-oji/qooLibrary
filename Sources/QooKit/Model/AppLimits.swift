@@ -298,6 +298,30 @@ public enum AppLimits {
         public static let unresolvedBulkThreshold = 500
     }
 
+    /// 通知履歴 [NT-07]。どちらも環境設定「通知」タブで変更できる。
+    public enum Notifications {
+        /// 保持期間（日）。既定 30 [NT-07]。`0` 以下なら期限では消さない。
+        public static let defaultRetentionDays = 30
+        /// 保持件数の上限。既定 1,000 [NT-07]。`0` 以下なら件数では消さない。
+        public static let defaultMaxCount = 1_000
+
+        /// ストアが繋がる前に溜めておける件数。
+        ///
+        /// **起動直後の通知を取りこぼさないために要る**——退避記録の復旧
+        /// [NV-92]・登録フォルダの読み込み失敗・残存ステージングの後始末は
+        /// どれも `LibraryServices.bootstrap()` より前に走りうる。溢れたら
+        /// 古いものから捨てる（**捨てたことは診断ログに残す**——黙って
+        /// 消すと「記録されるはずのものが無い」理由が追えない）。
+        public static let preAttachBufferLimit = 64
+
+        /// 一覧が 1 度に読む行数の上限。
+        ///
+        /// **掃除 [NT-07] は起動時に 1 度しか走らない**ので、1 回のセッションの
+        /// 中では件数が伸び続ける。既定の保持件数の 2 倍にしてあるので、
+        /// 既定の設定では 1 件も切り落とされない。
+        public static let queryLimit = 2_000
+    }
+
     /// ラベルフィルタ [LF-01〜LF-14][PN-01〜PN-06]。
     public enum LabelFilter {
         /// ピン留めが 1 件も無いグループで、たたんだまま見せるラベルの数

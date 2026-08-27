@@ -88,6 +88,10 @@ public final class LibraryServices {
     private var fileRepository: (any ManagedFileRepository)?
     private var labelRepository: (any LabelRepository)?
     private var backupRepository: (any BackupRepository)?
+    /// 通知履歴 [NT-01][NW-01〜08]。**ライブラリと無関係な通知も入る**
+    /// ——`notificationRecord` は `library` への外部キーを持たず、対象は
+    /// `targetJSON` に非正規化して持つ [07章 §7.3]。
+    public private(set) var notificationHistory: (any NotificationHistoryStore)?
     private var scanEngine: ScanEngine?
     /// ユーザー指定カバーの複製 [CV-06]。DB を開けていなくても場所は決まるので、
     /// リポジトリと違い常に持っている。
@@ -145,8 +149,10 @@ public final class LibraryServices {
             fileRepository = SQLiteManagedFileRepository(database: opened)
             labelRepository = SQLiteLabelRepository(database: opened)
             backupRepository = SQLiteBackupRepository(database: opened)
+            notificationHistory = SQLiteNotificationHistoryStore(database: opened)
             Log.app.info("ライブラリストアを開いた: \(Log.path(storeURL))")
             makeSyncCoordinator()
+            await attachNotificationHistory()
         } catch let error as QooDatabase.StoreError {
             startupFailure = StoreStartupFailure(error)
             Log.app.error("ライブラリストアを開けない: \(String(describing: error))")
@@ -157,6 +163,21 @@ public final class LibraryServices {
             return
         }
         await refreshLibraries()
+    }
+
+    /// 通知履歴を `NotificationRouter` へ繋ぐ [NT-01]。
+    ///
+    /// **`swift test` 中は繋がない**——`NotificationRouter.shared` はアプリ全体で
+    /// 1 つなので、テストが作った一時ストアを共有ルーターへ繋ぐと、以後の
+    /// すべてのテストの通知がそこへ落ちて互いに干渉する（`makeSyncCoordinator`
+    /// と同じ理由）。ストア自体は `notificationHistory` から取れるので、
+    /// 統合の検証は独立したルーターを組み立てて行う。
+    private func attachNotificationHistory() async {
+        guard let notificationHistory, !RuntimeEnvironment.isRunningTests else { return }
+        await NotificationRouter.shared.attachHistoryStore(
+            notificationHistory,
+            retentionDays: NotificationRouter.configuredRetentionDays(),
+            maxCount: NotificationRouter.configuredMaxCount())
     }
 
     /// 実体への追随を組み立てる。**開始はしない**——起動時に走査が始まる前に

@@ -90,6 +90,7 @@ struct PreferencesView: View {
                 case .access: AccessPreferencesTab()
                 case .scan: ScanPreferencesTab()
                 case .cache: CachePreferencesTab()
+                case .notifications: NotificationPreferencesTab()
                 case .advanced: AdvancedPreferencesTab()
                 case .reset: ResetPreferencesTab()
                 case nil: EmptyView()
@@ -130,6 +131,9 @@ enum PreferencesCategory: CaseIterable, Identifiable {
     /// [15.10 節、2-2] 取りこぼしへの備え [SY-05][VD-09]。`ScanPreferencesTab` 参照。
     case scan
     case cache
+    /// [15.10 節、NT-07] 通知履歴の保持期間・上限。`NotificationPreferencesTab` 参照。
+    /// **システム通知 [ER-33] はまだ置いていない**（ER-30〜34 が未実装）。
+    case notifications
     /// [15.10 節、1-15] 診断ログ [LG2-01〜LG2-08]。`AdvancedPreferencesTab` 参照。
     case advanced
     /// 一番下に置く [ユーザー要望]。ライブラリ単位の削除・JSON の書き出しと
@@ -154,6 +158,7 @@ enum PreferencesCategory: CaseIterable, Identifiable {
         case .access: "preferences.tab.access"
         case .scan: "preferences.tab.scan"
         case .cache: "preferences.tab.cache"
+        case .notifications: "preferences.tab.notifications"
         case .advanced: "preferences.tab.advanced"
         case .reset: "preferences.tab.reset"
         }
@@ -169,6 +174,7 @@ enum PreferencesCategory: CaseIterable, Identifiable {
         case .access: "lock.open"
         case .scan: "arrow.triangle.2.circlepath"
         case .cache: "internaldrive"
+        case .notifications: "bell"
         case .advanced: "wrench.and.screwdriver"
         case .reset: "arrow.counterclockwise.circle"
         }
