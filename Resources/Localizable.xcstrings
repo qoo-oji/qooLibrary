@@ -2938,7 +2938,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "しまった日時は不明"
+            "value": "保管した日時は不明"
           }
         }
       }
@@ -3210,7 +3210,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "しまった日時順"
+            "value": "保管した日時順"
           }
         }
       }

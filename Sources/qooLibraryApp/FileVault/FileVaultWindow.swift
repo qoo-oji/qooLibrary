@@ -145,7 +145,13 @@ struct FileVaultWindow: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(width: 200)
+            // 実測: 日本語で 168 pt、**英語で 193.6 pt**（`NSFont.systemFont` の
+            // 文字幅 ＋ セグメントの余白の見積もり）。200 pt では英語の余りが
+            // 6 pt しか無く、余白の見積もりが少し外れれば切り詰められる
+            // ——**目測ではなく測ってから決める**［CLAUDE.md の教訓］。
+            // 右の検索欄は `minWidth: 140` で、詳細ペインの最小 460 pt に対して
+            // まだ余裕がある。
+            .frame(width: 240)
 
             TextField("fileVault.searchPlaceholder", text: $model.searchText)
                 .textFieldStyle(.roundedBorder)
@@ -225,7 +231,7 @@ struct FileVaultWindow: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
                 HStack(spacing: Tokens.spacing.s) {
-                    // [FAW-05] アーカイブ日時。記録が無いのは外部で
+                    // [FAW-05] 保管した日時。記録が無いのは外部で
                     // `.qooarchive` へ入れられたもの [FA-04]。
                     Text(row.archivedAt.map { Self.dateFormatter.string(from: $0) }
                         ?? String(localized: "fileVault.archivedAtUnknown", locale: locale))
@@ -247,7 +253,7 @@ struct FileVaultWindow: View {
         }
         // **2 行の行には縦の余白を明示する**［実機検証で発見］。無いと
         // `List` が計算する行の高さが中身より低くなり、**選択したときに
-        // 2 行目（しまった日時 [FAW-05] とラベル件数）が選択の帯に切られて
+        // 2 行目（保管した日時 [FAW-05] とラベル件数）が選択の帯に切られて
         // 読めなくなる**——一括で戻す [FAW-04] には選択が要るので、
         // いちばん見たいときに見えなくなる形だった。
         .padding(.vertical, 3)

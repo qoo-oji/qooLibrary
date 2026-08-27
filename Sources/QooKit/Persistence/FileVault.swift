@@ -19,7 +19,7 @@ public struct ArchivedFile: Sendable, Hashable, Identifiable {
     /// ものは記録が無いので `nil`——そのときの戻り先は `VaultPath.original` が
     /// 現在のパスから導く [FA-03]。
     public var archivedFromPath: String? { row.archivedFromPath }
-    /// 保管庫へ移した日時 [FAW-05]。記録が無ければ `nil`。
+    /// 保管した日時 [FAW-05]。記録が無ければ `nil`。
     public var archivedAt: Date? { row.archivedAt }
 
     /// 一覧を束ねる見出し——元のフォルダ [15.4 節「元フォルダごとに整理」]。

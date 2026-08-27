@@ -50,7 +50,7 @@ public final class FileVaultModel {
         case failed(String)
     }
 
-    /// 並べ替え [FAW-05]。**アーカイブ日時での並べ替えは要件が名指ししている。**
+    /// 並べ替え [FAW-05]。**保管した日時での並べ替えは要件が名指ししている。**
     public enum SortOrder: String, Sendable, CaseIterable, Identifiable {
         case name
         case archivedAt
@@ -115,7 +115,7 @@ public final class FileVaultModel {
     /// 区画の中の並べ替え [FAW-05]。
     ///
     /// **日時が無い行は末尾へ。** 外部で `.qooarchive` へ入れられたものは
-    /// 記録を持たない [FA-04] ——先頭に集めると「いつしまったか分からない
+    /// 記録を持たない [FA-04] ——先頭に集めると「いつ保管したか分からない
     /// もの」が最初に目に入る。同点はファイル名の自然順で安定させる
     /// （順序が実行ごとに変わると、一括操作が毎回違うものを指しうる）。
     nonisolated static func sorted(_ rows: [ArchivedFile], by order: SortOrder) -> [ArchivedFile] {
