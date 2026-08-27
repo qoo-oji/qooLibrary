@@ -60,12 +60,19 @@ final class NotificationRouterPresenterController {
         alert.messageText = item.title
         alert.informativeText = item.body
         alert.alertStyle = item.category == .error ? .critical : .warning
-        if item.actions.isEmpty {
-            alert.addButton(withTitle: String(localized: "action.ok", locale: AppLanguage.effectiveLocale))
-        } else {
-            for action in item.actions {
-                alert.addButton(withTitle: action.title)
-            }
+        // **閉じる手段は必ずある。** 決定は `NotificationAlertButtons` が持つ
+        // ——ここ（アプリターゲット）に書くと `swift test` で固定できない。
+        let buttons = NotificationAlertButtons.actions(
+            for: item,
+            okTitle: String(localized: "action.ok", locale: AppLanguage.effectiveLocale),
+            dismissTitle: String(localized: "action.close", locale: AppLanguage.effectiveLocale))
+        for action in buttons {
+            alert.addButton(withTitle: action.title)
+        }
+        // 合成した閉じるボタンには Esc も割り当てる（`NSAlert` は "Cancel" と
+        // いう題のボタンにしか自動では割り当てない）。
+        if buttons.last?.id == NotificationAlertButtons.dismissActionID, buttons.count > 1 {
+            alert.buttons.last?.keyEquivalent = "\u{1b}"
         }
         // **技術詳細を捨てない** [ER-03]［棚卸しで発見: `NotificationItem` は
         // 運んでいるのに、ここで無視していた］。`NSAlert` に折りたたみ表示は
@@ -88,7 +95,7 @@ final class NotificationRouterPresenterController {
                 return
             }
             self?.isPresentingAlert = false
-            let chosen: RecoveryAction? = item.actions.indices.contains(index) ? item.actions[index] : nil
+            let chosen: RecoveryAction? = buttons.indices.contains(index) ? buttons[index] : nil
             if case .openSystemSettings(let urlString) = chosen?.kind, let url = URL(string: urlString) {
                 NSWorkspace.shared.open(url)
             }

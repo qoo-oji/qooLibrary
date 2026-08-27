@@ -177,3 +177,60 @@ import Testing
         ))
     }
 }
+
+//
+//  アラートに出すボタン [ER-01][ER-03]。
+//
+//  **実機検証で見つけた回帰の回帰テスト。** 走査結果のシートへ「整理する…」を
+//  足したところ `actions.isEmpty` の分岐から外れ、**閉じる手段が消えていた**
+//  ——知らせを受け取っただけの利用者が窓を開くしか道が無くなる。
+//
+@Suite("アラートのボタン [ER-01]")
+struct NotificationAlertButtonsTests {
+
+    private func item(actions: [RecoveryAction]) -> NotificationItem {
+        NotificationItem(category: .warning, severity: .sheet,
+                         title: "題", body: "本文", actions: actions)
+    }
+
+    @Test("行動を促すボタンが無ければ OK だけ")
+    func okOnlyWhenThereIsNothingToDo() {
+        let buttons = NotificationAlertButtons.actions(
+            for: item(actions: []), okTitle: "OK", dismissTitle: "閉じる")
+        #expect(buttons.map(\.title) == ["OK"])
+        #expect(buttons[0].kind == .dismiss)
+    }
+
+    /// **これが本命。** 行動を促すボタンだけになると、押さずに閉じる道が消える。
+    @Test("行動を促すボタンがあるときも、必ず閉じる手段を足す")
+    func alwaysOffersAWayOut() {
+        let action = RecoveryAction(id: "review", title: "整理する…", kind: .openWindow("review"))
+        let buttons = NotificationAlertButtons.actions(
+            for: item(actions: [action]), okTitle: "OK", dismissTitle: "閉じる")
+        #expect(buttons.map(\.title) == ["整理する…", "閉じる"])
+        #expect(buttons.last?.kind == .dismiss)
+        #expect(buttons.last?.id == NotificationAlertButtons.dismissActionID)
+    }
+
+    @Test("呼び出し側が自前で閉じる手段を持つなら二重に足さない")
+    func doesNotDuplicateAnExistingDismiss() {
+        let actions = [RecoveryAction(id: "retry", title: "再試行", kind: .retry),
+                       RecoveryAction(id: "later", title: "あとで", kind: .dismiss)]
+        let buttons = NotificationAlertButtons.actions(
+            for: item(actions: actions), okTitle: "OK", dismissTitle: "閉じる")
+        #expect(buttons.map(\.title) == ["再試行", "あとで"])
+    }
+
+    /// 合成した閉じるは、どの呼び出し側の識別子とも一致しない
+    /// ——押しても「ただ閉じる」になる。
+    @Test("合成した閉じるの識別子は呼び出し側と衝突しない")
+    func dismissIDIsDistinct() {
+        let action = RecoveryAction(id: NotificationAlertButtons.dismissActionID,
+                                    title: "紛らわしい", kind: .openWindow("x"))
+        let buttons = NotificationAlertButtons.actions(
+            for: item(actions: [action]), okTitle: "OK", dismissTitle: "閉じる")
+        // 呼び出し側が同じ識別子を使っていても、種別で見分けられる。
+        #expect(buttons.count == 2)
+        #expect(buttons.last?.kind == .dismiss)
+    }
+}

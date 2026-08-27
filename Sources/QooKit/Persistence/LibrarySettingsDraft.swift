@@ -335,7 +335,7 @@ extension LibrarySettingsDraft {
         let defined = definedLabelGroupIndexes
         if filenameFormats.allSatisfy({ !$0.isEnabled }) {
             addWarning(.filenameFormats,
-                 "有効なファイル名フォーマットが 1 つもありません。すべてのファイルが未解決になります。")
+                 "有効なファイル名フォーマットが 1 つもありません。すべてのファイルがどのフォーマットにも一致しなくなり、ラベルが付きません。")
         }
         for (i, format) in filenameFormats.enumerated() {
             // **無効なものも検証する**——後で有効に戻したときに初めて壊れて

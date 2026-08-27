@@ -462,6 +462,44 @@ public final class LibraryServices {
         return try await repository.orphanedFiles(libraryID: libraryID)
     }
 
+    // MARK: - 未解決ファイル [AL-30〜AL-34][UR-01〜UR-06]
+    //
+    // **Undo は `SetUnresolvedIgnoredCommand` が担う**ので、UI から直接
+    // `setUnresolvedIgnored` を呼ばないこと（呼ぶと ⌘Z で戻せない操作が
+    // できる。`setRating` / `deleteLabels` と同じ約束）。
+
+    public func unresolvedFiles(libraryID: LibraryID, includeIgnored: Bool) async throws
+        -> [UnresolvedFile]
+    {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        return try await repository.unresolvedFiles(libraryID: libraryID,
+                                                    includeIgnored: includeIgnored)
+    }
+
+    public func unresolvedFileCounts() async throws -> [LibraryID: UnresolvedCounts] {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        return try await repository.unresolvedFileCounts()
+    }
+
+    public func setUnresolvedIgnored(_ ids: [FileID], _ ignored: Bool) async throws {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        try await repository.setUnresolvedIgnored(ids, ignored)
+    }
+
+    /// 未解決ファイルを現在の設定でパースし直す [AL-34][UR-04]。
+    ///
+    /// **走査そのものではないので `contentRevision` を上げる**——ラベルが
+    /// 増えるので、ラベルフィルタと中央ペインが読み直す必要がある。
+    /// 起点（`lastFSEventID`）は触らない：実ファイルを 1 つも見ていないので、
+    /// 「どこまで実体を反映したか」は変わっていない。
+    @discardableResult
+    public func rematchUnresolved(libraryID: LibraryID) async throws -> RematchOutcome {
+        guard let engine = makeScanEngineIfNeeded() else { throw ServiceError.notReady }
+        let outcome = try await engine.rematchUnresolved(libraryID: libraryID)
+        if outcome.resolved > 0 { contentRevision &+= 1 }
+        return outcome
+    }
+
     // MARK: - 同一性の確認 [ID-05][ID-09〜ID-12]
     //
     // **Undo は `ApplyIdentityDecisionsCommand` が担う**ので、UI から直接

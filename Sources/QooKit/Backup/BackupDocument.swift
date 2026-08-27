@@ -317,6 +317,19 @@ public struct FileBackup: Codable, Sendable, Equatable {
     public var isDuplicateRepresentativePinned: Bool
     public var state: String
     public var trashedAt: Date?
+    /// 未解決一覧で「以後無視する」を立てたか [AL-33][MG-22]。
+    ///
+    /// **走査からは作り直せない利用者の判断**（`origin == "manual"` と同じ性質）
+    /// なので、バックアップに含める。`unresolvedFile` の行そのものは走査が
+    /// 作り直すので、出すのはこの 1 つだけでよい——テーブルは `managedFile` と
+    /// 1:1 なので、ファイルの属性として畳める。
+    ///
+    /// **`Bool?` なのは古い文書を読むため。** このキーを持たない版 1／2 の
+    /// 文書があり、非 Optional にすると `keyNotFound` で**文書全体の取り込みが
+    /// 失敗する**（合成された `Decodable` はプロパティの既定値を使わない [実測]）。
+    /// `schemaVersion` は上げていない——読み込みが `<=` 判定なので、キーが
+    /// 増えただけの追加は古い実装からも読める。
+    public var isUnresolvedIgnored: Bool?
     public var labels: [FileLabelBackup]
 
     public init(relativePath: String, filename: String, rating: Int,
@@ -324,7 +337,8 @@ public struct FileBackup: Codable, Sendable, Equatable {
                 coverImageSource: String, coverImageRef: String?,
                 isArchived: Bool, archivedFromPath: String?, archivedAt: Date?,
                 isDuplicateRepresentativePinned: Bool,
-                state: String, trashedAt: Date?, labels: [FileLabelBackup]) {
+                state: String, trashedAt: Date?,
+                isUnresolvedIgnored: Bool? = nil, labels: [FileLabelBackup]) {
         self.relativePath = relativePath
         self.filename = filename
         self.rating = rating
@@ -338,6 +352,7 @@ public struct FileBackup: Codable, Sendable, Equatable {
         self.isDuplicateRepresentativePinned = isDuplicateRepresentativePinned
         self.state = state
         self.trashedAt = trashedAt
+        self.isUnresolvedIgnored = isUnresolvedIgnored
         self.labels = labels
     }
 

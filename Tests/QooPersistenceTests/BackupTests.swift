@@ -66,6 +66,14 @@ struct BackupTests {
                 """)
         }
         try await f.labels.assign(fileID: full, labelID: manual, origin: .manual)
+
+        // 「以後無視する」[AL-33]。**再生成不可能な列を持つ唯一の行**なので、
+        // これが無いと `unresolvedFile` の網羅性の検証が空振りする
+        // （`isUnresolvedIgnored` は立っているときだけ書き出す）。
+        try await f.files.syncUnresolved(
+            unresolved: [UnresolvedObservation(fileID: a, filename: "作品1.cbz")],
+            resolved: [], libraryID: f.libraryID, now: Date())
+        try await f.files.setUnresolvedIgnored([a], true)
         return (f, backup)
     }
 
@@ -86,6 +94,9 @@ struct BackupTests {
             "library": ["resolvedPath": "rootPath", "settingsJSON": "settings",
                         "libraryTypeVersion": "libraryType"],
             "managedFile": [:], "label": [:], "labelGroup": [:], "fileLabel": [:],
+            // `unresolvedFile` は `managedFile` と 1:1 なので、ファイルの
+            // 属性として畳んである [AL-33]。
+            "unresolvedFile": ["isIgnored": "isUnresolvedIgnored"],
         ]
         func unionKeys(_ objects: [[String: Any]]) -> Set<String> {
             objects.reduce(into: Set<String>()) { $0.formUnion($1.keys) }
@@ -98,6 +109,7 @@ struct BackupTests {
             "label": unionKeys(groups.flatMap { ($0["labels"] as? [[String: Any]]) ?? [] }),
             "managedFile": unionKeys(files),
             "fileLabel": unionKeys(files.flatMap { ($0["labels"] as? [[String: Any]]) ?? [] }),
+            "unresolvedFile": unionKeys(files),
         ]
 
         try await f.database.writer.read { db in
@@ -117,6 +129,73 @@ struct BackupTests {
     }
 
     // MARK: - 往復 [IE-01]
+
+    /// 「以後無視する」[AL-33] は走査からは作り直せない利用者の判断なので、
+    /// バックアップに含める [MG-22]。
+    @Test("書き出して取り込むと「以後無視する」が戻る [AL-33][MG-22]")
+    func roundTripRestoresTheIgnoreFlag() async throws {
+        let (f, backup) = try await Self.seeded()
+        let document = try await backup.export(scope: .everything, appVersion: nil)
+        let encoded = try BackupCoding.encode(document)
+
+        // 破壊する: 無視を解く（未解決の行そのものは走査が作り直すので残す
+        // ——復旧手順は「有効化 → 再スキャン → 取り込み」[MG-24]）。
+        try await f.database.writer.write { db in
+            try db.execute(sql: "UPDATE unresolvedFile SET isIgnored = 0")
+        }
+        #expect(try await f.files.unresolvedFileCounts()[f.libraryID]?.pending == 1)
+
+        _ = try await backup.import(try BackupCoding.decode(encoded))
+        let counts = try #require(try await f.files.unresolvedFileCounts()[f.libraryID])
+        #expect(counts == UnresolvedCounts(pending: 0, ignored: 1),
+                "無視が戻れば「片付けるべき件数」から外れ、無視の側へ移る")
+    }
+
+    /// **行が無いのは「いまは解決している」という意味**なので、そこへ無視を
+    /// 作ってはならない——解決済みのファイルに人の判断が蘇ることになる。
+    @Test("未解決の記録が無いファイルには無視を書き戻さない")
+    func importDoesNotResurrectTheFlagWithoutARecord() async throws {
+        let (f, backup) = try await Self.seeded()
+        let document = try await backup.export(scope: .everything, appVersion: nil)
+        let encoded = try BackupCoding.encode(document)
+
+        try await f.database.writer.write { db in
+            try db.execute(sql: "DELETE FROM unresolvedFile")
+        }
+        _ = try await backup.import(try BackupCoding.decode(encoded))
+        let rows = try await f.database.writer.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM unresolvedFile") ?? -1
+        }
+        #expect(rows == 0)
+    }
+
+    /// このキーを持たない版 1／2 の文書がある。非 Optional にすると
+    /// `keyNotFound` で**文書全体の取り込みが失敗する**。
+    @Test("`isUnresolvedIgnored` を持たない古い文書もそのまま読める [IE-14]")
+    func decodesDocumentsWrittenBeforeTheIgnoreFlagExisted() async throws {
+        let (f, backup) = try await Self.seeded()
+        let document = try await backup.export(scope: .everything, appVersion: nil)
+        var json = try #require(try JSONSerialization.jsonObject(
+            with: BackupCoding.encode(document)) as? [String: Any])
+        var libraries = try #require(json["libraries"] as? [[String: Any]])
+        var library = libraries[0]
+        library["files"] = (library["files"] as? [[String: Any]] ?? []).map { file -> [String: Any] in
+            var copy = file
+            copy.removeValue(forKey: "isUnresolvedIgnored")
+            return copy
+        }
+        libraries[0] = library
+        json["libraries"] = libraries
+
+        let stripped = try JSONSerialization.data(withJSONObject: json)
+        let decoded = try BackupCoding.decode(stripped)
+        #expect(decoded.libraries.count == 1)
+        #expect(decoded.libraries[0].files.allSatisfy { $0.isUnresolvedIgnored == nil })
+        _ = try await backup.import(decoded)
+        // 無視は元のまま（取り込みは立てるだけで、下ろさない）。
+        #expect(try await f.files.unresolvedFileCounts()[f.libraryID]
+                == UnresolvedCounts(pending: 0, ignored: 1))
+    }
 
     @Test("書き出して取り込むと、評価・手動タイトル・手動ラベルが戻る")
     func roundTripRestoresUnrecoverableData() async throws {

@@ -101,6 +101,19 @@ public final class LabelEditorModel {
     /// 「もっと見る」の中のインクリメンタル検索 [PN-05]。
     public var searchText: [LabelGroupID: String] = [:]
 
+    /// ラベルを**付けた**ときに、同じ Undo 単位で一緒に走らせる操作 [UD-04]。
+    ///
+    /// 未解決ファイルの整理ウインドウが「以後無視する」を立てるために使う
+    /// [AL-30]①③［ユーザー判断、2026-08］——手で片付けたのに一覧に残り
+    /// 続けるのを避ける。**右ペイン（インスペクタ）では設定しない**：
+    /// 蔵書のどのファイルにラベルを付けても未解決の判断が動いてはならない。
+    ///
+    /// **返した操作は `CompositeCommand` で束ねる**ので、⌘Z 1 回で両方戻る
+    /// ——別々に積むと「ラベルは戻ったが一覧に出てこない」半端な状態を
+    /// 経由することになる。変える必要が無ければ `nil` を返すこと。
+    @ObservationIgnored
+    public var onAssign: ((_ fileIDs: [FileID]) -> (any Command)?)?
+
     private let commands: CommandStack
     private var services: LibraryServices?
     private var library: LibrarySummary?
@@ -211,52 +224,102 @@ public final class LabelEditorModel {
             state = .notApplicable
             return
         }
-        if loadedKey != sorted {
-            state = .loading
-            loadedKey = sorted
-        }
+        beginLoading(key: sorted)
         do {
             let rows = try await services.fileRows(at: sorted, in: library)
             // **選んだ順（パス順）を保つ。** 辞書の列挙順に任せると、読み直す
             // たびに一覧の中身が同じでも別の並びになりうる。
             let ordered = sorted.compactMap { url in rows[url].map { (url, $0) } }
-            guard !ordered.isEmpty else {
-                assignmentsByFile = [:]
-                state = .notInLibrary
-                return
-            }
-            let fileIDs = ordered.map { $0.1.id }
-            urlByFile = Dictionary(uniqueKeysWithValues: ordered.map { ($0.1.id, $0.0) })
-            assignmentsByFile = try await services.labelAssignments(fileIDs: fileIDs)
-
-            let groups = try await services.labelGroups(libraryID: library.id)
-            var loaded: [LabelGroupID: [LabelSummary]] = [:]
-            for group in groups {
-                loaded[group.id] = try await services.labels(groupID: group.id,
-                                                             includeArchived: true)
-            }
-            allGroups = groups
-            labels = loaded
-            state = .ready(Subject(
-                fileIDs: fileIDs, urls: ordered.map(\.0), selectedCount: sorted.count,
-                displayName: Self.displayName(for: sorted)))
-            // 判定に `state` を使うので、`state` を入れてから絞る。
-            displayGroups = groups.filter { group in
-                !candidates(in: group).isEmpty
-            }
+            try await finishLoading(ordered: ordered, selectedCount: sorted.count,
+                                    library: library, services: services)
         } catch {
-            // **取り消しは失敗ではない**［2-9 の実機検証でユーザーが発見］。
-            // `.task(id:)` は鍵が変わると前のタスクを取り消すので、選択を
-            // 素早く変えたり読み直しの合図（`operationHistory.count`・
-            // `contentRevision`）が続けて来たりすると、ここへ
-            // `CancellationError` が届く。そのまま出すと画面に
-            // 「タイトル: CancellationError()」という、利用者にとって
-            // 意味の無い赤字が残る——**直後に新しい読み込みが正しい値を
-            // 入れる**ので、出しても一瞬で消える（あるいは消えない）という
-            // 最も分かりにくい形になる。状態は次の読み込みが上書きする。
-            guard !CommandStack.isCancellation(error) else { return }
-            state = .failed(String(describing: error))
+            handleLoadFailure(error)
         }
+    }
+
+    /// **DB の行から直接読み込む。** 実体を stat しないので、ボリュームが
+    /// オフラインでも動く。
+    ///
+    /// 未解決ファイルの整理ウインドウ [UR-03][UR-06] がこれを使う——あちらは
+    /// 実体を 1 度も見ない画面なので、`load(urls:)`（`fileRows(at:in:)` が
+    /// inode を読むため実体が要る）を使うと**オフラインのときだけラベルを
+    /// 付けられない**という、画面からは説明の付かない差が出る。
+    ///
+    /// `url` は診断ログの匿名化 [LG2-06] と表示名にしか使わないので、
+    /// `library.resolvedPath` と相対パスから組み立てた値で足りる。
+    public func load(rows: [FileRow], library: LibrarySummary?,
+                     services: LibraryServices) async {
+        self.services = services
+        self.library = library
+        guard !rows.isEmpty, let library, services.isReady else {
+            loadedKey = nil
+            state = .notApplicable
+            return
+        }
+        let root = URL(fileURLWithPath: library.resolvedPath)
+        let ordered = rows
+            .map { (root.appendingPathComponent($0.relativePath), $0) }
+            .sorted { $0.0.path < $1.0.path }
+        beginLoading(key: ordered.map(\.0))
+        do {
+            try await finishLoading(ordered: ordered, selectedCount: ordered.count,
+                                    library: library, services: services)
+        } catch {
+            handleLoadFailure(error)
+        }
+    }
+
+    /// 同じ対象を読み直すときはスピナーへ戻さない——読み直しの合図
+    /// （`operationHistory.count` 等）が来るたびにちらつくため。
+    private func beginLoading(key: [URL]) {
+        if loadedKey != key {
+            state = .loading
+            loadedKey = key
+        }
+    }
+
+    /// 行が揃ってからの共通部分。**`load(urls:)` と `load(rows:)` の両方が
+    /// ここを通る**——同じ「ラベル欄の組み立て」を 2 箇所に書くと、片方だけ
+    /// 直して取り残す。
+    private func finishLoading(ordered: [(URL, FileRow)], selectedCount: Int,
+                               library: LibrarySummary,
+                               services: LibraryServices) async throws {
+        guard !ordered.isEmpty else {
+            assignmentsByFile = [:]
+            state = .notInLibrary
+            return
+        }
+        let fileIDs = ordered.map { $0.1.id }
+        urlByFile = Dictionary(uniqueKeysWithValues: ordered.map { ($0.1.id, $0.0) })
+        assignmentsByFile = try await services.labelAssignments(fileIDs: fileIDs)
+
+        let groups = try await services.labelGroups(libraryID: library.id)
+        var loaded: [LabelGroupID: [LabelSummary]] = [:]
+        for group in groups {
+            loaded[group.id] = try await services.labels(groupID: group.id,
+                                                         includeArchived: true)
+        }
+        allGroups = groups
+        labels = loaded
+        state = .ready(Subject(
+            fileIDs: fileIDs, urls: ordered.map(\.0), selectedCount: selectedCount,
+            displayName: Self.displayName(for: ordered.map(\.0))))
+        // 判定に `state` を使うので、`state` を入れてから絞る。
+        displayGroups = groups.filter { group in
+            !candidates(in: group).isEmpty
+        }
+    }
+
+    /// **取り消しは失敗ではない**［2-9 の実機検証でユーザーが発見］。
+    /// `.task(id:)` は鍵が変わると前のタスクを取り消すので、選択を素早く
+    /// 変えたり読み直しの合図（`operationHistory.count`・`contentRevision`）が
+    /// 続けて来たりすると、ここへ `CancellationError` が届く。そのまま出すと
+    /// 画面に「タイトル: CancellationError()」という、利用者にとって意味の
+    /// 無い赤字が残る——**直後に新しい読み込みが正しい値を入れる**ので、
+    /// 出しても一瞬で消える（あるいは消えない）という最も分かりにくい形になる。
+    private func handleLoadFailure(_ error: any Error) {
+        guard !CommandStack.isCancellation(error) else { return }
+        state = .failed(String(describing: error))
     }
 
     /// コマンドの表示名に使う呼び名。
@@ -315,9 +378,18 @@ public final class LabelEditorModel {
         // 既にその状態のものしか無ければ何もしない（Undo スタックを汚さない）。
         let target: LabelOrigin = assigning ? .manual : .manuallyRemoved
         guard previous.contains(where: { $0.origin != target }) else { return }
-        _ = try await commands.run(AssignLabelCommand(
+        let assign = AssignLabelCommand(
             labelID: labelID, labelName: name, previous: previous,
-            assigning: assigning, subjectName: subject.displayName, services: services))
+            assigning: assigning, subjectName: subject.displayName, services: services)
+        // **付けたときだけ**——外したときに一覧から消してはならない。
+        if assigning, let extra = onAssign?(subject.fileIDs) {
+            // 表示名はラベル側のものを使う。付随する操作まで Undo メニューへ
+            // 書くと、利用者が意図した操作（ラベルを付けた）が読み取りにくくなる。
+            _ = try await commands.run(CompositeCommand(displayName: assign.displayName,
+                                                        children: [assign, extra]))
+        } else {
+            _ = try await commands.run(assign)
+        }
         // 画面をすぐ合わせる。`.task` の読み直しは後から届く。
         for id in subject.fileIDs {
             assignmentsByFile[id, default: [:]][labelID] = target

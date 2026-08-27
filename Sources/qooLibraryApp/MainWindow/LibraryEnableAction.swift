@@ -20,7 +20,13 @@ enum LibraryEnableAction {
     /// **テンプレートを選ぶだけの画面ではない**［ユーザー指摘: 「その選択肢で
     /// 何がどう変化するのかわからない」］。中身を見て、その場で直して、
     /// 実ファイル名に当てた結果まで確かめてから決められる。
-    static func begin(folder: RegisteredFolder, url: URL, locale: Locale) {
+    /// - Parameter openWindow: 走査結果のシートから未解決ファイルの整理
+    ///   ウインドウを開くために持ち回る [UR2-02]。**`@Environment(\.openWindow)`
+    ///   は View からしか取れない**ので、呼び出し側（View）から渡してもらう
+    ///   ——受け皿へ預ける形にすると、預ける前に走査が終わった場合に黙って
+    ///   開かなくなる。
+    static func begin(folder: RegisteredFolder, url: URL, locale: Locale,
+                      openWindow: OpenWindowAction) {
         let services = LibraryServices.shared
         guard services.isReady else {
             presentUnavailable(services.startupFailure)
@@ -43,17 +49,19 @@ enum LibraryEnableAction {
             LibraryEnableView(model: model) { draft, template in
                 Task {
                     await enable(folder: folder, url: url, draft: draft,
-                                 template: template, locale: locale)
+                                 template: template, locale: locale,
+                                 openWindow: openWindow)
                 }
             }
         }
     }
 
     /// 有効化済みのライブラリを走査し直す [SY-05]。
-    static func rescan(folder: RegisteredFolder, url: URL, locale: Locale) {
+    static func rescan(folder: RegisteredFolder, url: URL, locale: Locale,
+                       openWindow: OpenWindowAction) {
         guard let summary = LibraryServices.shared.library(registrationUUID: folder.id) else { return }
         Task { await scan(libraryID: summary.id, displayName: folder.displayName,
-                          url: url, locale: locale) }
+                          url: url, locale: locale, openWindow: openWindow) }
     }
 
     /// ライブラリだけを手がかりに走査し直す [SY-05]。
@@ -62,7 +70,8 @@ enum LibraryEnableAction {
     /// フォルダツリーを持たない画面からも呼べるようにするため、登録フォルダの
     /// 解決をここで行う——View 越しに要求を回す作りにすると、メインウインドウが
     /// 閉じていると黙って何も起きない（実機検証でそうなった）。
-    static func rescan(library: LibrarySummary, locale: Locale) {
+    static func rescan(library: LibrarySummary, locale: Locale,
+                       openWindow: OpenWindowAction) {
         Task {
             let folders = await RegisteredFolderStore.shared.folders(kind: .library)
                 + RegisteredFolderStore.shared.folders(kind: .temporary)
@@ -74,7 +83,7 @@ enum LibraryEnableAction {
                 return
             }
             await scan(libraryID: library.id, displayName: library.displayName,
-                       url: url, locale: locale)
+                       url: url, locale: locale, openWindow: openWindow)
         }
     }
 
@@ -93,7 +102,8 @@ enum LibraryEnableAction {
 
     private static func enable(folder: RegisteredFolder, url: URL,
                                draft: LibrarySettingsDraft,
-                               template: LibraryTypeTemplate?, locale: Locale) async {
+                               template: LibraryTypeTemplate?, locale: Locale,
+                               openWindow: OpenWindowAction) async {
         do {
             let id = try await LibraryServices.shared.enable(
                 registrationUUID: folder.id,
@@ -102,7 +112,8 @@ enum LibraryEnableAction {
                 bookmarkData: folder.bookmarkData,
                 draft: draft,
                 template: template)
-            await scan(libraryID: id, displayName: folder.displayName, url: url, locale: locale)
+            await scan(libraryID: id, displayName: folder.displayName, url: url,
+                       locale: locale, openWindow: openWindow)
         } catch {
             await NotificationRouter.shared.presentError(
                 error, whatHappened: String(localized: "library.enable.failed"))
@@ -115,7 +126,8 @@ enum LibraryEnableAction {
     /// 始めたら終わるまで止められない作りにしてはならない。ファイルシステムに
     /// 対しては読み取りしかしないため、途中で止めても利用者のファイルは変わらない。
     private static func scan(libraryID: LibraryID, displayName: String,
-                             url: URL, locale: Locale) async {
+                             url: URL, locale: Locale,
+                             openWindow: OpenWindowAction) async {
         let task = ScanTaskBox()
         let handle = OperationProgressCenter.shared.begin(
             title: String(format: String(localized: "library.scan.progressTitle", locale: locale),
@@ -139,7 +151,8 @@ enum LibraryEnableAction {
             }
             guard !summary.cancelled else { return }
             await notifyIfNoteworthy(summary, displayName: displayName,
-                                     libraryID: libraryID, locale: locale)
+                                     libraryID: libraryID, locale: locale,
+                                     openWindow: openWindow)
             // **ここで要約を再掲しない。** `ScanEngine` が同じ数字を
             // `[Scan] スキャン完了` として既に書いており、二重に出るだけで
             // 情報が増えない。しかもこの関数は初回と再スキャンの両方から
@@ -177,15 +190,25 @@ enum LibraryEnableAction {
     private static func notifyIfNoteworthy(_ summary: ScanSummary,
                                            displayName: String,
                                            libraryID: LibraryID?,
-                                           locale: Locale) async {
+                                           locale: Locale,
+                                           openWindow: OpenWindowAction) async {
         var lines: [String] = []
         if summary.orphaned > 0 {
             lines.append(String(format: String(localized: "library.scan.orphaned", locale: locale),
                                 summary.orphaned))
         }
+        var actions: [RecoveryAction] = []
         if summary.unresolvedNames > 0 {
             lines.append(String(format: String(localized: "library.scan.unresolved", locale: locale),
                                 summary.unresolvedNames))
+            // **整理ウインドウへの導線を出す** [UR2-02][AL-30]。孤立
+            // （件数を知らせるだけ）と扱いを変えているのは、未解決は放置すると
+            // **ラベルが 1 つも付かないまま蔵書に埋もれる**ため——ラベル
+            // フィルタからは永久に辿り着けない。§4.11 が導線を名指ししている。
+            actions.append(RecoveryAction(
+                id: Self.reviewUnresolvedActionID,
+                title: String(localized: "library.scan.reviewUnresolved", locale: locale),
+                kind: .openWindow(Self.reviewUnresolvedActionID)))
         }
         if !summary.bookFoldersReleased.isEmpty {
             lines.append(String(format: String(localized: "library.scan.bookFoldersReleased", locale: locale),
@@ -194,7 +217,6 @@ enum LibraryEnableAction {
         // **巻数の判断待ち** [EM-26][EM-31]。`ComicInfo.xml` の `Number` と
         // `Volume` が食い違っていて、どちらが巻数か機械的に決められない。
         // スキャンは止めずに走り切ってから、まとめて聞く。
-        var actions: [RecoveryAction] = []
         if summary.volumeConflicts > 0 {
             lines.append(String(format: String(localized: "library.scan.volumeConflicts", locale: locale),
                                 summary.volumeConflicts))
@@ -236,6 +258,9 @@ enum LibraryEnableAction {
         if chosen?.id == Self.reviewIdentityActionID, let libraryID {
             IdentityDecisionAction.present(libraryID: libraryID, locale: locale)
         }
+        if chosen?.id == Self.reviewUnresolvedActionID, let libraryID {
+            UnresolvedFilesNavigation.open(libraryID: libraryID, openWindow: openWindow)
+        }
     }
 
     /// 自動走査（FSEvents の追随・定期フルスキャン）の結果を受けて、
@@ -274,6 +299,7 @@ enum LibraryEnableAction {
     /// 走査結果の通知から同一性の確認を開くアクションの識別子 [ID-05]。
     /// **ドットを含めない**（上の理由と同じ）。
     private static let reviewIdentityActionID = "review-identity-matches"
+    private static let reviewUnresolvedActionID = "review-unresolved-files"
 
     /// 走査結果の通知から巻数の確認を開くアクションの識別子 [EM-32]。
     ///

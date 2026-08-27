@@ -226,6 +226,39 @@ public protocol ManagedFileRepository: Sendable {
     /// パーサの結果を書き戻す [RC-01]。
     func applyParsedFields(_ fields: ParsedFileFields?, to id: FileID) async throws
 
+    // MARK: - 未解決ファイル [AL-30〜AL-34][UR-01〜UR-06]
+
+    /// 走査 1 チャンクぶんの「未解決かどうか」を反映する [AL-31]。
+    ///
+    /// **記録と削除を 1 つの呼び出しにまとめてある。** 別々にすると、
+    /// フォーマットを足して解決したのに古い記録が残る（またはその逆）という
+    /// 食い違いが、呼び出し側の書き忘れで起こりうる——走査は収束型 [FO-20]
+    /// なので、観測した集合をそのまま渡せば必ず正しくなる形にする。
+    ///
+    /// - Parameters:
+    ///   - unresolved: 未解決と判定したもの。既に記録があれば名前を更新し、
+    ///     **名前が変わっていれば無視フラグを解く**［ユーザー判断、2026-08］。
+    ///   - resolved: 解決していると判定したもの。記録があれば消す。
+    func syncUnresolved(unresolved: [UnresolvedObservation], resolved: [FileID],
+                        libraryID: LibraryID, now: Date) async throws
+
+    /// 未解決ファイルの一覧 [UR-01][UR-02]。相対パス順。
+    ///
+    /// **`state != .active` のものは出さない** ——実体が見つからなくなった
+    /// ものは「見つからないファイル」[OR-01] の担当で、こちらに出すと
+    /// 同じ 1 件が 2 つの画面に別の意味で並ぶ。
+    func unresolvedFiles(libraryID: LibraryID, includeIgnored: Bool) async throws
+        -> [UnresolvedFile]
+
+    /// ライブラリごとの未解決の内訳 [AL-33]。**「片付けるべき件数」と
+    /// 「無視した件数」を分けて返す**——左ペインの「N 件」は前者だが、
+    /// 空状態の文言は後者を知らないと嘘になる（無視しただけなのに
+    /// 「すべて一致しています」と言ってしまう）。0 件のライブラリは現れない。
+    func unresolvedFileCounts() async throws -> [LibraryID: UnresolvedCounts]
+
+    /// 「以後無視する」の切り替え [AL-33][UR-05]。
+    func setUnresolvedIgnored(_ ids: [FileID], _ ignored: Bool) async throws
+
     // MARK: - 埋め込みメタデータ [EM-07]
 
     /// 読み取り済みのメタデータ（と、読んだ時点の印）を引く。

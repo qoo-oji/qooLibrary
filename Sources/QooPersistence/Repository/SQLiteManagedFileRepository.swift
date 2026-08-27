@@ -356,11 +356,28 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
     {
         guard !ids.isEmpty else { return [:] }
         return try await database.writer.read { db in
-            let placeholders = Self.placeholders(ids.count)
-            let rows = try Row.fetchAll(db, sql: """
-                SELECT id, metadataStamp, metadataJSON FROM managedFile
-                WHERE id IN (\(placeholders)) AND metadataStamp IS NOT NULL
-                """, arguments: StatementArguments(ids.map { $0.rawValue }))
+            // **ここで区切る。** 走査は 1 チャンク（`scanBatchSize`）ぶんしか
+            // 渡さないが、再マッチング [AL-34] は未解決の全件を渡す
+            // ——`unresolvedBulkThreshold`（500）を超える状況はこの機能が
+            // まさに想定しているもので、ホスト変数の上限が低いビルドでは
+            // `too many SQL variables` で**再マッチングが丸ごと失敗する**
+            // （足したフォーマットが 1 件も適用されない）。呼び出し側に
+            // 区切りを求めると、次に足す呼び出し元が同じ穴を開ける。
+            //
+            // **この区切りを外しても、この環境のテストは通る**［既知の空振り］
+            // ——SQLite 3.51 の `SQLITE_MAX_VARIABLE_NUMBER` は既定 32,766 で、
+            // 1,500 件では届かない。壊れるのは上限の低いビルドと**速度**の
+            // ほうで（`matchingRelativePaths` の実測では 900 件区切り 0.20 秒に
+            // 対し 1 文 11.14 秒＝56 倍）、通ることを理由に外さないこと。
+            // `setRating` / `matchingRelativePaths` とまったく同じ事情。
+            var rows: [Row] = []
+            for start in stride(from: 0, to: ids.count, by: Self.maxBoundParameters) {
+                let chunk = Array(ids[start..<min(start + Self.maxBoundParameters, ids.count)])
+                rows += try Row.fetchAll(db, sql: """
+                    SELECT id, metadataStamp, metadataJSON FROM managedFile
+                    WHERE id IN (\(Self.placeholders(chunk.count))) AND metadataStamp IS NOT NULL
+                    """, arguments: StatementArguments(chunk.map { $0.rawValue }))
+            }
             var out: [FileID: EmbeddedMetadataCacheEntry] = [:]
             let decoder = JSONDecoder()
             for row in rows {

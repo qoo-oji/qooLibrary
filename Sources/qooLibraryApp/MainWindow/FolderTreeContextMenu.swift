@@ -367,6 +367,15 @@ struct FolderTreeContextMenu: View {
                 actions.openOrphanCleanup(folder)
             }
         }
+        if visible.contains(.unresolvedFiles) {
+            // 未解決ファイルの整理 [UR-01〜UR-06][15.6 節]。**オンラインを
+            // 要らない**——未解決は照合の結果であって実体についての判断では
+            // ないので、外付けが無い間にフォーマットを直せる。
+            Button("library.unresolvedFiles.menuItem",
+                   systemImage: "questionmark.square.dashed") {
+                actions.openUnresolvedFiles(folder)
+            }
+        }
         if visible.contains(.rescan) {
             Button("library.rescan.menuItem", systemImage: "arrow.clockwise") {
                 actions.rescanLibrary(folder, context.url)
@@ -556,4 +565,5 @@ struct FolderTreeContextMenuActions {
     /// ラベル保管庫の整理ウインドウを開く [LAW-01〜LAW-03][15.3 節]。
     var openLabelVault: (RegisteredFolder) -> Void = { _ in }
     var openOrphanCleanup: (RegisteredFolder) -> Void = { _ in }
+    var openUnresolvedFiles: (RegisteredFolder) -> Void = { _ in }
 }

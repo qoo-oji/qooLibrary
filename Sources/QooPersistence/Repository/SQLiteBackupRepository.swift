@@ -134,6 +134,13 @@ public struct SQLiteBackupRepository: BackupRepository, Sendable {
                 assignedAt: Date(timeIntervalSinceReferenceDate: row["assignedAt"])))
         }
 
+        // 「以後無視する」を立てたファイル [AL-33][MG-22]。**走査からは作り直せない
+        // 利用者の判断**なので出す。行そのもの（＝未解決であること）は走査が
+        // 作り直すので、出すのはこの旗だけでよい。
+        let ignored = Set(try Int64.fetchAll(db, sql: """
+            SELECT managedFileId FROM unresolvedFile WHERE libraryId = ? AND isIgnored = 1
+            """, arguments: [libraryID]))
+
         return try ManagedFileRecord
             .filter(sql: "libraryId = ?", arguments: [libraryID])
             .order(sql: "relativePath, filename").fetchAll(db)
@@ -158,6 +165,9 @@ public struct SQLiteBackupRepository: BackupRepository, Sendable {
                     isDuplicateRepresentativePinned: record.isDuplicateRepresentativePinned,
                     state: record.state,
                     trashedAt: record.trashedAt.map(Date.init(timeIntervalSinceReferenceDate:)),
+                    // 立っているときだけ出す。`title` を自動なら出さないのと同じ
+                    // 考え方で、10 万件ぶんの `false` を書いても意味が無い。
+                    isUnresolvedIgnored: ignored.contains(id) ? true : nil,
                     labels: labels)
                 // **再生成できる情報しか持たない行は出さない。** 再スキャンが
                 // 実体から作り直すので、書き出しても取り込みが何もしない
@@ -181,6 +191,8 @@ extension FileBackup {
         // `active` 以外の状態（孤立・ゴミ箱）は観測の結果なので再現し得るが、
         // ゴミ箱の日付だけは人の操作の記録で作り直せない [TR-01]。
         if trashedAt != nil { return true }
+        // 「以後無視する」[AL-33] も人の判断。これだけを持つ行も残す。
+        if isUnresolvedIgnored == true { return true }
         // ここへ来る `labels` は `origin != 'auto'` に絞ってある——自動で
         // 付いたラベルは再スキャンが付け直す [RC-04]。残っているのは
         // 「人が付けた」「人が外した」の記録だけなので、1 件でもあれば残す。
@@ -402,6 +414,17 @@ extension SQLiteBackupRepository {
         // （`active` / `orphaned`）のほうが常に新しい [ID-06]。ゴミ箱に入れた
         // 記録だけは人の操作なので `trashedAt` として上で復元している。
         try record.update(db)
+
+        // 「以後無視する」[AL-33]。**行が既にあるときだけ立てる**——復旧手順は
+        // 「有効化 → 再スキャン → 取り込み」[MG-24] なので、取り込みの時点で
+        // 走査が未解決の行を作り終えている。行が無いのは「いまは解決している」
+        // という意味なので、そこへ無視を作ると解決済みのファイルに人の判断が
+        // 蘇ることになる。
+        if file.isUnresolvedIgnored == true {
+            try db.execute(sql: """
+                UPDATE unresolvedFile SET isIgnored = 1 WHERE managedFileId = ?
+                """, arguments: [fileID])
+        }
     }
 
     /// 設定を置き換える [LS-01][VT-02]。

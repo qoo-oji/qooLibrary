@@ -26,7 +26,8 @@ public enum LibraryMenuVisibility {
         // オンライン条件で塞がない——無効化をオンライン条件で囲って「外付けを
         // 失うと二度と片付けられない」欠陥を作った前例がある。
         // 再スキャンだけが実ファイルの列挙を伴うのでオンラインを要る。
-        let offline: Set<Item> = [.settings, .labels, .labelVault, .orphanCleanup, .disable]
+        let offline: Set<Item> = [.settings, .labels, .labelVault,
+                                  .orphanCleanup, .unresolvedFiles, .disable]
         return isOnline ? offline.union([.rescan]) : offline
     }
 
@@ -48,6 +49,13 @@ public enum LibraryMenuVisibility {
         /// ため表示できません（＝孤立とは判定していない）」と読めること
         /// 自体に意味がある [R-01]。
         case orphanCleanup
+        /// 未解決ファイルの整理ウインドウ [UR-01〜UR-06][15.6 節]。
+        ///
+        /// **オンラインを要らない。** 未解決は「ファイル名がどのフォーマットにも
+        /// 一致しなかった」という照合の結果で、実体を 1 度も見ない——孤立
+        /// [OR2-06] とは逆に、オフラインでも正しく一覧できて書ける。
+        /// 外付けが無い間にフォーマットを直しておく、はむしろ普通の場面。
+        case unresolvedFiles
     }
 }
 

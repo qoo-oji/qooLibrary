@@ -524,35 +524,125 @@ public actor ScanEngine {
                                               rootURL: rootURL, settings: settings)
 
         // ④ パースとラベル付与 [RC-01]。
+        var unresolved: [UnresolvedObservation] = []
+        var resolvedIDs: [FileID] = []
         for (offset, id) in ids.enumerated() {
             let snapshot = snapshots[offset]
-            let parsed = FolderLabelResolver.resolve(
+            let embedded = metadata[id]?.metadata
+            let isUnresolved = try await applyResolution(
                 relativePath: snapshot.relativePath,
                 nameWithoutExtension: snapshot.nameWithoutExtension,
-                settings: settings, parser: deps.parser,
-                purpose: .libraryScan,
-                endsWithBookFolder: snapshot.isBookFolder)
-            let embedded = metadata[id]?.metadata
-            let resolved = EmbeddedMetadataMerge.apply(embedded, to: parsed, settings: settings)
+                isBookFolder: snapshot.isBookFolder,
+                embedded: embedded, to: id, settings: settings)
 
-            if EmbeddedMetadataMerge.isUnresolved(parsed, metadata: embedded) {
+            if isUnresolved {
                 outcome.unresolvedNames += 1                     // [AL-31]
+                unresolved.append(UnresolvedObservation(fileID: id,
+                                                        filename: snapshot.filename))
+            } else {
+                resolvedIDs.append(id)
             }
             if embedded?.volumeConflict != nil {
                 outcome.volumeConflicts += 1                     // [EM-26]
             }
-            try await deps.files.applyParsedFields(
-                ParsedFileFields(
-                    matchedFormatID: resolved.matchedFormatID ?? UUID(),
-                    title: resolved.title, seriesName: resolved.seriesName,
-                    volume: resolved.volume, authorName: resolved.authorName,
-                    labelValues: resolved.labels,
-                    libraryTypeMismatch: resolved.libraryTypeMismatch,
-                    spans: []),
-                to: id)
-            try await applyLabels(resolved.labels, to: id, settings: settings)
         }
+        // ⑤ 未解決の記録 [AL-31]。**解決したものの削除も同じ呼び出しで行う**
+        //    ——収束型 [FO-20] なので、観測した集合をそのまま渡せば、
+        //    フォーマットを足して解決したものは自動的に一覧から消える。
+        try await deps.files.syncUnresolved(unresolved: unresolved, resolved: resolvedIDs,
+                                            libraryID: settings.libraryID, now: Date())
         return outcome
+    }
+
+    // MARK: - パース結果の書き戻し
+
+    /// パースして DB へ書き戻し、**未解決かどうか**を返す。
+    ///
+    /// **走査と再マッチング [AL-34] の両方がここを通る。** 別々に書くと
+    /// 「走査では未解決なのに再マッチングでは解決する（またはその逆）」という、
+    /// 画面からは理由の読み取れない食い違いが起こる——実際、`isUnresolved` は
+    /// 埋め込みメタデータの有無まで見る [EM-03] ので、片方だけ直すと簡単にずれる。
+    func applyResolution(relativePath: String, nameWithoutExtension: String,
+                         isBookFolder: Bool, embedded: EmbeddedMetadata?,
+                         to id: FileID, settings: LibrarySettingsSnapshot) async throws -> Bool
+    {
+        let parsed = FolderLabelResolver.resolve(
+            relativePath: relativePath,
+            nameWithoutExtension: nameWithoutExtension,
+            settings: settings, parser: deps.parser,
+            purpose: .libraryScan,
+            endsWithBookFolder: isBookFolder)
+        let resolved = EmbeddedMetadataMerge.apply(embedded, to: parsed, settings: settings)
+
+        try await deps.files.applyParsedFields(
+            ParsedFileFields(
+                matchedFormatID: resolved.matchedFormatID ?? UUID(),
+                title: resolved.title, seriesName: resolved.seriesName,
+                volume: resolved.volume, authorName: resolved.authorName,
+                labelValues: resolved.labels,
+                libraryTypeMismatch: resolved.libraryTypeMismatch,
+                spans: []),
+            to: id)
+        try await applyLabels(resolved.labels, to: id, settings: settings)
+        return EmbeddedMetadataMerge.isUnresolved(parsed, metadata: embedded)
+    }
+
+    // MARK: - 再マッチング [AL-34]
+
+    /// 未解決ファイルを、現在の設定でパースし直す [AL-34][UR-04]。
+    ///
+    /// **実ファイルを列挙し直さない。** DB に載っている相対パスとファイル名から
+    /// パースし直し、埋め込みメタデータは読み取り済みのキャッシュ [EM-07] を使う
+    /// ——フォーマットを 1 本足すたびにライブラリ全体を歩き直すのは、
+    /// ネットワーク上のライブラリでは費用が釣り合わない（§9.9 の実測で
+    /// 5 万件が 10 分）。実体を見直したいときは通常の再スキャンを使う。
+    ///
+    /// **無視したもの [AL-33] も対象にする。** 解決すれば行ごと消えるので
+    /// 無視の意味が無くなり、解決しなければ無視のまま残る——どちらでも
+    /// 利用者の意思に反しない。
+    ///
+    /// 走査と同じライブラリ単位の排他を取るので、自動追随の走査と重なっても
+    /// 一方が他方の書いた行を読み違えることはない。
+    public func rematchUnresolved(libraryID: LibraryID) async throws -> RematchOutcome {
+        guard await acquire(libraryID) else {
+            return RematchOutcome(attempted: 0, resolved: 0, cancelled: true)
+        }
+        defer { release(libraryID) }
+
+        guard let settings = try await deps.libraries.settingsSnapshot(libraryID: libraryID)
+        else { return RematchOutcome(attempted: 0, resolved: 0) }
+
+        let files = try await deps.files.unresolvedFiles(libraryID: libraryID,
+                                                         includeIgnored: true)
+        guard !files.isEmpty else { return RematchOutcome(attempted: 0, resolved: 0) }
+
+        let cache = try await deps.files.embeddedMetadataCache(ids: files.map(\.id))
+        var stillUnresolved: [UnresolvedObservation] = []
+        var resolvedIDs: [FileID] = []
+        var cancelled = false
+
+        for file in files {
+            if Task.isCancelled { cancelled = true; break }
+            let isUnresolved = try await applyResolution(
+                relativePath: file.row.relativePath,
+                nameWithoutExtension: file.row.nameWithoutExtension,
+                isBookFolder: file.row.isBookFolder,
+                embedded: cache[file.id]?.metadata, to: file.id, settings: settings)
+            if isUnresolved {
+                stillUnresolved.append(UnresolvedObservation(fileID: file.id,
+                                                             filename: file.row.filename))
+            } else {
+                resolvedIDs.append(file.id)
+            }
+        }
+
+        // **打ち切っても、そこまでの結果は保存する。** 収束型なので、
+        // 次に走らせれば続きから片付く。
+        try await deps.files.syncUnresolved(unresolved: stillUnresolved,
+                                            resolved: resolvedIDs,
+                                            libraryID: libraryID, now: Date())
+        return RematchOutcome(attempted: resolvedIDs.count + stillUnresolved.count,
+                              resolved: resolvedIDs.count, cancelled: cancelled)
     }
 
     // MARK: - 埋め込みメタデータ [EM-07][EM-09][SE3-20〜SE3-25]

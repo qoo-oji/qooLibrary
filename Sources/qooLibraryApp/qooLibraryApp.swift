@@ -298,6 +298,17 @@ struct QooLibraryApp: App {
         }
         .defaultSize(width: 880, height: 560)
 
+        // 未解決ファイルの整理 [UR-01〜UR-06][15.6 節]。開くのはフォルダツリーの
+        // 「未解決ファイルを整理…」と、走査結果のシートから
+        // （`UnresolvedFilesNavigation` が対象を渡す）。
+        // **登録ルート行は 2 種類ある**ので、通常の行と縮退した行の両方に
+        // 配線してある。
+        Window("unresolvedFiles.windowTitle", id: "unresolvedFiles") {
+            UnresolvedFilesWindow()
+                .appLanguageOverride()
+        }
+        .defaultSize(width: 980, height: 580)
+
         Window("preferences.windowTitle", id: "preferences") {
             PreferencesView()
                 .appLanguageOverride()

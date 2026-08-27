@@ -331,6 +331,27 @@ struct FolderLevelMappingRecord: Codable, FetchableRecord, MutablePersistableRec
     mutating func didInsert(_ inserted: InsertionSuccess) { id = inserted.rowID }
 }
 
+/// 未解決ファイル [AL-30〜AL-34][UR-01〜UR-06]。**`managedFile` と 1:1**
+/// （`managedFileId` に UNIQUE）——行があること自体が「未解決である」を表す。
+struct UnresolvedFileRecord: Codable, FetchableRecord, MutablePersistableRecord, Sendable {
+    static let databaseTableName = "unresolvedFile"
+    var id: Int64?
+    var libraryId: Int64
+    var managedFileId: Int64
+    /// 未解決と判定した時点のファイル名。**現在の名前と突き合わせて
+    /// 無視フラグを解く**ために持つ [AL-33、ユーザー判断 2026-08]。
+    var filename: String
+    var isIgnored: Bool
+    var detectedAt: Double
+    /// 最も近いフォーマットの推定 [UR2-05]。**まだ誰も書かない**——
+    /// パーサに「照合が最も進んだ入力位置」を保持させる必要があり、
+    /// ゴールデンテストで固めてある中核を触ることになるため今回は見送った
+    /// ［ユーザー判断、2026-08］。列は既に v1 にある。
+    var nearestFormatSource: String?
+    var nearestFormatReach: Int?
+    mutating func didInsert(_ inserted: InsertionSuccess) { id = inserted.rowID }
+}
+
 struct ProtectedTokenRecord: Codable, FetchableRecord, MutablePersistableRecord, Sendable {
     static let databaseTableName = "protectedToken"
     var id: Int64?

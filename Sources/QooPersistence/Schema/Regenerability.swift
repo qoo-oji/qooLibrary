@@ -66,6 +66,19 @@ extension FileLabelRecord: RegenerabilityDeclaring {
     public static let internalColumns: Set<String> = ["managedFileId", "labelId"]
 }
 
+extension UnresolvedFileRecord: RegenerabilityDeclaring {
+    /// **`isIgnored` だけが再生成できない** [AL-33][MG-22]。「このファイルは
+    /// どのフォーマットにも当てはまらないと判断した」という利用者の意思表示で、
+    /// 走査からは作り直せない——`origin == 'manual'` と同じ性質。
+    ///
+    /// 行の存在そのもの（＝未解決であること）と `filename` / `detectedAt` は
+    /// 走査が作り直す。`nearestFormat*` はパーサが出す推定値。
+    public static let regenerableColumns: Set<String> = [
+        "filename", "detectedAt", "nearestFormatSource", "nearestFormatReach",
+    ]
+    public static let internalColumns: Set<String> = ["id", "libraryId", "managedFileId"]
+}
+
 extension LibraryRecord: RegenerabilityDeclaring {
     public static let regenerableColumns: Set<String> = [
         "resolvedPath",        // ブックマークから解決し直せる
@@ -88,6 +101,7 @@ public enum RegenerabilityRegistry {
         LabelGroupRecord.self,
         FileLabelRecord.self,
         LibraryRecord.self,
+        UnresolvedFileRecord.self,
     ]
 
     /// 実際のテーブルの列名を読む。宣言と食い違えばテストが落ちる。

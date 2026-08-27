@@ -22,6 +22,40 @@ import QooKit
 /// 留まっている）ため、具体的な呼び出し元が無いまま作る投機的な実装になって
 /// しまう。`NotificationHistoryStore`（SwiftData 版）・通知履歴ウインドウ
 /// （NW-01〜08）・`SystemNotificationGate`（ER-30〜34）もフェーズ2以降。
+/// アラートに出すボタンの決定 [ER-01][ER-03]。
+///
+/// **View の条件式ではなく値として持つ**——`NotificationRouterPresenter` は
+/// アプリターゲットにあり `swift test` から触れないので、ここに置かないと
+/// 「閉じる手段が必ずある」ことをテストで固定できない。
+public enum NotificationAlertButtons {
+    /// 合成した「閉じる」の識別子。呼び出し側のどの `RecoveryAction` とも
+    /// 一致しないので、押しても何も起きない（＝ただ閉じる）。
+    public static let dismissActionID = "notification-dismiss"
+
+    /// `NSAlert.addButton` へ渡す順に並べたボタン。
+    ///
+    /// **末尾に必ず閉じる手段を足す。** 行動を促すボタンしか無いと、
+    /// 知らせを受け取っただけの利用者が**窓を開くしか道が無くなる**
+    /// ——実機検証で、走査結果のシートが「整理する…」1 つになっていて
+    /// 気づいた（未解決の導線を足したことで `actions.isEmpty` の分岐から
+    /// 外れ、OK が消えていた）。巻数の確認 [EM-31] と差し替えの確認 [ID-05] も
+    /// 同じ形で、以前からこの穴を持っていた。
+    ///
+    /// - Parameters:
+    ///   - okTitle: 行動を促すボタンが無いときの文言（「OK」）。
+    ///   - dismissTitle: 併記するときの文言（「閉じる」）。
+    public static func actions(for item: NotificationItem,
+                               okTitle: String, dismissTitle: String) -> [RecoveryAction] {
+        guard !item.actions.isEmpty else {
+            return [RecoveryAction(id: dismissActionID, title: okTitle, kind: .dismiss)]
+        }
+        // 呼び出し側が自前で閉じる手段を用意しているなら、二重に足さない。
+        guard !item.actions.contains(where: { $0.kind == .dismiss }) else { return item.actions }
+        return item.actions
+            + [RecoveryAction(id: dismissActionID, title: dismissTitle, kind: .dismiss)]
+    }
+}
+
 @MainActor
 @Observable
 public final class NotificationRouter {

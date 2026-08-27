@@ -10,6 +10,9 @@ import SwiftUI
 
 struct LibrarySettingsWindow: View {
     @Environment(\.locale) private var locale
+    /// 再スキャンの結果シートから未解決ファイルの整理ウインドウを開くために
+    /// 持ち回る [UR2-02]（`LibraryEnableAction` へ渡す）。
+    @Environment(\.openWindow) private var openWindow
     @State private var model = LibrarySettingsModel()
 
     var body: some View {
@@ -280,7 +283,8 @@ struct LibrarySettingsWindow: View {
                 title: String(localized: "librarySettings.rescanTitle", locale: locale)
             ) { _ in
                 RescanPromptDialog(libraryName: library.displayName) {
-                    LibraryEnableAction.rescan(library: library, locale: locale)
+                    LibraryEnableAction.rescan(library: library, locale: locale,
+                                               openWindow: openWindow)
                 }
             }
         }

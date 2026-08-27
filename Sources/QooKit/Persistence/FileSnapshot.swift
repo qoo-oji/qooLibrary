@@ -33,9 +33,7 @@ public struct FileSnapshot: Sendable, Hashable {
     }
 
     /// 拡張子を除いたファイル名。パーサへ渡す値。
-    public var nameWithoutExtension: String {
-        (filename as NSString).deletingPathExtension
-    }
+    public var nameWithoutExtension: String { FilenameStem.of(filename) }
 }
 
 public enum FileState: String, Sendable, Codable, Hashable, CaseIterable {
@@ -133,6 +131,11 @@ public struct FileRow: Sendable, Hashable, Identifiable {
         self.isArchived = isArchived
         self.isBookFolder = isBookFolder
     }
+
+    /// 拡張子を除いたファイル名。**`FileSnapshot` と同じ導出**（`FilenameStem`）
+    /// ——再マッチング [AL-34] は実ファイルを列挙し直さず DB の行から
+    /// パースし直すので、ここが走査時と 1 文字でも違うと結果が食い違う。
+    public var nameWithoutExtension: String { FilenameStem.of(filename) }
 }
 
 /// ページと総件数を一度に返す。総件数を毎回数え直さないため。

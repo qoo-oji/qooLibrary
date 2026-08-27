@@ -188,6 +188,23 @@
         }
       }
     },
+    "action.close": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "閉じる"
+          }
+        }
+      }
+    },
     "action.compress": {
       "extractionState": "stale",
       "localizations": {
@@ -6934,6 +6951,23 @@
         }
       }
     },
+    "library.scan.reviewUnresolved": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Review…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "整理する…"
+          }
+        }
+      }
+    },
     "library.scan.reviewVolumes": {
       "extractionState": "manual",
       "localizations": {
@@ -6957,13 +6991,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d file name(s) did not match any format, so no labels were assigned."
+            "value": "%d file name(s) did not match any filename format, so no labels were assigned."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d 件のファイル名がどのフォーマットにも一致せず、ラベルが付いていません。"
+            "value": "%d 件のファイル名がどのファイル名フォーマットにも一致せず、ラベルが付いていません。"
           }
         }
       }
@@ -7138,6 +7172,23 @@
         }
       }
     },
+    "library.unresolvedFiles.menuItem": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Files Not Matching a Filename Format…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ファイル名フォーマットに一致しないファイルを整理…"
+          }
+        }
+      }
+    },
     "libraryEnable.blank": {
       "extractionState": "manual",
       "localizations": {
@@ -7297,13 +7348,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d files tried · %d matched · %d unresolved"
+            "value": "%d files tried · %d matched · %d not matched"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d 件を試して %d 件が一致 · %d 件が未解決"
+            "value": "%d 件を試して %d 件が一致 · %d 件が一致せず"
           }
         }
       }
@@ -13596,6 +13647,312 @@
           "stringUnit": {
             "state": "translated",
             "value": "タブを閉じる"
+          }
+        }
+      }
+    },
+    "unresolvedFiles.addFormat": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add Format…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "フォーマットを追加…"
+          }
+        }
+      }
+    },
+    "unresolvedFiles.bulkHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d files match none of your filename formats. Adding one format usually makes them all match at once."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d 件がどのファイル名フォーマットにも一致していません。フォーマットを 1 つ足すと、まとめて一致するようになることがほとんどです。"
+          }
+        }
+      }
+    },
+    "unresolvedFiles.count": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d not matching"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一致しない %d 件"
+          }
+        }
+      }
+    },
+    "unresolvedFiles.empty": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No unmatched files"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一致しないファイルはありません"
+          }
+        }
+      }
+    },
+    "unresolvedFiles.emptyHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every file in this library matched a filename format."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このライブラリのファイルはすべて、いずれかのファイル名フォーマットに一致しています。"
+          }
+        }
+      }
+    },
+    "unresolvedFiles.emptyIgnoredHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d ignored files are hidden. Turn on “Show ignored” to bring them back."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無視した %d 件を隠しています。「無視したものも表示」で戻せます。"
+          }
+        }
+      }
+    },
+    "unresolvedFiles.ignore": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ignore from Now On"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "以後無視する"
+          }
+        }
+      }
+    },
+    "unresolvedFiles.ignoredBadge": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ignored. It will not reappear in this list."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無視しています。以後この一覧には出ません。"
+          }
+        }
+      }
+    },
+    "unresolvedFiles.noMatches": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No files match your search"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "検索に一致するファイルがありません"
+          }
+        }
+      }
+    },
+    "unresolvedFiles.noSelection": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No file selected"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ファイルが選ばれていません"
+          }
+        }
+      }
+    },
+    "unresolvedFiles.noSelectionHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select files on the left to assign labels by hand. Selecting several applies the same label to all of them."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "左の一覧でファイルを選ぶと、手でラベルを付けられます。複数選ぶと同じラベルをまとめて付けられます。"
+          }
+        }
+      }
+    },
+    "unresolvedFiles.rematch": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Re-match"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "再マッチング"
+          }
+        }
+      }
+    },
+    "unresolvedFiles.rematchResult": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$d of %2$d files now match."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$d 件のうち %1$d 件が一致するようになりました。"
+          }
+        }
+      }
+    },
+    "unresolvedFiles.searchPlaceholder": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search by name or folder"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "名前・フォルダで検索"
+          }
+        }
+      }
+    },
+    "unresolvedFiles.showIgnored": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show ignored"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無視したものも表示"
+          }
+        }
+      }
+    },
+    "unresolvedFiles.typeMismatch": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "library type does not match"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ライブラリタイプが一致しません"
+          }
+        }
+      }
+    },
+    "unresolvedFiles.unignore": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop Ignoring"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無視をやめる"
+          }
+        }
+      }
+    },
+    "unresolvedFiles.windowTitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Files Not Matching a Filename Format"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ファイル名フォーマットに一致しないファイル"
           }
         }
       }

@@ -559,7 +559,8 @@ struct FolderTreePane: View {
                         onOpenLibrarySettings: { openLibrarySettings(entry.folder) },
                         onOpenLabelEditor: { openLabelEditor(entry.folder) },
                         onOpenLabelVault: { openLabelVault(entry.folder) },
-                        onOpenOrphanCleanup: { openOrphanCleanup(entry.folder) }
+                        onOpenOrphanCleanup: { openOrphanCleanup(entry.folder) },
+                        onOpenUnresolvedFiles: { openUnresolvedFiles(entry.folder) }
                     )
                 }
             }
@@ -635,13 +636,16 @@ struct FolderTreePane: View {
             // 呼ぶため（同じに見える操作に独立した経路を作ると、片方だけ直して
             // 取り残す。1-12 のアプリ関連付けで実際に踏んだ形）。
             isLibraryEnabled: { LibraryServices.shared.isEnabled(registrationUUID: $0.id) },
-            enableLibrary: { LibraryEnableAction.begin(folder: $0, url: $1, locale: locale) },
-            rescanLibrary: { LibraryEnableAction.rescan(folder: $0, url: $1, locale: locale) },
+            enableLibrary: { LibraryEnableAction.begin(folder: $0, url: $1, locale: locale,
+                                                      openWindow: openWindow) },
+            rescanLibrary: { LibraryEnableAction.rescan(folder: $0, url: $1, locale: locale,
+                                                       openWindow: openWindow) },
             disableLibrary: { LibraryEnableAction.disable(folder: $0) },
             openLibrarySettings: { openLibrarySettings($0) },
             openLabelEditor: { openLabelEditor($0) },
             openLabelVault: { openLabelVault($0) },
-            openOrphanCleanup: { openOrphanCleanup($0) }
+            openOrphanCleanup: { openOrphanCleanup($0) },
+            openUnresolvedFiles: { openUnresolvedFiles($0) }
         )
     }
 
@@ -868,6 +872,17 @@ struct FolderTreePane: View {
         guard let summary = LibraryServices.shared.library(registrationUUID: folder.id) else { return }
         // **受け皿へ置く順序をここで書き直さない** [CP-02]。
         OrphanCleanupNavigation.open(libraryID: summary.id, openWindow: openWindow)
+    }
+
+    /// 未解決ファイルの整理ウインドウを開く [UR-01〜UR-06][15.6 節]。
+    ///
+    /// 孤立側と同じく、**登録ルート行が 2 つある**ことに注意（通常の
+    /// `FolderTreeContextMenu` と縮退した `DegradedRegisteredFolderRow`）。
+    /// 配線は別々なので両方に要る。
+    private func openUnresolvedFiles(_ folder: RegisteredFolder) {
+        guard let summary = LibraryServices.shared.library(registrationUUID: folder.id) else { return }
+        // **受け皿へ置く順序をここで書き直さない** [CP-02]。
+        UnresolvedFilesNavigation.open(libraryID: summary.id, openWindow: openWindow)
     }
 
     /// ライブラリ機能だけを無効にする（登録フォルダは残す）。
@@ -1261,6 +1276,9 @@ private struct DegradedRegisteredFolderRow: View {
     /// ——「孤立していないか」を確かめられる（オフラインの間は判定しない
     /// [OR2-06][ID-08] ことが、開けば読み取れる）。
     let onOpenOrphanCleanup: () -> Void
+    /// 未解決ファイルの整理ウインドウ [UR-01〜UR-06]。**縮退状態でも開ける**
+    /// ——照合の結果しか見ないので、実体が無くても一覧は正しい。
+    let onOpenUnresolvedFiles: () -> Void
 
     /// `.offline` だけ薄くする。ゴミ箱・消失は「気づいてほしい」状態なので
     /// 薄めない——未接続は待てば戻る日常的な状態で、そちらこそ目立たない
@@ -1350,6 +1368,12 @@ private struct DegradedRegisteredFolderRow: View {
             if libraryItems.contains(.orphanCleanup) {
                 Button("library.orphanCleanup.menuItem", systemImage: "questionmark.folder") {
                     onOpenOrphanCleanup()
+                }
+            }
+            if libraryItems.contains(.unresolvedFiles) {
+                Button("library.unresolvedFiles.menuItem",
+                       systemImage: "questionmark.square.dashed") {
+                    onOpenUnresolvedFiles()
                 }
             }
             if libraryItems.contains(.disable) {
