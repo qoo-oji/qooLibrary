@@ -244,6 +244,13 @@ public protocol ManagedFileRepository: Sendable {
     /// 同一性の確認待ち [ID-05]。**名前が同じで inode が違う組**を返す。
     ///
     /// `orphanedFiles` と同じ引き直しを使うが、**却下済みの組は除く** [ID-11]。
+    /// 走査が差し替えを疑った組を記録する [ID3-08][ID-05]。
+    ///
+    /// **確認待ちは状態ではなく出来事なので、疑った時点で記録する。**
+    /// 「孤立していて同じ名前の生きている行がある」から導くと、無関係な
+    /// 同名ファイルの行と区別が付かない（`v7_identityPending` のコメント参照）。
+    func recordIdentityPending(_ matches: [IdentityMatch]) async throws
+
     func identityMatchesAwaitingDecision(libraryID: LibraryID) async throws -> [OrphanedFile]
     /// 承認された組を確定する [ID-05]。候補側の行を消し、孤立側を実体へ移す。
     ///

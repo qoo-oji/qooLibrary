@@ -29,16 +29,23 @@ struct LibraryEmbeddedMetadataSettingsView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 Section {
-                    Picker("", selection: $draft.comicInfoVolumeSource) {
-                        Text("librarySettings.embeddedMetadata.volumeSource.ask")
-                            .tag(ComicInfoVolumeSource.ask)
-                        Text("librarySettings.embeddedMetadata.volumeSource.number")
-                            .tag(ComicInfoVolumeSource.number)
-                        Text("librarySettings.embeddedMetadata.volumeSource.volume")
-                            .tag(ComicInfoVolumeSource.volume)
+                    // 丸が右端へ飛ぶのを防ぐ [CP-07]。理由は
+                    // `LibrarySettingsBasicViews` の同じ印のコメント。
+                    // ここは見出しが既に説明を持つので、ラベルは空のまま包む。
+                    LabeledContent {
+                        Picker("", selection: $draft.comicInfoVolumeSource) {
+                            Text("librarySettings.embeddedMetadata.volumeSource.ask")
+                                .tag(ComicInfoVolumeSource.ask)
+                            Text("librarySettings.embeddedMetadata.volumeSource.number")
+                                .tag(ComicInfoVolumeSource.number)
+                            Text("librarySettings.embeddedMetadata.volumeSource.volume")
+                                .tag(ComicInfoVolumeSource.volume)
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.radioGroup)
+                    } label: {
+                        EmptyView()
                     }
-                    .labelsHidden()
-                    .pickerStyle(.radioGroup)
                     .disabled(!draft.readsEmbeddedMetadata)
                 } header: {
                     Text("librarySettings.embeddedMetadata.volumeSource")

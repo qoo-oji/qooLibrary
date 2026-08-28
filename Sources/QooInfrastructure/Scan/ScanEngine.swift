@@ -489,29 +489,71 @@ public actor ScanEngine {
 
         // 既存かどうかを先に見る（`upsertBatch` は「あれば更新」なので区別が付かない）。
         var existing: [FileIdentity: FileID] = [:]
+        /// 差し替えを疑ったが、この設定では自動で紐づけなかった組 [ID3-08]。
+        var suspected: [FileIdentity: [FileID]] = [:]
         for snapshot in snapshots {
             if let id = try await deps.files.find(identity: snapshot.identity) {
                 existing[snapshot.identity] = id
             }
         }
 
+        // **この走査で inode により引けた行**。名前やパスの一致（より弱い証拠）で
+        // これを横取りしてはならない [ID3-08]——移動と新規作成が同時に起きると、
+        // 移動先で正しく引けている行を、元の場所にできた別のファイルが
+        // パスの一致で奪い、評価が移動していないほうへ付いてしまう。
+        var claimed = Set(existing.values)
+
         // 同一性で引けなかったものは再照合を試みる [ID-03][ID-04]。
         for snapshot in snapshots where existing[snapshot.identity] == nil {
             let candidates = try await deps.files.findCandidates(for: snapshot)
-            guard let best = candidates.first else { continue }
+            // **まだ生きているファイルを担っている行は候補から外す** [ID3-08]。
+            //
+            // `findCandidates` は名前とパスだけで引く（リポジトリは実体を
+            // 知らない）ので、**別のフォルダにある無関係な同名ファイルの行**も
+            // 返す。確度の並びでは「同名＋同サイズ」(`.nameAndSize`) が
+            // 「同じ場所・サイズ違い」(`.pathOnly`) より上なので、同名の
+            // ファイルを作り直しただけで**別のフォルダの生きている行が
+            // 先頭に来る**——そのまま引き継ぐと、その行が担っていたファイルは
+            // 記録を失い、評価・手動ラベル・手動タイトルごと消える。
+            //
+            // 引き継いでよいのは「実体を失った行」だけである。候補の記録上の
+            // 場所に**いま別のファイルが居る**なら、その行はまだ現役なので
+            // 触ってはならない。差し替え（同じ場所に別の実体）と移動
+            // （元の場所は空）はどちらもこの検査を通る。
+            let free = try await unclaimedCandidates(candidates, for: snapshot,
+                                                     rootURL: rootURL, claimed: claimed)
+            guard let best = free.first else { continue }
             if settings.identityMatchPolicy.acceptsAutomatically(best.confidence) {
                 // inode を更新して既存レコードとみなす。ラベルは維持される [ID-04]。
                 try await deps.files.reidentify(best.fileID, to: snapshot.identity)
                 existing[snapshot.identity] = best.fileID
+                claimed.insert(best.fileID)
                 outcome.reidentified += 1
             } else {
                 // **この設定では自動で紐づけない** [ID-05][ID-13]。新規として作り、
                 // 走査後にまとめて確認してもらう [ID-09]。
+                //
+                // **疑ったことをここで記録する** [ID3-08]。行 ID は
+                // `upsertBatch` の後でないと分からないので、識別子で覚えておく。
                 outcome.candidatesForReview += 1
+                suspected[snapshot.identity] = free.map(\.fileID)
             }
         }
 
         let ids = try await deps.files.upsertBatch(snapshots)
+
+        // 疑った組を確認待ちとして残す [ID3-08][ID-09]。**導出に頼らない**
+        // ——「孤立していて同じ名前の生きている行がある」は、無関係な同名
+        // ファイルでも成り立ってしまう。
+        if !suspected.isEmpty {
+            var pending: [IdentityMatch] = []
+            for (offset, id) in ids.enumerated() {
+                for orphanID in suspected[snapshots[offset].identity] ?? [] {
+                    pending.append(IdentityMatch(orphanID: orphanID, candidateID: id))
+                }
+            }
+            try await deps.files.recordIdentityPending(pending)
+        }
         for (offset, id) in ids.enumerated() {
             outcome.seen.insert(id)
             if existing[snapshots[offset].identity] == nil { outcome.added += 1 }
@@ -552,6 +594,37 @@ public actor ScanEngine {
         try await deps.files.syncUnresolved(unresolved: unresolved, resolved: resolvedIDs,
                                             libraryID: settings.libraryID, now: Date())
         return outcome
+    }
+
+    /// 候補のうち、**まだ生きているファイルを担っていない**ものだけ [ID3-08]。
+    ///
+    /// 候補の記録上の場所を 1 度の `FileIO` でまとめて調べる——再照合は
+    /// 稀な経路だが、候補ごとに往復するとネットワーク上のライブラリで効く。
+    ///
+    /// 「居るのが自分自身」なら現役ではない（同じ場所での差し替え [ID-03]③a）
+    /// ので通す。`lstat` を使うのは `pathKind` と揃えるため——シンボリック
+    /// リンクは走査の対象外 [SL-03] なので、リンク先まで辿って「使用中」と
+    /// 答えてはいけない。
+    func unclaimedCandidates(_ candidates: [ReidentificationCandidate],
+                             for snapshot: FileSnapshot,
+                             rootURL: URL,
+                             claimed: Set<FileID>) async throws -> [ReidentificationCandidate]
+    {
+        // この走査で inode により引けた行は、より弱い証拠で奪わない。
+        let candidates = candidates.filter { !claimed.contains($0.fileID) }
+        guard !candidates.isEmpty else { return [] }
+        let paths = candidates.map { rootURL.appendingPathComponent($0.relativePath).path }
+        let occupants: [UInt64?] = await FileIO.perform {
+            paths.map { path in
+                var info = stat()
+                guard lstat(path, &info) == 0 else { return nil }
+                return UInt64(info.st_ino)
+            }
+        }
+        return candidates.enumerated().compactMap { offset, candidate in
+            guard let inode = occupants[offset] else { return candidate }  // 実体を失った行
+            return inode == snapshot.identity.inode ? candidate : nil      // 居るのは自分自身
+        }
     }
 
     // MARK: - パース結果の書き戻し

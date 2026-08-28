@@ -15,7 +15,7 @@ public enum QooMigrations {
     /// 登録順の識別子。`v<連番>_<内容>` 形式で時系列に並ぶこと [SC-03]。
     public static let identifiers: [String] = [
         "v1_initial", "v2_regexPatterns", "v3_embeddedMetadata", "v4_fsEventsCheckpoint",
-        "v5_identityRejection", "v6_duplicateTitleKey",
+        "v5_identityRejection", "v6_duplicateTitleKey", "v7_identityPending",
     ]
 
     public static var migrator: DatabaseMigrator {
@@ -27,6 +27,7 @@ public enum QooMigrations {
         m.registerMigration(identifiers[3], migrate: v4FSEventsCheckpoint)
         m.registerMigration(identifiers[4], migrate: v5IdentityRejection)
         m.registerMigration(identifiers[5], migrate: v6DuplicateTitleKey)
+        m.registerMigration(identifiers[6], migrate: v7IdentityPending)
         return m
     }
 
@@ -87,6 +88,35 @@ public enum QooMigrations {
     ///
     /// **どちらの行が消えれば記録も消える**（`ON DELETE CASCADE`）——組の片方が
     /// 無くなれば、その判断はもう意味を持たない。
+    // MARK: - v7
+
+    /// 確認待ちの組を**明示的に記録する** [ID3-08][ID-05][ID-09]。
+    ///
+    /// **以前は「孤立していて、同じ名前の生きている行がある」という状態から
+    /// 導いていた**（07章 §7.5「確認待ちは記録しない」）。その前提は誤りで、
+    /// 導出では**無関係な同名ファイルの行**と区別が付かない——`第01巻.cbz` の
+    /// ように複数シリーズに存在しうる名前では、片方を消しただけで
+    /// もう片方の行が「確認待ちの候補」に化け、既定の設定 [ID-13] が
+    /// それを黙って承認して**評価・手動ラベルごと行を消していた**。
+    ///
+    /// 確認待ちは「走査が実際に差し替えを疑った」という**出来事**であって、
+    /// あとから状態を見て言い当てられるものではない。疑った時点で記録する。
+    ///
+    /// **既存のストアは空のまま始める**（backfill しない）。導出で拾えていた
+    /// 組には誤った組が混ざっているので、それを引き継ぐと欠陥ごと持ち越す。
+    /// 取り残された孤立レコードは §15.7 の一覧から片付けられるし、実体が
+    /// 差し替えられていれば次の走査が正しい組を作り直す。
+    static func v7IdentityPending(_ db: Database) throws {
+        try db.create(table: "identityPending") { t in
+            t.belongsTo("orphanFile", inTable: "managedFile", onDelete: .cascade).notNull()
+            t.belongsTo("candidateFile", inTable: "managedFile", onDelete: .cascade).notNull()
+            t.column("detectedAt", .double).notNull()
+            t.primaryKey(["orphanFileId", "candidateFileId"])
+        }
+        try db.execute(sql: "UPDATE storeMetadata SET schemaVersion = ? WHERE id = 1",
+                       arguments: [identifiers[6]])
+    }
+
     static func v5IdentityRejection(_ db: Database) throws {
         try db.create(table: "identityRejection") { t in
             t.belongsTo("orphanFile", inTable: "managedFile", onDelete: .cascade).notNull()

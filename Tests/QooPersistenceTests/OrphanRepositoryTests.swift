@@ -29,10 +29,20 @@ struct OrphanRepositoryTests {
             return Setup(f: f, orphan: orphan, group: group)
         }
 
-        /// 同じ名前で生きているレコード（走査が新規として作ったもの）を足す。
+        /// 同じ名前で生きているレコード（走査が新規として作ったもの）を足し、
+        /// **確認待ちとして記録する** [ID3-08]。
+        ///
+        /// 走査は差し替えを疑った時点で組を記録する。記録の無い組は
+        /// 「たまたま同じ名前の別のファイル」なので候補にならない。
         @discardableResult
-        func addCandidate(inode: UInt64, path: String, size: Int64) async throws -> FileID {
-            try await f.files.upsert(f.snapshot(inode: inode, path: path, size: size))
+        func addCandidate(inode: UInt64, path: String, size: Int64,
+                          pending: Bool = true) async throws -> FileID {
+            let id = try await f.files.upsert(f.snapshot(inode: inode, path: path, size: size))
+            if pending {
+                try await f.files.recordIdentityPending(
+                    [IdentityMatch(orphanID: orphan, candidateID: id)])
+            }
+            return id
         }
     }
 
@@ -57,6 +67,21 @@ struct OrphanRepositoryTests {
         #expect(rows[0].candidates.map(\.fileID) == [candidate])
         #expect(rows[0].candidates[0].sizeMatches)
         #expect(rows[0].candidates[0].relativePath == "新/作品名A 第01巻.cbz")
+    }
+
+    /// **この一連の要** [ID3-08]。走査が疑っていない組を候補にすると、
+    /// 同名の無関係なファイルの行が「差し替え」と誤認され、既定の設定
+    /// [ID-13] がそれを黙って承認して**行ごと消してしまう**。
+    @Test("走査が疑っていない同名の行は候補にしない [ID3-08]")
+    func doesNotSurfaceLiveRowsThatWereNeverSuspected() async throws {
+        let s = try await Setup.make()
+        try await s.addCandidate(inode: 2, path: "新/作品名A 第01巻.cbz",
+                                 size: 1000, pending: false)
+
+        let rows = try await s.f.files.orphanedFiles(libraryID: s.f.libraryID)
+        #expect(rows[0].candidates.isEmpty)
+        #expect(try await s.f.files
+            .identityMatchesAwaitingDecision(libraryID: s.f.libraryID).isEmpty)
     }
 
     @Test("名前が違えば候補にしない")

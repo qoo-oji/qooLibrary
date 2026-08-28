@@ -110,17 +110,27 @@ struct LibraryBasicsSettingsView: View {
                 // 既定で尋ねると邪魔になる［ユーザー判断］。厳しくしたい人だけが
                 // 上の 2 つを選ぶ。判断の実体は `IdentityMatchPolicy` にある。
                 VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
-                    Text("librarySettings.basics.identityMatch")
-                    Picker("", selection: $draft.identityMatchPolicy) {
-                        Text("librarySettings.basics.identityMatch.alwaysConfirm")
-                            .tag(IdentityMatchPolicy.alwaysConfirm)
-                        Text("librarySettings.basics.identityMatch.samePath")
-                            .tag(IdentityMatchPolicy.samePath)
-                        Text("librarySettings.basics.identityMatch.sameName")
-                            .tag(IdentityMatchPolicy.sameName)
+                    // **`Form` の中の `radioGroup` は `LabeledContent` で包む** [CP-07]。
+                    // 素で置くと、`Form` が選択肢の 1 行ずつを「ラベル＋操作」の
+                    // 行として扱い、**丸だけが右端へ飛ばされて文字と数百 pt
+                    // 離れる**——どれが選ばれているか画面から読めなくなる
+                    // （AX の値では読めるので、実機で見るまで気づけない）。
+                    // 包むと選択肢ひとまとまりが 1 つの操作として扱われ、
+                    // 丸が文字の隣に戻る［実測で 8 通り比べて決めた］。
+                    LabeledContent {
+                        Picker("", selection: $draft.identityMatchPolicy) {
+                            Text("librarySettings.basics.identityMatch.alwaysConfirm")
+                                .tag(IdentityMatchPolicy.alwaysConfirm)
+                            Text("librarySettings.basics.identityMatch.samePath")
+                                .tag(IdentityMatchPolicy.samePath)
+                            Text("librarySettings.basics.identityMatch.sameName")
+                                .tag(IdentityMatchPolicy.sameName)
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.radioGroup)
+                    } label: {
+                        Text("librarySettings.basics.identityMatch")
                     }
-                    .labelsHidden()
-                    .pickerStyle(.radioGroup)
                     // **何が引き継がれるかを書く。** 選択肢の名前だけでは
                     // 「確認しない」と何が起きるのかが読み取れない。
                     Text("librarySettings.basics.identityMatchHint")
@@ -133,17 +143,21 @@ struct LibraryBasicsSettingsView: View {
                 // 始めない。判定キーの違いは「同じタイトルの別の巻を同じ組と
                 // 見るかどうか」だけ。
                 VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
-                    Text("librarySettings.basics.duplicateGrouping")
-                    Picker("", selection: $draft.duplicateGrouping) {
-                        Text("librarySettings.basics.duplicateGrouping.off")
-                            .tag(DuplicateGrouping.off)
-                        Text("librarySettings.basics.duplicateGrouping.byTitleAndVolume")
-                            .tag(DuplicateGrouping.byTitleAndVolume)
-                        Text("librarySettings.basics.duplicateGrouping.byTitle")
-                            .tag(DuplicateGrouping.byTitle)
+                    // 丸が右端へ飛ぶのを防ぐ [CP-07]。理由は上の節のコメント。
+                    LabeledContent {
+                        Picker("", selection: $draft.duplicateGrouping) {
+                            Text("librarySettings.basics.duplicateGrouping.off")
+                                .tag(DuplicateGrouping.off)
+                            Text("librarySettings.basics.duplicateGrouping.byTitleAndVolume")
+                                .tag(DuplicateGrouping.byTitleAndVolume)
+                            Text("librarySettings.basics.duplicateGrouping.byTitle")
+                                .tag(DuplicateGrouping.byTitle)
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.radioGroup)
+                    } label: {
+                        Text("librarySettings.basics.duplicateGrouping")
                     }
-                    .labelsHidden()
-                    .pickerStyle(.radioGroup)
                     Text("librarySettings.basics.duplicateGroupingHint")
                         .font(.system(size: Tokens.fontSize.caption))
                         .foregroundStyle(.secondary)

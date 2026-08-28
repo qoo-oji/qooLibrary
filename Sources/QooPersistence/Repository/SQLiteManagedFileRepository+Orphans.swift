@@ -87,7 +87,11 @@ extension SQLiteManagedFileRepository {
         }
     }
 
-    /// 孤立レコードごとの候補 [ID-05]。**却下済みの組は返さない** [ID-11]。
+    /// 孤立レコードごとの候補 [ID-05]。
+    ///
+    /// **走査が実際に差し替えを疑った組だけを返す** [ID3-08]——`identityPending`
+    /// に記録が無い組は、たまたま同じ名前の別のファイルである。却下済みの組も
+    /// 返さない [ID-11]。
     ///
     /// **1 本の JOIN でまとめて引く**（孤立は数千件になりうる）。既存の索引
     /// `mf_lib_name_size (libraryId, filename, fileSize)` がそのまま効く。
@@ -105,6 +109,8 @@ extension SQLiteManagedFileRepository {
               ON c.libraryId = o.libraryId AND c.filename = o.filename
              AND c.state = ? AND c.id <> o.id
             WHERE o.libraryId = ? AND o.state = ?
+              AND EXISTS (SELECT 1 FROM identityPending p
+                          WHERE p.orphanFileId = o.id AND p.candidateFileId = c.id)
               AND NOT EXISTS (SELECT 1 FROM identityRejection r
                               WHERE r.orphanFileId = o.id AND r.candidateFileId = c.id)
             """, arguments: [FileState.active.rawValue, libraryID.rawValue,
@@ -142,6 +148,33 @@ extension SQLiteManagedFileRepository {
         try await orphanedFiles(libraryID: libraryID).filter { !$0.candidates.isEmpty }
     }
 
+    /// 走査が差し替えを疑った組を記録する [ID3-08]。
+    public func recordIdentityPending(_ matches: [IdentityMatch]) async throws {
+        guard !matches.isEmpty else { return }
+        try await database.writer.write { db in
+            let now = Date().timeIntervalSinceReferenceDate
+            for match in matches {
+                try db.execute(sql: """
+                    INSERT INTO identityPending (orphanFileId, candidateFileId, detectedAt)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(orphanFileId, candidateFileId) DO NOTHING
+                    """, arguments: [match.orphanID.rawValue, match.candidateID.rawValue, now])
+            }
+        }
+    }
+
+    /// 答えの出た組を確認待ちから外す。**承認のときだけ呼ぶ**
+    /// （却下は `identityRejection` が抑えるので消さない。理由は
+    /// `rejectIdentityMatches` のコメント）。
+    static func clearPending(_ db: Database, _ matches: [IdentityMatch]) throws {
+        for match in matches {
+            try db.execute(sql: """
+                DELETE FROM identityPending
+                WHERE orphanFileId = ? AND candidateFileId = ?
+                """, arguments: [match.orphanID.rawValue, match.candidateID.rawValue])
+        }
+    }
+
     /// 承認された組を確定する [ID-05]。
     ///
     /// **1 トランザクションでまとめて行う。** 1 件ずつ `reattachOrphan` を呼ぶと、
@@ -168,6 +201,9 @@ extension SQLiteManagedFileRepository {
                     removed.append(id)
                 }
             }
+            // 答えが出た組はもう確認待ちではない。**候補側の行は消えるので
+            // cascade でも落ちるが、孤立側だけが残る経路もある**ので明示する。
+            try Self.clearPending(db, matches)
             return removed
         }
     }
@@ -187,6 +223,10 @@ extension SQLiteManagedFileRepository {
                     ON CONFLICT(orphanFileId, candidateFileId) DO NOTHING
                     """, arguments: [match.orphanID.rawValue, match.candidateID.rawValue, now])
             }
+            // **却下では確認待ちの記録を消さない。** 却下は `identityRejection`
+            // が抑えるので二重に消す必要が無く、消すと Undo（`clearIdentityRejections`）
+            // で組が戻らなくなる——却下を取り消したのに確認に出てこない、
+            // という形で [ID-11] が破れる。
         }
     }
 
