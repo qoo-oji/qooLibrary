@@ -147,7 +147,9 @@ struct InspectorLabelSection: View {
                 // ここでは付け外ししかできないので、編集は 15.2 のウインドウへ。
                 .contextMenu {
                     Button("labelEditor.editLabelsEllipsis", systemImage: "tag") {
+                        // ラベルの属するフィールドを選んだ状態で開く [RL3-04]。
                         LabelEditorNavigation.open(libraryID: group.libraryID,
+                                                   groupID: group.id,
                                                    openWindow: openWindow)
                     }
                 }

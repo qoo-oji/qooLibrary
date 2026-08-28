@@ -538,6 +538,7 @@ struct MainWindowView: View {
                             opensBookFolderWithApp: windowState.bookFolders.opensWithApp,
                             libraryContent: windowState.libraryContent,
                             library: windowState.currentLibrary,   // [FA-01][LF-01]
+                            labelMenu: windowState.labelMenu,      // [RL3-01〜RL3-03]
                             onLoadMoreLibraryRows: {
                                 guard let library = windowState.currentLibrary else { return }
                                 Task {
@@ -599,6 +600,32 @@ struct MainWindowView: View {
             relativePath: windowState.libraryRelativePath,
             contentRevision: LibraryServices.shared.contentRevision,
             // 設定ウインドウで [IF-18] を切り替えたら、その場で効く。
+            settingsRevisions: LibraryServices.shared.libraries.map(\.settingsRevision))
+    }
+
+    /// ラベルメニューの事前読み込みを読み直す条件 [RL3-01]。
+    ///
+    /// `bookFolderLoadKey` の条件に加えて `historyCount`（⌘Z・インスペクタでの
+    /// 付け外しが紐づけを変える）と `libraryRowCount`（ライブラリ表示モードの
+    /// 追加読み込みで対象が増える [FI-05]）にも乗る。
+    private struct LabelMenuLoadKey: Hashable {
+        let mode: DisplayMode
+        let root: NavigationRoot
+        let relativePath: String?
+        let contentRevision: Int
+        let historyCount: Int
+        let libraryRowCount: Int
+        let settingsRevisions: [Int]
+    }
+
+    private var labelMenuLoadKey: LabelMenuLoadKey {
+        LabelMenuLoadKey(
+            mode: windowState.displayMode,
+            root: windowState.navigationRoot,
+            relativePath: windowState.libraryRelativePath,
+            contentRevision: LibraryServices.shared.contentRevision,
+            historyCount: CommandStack.shared.operationHistory.count,
+            libraryRowCount: windowState.libraryContent.rows.count,
             settingsRevisions: LibraryServices.shared.libraries.map(\.settingsRevision))
     }
 
@@ -768,6 +795,17 @@ struct MainWindowView: View {
             await windowState.bookFolders.load(
                 library: windowState.currentLibrary,
                 relativePath: windowState.libraryRelativePath,
+                services: LibraryServices.shared)
+        }
+        // 中央ペインのラベルメニューの事前読み込み [RL3-01〜RL3-03]。
+        // メニューは遅延構築で非同期の後追い更新が効かないため、右クリックの
+        // 前に読めている必要がある（`bookFolders` と同じ形）。
+        .task(id: labelMenuLoadKey) {
+            await windowState.labelMenu.load(
+                library: windowState.currentLibrary,
+                relativePath: windowState.libraryRelativePath,
+                libraryRows: windowState.displayMode == .library
+                    ? windowState.libraryContent.rows.map(\.file) : [],
                 services: LibraryServices.shared)
         }
         .onChange(of: SessionState.shared.reloadToken) {

@@ -57,7 +57,14 @@ struct LabelGroupEditorWindow: View {
             }
         }
         .frame(minWidth: 1040, minHeight: 540)
-        .task { await prepare(preferring: LabelEditorNavigation.shared.pendingLibraryID) }
+        // **読んだら消費する（`nil` に戻す）。** 残したままだと、次に同じ
+        // ライブラリで開く要求が来ても `.onChange` が変化を見ず、グループの
+        // 選択 [RL3-04] が適用されない。
+        .task {
+            let pending = LabelEditorNavigation.shared.pendingLibraryID
+            LabelEditorNavigation.shared.pendingLibraryID = nil
+            await prepare(preferring: pending)
+        }
         // 起動と同時に状態復元で開かれると、DB の準備より先に「未選択」で
         // 確定する——設定ウインドウで実際に踏んだ競合なので変化にも乗せる。
         .onChange(of: model.libraries.map(\.id)) { _, _ in
@@ -92,8 +99,21 @@ struct LabelGroupEditorWindow: View {
         settings.selectedLibraryID = model.selectedLibraryID
         await settings.prepare(preferring: model.selectedLibraryID)
         syncGroupSelection()
+        consumePendingGroupSelection()
         model.selectedGroupID = persistentGroupID(for: selectedGroupDraftID)
         await model.reload()
+    }
+
+    /// 開いた導線が指すフィールドを選ぶ [RL3-04]。
+    ///
+    /// 草案が読み込まれた後（`reloadBoth` の中）でしか対応付けられないので、
+    /// ここで消費する。見つからなければ（保存前に消えた等）既定の選択のまま。
+    private func consumePendingGroupSelection() {
+        guard let pending = LabelEditorNavigation.shared.pendingGroupID else { return }
+        LabelEditorNavigation.shared.pendingGroupID = nil
+        guard let draft = draftGroups.first(where: { $0.persistentID == pending.rawValue })
+        else { return }
+        selectedGroupDraftID = draft.id
     }
 
     /// 中央ペインの選択が消えていたら選び直す。
@@ -254,13 +274,21 @@ struct LabelGroupEditorWindow: View {
 final class LabelEditorNavigation {
     static let shared = LabelEditorNavigation()
     var pendingLibraryID: LibraryID?
+    /// 開いたときに選ぶフィールド [RL3-04]。ライブラリと組でしか意味を
+    /// 持たないので、`open` だけが設定する。
+    var pendingGroupID: LabelGroupID?
     private init() {}
 
-    /// 開く経路はここ 1 つ [CP-02]。**フォルダツリー・ラベルフィルタ・右ペインの
-    /// 3 箇所から呼ぶ**ので、受け皿へ置く順序を各所で書き直さない
-    /// ——「同じに見える操作に独立した経路を作って片方だけ直す」を避ける。
+    /// 開く経路はここ 1 つ [CP-02]。**フォルダツリー・ラベルフィルタ・右ペイン・
+    /// メニューバー「ライブラリ」から呼ぶ**ので、受け皿へ置く順序を各所で
+    /// 書き直さない——「同じに見える操作に独立した経路を作って片方だけ直す」を
+    /// 避ける。
     @MainActor
-    static func open(libraryID: LibraryID, openWindow: OpenWindowAction) {
+    static func open(libraryID: LibraryID, groupID: LabelGroupID? = nil,
+                     openWindow: OpenWindowAction) {
+        // グループを先に置く——ウインドウ側は `pendingLibraryID` の変化で
+        // 動くので、逆順だとグループの無いまま読み込みが始まりうる。
+        shared.pendingGroupID = groupID
         shared.pendingLibraryID = libraryID
         openWindow(id: "labelEditor")
     }

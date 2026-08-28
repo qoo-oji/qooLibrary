@@ -33,5 +33,13 @@ struct LibraryMenuCommands: View {
             openWindow(id: "librarySettings")
         }
         .disabled(actions?.currentLibrary == nil)
+        // 表示中のライブラリのラベル編集 [RL3-04][§19.6: Stage 3 以降の入口は
+        // ここへ足す]。開く手順は左ペイン・右ペインと同じ受け皿
+        // （`LabelEditorNavigation`）を通す。
+        Button("labelEditor.editLabelsEllipsis", systemImage: "tag") {
+            guard let library = actions?.currentLibrary else { return }
+            LabelEditorNavigation.open(libraryID: library.id, openWindow: openWindow)
+        }
+        .disabled(actions?.currentLibrary == nil)
     }
 }

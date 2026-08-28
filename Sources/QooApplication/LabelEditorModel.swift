@@ -366,21 +366,17 @@ public final class LabelEditorModel {
 
     private func applyID(_ labelID: LabelID, name: String, assigning: Bool) async throws {
         guard case .ready(let subject) = state, let services else { return }
-        // **変更前の状態を 1 件ずつ拾う。** ファイルごとに `auto` / `manual` /
-        // `manuallyRemoved` / 行なし が混在しうるので、一律に戻すと ⌘Z が
-        // 元と違う状態を作る [RA-06 と同じ判断]。
-        let previous = subject.fileIDs.map { id in
-            AssignLabelCommand.Previous(
-                fileID: id,
-                url: urlByFile[id] ?? subject.urls.first ?? URL(fileURLWithPath: "/"),
-                origin: assignmentsByFile[id]?[labelID])
+        // 変更前の拾い方と no-op の判定は `AssignLabelCommand.toggling` に
+        // 一本化してある [RL3-03]——中央ペインのメニュー（`LabelMenuModel`）と
+        // 2 箇所に書かない。
+        let files = subject.fileIDs.map { id in
+            (id: id, url: urlByFile[id] ?? subject.urls.first ?? URL(fileURLWithPath: "/"))
         }
-        // 既にその状態のものしか無ければ何もしない（Undo スタックを汚さない）。
+        guard let assign = AssignLabelCommand.toggling(
+            labelID: labelID, labelName: name, files: files,
+            assignments: assignmentsByFile, assigning: assigning,
+            subjectName: subject.displayName, services: services) else { return }
         let target: LabelOrigin = assigning ? .manual : .manuallyRemoved
-        guard previous.contains(where: { $0.origin != target }) else { return }
-        let assign = AssignLabelCommand(
-            labelID: labelID, labelName: name, previous: previous,
-            assigning: assigning, subjectName: subject.displayName, services: services)
         // **付けたときだけ**——外したときに一覧から消してはならない。
         if assigning, let extra = onAssign?(subject.fileIDs) {
             // 表示名はラベル側のものを使う。付随する操作まで Undo メニューへ

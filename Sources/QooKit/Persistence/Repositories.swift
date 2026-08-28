@@ -162,6 +162,14 @@ public protocol ManagedFileRepository: Sendable {
     /// `matchingChildNames` と違い**畳まない**——ブックフォルダ「を含む」
     /// フォルダは通常のフォルダであって、印を付ける対象ではない。
     func bookFolderChildNames(libraryID: LibraryID, relativePath: String) async throws -> Set<String>
+    /// 現在フォルダの**直下**にある蔵書の「ファイル名 → 行 ID」[RL3-01]。
+    ///
+    /// 中央ペインのコンテキストメニュー（ラベルの付け外し）が、フォルダ表示
+    /// モードの実体一覧を DB の行へ対応付けるための経路。メニューは遅延構築で
+    /// 非同期の後追い更新が効かないため、事前に読める対応表が要る。
+    /// 名前は同一ディレクトリ内で一意（ファイルシステムの名前空間はファイルと
+    /// フォルダを分けない）なので、この対応で取り違えは起きない。
+    func fileIDsByChildName(libraryID: LibraryID, relativePath: String) async throws -> [String: FileID]
     /// 候補の相対パスのうち、条件に該当するものを返す [LF-14]。
     ///
     /// 検索結果（配下から再帰的に集めた一覧）へフィルタを効かせるための経路。

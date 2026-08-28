@@ -834,6 +834,30 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
         }
     }
 
+    /// 直下の蔵書の「ファイル名 → 行 ID」[RL3-01]。
+    ///
+    /// `bookFolderChildNames` と同じく `whereClause` を使い回す——既定の絞り
+    /// （active・保管庫外 [FI-02]）を通るので、孤立・保管庫のレコードは
+    /// ラベル付けの対象にならない。
+    public func fileIDsByChildName(libraryID: LibraryID,
+                                   relativePath: String) async throws -> [String: FileID] {
+        var q = FileQuery(libraryID: libraryID)
+        q.scope = .folder(path: relativePath, recursive: false)
+        let frozen = q
+        return try await database.writer.read { db in
+            let (where_, whereArgs) = Self.whereClause(frozen)
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT filename, id FROM managedFile
+                 WHERE \(where_)
+                """, arguments: StatementArguments(whereArgs.map { Optional($0) }))
+            var result: [String: FileID] = [:]
+            for row in rows {
+                result[row["filename"]] = FileID(rawValue: row["id"])
+            }
+            return result
+        }
+    }
+
     /// 候補の相対パスのうち、条件に該当するものを返す [LF-14]。
     public func matchingRelativePaths(_ q: FileQuery,
                                       among candidates: [String]) async throws -> Set<String> {

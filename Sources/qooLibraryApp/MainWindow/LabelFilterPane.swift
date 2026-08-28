@@ -208,6 +208,17 @@ struct LabelFilterPane: View {
                         .foregroundStyle(Color.accentColor)
                 }
             }
+            // フィールドそのものの手入れ（ラベルの追加・削除・リネーム）は
+            // 左ペインから [RL3-04]——本に対する操作（付け外し）は中央ペインと
+            // 役割を分ける。編集ウインドウを**そのフィールドを選んだ状態で**開く。
+            .contextMenu {
+                Button(String(format: String(localized: "labelFilter.editFieldEllipsis",
+                                             locale: locale), group.name),
+                       systemImage: "tag") {
+                    LabelEditorNavigation.open(libraryID: group.libraryID,
+                                               groupID: group.id, openWindow: openWindow)
+                }
+            }
         }
     }
 
@@ -239,7 +250,9 @@ struct LabelFilterPane: View {
         // 狭い行の中では扱いきれない。
         .contextMenu {
             Button("labelEditor.editLabelsEllipsis", systemImage: "tag") {
-                LabelEditorNavigation.open(libraryID: group.libraryID, openWindow: openWindow)
+                // ラベルの属するフィールドを選んだ状態で開く [RL3-04]。
+                LabelEditorNavigation.open(libraryID: group.libraryID,
+                                           groupID: group.id, openWindow: openWindow)
             }
         }
     }

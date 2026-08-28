@@ -168,6 +168,10 @@ public final class WindowState {
     /// フォルダ表示モードだけ。`libraryContent` と同じく駆動は
     /// `MainWindowView` の `.task(id:)`。
     public let bookFolders = BookFolderIndex()
+    /// 中央ペインのコンテキストメニューでのラベル付け外し [RL3-01〜RL3-03]。
+    /// メニューは遅延構築で非同期の後追い更新が効かないため、必要なものを
+    /// 事前に読み込んでおく。駆動は `MainWindowView` の `.task(id:)`。
+    public let labelMenu = LabelMenuModel()
     // 既定は `.list`。1-12 で、この既定値自体を環境設定「表示」タブから変更
     // できるようにした（`DisplayPreferencesTab.swift` 参照）。ウインドウ固有
     // 状態自体は引き続き DB に保存しない [ST-20] が、「次に開くウインドウの

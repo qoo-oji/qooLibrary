@@ -545,40 +545,18 @@ struct FolderTreePane: View {
     private func registeredRowsForEach(_ entries: [RegisteredFolderEntry],
                                        kind: RegisteredFolderKind) -> some DynamicViewContent {
         ForEach(entries) { entry in
-                if let node = entry.node {
-                    FolderTreeRow(
-                        node: node, expandedIDs: $expandedNodeIDs, visibleIDs: $visibleNodeIDs,
-                        selection: listSelection,
-                        branch: .registered(kind: kind, id: entry.folder.id, rootURL: node.url),
-                        role: .registeredRoot,
-                        onSelect: onSelect,
-                        onDropFailure: { presentFailureMessage($0) },
-                        operations: operations, menuActions: menuActions,
-                        registeredFolder: entry.folder,
-                        annotation: entry.annotation,
-                        allowsWriting: entry.state.status.allowsWriting
-                    )
-                } else {
-                    // 入って辿れない縮退状態 [1-17]。**行を出し続けるのが要点**
-                    // ——登録レコードは決して自動削除しない [RG3-04][SB-05] ので、
-                    // 状態を見せて次の一手を示す。
-                    DegradedRegisteredFolderRow(
-                        state: entry.state,
-                        onRelocate: { presentRelocatePanel(for: entry.folder) },
-                        onRevealInFinder: { operations.revealInFinder([$0]) },
-                        onUnregister: { unregisterFolder(entry.folder) },
-                        isLibraryEnabled: LibraryServices.shared
-                            .isEnabled(registrationUUID: entry.folder.id),
-                        onDisableLibrary: { disableLibrary(entry.folder) },
-                        onOpenLibrarySettings: { openLibrarySettings(entry.folder) },
-                        onOpenLabelEditor: { openLabelEditor(entry.folder) },
-                        onOpenLabelVault: { openLabelVault(entry.folder) },
-                        onOpenFileVault: { openFileVault(entry.folder) },
-                        onOpenOrphanCleanup: { openOrphanCleanup(entry.folder) },
-                        onOpenUnresolvedFiles: { openUnresolvedFiles(entry.folder) }
-                    )
-                }
-            }
+            // **行型は 1 つ** [§19.13-3]。縮退は `RegisteredFolderRootRow` の
+            // 中の表示状態で、メニューは両分岐とも `RegisteredRootMenuItems`
+            // を通る——以前は通常と縮退で別の行型に別のメニューを組み立てて
+            // おり、「片方の行型だけ配線して取り残す」を 7 回踏んだ。
+            RegisteredFolderRootRow(
+                entry: entry, kind: kind,
+                expandedIDs: $expandedNodeIDs, visibleIDs: $visibleNodeIDs,
+                selection: listSelection,
+                onSelect: onSelect,
+                onDropFailure: { presentFailureMessage($0) },
+                operations: operations, menuActions: menuActions)
+        }
     }
 
     /// フォルダツリーの D&D 並べ替え [RG3-33]。
@@ -658,6 +636,7 @@ struct FolderTreePane: View {
             beginNewFolder: { presentNewFolderDialog(in: $0.url, branch: $0.branch) },
             beginRenameDisplayName: { presentRenameDisplayNameDialog($0) },
             unregister: { unregisterFolder($0) },
+            relocateRegisteredFolder: { presentRelocatePanel(for: $0) },
             // [DS-04] 状態はメインアクタ上のキャッシュから同期的に読み、
             // 書き込みだけ非同期でストアへ送ってからキャッシュを取り直す。
             isThumbnailsAlwaysHidden: { RegisteredFolderIndex.shared.hidesThumbnails(registeredFolderID: $0.id) },
@@ -669,15 +648,7 @@ struct FolderTreePane: View {
             isLibraryEnabled: { LibraryServices.shared.isEnabled(registrationUUID: $0.id) },
             enableLibrary: { LibraryEnableAction.begin(folder: $0, url: $1, locale: locale,
                                                       openWindow: openWindow) },
-            rescanLibrary: { LibraryEnableAction.rescan(folder: $0, url: $1, locale: locale,
-                                                       openWindow: openWindow) },
-            disableLibrary: { LibraryEnableAction.disable(folder: $0) },
             openLibrarySettings: { openLibrarySettings($0) },
-            openLabelEditor: { openLabelEditor($0) },
-            openLabelVault: { openLabelVault($0) },
-            openFileVault: { openFileVault($0) },
-            openOrphanCleanup: { openOrphanCleanup($0) },
-            openUnresolvedFiles: { openUnresolvedFiles($0) },
             // [FDA-03] ライブラリ配下のフォルダを丸ごと保管庫へ。
             libraryForRow: { context in
                 guard case .registeredFolder(let id, _) = context.navigationRoot,
@@ -879,71 +850,11 @@ struct FolderTreePane: View {
         openWindow(id: "librarySettings")
     }
 
-    /// ラベルグループ編集ウインドウを開く [LE-01〜LE-12][15.2 節]。
-    ///
-    /// **登録ルート行は 2 つある**（通常の `FolderTreeContextMenu` と、縮退した
-    /// `DegradedRegisteredFolderRow`）。配線は別々なので、項目を足すときは
-    /// 両方に要る——片方だけ配線して取り残した前例がある。
-    private func openLabelEditor(_ folder: RegisteredFolder) {
-        guard let summary = LibraryServices.shared.library(registrationUUID: folder.id) else { return }
-        LabelEditorNavigation.shared.pendingLibraryID = summary.id
-        openWindow(id: "labelEditor")
-    }
 
-    /// ラベル保管庫の整理ウインドウを開く [LAW-01〜LAW-03][15.3 節]。
-    ///
-    /// `openLabelEditor` と同じく、**登録ルート行が 2 つある**ことに注意
-    /// （通常の `FolderTreeContextMenu` と縮退した
-    /// `DegradedRegisteredFolderRow`）。配線は別々なので両方に要る。
-    private func openLabelVault(_ folder: RegisteredFolder) {
-        guard let summary = LibraryServices.shared.library(registrationUUID: folder.id) else { return }
-        // **受け皿へ置く順序をここで書き直さない** [CP-02]。写すと、入口が
-        // 増えたときに片方だけ直して取り残す（このリポジトリで 3 度起きた形）。
-        LabelVaultNavigation.open(libraryID: summary.id, openWindow: openWindow)
-    }
 
-    /// ファイル保管庫の整理ウインドウを開く [FAW-01〜FAW-05][15.4 節]。
-    private func openFileVault(_ folder: RegisteredFolder) {
-        guard let summary = LibraryServices.shared.library(registrationUUID: folder.id) else { return }
-        // **受け皿へ置く順序をここで書き直さない** [CP-02]。
-        FileVaultNavigation.open(libraryID: summary.id, openWindow: openWindow)
-    }
 
-    /// 孤立ファイルの整理ウインドウを開く [OR-01〜OR-05][15.7 節]。
-    ///
-    /// `openLabelVault` と同じく、**登録ルート行が 2 つある**ことに注意
-    /// （通常の `FolderTreeContextMenu` と縮退した
-    /// `DegradedRegisteredFolderRow`）。配線は別々なので両方に要る。
-    private func openOrphanCleanup(_ folder: RegisteredFolder) {
-        guard let summary = LibraryServices.shared.library(registrationUUID: folder.id) else { return }
-        // **受け皿へ置く順序をここで書き直さない** [CP-02]。
-        OrphanCleanupNavigation.open(libraryID: summary.id, openWindow: openWindow)
-    }
 
-    /// 未解決ファイルの整理ウインドウを開く [UR-01〜UR-06][15.6 節]。
-    ///
-    /// 孤立側と同じく、**登録ルート行が 2 つある**ことに注意（通常の
-    /// `FolderTreeContextMenu` と縮退した `DegradedRegisteredFolderRow`）。
-    /// 配線は別々なので両方に要る。
-    private func openUnresolvedFiles(_ folder: RegisteredFolder) {
-        guard let summary = LibraryServices.shared.library(registrationUUID: folder.id) else { return }
-        // **受け皿へ置く順序をここで書き直さない** [CP-02]。
-        UnresolvedFilesNavigation.open(libraryID: summary.id, openWindow: openWindow)
-    }
 
-    /// ライブラリ機能だけを無効にする（登録フォルダは残す）。
-    private func disableLibrary(_ folder: RegisteredFolder) {
-        Task {
-            do {
-                try await LibraryServices.shared.disable(registrationUUID: folder.id)
-            } catch {
-                await NotificationRouter.shared.presentError(
-                    error, whatHappened: String(localized: "library.disable.failed", locale: locale)
-                )
-            }
-            await reloadRegisteredFolders()
-        }
-    }
 
     private func performUnregister(_ folder: RegisteredFolder, disablingLibrary: Bool = false) {
         Task {
@@ -1207,7 +1118,7 @@ struct FolderTreeSelection: Hashable {
 ///
 /// `node` は**入って辿れる状態のときだけ**作る（`.online` と
 /// `.unsupportedFileSystem`）。オフライン・ゴミ箱・消失では `nil` にして
-/// `DegradedRegisteredFolderRow` へ回す——`FolderTreeRow` を作ってしまうと、
+/// `RegisteredFolderRootRow` の縮退表示へ回す——`FolderTreeRow` を作ってしまうと、
 /// 行を展開しただけで未接続のボリュームを読みに行く [RG3-06]。
 private struct RegisteredFolderEntry: Identifiable {
     let state: RegisteredFolderState
@@ -1289,69 +1200,77 @@ private struct EmptyGroupRow: View {
     }
 }
 
-/// 入って辿れない縮退状態の登録フォルダ [1-17、8章 §8.7.1]。
+/// 登録ルートの 1 行 [§19.13-3]。**行型は 1 つ**で、縮退（オフライン・
+/// ゴミ箱・消失）は同じ行型の中の表示状態として描く——以前は通常
+/// （`FolderTreeRow`）と縮退（`DegradedRegisteredFolderRow`）の 2 つの行型が
+/// 別々にメニューを組み立てており、「片方の行型だけ配線して取り残す」を
+/// 7 回踏んだ（CLAUDE.md 既記録）。メニューは両分岐とも
+/// `RegisteredRootMenuItems` を通るので、項目を足す場所は 1 つになった。
 ///
-/// 1-13 以来ここは「ブックマークを解決できなかった行」1 種類しかなく、
-/// 未接続も削除もゴミ箱も同じグレーの行に潰れていた。**性質が違えば
-/// 次の一手も違う**ので、状態ごとに見た目と操作を変える:
+/// 入って辿れる状態（`entry.node` あり）だけ `FolderTreeRow` の再帰機構に
+/// 委ねる——縮退状態で `FolderTreeRow` を作ると、行を展開しただけで
+/// 未接続のボリュームを読みに行く [RG3-06]。**行を出し続けるのが要点**
+/// ——登録レコードは決して自動削除しない [RG3-04][SB-05] ので、状態を
+/// 見せて次の一手を示す:
 ///
-/// | 状態 | 見た目 | 出す操作 | 復帰 |
+/// | 状態 | 見た目 | 状態固有の操作 | 復帰 |
 /// |---|---|---|---|
-/// | `.offline` | グレーアウト | 登録解除 | 接続すれば自動 [VD-03] |
-/// | `.inTrash` | 警告色 | Finder で表示・登録解除 | ゴミ箱から戻せば自動 |
-/// | `.missing` | 通常色＋疑問符 | 場所を選び直す…・登録解除 | 手動 |
-///
-/// **どの状態でも登録解除を出す**が、それはユーザーが選んだときだけ効く
-/// ——アプリが勝手に消すことは無い [RG3-04][SB-05]。
-private struct DegradedRegisteredFolderRow: View {
+/// | `.offline` | グレーアウト | — | 接続すれば自動 [VD-03] |
+/// | `.inTrash` | 警告色 | Finder で表示 | ゴミ箱から戻せば自動 |
+/// | `.missing` | 通常色＋疑問符 | 場所を選び直す… | 手動 |
+private struct RegisteredFolderRootRow: View {
     @Environment(\.locale) private var locale
-    let state: RegisteredFolderState
-    let onRelocate: () -> Void
-    let onRevealInFinder: (URL) -> Void
-    let onUnregister: () -> Void
-    /// この登録がライブラリとして有効か [フェーズ 2 の結線]。
-    ///
-    /// **縮退した行にも無効化を出すために要る。** この行型は
-    /// `FolderTreeContextMenu` を通らない別経路なので、出し分けの方針
-    /// （`LibraryMenuVisibility`）を共有しないと 2 つの行で食い違う
-    /// ——実機検証で「ボリュームを失うと無効化の手段が消える」形で実際に踏んだ。
-    let isLibraryEnabled: Bool
-    let onDisableLibrary: () -> Void
-    /// 設定は DB しか触らないので、縮退状態でも開ける [LS-01]。
-    let onOpenLibrarySettings: () -> Void
-    /// ラベルグループ編集ウインドウ [LE-01〜LE-12]。**縮退状態でこそ要る**
-    /// ——外付けが無い間に表記ゆれを片付けられる（DB しか触らない）。
-    let onOpenLabelEditor: () -> Void
-    let onOpenLabelVault: () -> Void
-    let onOpenFileVault: () -> Void
-    /// 孤立ファイルの整理ウインドウ [OR-01〜OR-05]。**縮退状態でこそ開きたい**
-    /// ——「孤立していないか」を確かめられる（オフラインの間は判定しない
-    /// [OR2-06][ID-08] ことが、開けば読み取れる）。
-    let onOpenOrphanCleanup: () -> Void
-    /// 未解決ファイルの整理ウインドウ [UR-01〜UR-06]。**縮退状態でも開ける**
-    /// ——照合の結果しか見ないので、実体が無くても一覧は正しい。
-    let onOpenUnresolvedFiles: () -> Void
+    let entry: RegisteredFolderEntry
+    let kind: RegisteredFolderKind
+    @Binding var expandedIDs: Set<FolderTreeSelection>
+    @Binding var visibleIDs: Set<FolderTreeSelection>
+    let selection: FolderTreeSelection?
+    let onSelect: (URL, NavigationRoot) -> Void
+    let onDropFailure: @MainActor @Sendable (String) -> Void
+    let operations: FolderOperations
+    let menuActions: FolderTreeContextMenuActions
+
+    var body: some View {
+        if let node = entry.node {
+            FolderTreeRow(
+                node: node, expandedIDs: $expandedIDs, visibleIDs: $visibleIDs,
+                selection: selection,
+                branch: .registered(kind: kind, id: entry.folder.id, rootURL: node.url),
+                role: .registeredRoot,
+                onSelect: onSelect,
+                onDropFailure: onDropFailure,
+                operations: operations, menuActions: menuActions,
+                registeredFolder: entry.folder,
+                annotation: entry.annotation,
+                allowsWriting: entry.state.status.allowsWriting
+            )
+        } else {
+            degradedRow
+        }
+    }
+
+    // MARK: 縮退の表示 [1-17、8章 §8.7.1]
 
     /// `.offline` だけ薄くする。ゴミ箱・消失は「気づいてほしい」状態なので
     /// 薄めない——未接続は待てば戻る日常的な状態で、そちらこそ目立たない
     /// ほうがよい。
     private var opacity: Double {
-        if case .offline = state.status { return 0.4 }
+        if case .offline = entry.state.status { return 0.4 }
         return 1
     }
 
     private var iconName: String {
-        switch state.status {
+        switch entry.state.status {
         case .offline: "externaldrive.badge.xmark"
         case .inTrash: "trash"
         case .missing: "questionmark.folder"
-        // 入って辿れる状態はこの行を使わない（`FolderTreeRow` が描く）。
+        // 入って辿れる状態はこの分岐を使わない（`FolderTreeRow` が描く）。
         case .online, .unsupportedFileSystem: "folder"
         }
     }
 
     private var iconColor: Color {
-        switch state.status {
+        switch entry.state.status {
         case .inTrash, .missing: Tokens.Colors.dangerText
         case .offline, .online, .unsupportedFileSystem: .secondary
         }
@@ -1360,7 +1279,7 @@ private struct DegradedRegisteredFolderRow: View {
     /// ツールチップに出す説明。**「何が起きたか」と「次に何ができるか」を
     /// 併せて言う** [ER-03 の考え方をこの行にも当てる]。
     private var hint: String {
-        let key: String.LocalizationValue = switch state.status {
+        let key: String.LocalizationValue = switch entry.state.status {
         case .offline: "folderTree.status.offlineHint"
         case .inTrash: "folderTree.status.inTrashHint"
         case .missing: "folderTree.status.missingHint"
@@ -1369,13 +1288,13 @@ private struct DegradedRegisteredFolderRow: View {
         let message = String(localized: key, locale: locale)
         // 最後に分かっている場所を添える。「どのボリュームを繋げばよいか」が
         // 分からないと、オフラインの行は手の打ちようが無い。
-        guard let path = state.status.lastKnownPath else { return message }
+        guard let path = entry.state.status.lastKnownPath else { return message }
         return "\(message)\n\(path)"
     }
 
-    var body: some View {
+    private var degradedRow: some View {
         Label {
-            Text(state.folder.displayName)
+            Text(entry.folder.displayName)
                 .font(.system(size: Tokens.fontSize.body))
         } icon: {
             Image(systemName: iconName)
@@ -1389,57 +1308,16 @@ private struct DegradedRegisteredFolderRow: View {
         .contentShape(Rectangle())
         .help(hint)
         .contextMenu {
-            // ゴミ箱の中は中身を確かめたくなるので Finder への導線を出す
-            // [8章 §8.7.1 の「許可する操作」]。qooLibrary 自身では中へ
-            // 入らせない——入れなければ中で書くこともできない［ユーザー判断］。
-            if case .inTrash(let url) = state.status {
-                Button("folder.revealInFinder", systemImage: "macwindow") { onRevealInFinder(url) }
-                Divider()
-            }
-            if case .missing = state.status {
-                Button("folderTree.relocateEllipsis", systemImage: "arrow.forward.folder") { onRelocate() }
-                Divider()
-            }
-            // 縮退した行は定義上オンラインではないので `isOnline: false`。
-            // 方針は `FolderTreeContextMenu` と同じ関数から引く。
-            let libraryItems = LibraryMenuVisibility.items(isEnabled: isLibraryEnabled,
-                                                           isOnline: false)
-            if libraryItems.contains(.settings) {
-                Button("library.settings.menuItem", systemImage: "gearshape") {
-                    onOpenLibrarySettings()
-                }
-            }
-            if libraryItems.contains(.labels) {
-                Button("library.labels.menuItem", systemImage: "tag") { onOpenLabelEditor() }
-            }
-            if libraryItems.contains(.labelVault) {
-                Button("library.labelVault.menuItem", systemImage: "archivebox") {
-                    onOpenLabelVault()
-                }
-            }
-            if libraryItems.contains(.fileVault) {
-                Button("library.fileVault.menuItem", systemImage: "archivebox.fill") {
-                    onOpenFileVault()
-                }
-            }
-            if libraryItems.contains(.orphanCleanup) {
-                Button("library.orphanCleanup.menuItem", systemImage: "questionmark.folder") {
-                    onOpenOrphanCleanup()
-                }
-            }
-            if libraryItems.contains(.unresolvedFiles) {
-                Button("library.unresolvedFiles.menuItem",
-                       systemImage: "questionmark.square.dashed") {
-                    onOpenUnresolvedFiles()
-                }
-            }
-            if libraryItems.contains(.disable) {
-                Button("library.disable.menuItem", systemImage: "books.vertical.circle") {
-                    onDisableLibrary()
-                }
-            }
-            if !libraryItems.isEmpty { Divider() }
-            Button("folderTree.unregister", systemImage: "minus.circle") { onUnregister() }
+            // 通常行の `registrationSection` と同じ部品 [§19.13-3]。
+            // 縮退は定義上オンラインではないので `isOnline: false`・URL 無し。
+            RegisteredRootMenuItems(
+                folder: entry.folder,
+                status: entry.state.status,
+                isLibrary: kind == .library,
+                isOnline: false,
+                onlineURL: nil,
+                onRevealInFinder: { operations.revealInFinder([$0]) },
+                actions: menuActions)
         }
     }
 }

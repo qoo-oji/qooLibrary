@@ -170,7 +170,7 @@ struct FolderTreeRowContext {
     /// ゴミ箱へ入れられる（1-13 以来の既存の挙動）ため、ツリーの一方の枝
     /// だけを塞いでも一貫性が無く、Finder のサイドバー（登録項目でも実体は
     /// 普通に削除できる）とも食い違う。登録フォルダの実体が失われた場合は
-    /// ブックマークの解決に失敗し、`OfflineRegisteredFolderRow`（グレー
+    /// ブックマークの解決に失敗し、`RegisteredFolderRootRow` の縮退表示（グレー
     /// アウト表示＋登録解除）へ自動的にフォールバックする [SB-05] ため、
     /// 復旧不能にはならない。
     var allowsStructuralOperations: Bool { role == .plainFolder }
@@ -189,8 +189,7 @@ struct FolderTreeRowContext {
     /// 失われるボリューム [FS-08]。
     ///
     /// `.inTrash`／`.offline`／`.missing` はこの判定に**到達しない**:
-    /// それらの行は `FolderTreeRow` ではなく `DegradedRegisteredFolderRow`
-    /// が描き、そもそも中へ入れない（`RegisteredFolderStatus.allowsNavigation`）。
+    /// それらの行は `RegisteredFolderRootRow` が縮退表示で描き、そもそも中へ入れない（`RegisteredFolderStatus.allowsNavigation`）。
     /// 入れなければ配下の行も生まれないので、ここで重ねて塞ぐ必要が無い。
     var allowsWritingInto: Bool { allowsWriting }
 }
@@ -328,84 +327,10 @@ struct FolderTreeContextMenu: View {
         }
     }
 
-    /// ライブラリ機能の有効化・再スキャン・無効化 [RG-01][LT-03][SY-05]。
-    ///
-    /// **フェーズ 1 の登録フォルダとフェーズ 2 のライブラリは別物**［ユーザー判断］。
-    /// 登録しただけでは DB もラベルも持たず、ここで明示的に有効化して初めて
-    /// 走査の対象になる。起動時に全件を自動で有効化しないのは、ライブラリ
-    /// タイプを推測したまま実蔵書数千件をいきなり走査することになるため
-    /// ——1 件ずつ選ばせれば、使い捨てのボリュームで先に試せる。
-    ///
-    /// **オンラインのときだけ出す。** オフラインのまま有効化すると
-    /// `resolvedPath`/`volumeUUID` を実測できない [1-17]。`allowsWriting` は
-    /// 登録ルートでは「その根が `.online` か」そのものなので、判定を増やさず
-    /// これに乗る（ゴミ箱の中・未接続・消失・非対応 FS はすべて偽になる）。
-    @ViewBuilder
-    private func libraryFeatureItems(_ folder: RegisteredFolder) -> some View {
-        let visible = LibraryMenuVisibility.items(
-            isEnabled: actions.isLibraryEnabled(folder), isOnline: context.allowsWriting)
-        if visible.contains(.enable) {
-            Button("library.enable.menuItem", systemImage: "books.vertical") {
-                actions.enableLibrary(folder, context.url)
-            }
-        }
-        if visible.contains(.settings) {
-            // **テンプレートは雛形でしかない** [LT-03]。写された設定を実際に
-            // 調整できる場所への入口。
-            Button("library.settings.menuItem", systemImage: "gearshape") {
-                actions.openLibrarySettings(folder)
-            }
-        }
-        if visible.contains(.labels) {
-            // ラベルグループとラベルの編集 [LE-01〜LE-12][15.2 節]。
-            // **オンラインを要らない**——DB しか触らないので、外付けが無い間に
-            // 表記ゆれを片付けられる（`LibraryMenuVisibility` のコメント参照）。
-            Button("library.labels.menuItem", systemImage: "tag") {
-                actions.openLabelEditor(folder)
-            }
-        }
-        if visible.contains(.labelVault) {
-            // ラベル保管庫の整理 [LAW-01〜LAW-03][15.3 節]。ラベル編集と同じく
-            // **オンラインを要らない**——DB のアーカイブ属性を書き換えるだけ。
-            Button("library.labelVault.menuItem", systemImage: "archivebox") {
-                actions.openLabelVault(folder)
-            }
-        }
-        if visible.contains(.fileVault) {
-            // ファイル保管庫の整理 [FAW-01〜FAW-05][15.4 節]。**一覧は
-            // オンラインを要らない**——戻す・削除だけがボリュームを要る。
-            Button("library.fileVault.menuItem", systemImage: "archivebox.fill") {
-                actions.openFileVault(folder)
-            }
-        }
-        if visible.contains(.orphanCleanup) {
-            // 孤立ファイルの整理 [OR-01〜OR-05][15.7 節]。**オンラインを
-            // 要らない**——そのライブラリの一覧は出せない [OR2-06] が、
-            // ウインドウは全ライブラリを持つので行き止まりにならない。
-            Button("library.orphanCleanup.menuItem", systemImage: "questionmark.folder") {
-                actions.openOrphanCleanup(folder)
-            }
-        }
-        if visible.contains(.unresolvedFiles) {
-            // 未解決ファイルの整理 [UR-01〜UR-06][15.6 節]。**オンラインを
-            // 要らない**——未解決は照合の結果であって実体についての判断では
-            // ないので、外付けが無い間にフォーマットを直せる。
-            Button("library.unresolvedFiles.menuItem",
-                   systemImage: "questionmark.square.dashed") {
-                actions.openUnresolvedFiles(folder)
-            }
-        }
-        if visible.contains(.rescan) {
-            Button("library.rescan.menuItem", systemImage: "arrow.clockwise") {
-                actions.rescanLibrary(folder, context.url)
-            }
-        }
-        if visible.contains(.disable) {
-            Button("library.disable.menuItem", systemImage: "books.vertical.circle") {
-                actions.disableLibrary(folder)
-            }
-        }
-    }
+    // ライブラリ機能の項目は `RegisteredRootMenuItems` に一本化した
+    // [§19.13-3]。旧 `libraryFeatureItems` の死んだ分岐（再スキャン・無効化・
+    // ラベル編集・保管庫・整理ウインドウ群——Stage P の最小化以降
+    // `LibraryMenuVisibility` がどれも返さなくなっていた）はそこで削除した。
 
     // MARK: この行のフォルダ「の中へ」作用する操作
 
@@ -465,7 +390,7 @@ struct FolderTreeContextMenu: View {
                 // 対にしたことで「完全削除はゴミ箱と同じ条件でしか出さない」
                 // （ボリュームのマウントポイントと登録ルートには出さない）が
                 // 構造的に保証される — 特に登録ルートを完全削除すると復元手段が
-                // 無く、`OfflineRegisteredFolderRow` へのフォールバック [SB-05]
+                // 無く、縮退表示へのフォールバック [SB-05]
                 // すら意味を成さなくなる。
                 .modifierKeyAlternate(.option) {
                     Button("folder.deletePermanentlyEllipsis", systemImage: "trash", role: .destructive) {
@@ -537,18 +462,85 @@ struct FolderTreeContextMenu: View {
     private var registrationSection: some View {
         if let registeredFolder = context.registeredFolder {
             Divider()
+            RegisteredRootMenuItems(
+                folder: registeredFolder,
+                status: context.annotation?.status ?? .online(url: context.url),
+                isLibrary: context.group == .library,
+                // **オンラインのときだけ有効化を出す。** オフラインのまま
+                // 有効化すると `resolvedPath`/`volumeUUID` を実測できない
+                // [1-17]。`allowsWriting` は登録ルートでは「その根が `.online`
+                // か」そのものなので、判定を増やさずこれに乗る。
+                isOnline: context.allowsWriting,
+                onlineURL: context.url,
+                onRevealInFinder: { operations.revealInFinder([$0]) },
+                actions: actions)
+        }
+    }
+}
+
+/// 登録ルート行の「登録の管理」項目 [RG-05][RG-06][1-17][§19.13-3]。
+///
+/// **通常行（`FolderTreeContextMenu.registrationSection`）と縮退行
+/// （`RegisteredFolderRootRow` の縮退分岐）の両方がここを通る**——
+/// 登録ルートのメニュー項目を足す場所はここ 1 つ。以前は 2 つの行型が
+/// 別々にメニューを組み立てており、「片方の行型だけ配線して取り残す」を
+/// 7 回踏んだ（CLAUDE.md 既記録）。
+struct RegisteredRootMenuItems: View {
+    let folder: RegisteredFolder
+    /// 縮退の状態 [1-17、8章 §8.7.1]。通常行では `.online` か
+    /// `.unsupportedFileSystem`（注記から引く）。
+    let status: RegisteredFolderStatus
+    let isLibrary: Bool
+    /// 有効化に使えるか。縮退行は常に偽。
+    let isOnline: Bool
+    /// 有効化に使う実 URL。縮退行は解決できないので `nil`。
+    let onlineURL: URL?
+    let onRevealInFinder: (URL) -> Void
+    let actions: FolderTreeContextMenuActions
+
+    var body: some View {
+        // 状態固有の導線 [8章 §8.7.1 の「許可する操作」]。
+        // ゴミ箱の中は中身を確かめたくなるので Finder への導線を出す。
+        // qooLibrary 自身では中へ入らせない——入れなければ中で書くことも
+        // できない［ユーザー判断］。
+        if case .inTrash(let url) = status {
+            Button("folder.revealInFinder", systemImage: "macwindow") { onRevealInFinder(url) }
+            Divider()
+        }
+        if case .missing = status {
+            Button("folderTree.relocateEllipsis", systemImage: "arrow.forward.folder") {
+                actions.relocateRegisteredFolder(folder)
+            }
+            Divider()
+        }
+        if isLibrary {
             // ライブラリ固有の項目は**この 1 グループにまとめる**［ユーザー指示。
             // 以前は設定がメニューの中程・登録解除が末尾と離れていた］。
-            if context.group == .library {
-                libraryFeatureItems(registeredFolder)
-            } else {
-                // 表示名はテンポラリだけの概念になった。**ライブラリは
-                // フォルダ名＝表示名**［ユーザー指示: 表示名の概念を廃止］なので、
-                // 変えたければフォルダ自体をリネームする（通常のフォルダと同じ）。
-                Button("folderTree.renameDisplayNameEllipsis", systemImage: "text.cursor") { actions.beginRenameDisplayName(registeredFolder) } // [RG-05]
+            let visible = LibraryMenuVisibility.items(
+                isEnabled: actions.isLibraryEnabled(folder), isOnline: isOnline)
+            if visible.contains(.enable), let url = onlineURL {
+                Button("library.enable.menuItem", systemImage: "books.vertical") {
+                    actions.enableLibrary(folder, url)
+                }
             }
-            Button("folderTree.unregister", systemImage: "minus.circle") { actions.unregister(registeredFolder) } // [RG-06 の簡易版]
+            if visible.contains(.settings) {
+                // **テンプレートは雛形でしかない** [LT-03]。写された設定を
+                // 実際に調整できる場所への入口。設定は DB しか触らないので、
+                // 縮退状態でも開ける [LS-01]。
+                Button("library.settings.menuItem", systemImage: "gearshape") {
+                    actions.openLibrarySettings(folder)
+                }
+            }
+        } else {
+            // 表示名はテンポラリだけの概念になった。**ライブラリは
+            // フォルダ名＝表示名**［ユーザー指示: 表示名の概念を廃止］なので、
+            // 変えたければフォルダ自体をリネームする（通常のフォルダと同じ）。
+            // ストアしか触らないので縮退状態でも変えられる。
+            Button("folderTree.renameDisplayNameEllipsis", systemImage: "text.cursor") { actions.beginRenameDisplayName(folder) } // [RG-05]
         }
+        // **どの状態でも登録解除を出す**——ユーザーが選んだときだけ効き、
+        // アプリが勝手に消すことは無い [RG3-04][SB-05][RG-06 の簡易版]。
+        Button("folderTree.unregister", systemImage: "minus.circle") { actions.unregister(folder) }
     }
 }
 
@@ -570,6 +562,8 @@ struct FolderTreeContextMenuActions {
     var beginRenameDisplayName: (RegisteredFolder) -> Void = { _ in }
     /// 登録解除 [RG-06 の簡易版]。
     var unregister: (RegisteredFolder) -> Void = { _ in }
+    /// 消失した登録の場所を選び直す [1-17][RG3-08]。縮退行の `.missing` だけが出す。
+    var relocateRegisteredFolder: (RegisteredFolder) -> Void = { _ in }
     /// この登録フォルダでサムネイルを常に非表示にするか [DS-04]。
     ///
     /// **読み出しは `RegisteredFolderStore`（`actor`）ではなく
@@ -585,17 +579,11 @@ struct FolderTreeContextMenuActions {
     /// `LibraryServices`（`@Observable`）から同期的に読む。
     var isLibraryEnabled: (RegisteredFolder) -> Bool = { _ in false }
     var enableLibrary: (RegisteredFolder, URL) -> Void = { _, _ in }
-    var rescanLibrary: (RegisteredFolder, URL) -> Void = { _, _ in }
-    var disableLibrary: (RegisteredFolder) -> Void = { _ in }
     var openLibrarySettings: (RegisteredFolder) -> Void = { _ in }
-    /// ラベルグループ編集ウインドウを開く [LE-01〜LE-12][15.2 節]。
-    var openLabelEditor: (RegisteredFolder) -> Void = { _ in }
-    /// ラベル保管庫の整理ウインドウを開く [LAW-01〜LAW-03][15.3 節]。
-    var openLabelVault: (RegisteredFolder) -> Void = { _ in }
-    /// ファイル保管庫の整理ウインドウを開く [FAW-01〜FAW-05][15.4 節]。
-    var openFileVault: (RegisteredFolder) -> Void = { _ in }
-    var openOrphanCleanup: (RegisteredFolder) -> Void = { _ in }
-    var openUnresolvedFiles: (RegisteredFolder) -> Void = { _ in }
+    // 再スキャン・無効化・ラベル編集・保管庫・整理ウインドウ群のクロージャは
+    // 削除した [§19.13-3]——Stage P の最小化以降 `LibraryMenuVisibility` が
+    // どの項目も返さず、呼ばれる可能性の無い配線だけが残っていた。
+    // Stage 4（メンテナンス統合）で入口を足すときはここへ足し直す。
     /// この行が属する、有効でオンラインのライブラリ [FDA-03]。
     ///
     /// `isLibraryEnabled` と同じ理由でクロージャにしてある——メニューの

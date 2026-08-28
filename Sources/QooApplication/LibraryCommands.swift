@@ -192,6 +192,33 @@ public final class AssignLabelCommand: Command {
             return .impossible(reason: error.localizedDescription)
         }
     }
+
+    /// トグル 1 回ぶんのコマンドを組み立てる [RL3-03]。
+    ///
+    /// インスペクタ（`LabelEditorModel`）と中央ペインのメニュー（`LabelMenuModel`）の
+    /// **両方がここを通る**——変更前の拾い方・no-op の判定を 2 箇所に書くと、
+    /// 片方だけ直して取り残す（このリポジトリで繰り返し起きている形）。
+    ///
+    /// **変更前の状態は 1 件ずつ持つ。** ファイルごとに `auto` / `manual` /
+    /// `manuallyRemoved` / 行なし が混在しうるので、一律に戻すと ⌘Z が
+    /// 元と違う状態を作る [RA-06 と同じ判断]。
+    ///
+    /// - Returns: 既にその状態のものしか無ければ `nil`（Undo スタックを汚さない）。
+    public static func toggling(
+        labelID: LabelID, labelName: String,
+        files: [(id: FileID, url: URL)],
+        assignments: [FileID: [LabelID: LabelOrigin]],
+        assigning: Bool, subjectName: String, services: LibraryServices
+    ) -> AssignLabelCommand? {
+        let previous = files.map { file in
+            Previous(fileID: file.id, url: file.url, origin: assignments[file.id]?[labelID])
+        }
+        let target: LabelOrigin = assigning ? .manual : .manuallyRemoved
+        guard previous.contains(where: { $0.origin != target }) else { return nil }
+        return AssignLabelCommand(labelID: labelID, labelName: labelName, previous: previous,
+                                  assigning: assigning, subjectName: subjectName,
+                                  services: services)
+    }
 }
 
 /// タイトル・シリーズ名・巻数・著者を書き換える [RP-10][RP-11][RP-12]。

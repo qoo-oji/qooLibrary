@@ -138,6 +138,10 @@ struct FolderContentView: View {
     /// 非 `nil`（`NavigationRoot` が決める）——保管庫へ移す [FA-01] のような
     /// 蔵書の操作は、同じフォルダでもボリューム経由では出さない。
     let library: LibrarySummary?
+    /// 中央ペインのコンテキストメニューでのラベル付け外し [RL3-01〜RL3-03]。
+    /// メニュー構築時に同期で読める事前読み込み（駆動は `MainWindowView` の
+    /// `.task(id:)`、`bookFolders` と同じ形）。
+    let labelMenu: LabelMenuModel
     /// 一覧の末尾が見えたら次のページを求める [FI-05][PF-10]。**何度呼ばれても
     /// よい**——受け側（`LibraryContentModel.loadNextPage`）が番人を持つ。
     let onLoadMoreLibraryRows: () -> Void
@@ -2029,6 +2033,7 @@ struct FolderContentView: View {
                 }
             }
             Divider()
+            labelSubmenu(for: targetEntries) // [RL3-01〜RL3-03]
             // 単一選択はその場でのインライン編集、複数選択は一括リネームの
             // シート（Finder と同じ使い分け）[FM-05、ユーザー要望]。
             if targets.count == 1, let only = targetEntries.first {
@@ -2108,6 +2113,95 @@ struct FolderContentView: View {
             }
             // 「情報を見る」の簡易シートは 1-10 で常設の右ペイン
             // インスペクタ（`InspectorPane`）に置き換えたため削除した。
+        }
+    }
+
+    // MARK: - ラベルの付け外し [RL3-01〜RL3-03]
+
+    /// ラベル操作の対象へ解決する [RL3-01]。DB に行が無いもの（対象拡張子外・
+    /// 通常フォルダ・検索で出た深い階層の項目）は落ちる——落ちた件数は
+    /// サブメニュー先頭の注記に出す［ユーザー判断、RP-02 と同じ「黙って
+    /// 起こさない」方針］。
+    private func labelTargets(for targetEntries: [FolderEntry]) -> [LabelMenuModel.Target] {
+        targetEntries.compactMap { entry in
+            // ライブラリ表示モードの行は DB の行をそのまま持っている。
+            if let row = entry.libraryRow {
+                return LabelMenuModel.Target(id: row.id, url: entry.url)
+            }
+            // フォルダ表示モードは直下の名前対応で引く。検索で出たサブフォルダの
+            // 項目（`relativeLocation` が非空）は対応表に無いので対象外
+            // [既知の限界。インスペクタからは従来どおり付け外しできる]。
+            guard entry.relativeLocation.isEmpty,
+                  let id = labelMenu.fileID(forChildName: entry.name) else { return nil }
+            return LabelMenuModel.Target(id: id, url: entry.url)
+        }
+    }
+
+    /// 「ラベル」サブメニュー [RL3-01]。フィールドごとのサブメニュー →
+    /// ラベルのサブメニューの二段。ライブラリ経由で、対象が 1 件でもあるとき
+    /// だけ出す。**この経路ではラベル自体の追加・削除・改名はしない** [RL3-02]。
+    ///
+    /// メニューは遅延構築で、**構築後の非同期更新は反映されない**
+    /// （`OpenWithMenu` の既知の制約）ため、中身はすべて `labelMenu` が事前に
+    /// 読み込んだ状態から**同期で**組み立てる。
+    @ViewBuilder
+    private func labelSubmenu(for targetEntries: [FolderEntry]) -> some View {
+        if library != nil, !labelMenu.groups.isEmpty {
+            let targets = labelTargets(for: targetEntries)
+            if !targets.isEmpty {
+                let ids = targets.map(\.id)
+                Menu("folder.labelsSubmenu", systemImage: "tag") {
+                    if targets.count < targetEntries.count {
+                        // 対象外の混在を黙って起こさない［ユーザー判断]。
+                        // `Text` はメニューの中では無効な注記行になる。
+                        Text(String(format: String(localized: "folder.labelTargetNote",
+                                                   locale: locale),
+                                    targetEntries.count, targets.count))
+                        Divider()
+                    }
+                    ForEach(labelMenu.groups) { group in
+                        let labels = labelMenu.menuLabels(in: group, for: ids)
+                        if !labels.isEmpty {
+                            Menu(group.name) {
+                                ForEach(labels) { label in
+                                    labelMenuItem(label, targets: targets, ids: ids)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func labelMenuItem(_ label: LabelSummary, targets: [LabelMenuModel.Target],
+                               ids: [FileID]) -> some View {
+        switch labelMenu.checkState(of: label, for: ids) {
+        case .some:
+            // 一部にだけ付いている [RP-02]。ネイティブの mixed 状態（−）は
+            // SwiftUI から出せないので、マイナスアイコンで代える［ユーザー判断］。
+            Button {
+                toggleLabelFromMenu(label, targets: targets)
+            } label: {
+                Label(label.name, systemImage: "minus")
+            }
+        case .all, .none:
+            // 全部に付いている＝ネイティブのチェックマーク。
+            Toggle(label.name, isOn: Binding(
+                get: { labelMenu.checkState(of: label, for: ids) == .all },
+                set: { _ in toggleLabelFromMenu(label, targets: targets) }))
+        }
+    }
+
+    private func toggleLabelFromMenu(_ label: LabelSummary, targets: [LabelMenuModel.Target]) {
+        Task {
+            do {
+                try await labelMenu.toggle(label, targets: targets)
+            } catch {
+                await NotificationRouter.shared.presentError(
+                    error, whatHappened: String(localized: "error.setLabelFailed", locale: locale))
+            }
         }
     }
 

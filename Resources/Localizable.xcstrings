@@ -4133,6 +4133,40 @@
         }
       }
     },
+    "folder.labelTargetNote": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$lld of %1$lld selected items can be labeled"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld 件中 %2$lld 件が対象"
+          }
+        }
+      }
+    },
+    "folder.labelsSubmenu": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Labels"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ラベル"
+          }
+        }
+      }
+    },
     "folder.loadError": {
       "extractionState": "stale",
       "localizations": {
@@ -6981,6 +7015,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "集計中…"
+          }
+        }
+      }
+    },
+    "labelFilter.editFieldEllipsis": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit Labels in “%@”…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「%@」のラベルを編集…"
           }
         }
       }

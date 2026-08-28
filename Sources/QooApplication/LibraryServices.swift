@@ -686,6 +686,16 @@ public final class LibraryServices {
                                                          relativePath: relativePath)
     }
 
+    /// 現在フォルダ直下の蔵書の「ファイル名 → 行 ID」[RL3-01]。
+    ///
+    /// 中央ペインのラベルメニューがフォルダ表示モードで使う（`LabelMenuModel`）。
+    public func fileIDsByChildName(libraryID: LibraryID,
+                                   relativePath: String) async throws -> [String: FileID] {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        return try await repository.fileIDsByChildName(libraryID: libraryID,
+                                                       relativePath: relativePath)
+    }
+
     /// ブックフォルダの「開く」を関連付けアプリに任せるか [IF-18][AS-06]。
     ///
     /// **設定 1 つのために `LibrarySettingsSnapshot` 全体を公開しない**——
