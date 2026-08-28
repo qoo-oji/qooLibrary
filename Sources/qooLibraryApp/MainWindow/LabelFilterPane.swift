@@ -8,6 +8,7 @@
 //
 import QooApplication
 import QooKit
+import AppKit
 import SwiftUI
 
 struct LabelFilterPane: View {
@@ -194,12 +195,12 @@ struct LabelFilterPane: View {
             }
         } label: {
             HStack(spacing: Tokens.spacing.xs) {
-                Circle()
-                    .fill(groupColor(group))
-                    .frame(width: 8, height: 8)
-                Text(group.name)
-                    .font(.system(size: Tokens.fontSize.caption, weight: .medium))
-                    .lineLimit(1)
+                // フィールドもラベルと同じ帯で色分けする［ユーザー要望］。
+                // 全フィールドを閉じた一覧が既定色のグラデーションで並ぶ [CO-01]。
+                LabelChip(name: group.name,
+                          color: LabelColor(hexLight: group.colorHexLight,
+                                            hexDark: group.colorHexDark),
+                          uniformWidth: uniformChipWidth)
                 if let selected = model.selection[group.id], !selected.isEmpty {
                     Text("\(selected.count)")
                         .font(.system(size: Tokens.fontSize.caption))
@@ -224,7 +225,8 @@ struct LabelFilterPane: View {
                           isPinned: label.isPinned,
                           onTogglePin: {
                               Task { await model.setPinned(label, !label.isPinned, services: services) }
-                          })
+                          },
+                          uniformWidth: uniformChipWidth)
             }
             .toggleStyle(.checkbox)
             // ピンを右端へ押し出すために、行の幅いっぱいまで広げる
@@ -257,9 +259,20 @@ struct LabelFilterPane: View {
             set: { model.searchText[group.id] = $0 })
     }
 
-    private func groupColor(_ group: LabelGroupSummary) -> Color {
-        let hex = colorScheme == .dark ? group.colorHexDark : group.colorHexLight
-        return Color(labelHex: hex) ?? .secondary
+    /// 帯の幅を統一する［ユーザー要望: 一番長い文字列にあわせる］。
+    /// フィールド名と全ラベル名の実測幅の最大値。展開状態で幅が動かないよう、
+    /// 表示中のものではなく読み込んだ全ラベルで測る。長すぎる名前は
+    /// チップ側の中央省略に任せ、上限で止める。
+    private var uniformChipWidth: CGFloat {
+        let font = NSFont.systemFont(ofSize: Tokens.fontSize.caption)
+        var names = model.groups.map(\.name)
+        for group in model.groups {
+            names += (model.labels[group.id] ?? []).map(\.name)
+        }
+        let widest = names
+            .map { ($0 as NSString).size(withAttributes: [.font: font]).width }
+            .max() ?? 0
+        return min(max(widest.rounded(.up) + 2, 40), 150)
     }
 
     /// ラベル固有色が無ければグループ色を継承する [CO-06]。

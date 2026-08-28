@@ -87,6 +87,62 @@ enum LibraryEnableAction {
         }
     }
 
+    /// 登録ウィザードの確定 [RG3-25][RG3-26]。登録 → 有効化 → 初回走査を
+    /// 1 本の経路で行う。**「登録」を押すまで DB には何も書かれていない**——
+    /// ウィザードが集めた草案とフォルダをここで初めて永続化する。
+    static func registerAndEnable(url: URL, displayName: String?,
+                                  draft: LibrarySettingsDraft,
+                                  template: LibraryTypeTemplate?,
+                                  locale: Locale, openWindow: OpenWindowAction) {
+        Task {
+            let result: RegisteredFolderStore.RegistrationResult
+            do {
+                result = try await RegisteredFolderStore.shared.register(
+                    url: url, kind: .library, displayName: displayName)
+            } catch {
+                await NotificationRouter.shared.presentError(
+                    error,
+                    whatHappened: String(localized: "folderTree.registrationFailedTitle",
+                                         locale: locale))
+                return
+            }
+            // 登録の増減はアプリ全体の信号で知らせる（フォルダツリーの
+            // 登録ルート行は各行の監視ではなくこの信号で読み直す）。
+            SessionState.shared.reloadToken += 1
+            // 登録は通ったが知らせるべきこと [FS-06][NV-87]。
+            if !result.warnings.isEmpty {
+                await NotificationRouter.shared.present(NotificationItem(
+                    category: .warning, severity: .transient,
+                    title: String(localized: "folderTree.registeredWithWarningTitle",
+                                  locale: locale),
+                    body: result.warnings
+                        .map { registrationWarningDescription($0, locale: locale) }
+                        .joined(separator: "\n")
+                ))
+            }
+            await enable(folder: result.folder, url: url, draft: draft,
+                         template: template, locale: locale, openWindow: openWindow)
+        }
+    }
+
+    /// 登録時の警告 [FS-06][NV8-04] をユーザー向けの文にする。
+    /// 登録の経路が 2 つ（ウィザード・テンポラリのパネル）あるため、
+    /// 文言はここ 1 箇所に置く。
+    static func registrationWarningDescription(_ warning: RegistrationWarning,
+                                               locale: Locale) -> String {
+        switch warning {
+        case .networkVolumeFSEventsUnreliable:
+            return String(localized: "folderTree.warning.networkVolume", locale: locale)
+        case let .cloudSyncedLocation(provider):
+            guard let provider else {
+                return String(localized: "folderTree.warning.cloudSynced", locale: locale)
+            }
+            return String(
+                format: String(localized: "folderTree.warning.cloudSyncedNamed", locale: locale),
+                provider)
+        }
+    }
+
     static func disable(folder: RegisteredFolder) {
         Task {
             do {
@@ -390,7 +446,7 @@ enum LibraryEnableAction {
         Task { await NotificationRouter.shared.present(item) }
     }
 
-    private static func presentUnavailable(_ failure: StoreStartupFailure?) {
+    static func presentUnavailable(_ failure: StoreStartupFailure?) {
         Task {
             await NotificationRouter.shared.presentError(
                 LibraryUnavailableError(failure: failure),

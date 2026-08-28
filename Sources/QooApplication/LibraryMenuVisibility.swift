@@ -16,21 +16,23 @@ public enum LibraryMenuVisibility {
     public static func items(isEnabled: Bool, isOnline: Bool) -> Set<Item> {
         guard isEnabled else {
             // 有効化は**オンラインを要る**——`resolvedPath`/`volumeUUID` を
-            // 実測できないため [1-17]。
+            // 実測できないため [1-17]。登録ウィザード（登録＝ライブラリ化
+            // [RG3-20]）以前の「登録済みだが未有効」の登録だけがここに来る。
             return isOnline ? [.enable] : []
         }
-        // 無効化・設定・ラベル編集は**ボリュームを要らない**。1 つ目は DB の
-        // 行を消すだけ、2 つ目は DB の設定を書き換えるだけ、3 つ目は DB の
-        // ラベルを書き換えるだけ。**縮退状態でこそ触りたい**ことがある
-        // （登録し直す前に型を直す、外付けが無い間に表記ゆれを片付ける等）ので、
-        // オンライン条件で塞がない——無効化をオンライン条件で囲って「外付けを
-        // 失うと二度と片付けられない」欠陥を作った前例がある。
-        // 再スキャンだけが実ファイルの列挙を伴うのでオンラインを要る。
-        let offline: Set<Item> = [.settings, .labels, .labelVault, .fileVault,
-                                  .orphanCleanup, .unresolvedFiles, .disable]
-        return isOnline ? offline.union([.rescan]) : offline
+        // **有効なライブラリの右クリックは「設定」だけ**［ユーザー指示、
+        // 19章 §19.6: 登録解除と設定以外は通常のフォルダと同じでよい］。
+        // 以前並べていた項目の行き先:
+        // - 再スキャン: 廃止。ファイルの変更（FSEvents）と設定の保存が
+        //   自動で走査を起こすので、手で押す場面が無い [RG3-24][RG3-25]
+        // - 無効化: 登録解除に一本化 [RG3-30]
+        // - ラベル編集・保管庫・整理ウインドウ群: メニューからは外し、
+        //   走査結果・通知履歴からの導線と各ウインドウ内の入口に任せる
+        //   （機能そのものは残っている。メンテナンス統合は Stage 3 の対象）
+        // 設定はオンラインを要らない——DB の設定を書き換えるだけで、
+        // **縮退状態でこそ触りたい**ことがある（登録し直す前に型を直す等）。
+        return [.settings]
     }
-
     public enum Item: Hashable, Sendable {
         case enable, settings, rescan, disable
         /// ラベルグループ編集ウインドウ [LE-01〜LE-12][15.2 節]。

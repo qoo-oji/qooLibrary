@@ -65,6 +65,9 @@ struct LabelChip: View {
     /// 求められているのは「絞り込む／付け外しする」ことで、「消してよさそう」の
     /// 判断は編集ウインドウの仕事 [LE-04]。
     var isOrphaned: Bool = false
+    /// 帯の幅を揃える［ユーザー要望: フィールドもラベルも一番長い文字列に
+    /// あわせて同じ幅にする］。`nil` なら従来どおり内容幅。
+    var uniformWidth: CGFloat? = nil
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -128,6 +131,7 @@ struct LabelChip: View {
                     .help(String(localized: "inspector.labels.automatic"))
             }
         }
+        .frame(width: uniformWidth, alignment: .leading)
         .foregroundStyle(foreground)
         .padding(.horizontal, Tokens.spacing.s)
         .padding(.vertical, 2)

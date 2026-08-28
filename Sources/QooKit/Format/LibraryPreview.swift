@@ -136,13 +136,24 @@ public enum LibraryPreview {
             if let title = parsed.title, !title.isEmpty {
                 fields.append(Item.Field(ref: .title, value: title))
             }
-            if let series = parsed.seriesName, !series.isEmpty {
+            // **意味束縛 [RW-13] で同じ値がラベルにも流れるものは 1 回だけ出す**
+            // ［ユーザー指摘: 「著者名」と「著者」が別々に出るが同じもののはず］。
+            // ラベル側（グループ名で出る）を残す——利用者に見える分類の軸は
+            // フィールド（グループ）だから。束縛が無い・値が流れていない場合は
+            // 従来どおりフィールドとして出す。
+            func flowsIntoLabels(_ keyword: SemanticKeyword, value: String) -> Bool {
+                guard let group = draft.semanticBindings[keyword] else { return false }
+                return parsed.labelValues[group]?.contains(value) ?? false
+            }
+            if let series = parsed.seriesName, !series.isEmpty,
+               !flowsIntoLabels(.series, value: series) {
                 fields.append(Item.Field(ref: .series, value: series))
             }
             if parsed.volume.kind != .none {
                 fields.append(Item.Field(ref: .volume, value: parsed.volume.raw ?? ""))
             }
-            if let author = parsed.authorName, !author.isEmpty {
+            if let author = parsed.authorName, !author.isEmpty,
+               !flowsIntoLabels(.author, value: author) {
                 fields.append(Item.Field(ref: .author, value: author))
             }
             // ラベルは**実際に付く値**を出す。予約語の束縛 [RW-13] を畳んだ

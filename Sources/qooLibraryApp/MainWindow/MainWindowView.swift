@@ -160,8 +160,31 @@ struct MainWindowView: View {
     }
 
     /// 「移動」メニューへ公開するナビゲーション操作 [1-16]。
+    /// [TB-01] フォルダ表示モード／ライブラリ表示モードのシーソー。
+    /// **ライブラリを開いているときだけ有効**——ボリューム・テンポラリでは
+    /// `managedFile` の行が無く、空の一覧しか出せない。無効時はツールチップで
+    /// 理由を示す [MX-04]。**必ず `setDisplayMode` を通す**——ライブラリ →
+    /// フォルダの切替では、選んでいた本のフォルダへ移動する必要がある
+    /// [VM-20〜VM-23]。素の束縛にすると素通りする。
+    private var displayModeSeesaw: some View {
+        Picker("mainWindow.displayMode", selection: Binding(
+            get: { windowState.displayMode },
+            set: { windowState.setDisplayMode($0) }
+        )) {
+            Image(systemName: "folder").tag(DisplayMode.folder)
+            Image(systemName: "books.vertical").tag(DisplayMode.library)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .disabled(!windowState.canUseLibraryDisplayMode)
+        .help(windowState.canUseLibraryDisplayMode
+              ? "mainWindow.displayModeHelp"
+              : "mainWindow.displayModeUnavailable")
+    }
+
     private var currentWindowMenuActions: WindowMenuActions {
         WindowMenuActions(
+            currentLibrary: windowState.currentLibrary,
             canGoBack: windowState.canGoBack,
             canGoForward: windowState.canGoForward,
             canGoToParent: windowState.canGoToParent,
@@ -408,26 +431,9 @@ struct MainWindowView: View {
                 // 収めることより実ツールバーとしての見た目・高さを優先する
                 // [ユーザー判断、既知のトレードオフとして受け入れ]。
                 ToolbarItemGroup(placement: .primaryAction) {
-                    // [TB-01] フォルダ表示モード／ライブラリ表示モードのシーソー。
-                    // **ライブラリを開いているときだけ有効**——ボリューム・
-                    // テンポラリでは `managedFile` の行が無く、空の一覧しか
-                    // 出せない。無効時はツールチップで理由を示す [MX-04]。
-                    Picker("mainWindow.displayMode", selection: Binding(
-                        get: { windowState.displayMode },
-                        // **必ず `setDisplayMode` を通す**——ライブラリ →
-                        // フォルダの切替では、選んでいた本のフォルダへ移動する
-                        // 必要がある [VM-20〜VM-23]。素の束縛にすると素通りする。
-                        set: { windowState.setDisplayMode($0) }
-                    )) {
-                        Image(systemName: "folder").tag(DisplayMode.folder)
-                        Image(systemName: "books.vertical").tag(DisplayMode.library)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .disabled(!windowState.canUseLibraryDisplayMode)
-                    .help(windowState.canUseLibraryDisplayMode
-                          ? "mainWindow.displayModeHelp"
-                          : "mainWindow.displayModeUnavailable")
+                    // シーソー [TB-01] はサイドバー側のツールバーへ移した
+                    // [ユーザー要望]。ここには置かない（同じ操作を 2 か所に
+                    // 出さない）。
 
                     // 検索 [1-16]。**表示切替の左**に置く [ユーザー要望]。
                     searchControl
@@ -658,6 +664,7 @@ struct MainWindowView: View {
     var body: some View {
         Group {
             NavigationSplitView(columnVisibility: $sidebarVisibility) {
+                VStack(spacing: 0) {
                 VSplitView {
                     // 分割位置の記憶 [UI-02、ユーザー要望]。`VSplitView` には
                     // `ideal` に相当する指定が無く、SwiftUI 側から初期位置を
@@ -693,8 +700,18 @@ struct MainWindowView: View {
                                     services: LibraryServices.shared)
                         .frame(minHeight: 80)
                 }
+                }
                 .navigationSplitViewColumnWidth(min: 180, ideal: leftWidth, max: 400)
                 .modifier(PaneWidthPersisting(storedWidth: $leftWidth))
+                // フォルダ／ライブラリのシーソーを**サイドバー側のツールバー領域**へ
+                // 置く [ユーザー要望: 左ペインをたたむボタンの隣に]。サイドバー列の
+                // 中で宣言したツールバー項目は、追跡区切りの左（サイドバーの上）に
+                // 並ぶ——一番大きく変化が見えるのが左ペインなので、切替もそこに。
+                .toolbar {
+                    ToolbarItem(placement: .automatic) {
+                        displayModeSeesaw
+                    }
+                }
             } detail: {
                 detailPane
             }

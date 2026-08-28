@@ -107,7 +107,14 @@ struct LibrarySettingsWindow: View {
                 },
                 onSave: {
                     Task {
-                        if await model.save() { model.selectedLibraryID = id }
+                        guard await model.save() else { return }
+                        // 保存＝走査の契機［ユーザー指示］。performSave と同じ。
+                        if let library = model.libraries.first(
+                            where: { $0.id == model.selectedLibraryID }) {
+                            LibraryEnableAction.rescan(library: library, locale: locale,
+                                                       openWindow: openWindow)
+                        }
+                        model.selectedLibraryID = id
                     }
                 })
         }
@@ -277,16 +284,13 @@ struct LibrarySettingsWindow: View {
         else { return }
         Task {
             guard await model.save() else { return }
-            // [LS-02][AT-04] 設定を変えても、既に取り込んだファイルのラベルは
-            // 走査し直すまで変わらない。**黙って古いままにしない。**
-            DialogWindowPresenter.shared.present(
-                title: String(localized: "librarySettings.rescanTitle", locale: locale)
-            ) { _ in
-                RescanPromptDialog(libraryName: library.displayName) {
-                    LibraryEnableAction.rescan(library: library, locale: locale,
-                                               openWindow: openWindow)
-                }
-            }
+            // [LS-02][AT-04][RG3-25] 設定を変えても、既に取り込んだファイルの
+            // ラベルは走査し直すまで変わらない。**黙って古いままにしない**——
+            // ただし尋ねもしない［ユーザー指示: 走査は結果が変わりうる契機で
+            // 自動実行すればよい。手動の「今すぐ再スキャン」は廃止］。
+            // 走査は読み取りのみで、進捗は共通の進捗ウインドウに出る [A-04]。
+            LibraryEnableAction.rescan(library: library, locale: locale,
+                                       openWindow: openWindow)
         }
     }
 }

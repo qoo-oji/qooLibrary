@@ -739,6 +739,13 @@ struct FolderTreePane: View {
     }
 
     private func presentRegistrationPanel(kind: RegisteredFolderKind) {
+        // ライブラリフォルダは登録ウィザードで [RG3-20]。フォルダの選択から
+        // テンプレート・確認までを 1 本の導線にする（登録＝ライブラリ化）。
+        // テンポラリは従来どおりパネルだけ（フェーズ 3 の対象）。
+        if kind == .library {
+            LibraryRegistrationWizard.begin(locale: locale, openWindow: openWindow)
+            return
+        }
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
@@ -774,21 +781,11 @@ struct FolderTreePane: View {
         }
     }
 
-    /// 登録時の警告 [FS-06][NV8-04] をユーザー向けの文にする。
+    /// 登録時の警告 [FS-06][NV8-04] の文言は `LibraryEnableAction` に一本化
+    /// されている（登録の経路が 2 つあるため。片方だけ直る事故を防ぐ）。
     private static func description(for warning: RegistrationWarning) -> String {
-        switch warning {
-        case .networkVolumeFSEventsUnreliable:
-            return String(localized: "folderTree.warning.networkVolume")
-        case let .cloudSyncedLocation(provider):
-            // 提供元が分かるときは名前を出す。分からないときは総称で言う
-            // （ドメイン識別子は iCloud では素の UUID なので見せられない）。
-            guard let provider else {
-                return String(localized: "folderTree.warning.cloudSynced")
-            }
-            return String(
-                format: String(localized: "folderTree.warning.cloudSyncedNamed"), provider
-            )
-        }
+        LibraryEnableAction.registrationWarningDescription(
+            warning, locale: AppLanguage.effectiveLocale)
     }
 
     /// この登録フォルダでサムネイルを常に非表示にするか [DS-04]。

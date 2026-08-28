@@ -25,8 +25,10 @@ public enum LabelColorPalette {
     /// ダークモード: 同じ色相のまま明度を下げ、白フォント前提にする [CO-07]。
     static let darkSaturation = 0.32
     static let darkValue = 0.40
-    /// 色相の起点（度）。1 番目を淡いピンクにするための位置合わせ。
-    static let hueOrigin = 350.0
+    /// 色相の起点（度）。**1 番目を薄い青にする**［ユーザー指定、CO-01 改訂］。
+    /// 以降はグループ番号順に色相環を一周し、全フィールドを閉じた一覧が
+    /// きれいなグラデーションになる。彩度は CO-02 の範囲のまま（原色は使わない）。
+    static let hueOrigin = 210.0
 
     /// グループ数 `count` に対する既定色を色相環の等分で生成する [CO-01][MT-13]。
     public static func palette(count: Int) -> [LabelColor] {

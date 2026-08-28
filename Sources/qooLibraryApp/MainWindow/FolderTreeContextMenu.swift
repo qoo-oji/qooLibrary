@@ -317,9 +317,6 @@ struct FolderTreeContextMenu: View {
             }
             if context.role == .registeredRoot, let folder = context.registeredFolder {
                 Divider()
-                if context.group == .library {
-                    libraryFeatureItems(folder)
-                }
                 Toggle(
                     "folderTree.alwaysHideThumbnails",
                     isOn: Binding(
@@ -540,7 +537,16 @@ struct FolderTreeContextMenu: View {
     private var registrationSection: some View {
         if let registeredFolder = context.registeredFolder {
             Divider()
-            Button("folderTree.renameDisplayNameEllipsis", systemImage: "text.cursor") { actions.beginRenameDisplayName(registeredFolder) } // [RG-05]
+            // ライブラリ固有の項目は**この 1 グループにまとめる**［ユーザー指示。
+            // 以前は設定がメニューの中程・登録解除が末尾と離れていた］。
+            if context.group == .library {
+                libraryFeatureItems(registeredFolder)
+            } else {
+                // 表示名はテンポラリだけの概念になった。**ライブラリは
+                // フォルダ名＝表示名**［ユーザー指示: 表示名の概念を廃止］なので、
+                // 変えたければフォルダ自体をリネームする（通常のフォルダと同じ）。
+                Button("folderTree.renameDisplayNameEllipsis", systemImage: "text.cursor") { actions.beginRenameDisplayName(registeredFolder) } // [RG-05]
+            }
             Button("folderTree.unregister", systemImage: "minus.circle") { actions.unregister(registeredFolder) } // [RG-06 の簡易版]
         }
     }

@@ -58,6 +58,11 @@ final class LibraryEnableModel {
     /// 走査対象になるファイル名（実フォルダから読む）。
     private(set) var sampleNames: [String] = []
     private(set) var sampleTruncated = false
+    /// サブフォルダの中にあったファイル数 [RG3-24]。
+    private(set) var sampleNestedCount = 0
+    /// 拡張子（小文字）ごとの件数。ウィザードの「本を開くアプリ」が
+    /// 「このフォルダに実際に含まれる形式」だけを並べるのに使う。
+    private(set) var sampleExtensionCounts: [String: Int] = [:]
     private(set) var isSampling = true
     private(set) var samplingFailure: String?
 
@@ -145,34 +150,46 @@ final class LibraryEnableModel {
             }
             sampleNames = collected.names
             sampleTruncated = collected.truncated
+            sampleNestedCount = collected.nested
+            sampleExtensionCounts = collected.extensions
             samplingFailure = nil
         } catch {
             sampleNames = []
             sampleTruncated = false
+            sampleNestedCount = 0
+            sampleExtensionCounts = [:]
             samplingFailure = error.localizedDescription
         }
     }
 
     /// - Important: `FileIO.perform` の中からのみ呼ぶこと [NV6-01][NV6-02]。
+    /// - Returns: `nested` は**サブフォルダの中にあった**ファイルの数。登録
+    ///   ウィザードが「フォルダ分けされた蔵書か」を推定するのに使う [RG3-24]。
     nonisolated static func collectNames(at root: URL, limit: Int)
-        throws -> (names: [String], truncated: Bool)
+        throws -> (names: [String], truncated: Bool, nested: Int,
+                   extensions: [String: Int])
     {
         var names: [String] = []
+        var nested = 0
+        var extensions: [String: Int] = [:]
         let manager = FileManager.default
         guard let enumerator = manager.enumerator(
             at: root, includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey],
             options: [.skipsHiddenFiles, .skipsPackageDescendants]) else {
-            return ([], false)
+            return ([], false, 0, [:])
         }
         for case let url as URL in enumerator {
             if Cancellation.isRequested { break }
             let values = try? url.resourceValues(forKeys: [.isDirectoryKey])
             if values?.isDirectory == true { continue }
             names.append(url.lastPathComponent)
+            let ext = url.pathExtension.lowercased()
+            if !ext.isEmpty { extensions[ext, default: 0] += 1 }
+            if enumerator.level >= 2 { nested += 1 }
             if names.count >= limit {
-                return (names, true)
+                return (names, true, nested, extensions)
             }
         }
-        return (names, false)
+        return (names, false, nested, extensions)
     }
 }

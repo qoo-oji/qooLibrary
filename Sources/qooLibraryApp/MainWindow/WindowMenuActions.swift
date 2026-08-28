@@ -1,3 +1,5 @@
+import QooApplication
+import QooKit
 import SwiftUI
 
 /// 「移動」メニュー（`qooLibraryApp.swift` の `.commands`）から、現在アクティブな
@@ -13,6 +15,10 @@ import SwiftUI
 /// `FolderMenuActions` と同じ（ツールバー操作直後などフォーカスが一覧から
 /// 外れている場面でもメニューが機能する必要があるため）。
 struct WindowMenuActions {
+    /// 表示中のライブラリ（ライブラリの外では nil）。メニューバーの
+    /// 「ライブラリ」メニュー [ユーザー指示] が有効/無効と対象の解決に使う。
+    var currentLibrary: LibrarySummary? = nil
+
     var canGoBack = false
     var canGoForward = false
     var canGoToParent = false
