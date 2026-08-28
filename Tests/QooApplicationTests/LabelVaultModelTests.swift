@@ -196,14 +196,13 @@ struct LabelVaultModelTests {
     }
 
     /// **保管庫へ入れても紐づけは維持される** [LA-04]。バッジは保管庫の
-    /// ファイルも数える [LE-05] ので、0 件＝赤字にはならない。
-    @Test("保管庫のラベルも件数を持ち、0 件にはならない [LA-04][LE-05]")
+    /// ファイルも数える [LE-05]。
+    @Test("保管庫のラベルも件数を持つ [LA-04][LE-05]")
     @MainActor
     func archivedLabelsKeepTheirCount() async throws {
         let v = try await vault()
         let rows = try #require(v.model.sections.first?.rows)
         #expect(rows.allSatisfy { $0.fileCount == 1 })
-        #expect(rows.allSatisfy { !$0.isOrphaned })
     }
 
     @Test("ライブラリごとのアーカイブ済み件数が読める [15.3 節のグレーアウト]")

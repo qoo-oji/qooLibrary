@@ -15,11 +15,6 @@ struct DuplicateComparisonCard: View {
     let userCoverURL: URL?
     let isKeeper: Bool
     let onChoose: () -> Void
-    /// 代表の手動固定を切り替える [DU-08][DG-04]。
-    ///
-    /// **一覧側からでは代表しか選べない**（畳んだ結果として代表 1 行しか
-    /// 描かれないため）ので、**別の 1 件を代表に指名できるのはこの画面だけ**。
-    let onTogglePin: () -> Void
 
     private let coverSize: Double = 96
 
@@ -50,18 +45,6 @@ struct DuplicateComparisonCard: View {
                 }
             }
             Spacer(minLength: 0)
-            Button {
-                onTogglePin()
-            } label: {
-                Image(systemName: row.file.isDuplicateRepresentativePinned
-                      ? "pin.fill" : "pin")
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(row.file.isDuplicateRepresentativePinned
-                             ? Color.accentColor : Color.secondary)
-            .help(Text(row.file.isDuplicateRepresentativePinned
-                       ? "folder.unpinDuplicateRepresentative"
-                       : "folder.pinDuplicateRepresentative"))
         }
         .padding(Tokens.spacing.s)
         .background(

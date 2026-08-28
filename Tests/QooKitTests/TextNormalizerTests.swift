@@ -82,9 +82,8 @@ struct TextNormalizerInvariants {
         for s in Self.samples { #expect(TextNormalizer.display(s) == s) }
     }
 
-    @Test("caseSensitive: true ならケースを保つ")
-    func caseSensitiveKeepsCase() {
-        #expect(TextNormalizer.normalize("AbC", options: .caseSensitive) == "AbC")
+    @Test("大文字・小文字は常に同一視する（小文字へ畳む）［N-04 撤回］")
+    func caseIsAlwaysFolded() {
         #expect(TextNormalizer.normalize("AbC") == "abc")
     }
 }

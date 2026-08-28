@@ -538,7 +538,6 @@ struct FormatMatchPreview: View {
             folderLevelAssignments: settings.folderLevelAssignments,
             volumeFormats: settings.volumeFormats,
             semanticBindings: settings.semanticBindings,
-            normalization: settings.normalization,
             seriesTitleCompositionFormat: settings.seriesTitleCompositionFormat)
 
         guard let result = FilenameParser().parse(stem, settings: settings, purpose: .preview)

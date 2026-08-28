@@ -170,37 +170,4 @@ struct DuplicateGroupingQueryTests {
         let swiftPick = DuplicateSelection.representative(of: everyRow)
         #expect(sqlPick?.id == swiftPick?.id)
     }
-
-    @Test("手で固定した代表が最優先になる [DU-08]")
-    func pinnedRepresentativeWins() async throws {
-        let f = try await Fixture.make()
-        try await add(f, inode: 1, path: "評価あり.cbz", title: "作品名A", rating: 5)
-        let humble = try await add(f, inode: 2, path: "手で選んだ.cbz", title: "作品名A")
-
-        try await f.files.setDuplicateRepresentativePinned(true, for: humble, mode: .byTitle)
-        let page = try await f.files.query(query(f, .byTitle))
-        #expect(page.rows.first?.filename == "手で選んだ.cbz")
-    }
-
-    /// **1 つの組に固定が 2 つあってはならない。**
-    ///
-    /// 残っていると、どちらが代表になるかは残りの条件（評価・サイズ・名前）で
-    /// 決まってしまい、「固定したのに代表にならない」という説明の付かない
-    /// 状態になる。**後から固定したほうが勝つ**のが利用者の期待に近い。
-    @Test("同じ組を続けて固定すると、前の固定は外れる [DU-08]")
-    func pinningASecondFileReleasesTheFirst() async throws {
-        let f = try await Fixture.make()
-        let first = try await add(f, inode: 1, path: "はじめに固定.cbz", title: "作品名A")
-        let second = try await add(f, inode: 2, path: "あとから固定.cbz", title: "作品名A")
-
-        try await f.files.setDuplicateRepresentativePinned(true, for: first, mode: .byTitle)
-        try await f.files.setDuplicateRepresentativePinned(true, for: second, mode: .byTitle)
-
-        let members = try await f.files.duplicateGroupMembers(containing: first, mode: .byTitle)
-        let pinned = members.filter(\.isDuplicateRepresentativePinned)
-        #expect(pinned.count == 1, "固定は 1 件だけ")
-        #expect(pinned.first?.id == second)
-        #expect(try await f.files.query(query(f, .byTitle)).rows.first?.filename
-                == "あとから固定.cbz")
-    }
 }

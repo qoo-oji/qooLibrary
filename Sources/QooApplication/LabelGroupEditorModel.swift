@@ -40,9 +40,6 @@ public final class LabelGroupEditorModel {
         /// ——紐づけは維持されているので、保管庫へ入れただけで「0 件」に
         /// 見えてはならない（`fileCount` はフィルタ用で数えない [FA-05]）。
         public var fileCount: Int { label.fileCountIncludingArchived }
-        /// 紐づけが 0 件 [LE-04][RC-07]。**再計算で 0 になっても自動削除しない**
-        /// ので、赤字で「消してよさそう」だと分かるようにする。
-        public var isOrphaned: Bool { label.fileCountIncludingArchived == 0 }
         /// 保管庫にある [LE-06]。グレー文字＋バッジ。
         public var isArchived: Bool { label.isArchived }
         public var isPinned: Bool { label.isPinned }

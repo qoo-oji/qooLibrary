@@ -93,7 +93,6 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
             let payload = (try? JSONDecoder().decode(
                 LibrarySettingsPayload.self, from: Data(library.settingsJSON.utf8)))
                 ?? .empty
-            let options = NormalizationOptions(caseSensitive: library.caseSensitive)
             let allTypeNames = try String.fetchAll(
                 db, sql: "SELECT DISTINCT libraryTypeName FROM libraryType ORDER BY libraryTypeName")
             let allDisplayNames = try String.fetchAll(
@@ -106,8 +105,7 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                 delimiters: payload.delimiters,
                 allLibraryTypeNames: allTypeNames,
                 allLibraryDisplayNames: allDisplayNames,
-                semanticBindings: semantic,
-                normalization: options)
+                semanticBindings: semantic)
 
             // 壊れたフォーマットは黙って落とす——保存時に検証済みなので通常は起こらない
             // が、DB を手で編集された場合にライブラリ全体が開けなくなるのを避ける。
@@ -167,12 +165,10 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                 folderLevelAssignments: levels,
                 volumeFormats: VolumePatternCompiler.compileAll(volumePatterns),
                 semanticBindings: semantic,
-                normalization: options,
                 seriesTitleCompositionFormat: payload.seriesTitleCompositionFormat,
                 readsEmbeddedMetadata: payload.readsEmbeddedMetadata,
                 comicInfoVolumeSource: payload.comicInfoVolumeSource,
-                opensBookFolderWithApp: payload.opensBookFolderWithApp,   // [IF-18]
-                identityMatchPolicy: payload.identityMatchPolicy)          // [ID-13]
+                opensBookFolderWithApp: payload.opensBookFolderWithApp)   // [IF-18]
         }
     }
 
@@ -226,7 +222,6 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                 libraryTypeId: typeID,
                 libraryTypeVersion: template?.version ?? 1,
                 settingsJSON: payloadJSON,
-                caseSensitive: draft.caseSensitive,
                 duplicateGrouping: draft.duplicateGrouping.rawValue,
                 thumbnailsAlwaysHidden: draft.thumbnailsAlwaysHidden,
                 lastFSEventID: 0, lastFullScanAt: nil,
@@ -448,7 +443,6 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
             return LibrarySettingsDraft(
                 displayName: library.displayName,
                 libraryTypeName: type.libraryTypeName,
-                caseSensitive: library.caseSensitive,
                 thumbnailsAlwaysHidden: library.thumbnailsAlwaysHidden,
                 duplicateGrouping: DuplicateGrouping(
                     storedValue: library.duplicateGrouping),
@@ -465,7 +459,6 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                 readsEmbeddedMetadata: payload.readsEmbeddedMetadata,
                 comicInfoVolumeSource: payload.comicInfoVolumeSource,
                 opensBookFolderWithApp: payload.opensBookFolderWithApp,   // [IF-18]
-                identityMatchPolicy: payload.identityMatchPolicy,          // [ID-13]
                 otherLibraryTypeNames: otherTypeNames,
                 otherLibraryDisplayNames: otherDisplayNames)
         }
@@ -499,7 +492,6 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
             library.libraryTypeId = try Self.resolveLibraryTypeID(
                 db, library: library, newTypeName: draft.libraryTypeName)
             library.displayName = draft.displayName
-            library.caseSensitive = draft.caseSensitive
             library.thumbnailsAlwaysHidden = draft.thumbnailsAlwaysHidden
             library.duplicateGrouping = draft.duplicateGrouping.rawValue
             library.settingsJSON = payloadJSON
@@ -526,8 +518,7 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
             labelGroupOrder: draft.labelGroups.map(\.index),
             readsEmbeddedMetadata: draft.readsEmbeddedMetadata,
             comicInfoVolumeSource: draft.comicInfoVolumeSource,
-            opensBookFolderWithApp: draft.opensBookFolderWithApp,         // [IF-18]
-            identityMatchPolicy: draft.identityMatchPolicy)               // [ID-13]
+            opensBookFolderWithApp: draft.opensBookFolderWithApp)         // [IF-18]
         return String(decoding: try JSONEncoder().encode(payload), as: UTF8.self)
     }
 

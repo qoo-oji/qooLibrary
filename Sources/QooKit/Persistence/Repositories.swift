@@ -212,9 +212,6 @@ public protocol ManagedFileRepository: Sendable {
     /// 同じ組の全メンバーを**代表順**で [DU-20]。
     func duplicateGroupMembers(containing id: FileID,
                                mode: DuplicateGrouping) async throws -> [FileRow]
-    /// 代表の手動固定 [DU-08]。同じ組の他の固定は外れる。
-    func setDuplicateRepresentativePinned(_ pinned: Bool, for id: FileID,
-                                          mode: DuplicateGrouping) async throws
     /// 数え終わった遅延メタデータを控える [MD-02][DU-22]。
     func cacheArchiveMetadata(pageCount: Int, subfolderCount: Int,
                               firstImageWidth: Int?, firstImageHeight: Int?,
@@ -238,42 +235,7 @@ public protocol ManagedFileRepository: Sendable {
     /// `folderRelativePath` が空文字ならライブラリ全体。ゴミ箱の行は含めない。
     func filesUnder(libraryID: LibraryID, folderRelativePath: String) async throws
         -> [FileID: String]
-    /// 行の同一性 [ID-01]。候補として提示した行から「観測結果」を組み立てるのに使う
-    /// ——`FileRow` は inode を持たない（一覧の表示に要らないため）。
-    func identity(of id: FileID) async throws -> FileIdentity?
-    /// 同一性の確認待ち [ID-05]。**名前が同じで inode が違う組**を返す。
-    ///
-    /// `orphanedFiles` と同じ引き直しを使うが、**却下済みの組は除く** [ID-11]。
-    /// 走査が差し替えを疑った組を記録する [ID3-08][ID-05]。
-    ///
-    /// **確認待ちは状態ではなく出来事なので、疑った時点で記録する。**
-    /// 「孤立していて同じ名前の生きている行がある」から導くと、無関係な
-    /// 同名ファイルの行と区別が付かない（`v7_identityPending` のコメント参照）。
-    func recordIdentityPending(_ matches: [IdentityMatch]) async throws
 
-    func identityMatchesAwaitingDecision(libraryID: LibraryID) async throws -> [OrphanedFile]
-    /// 承認された組を確定する [ID-05]。候補側の行を消し、孤立側を実体へ移す。
-    ///
-    /// **1 トランザクションで行う**——途中で切れると、同じ実体を指す行が 2 つ
-    /// 残るか、どちらも指さない状態になる。
-    /// - Returns: 消した候補側の ID（Undo が復元する対象）。
-    @discardableResult
-    func acceptIdentityMatches(_ matches: [IdentityMatch]) async throws -> [FileID]
-    /// 「別のファイルだ」という判断を記録する [ID-11]。以後の走査では問い合わせない。
-    func rejectIdentityMatches(_ matches: [IdentityMatch]) async throws
-    /// 却下の記録を取り消す（Undo 用）。
-    func clearIdentityRejections(_ matches: [IdentityMatch]) async throws
-
-    /// 孤立レコードを、実際に観測されたファイルへ結び直す [ID-04]。
-    ///
-    /// **同じ同一性を持つ別のレコードがあれば、それを消してから結び直す**
-    /// ［ユーザー判断］。孤立レコード側のラベル・評価・手動タイトル・カバー指定を
-    /// 生かすため——候補側は原則スキャン直後の新規レコードで、失うものが少ない。
-    /// 1 トランザクションで行う（片方だけ済んだ状態を残さない）。
-    ///
-    /// - Returns: 消した重複レコードの ID。無ければ `nil`。
-    @discardableResult
-    func reattachOrphan(_ id: FileID, to snapshot: FileSnapshot) async throws -> FileID?
     /// 不要になった孤立レコードを消す [OR-04]。紐づけは cascade で消える。
     func deleteFiles(_ ids: [FileID]) async throws
     /// 削除・再紐づけの前に控える写し [UD-03]。存在しない ID は飛ばす。

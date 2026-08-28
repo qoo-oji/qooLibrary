@@ -55,7 +55,6 @@ public struct SQLiteBackupRepository: BackupRepository, Sendable {
                 presetKey: type.presetKey, name: type.name,
                 libraryTypeName: type.libraryTypeName, isPreset: type.isPreset,
                 version: type.version, definitionJSON: type.definitionJSON),
-            caseSensitive: record.caseSensitive,
             duplicateGrouping: record.duplicateGrouping,
             thumbnailsAlwaysHidden: record.thumbnailsAlwaysHidden,
             settings: record.settingsJSON,
@@ -162,7 +161,6 @@ public struct SQLiteBackupRepository: BackupRepository, Sendable {
                     isArchived: record.isArchived,
                     archivedFromPath: record.archivedFromPath,
                     archivedAt: record.archivedAt.map(Date.init(timeIntervalSinceReferenceDate:)),
-                    isDuplicateRepresentativePinned: record.isDuplicateRepresentativePinned,
                     state: record.state,
                     trashedAt: record.trashedAt.map(Date.init(timeIntervalSinceReferenceDate:)),
                     // 立っているときだけ出す。`title` を自動なら出さないのと同じ
@@ -187,7 +185,6 @@ extension FileBackup {
         if titleOrigin != "auto" { return true }
         if coverImageSource != "auto" { return true }
         if isArchived || archivedFromPath != nil { return true }
-        if isDuplicateRepresentativePinned { return true }
         // `active` 以外の状態（孤立・ゴミ箱）は観測の結果なので再現し得るが、
         // ゴミ箱の日付だけは人の操作の記録で作り直せない [TR-01]。
         if trashedAt != nil { return true }
@@ -304,10 +301,8 @@ extension SQLiteBackupRepository {
                 labelsAdded += group.labels.count
                 continue
             }
-            let options = try SQLiteLabelRepository.normalizationOptions(
-                db, groupID: LabelGroupID(rawValue: groupID))
             for label in group.labels {
-                let normalized = TextNormalizer.normalize(label.name, options: options)
+                let normalized = TextNormalizer.normalize(label.name)
                 let existing = try LabelRecord
                     .filter(sql: "labelGroupId = ? AND normalizedName = ?",
                             arguments: [groupID, normalized])
@@ -345,8 +340,6 @@ extension SQLiteBackupRepository {
         // 現れ「消えたファイル」の報告に混ざる [ID-06]。
         var filesMissing = 0
         var filesUpdated = 0
-        let caseSensitive = record.caseSensitive
-        let options = NormalizationOptions(caseSensitive: caseSensitive)
 
         for file in backup.files {
             let existing = try ManagedFileRecord
@@ -362,7 +355,7 @@ extension SQLiteBackupRepository {
                 try writeBack(db, file, into: existing, fileID: fileID)
             }
             for link in file.labels {
-                let normalized = TextNormalizer.normalize(link.labelName, options: options)
+                let normalized = TextNormalizer.normalize(link.labelName)
                 let key = LabelKey(groupIndex: link.groupIndex, normalized: normalized)
                 guard let labelID = labelIDByKey[key] else {
                     // 文書のラベル一覧に無いラベルが紐づけにだけ現れる形。
@@ -408,7 +401,6 @@ extension SQLiteBackupRepository {
         record.isArchived = file.isArchived
         record.archivedFromPath = file.archivedFromPath
         record.archivedAt = file.archivedAt?.timeIntervalSinceReferenceDate
-        record.isDuplicateRepresentativePinned = file.isDuplicateRepresentativePinned
         record.trashedAt = file.trashedAt?.timeIntervalSinceReferenceDate
         // **`state` は書き戻さない。** 走査が実体を見て決めた現在の状態
         // （`active` / `orphaned`）のほうが常に新しい [ID-06]。ゴミ箱に入れた
@@ -432,10 +424,10 @@ extension SQLiteBackupRepository {
                                         backup: LibraryBackup) throws {
         try db.execute(sql: """
             UPDATE library
-               SET settingsJSON = ?, caseSensitive = ?, duplicateGrouping = ?,
+               SET settingsJSON = ?, duplicateGrouping = ?,
                    thumbnailsAlwaysHidden = ?, settingsRevision = settingsRevision + 1
              WHERE id = ?
-            """, arguments: [backup.settings, backup.caseSensitive, backup.duplicateGrouping,
+            """, arguments: [backup.settings, backup.duplicateGrouping,
                              backup.thumbnailsAlwaysHidden, libraryID])
 
         // フォーマット・階層・保護文字列は付随データを持たないのでまとめて

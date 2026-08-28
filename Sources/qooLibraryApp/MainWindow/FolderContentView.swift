@@ -1898,30 +1898,6 @@ struct FolderContentView: View {
         return only.url
     }
 
-    /// 代表の手動固定を切り替える [DU-08][DG-04]。
-    ///
-    /// **切り替えたら一覧を読み直す**——代表が変われば、その組を表す行そのものが
-    /// 別のファイルに入れ替わる。
-    private func togglePinnedRepresentative(_ row: FileRow) {
-        let mode = libraryContent.grouping
-        let pinned = row.isDuplicateRepresentativePinned
-        let id = row.id
-        let sort = sortOrder.first?.librarySortSpec ?? .byFilename
-        Task {
-            do {
-                try await LibraryServices.shared.setDuplicateRepresentativePinned(
-                    !pinned, for: id, mode: mode)
-                await loadLibraryRows(sort)
-            } catch {
-                await NotificationRouter.shared.presentError(
-                    error,
-                    whatHappened: String(localized: "folder.pinDuplicateFailed",
-                                         locale: locale))
-            }
-        }
-    }
-
-
     /// `.contextMenu(forSelectionType:)` から呼ばれる。`urls` は AppKit が
     /// 解決済みの対象集合（右クリックした行が選択に含まれていればその選択全体、
     /// 含まれていなければその1行だけ、何もない場所なら空集合）[Finder と同じ規則、
@@ -2027,12 +2003,6 @@ struct FolderContentView: View {
                 Button("folder.compareDuplicates", systemImage: "rectangle.on.rectangle") {
                     DuplicateComparisonNavigation.open(
                         file: row.id, library: row.libraryID, openWindow: openWindow)
-                }
-                Button(row.isDuplicateRepresentativePinned
-                       ? "folder.unpinDuplicateRepresentative"
-                       : "folder.pinDuplicateRepresentative",
-                       systemImage: row.isDuplicateRepresentativePinned ? "pin.slash" : "pin") {
-                    togglePinnedRepresentative(row)
                 }
                 Divider()
             }

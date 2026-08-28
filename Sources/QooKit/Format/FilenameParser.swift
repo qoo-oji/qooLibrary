@@ -42,15 +42,13 @@ public struct FilenameParser: FilenameParsing, Sendable {
         let input = makeInput(nameWithoutExtension, settings: settings)
         for format in enabledFormats(settings) {
             let outcome = FormatMatcher.match(format, input: input,
-                                              volumePatterns: settings.volumeFormats,
-                                              options: settings.normalization)
+                                              volumePatterns: settings.volumeFormats)
             guard var result = outcome.result else { continue }
 
             // `@librarytype` の扱い [RW-01]
             if format.usedFields.contains(.libraryType),
                let matched = result.fields[.libraryType] {
-                let expected = TextNormalizer.normalize(settings.libraryTypeName,
-                                                        options: settings.normalization)
+                let expected = TextNormalizer.normalize(settings.libraryTypeName)
                 if matched.normalized != expected {
                     if purpose == .moveToLibrary { continue }   // 次のフォーマットへ
                     result.libraryTypeMismatch = true           // 警告のみ
@@ -65,8 +63,7 @@ public struct FilenameParser: FilenameParsing, Sendable {
         let input = makeInput(name, settings: settings)
         return enabledFormats(settings).compactMap {
             FormatMatcher.match($0, input: input,
-                                volumePatterns: settings.volumeFormats,
-                                options: settings.normalization).result
+                                volumePatterns: settings.volumeFormats).result
         }
     }
 
@@ -75,8 +72,7 @@ public struct FilenameParser: FilenameParsing, Sendable {
         var best: NearestFormat?
         for format in enabledFormats(settings) {
             let outcome = FormatMatcher.match(format, input: input,
-                                              volumePatterns: settings.volumeFormats,
-                                              options: settings.normalization)
+                                              volumePatterns: settings.volumeFormats)
             if outcome.furthestIndex > (best?.reachedIndex ?? -1) {
                 best = NearestFormat(formatID: format.id, reachedIndex: outcome.furthestIndex)
             }
@@ -88,8 +84,7 @@ public struct FilenameParser: FilenameParsing, Sendable {
 
     func makeInput(_ name: String, settings: LibrarySettingsSnapshot) -> ParseInput {
         // マスクは**パース前**に行う [PTI-01]。
-        ProtectedTokenMasker.mask(name, tokens: settings.protectedTokens,
-                                  caseSensitive: settings.normalization.caseSensitive)
+        ProtectedTokenMasker.mask(name, tokens: settings.protectedTokens)
     }
 
     func enabledFormats(_ settings: LibrarySettingsSnapshot) -> [CompiledFormat] {

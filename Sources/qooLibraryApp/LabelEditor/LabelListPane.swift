@@ -300,11 +300,10 @@ struct LabelRowView: View {
 
     var body: some View {
         HStack(spacing: Tokens.spacing.s) {
-            // 0 件は赤字 [LE-04][RC-07]、保管庫はグレー [LE-06]。
-            // **赤字はチップに渡す**——外から `.foregroundStyle` を掛けても、
-            // チップが背景から文字色を計算して上書きしてしまう［実機で発見］。
-            LabelChip(name: row.name, color: color, count: row.fileCount,
-                      isOrphaned: row.isOrphaned)
+            // 保管庫はグレー [LE-06]。0 件の赤字 [LE-04][RC-07] は撤回した
+            // [§19.8]——件数バッジの 0 で足り、色まで変えると「壊れている」
+            // ように読める。
+            LabelChip(name: row.name, color: color, count: row.fileCount)
                 .opacity(row.isArchived ? 0.55 : 1)
             if row.isPinned {
                 Image(systemName: "pin.fill")

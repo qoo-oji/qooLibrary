@@ -4,7 +4,7 @@ import Testing
 @testable import QooApplication
 
 //
-//  孤立ファイルの整理ウインドウ [OR-01〜OR-05][ID-05][15.7 節]。
+//  孤立ファイルの整理ウインドウ [OR-01][OR-04][15.7 節]。
 //
 //  絞り込みと既定で選ぶライブラリは**純粋関数**なので DB を開かずに固定できる。
 //  再紐づけ・削除と ⌘Z だけ `ServicesWorkspace` を使う
@@ -22,8 +22,7 @@ struct OrphanCleanupSelectionTests {
                        settingsRevision: 0)
     }
 
-    private func orphan(_ path: String, id: Int64, labels: Int = 0,
-                        candidates: [OrphanCandidate] = []) -> OrphanedFile {
+    private func orphan(_ path: String, id: Int64, labels: Int = 0) -> OrphanedFile {
         let name = (path as NSString).lastPathComponent
         return OrphanedFile(
             row: FileRow(id: FileID(rawValue: id), libraryID: LibraryID(rawValue: 1),
@@ -32,7 +31,7 @@ struct OrphanCleanupSelectionTests {
                          modifiedAt: Date(timeIntervalSinceReferenceDate: 0),
                          title: nil, seriesName: nil, volume: .none, rating: 0,
                          state: .orphaned, isArchived: false, isBookFolder: false),
-            labelCount: labels, candidates: candidates)
+            labelCount: labels)
     }
 
     // MARK: - 絞り込み
@@ -134,35 +133,25 @@ struct OrphanCleanupModelIntegrationTests {
         }
     }
 
-    /// 3 件取り込んでから 1 件を「別のフォルダへ移した」状態にして走査し直す。
-    /// 同じ名前で場所だけ変わるので、走査は**新規レコードを作り、元のレコードを
-    /// 孤立にする**——`.nameOnly` でしか一致しないため [ID-03]③[ID-05]。
+    /// 3 件取り込んでから 1 件を**消して**走査し直す。実体が見つからず、
+    /// 引き継ぎ先の候補も無いので、そのレコードだけが孤立になる [ID-06]。
+    ///
+    /// 移動や差し替えでは孤立は作れない——走査がガード付きで自動的に
+    /// 引き継ぐ [ID-03][ID3-08]（同一性確認の撤去 [§19.8] 以降、確認は無い）。
     @MainActor
-    private func bench(moving: Bool = true) async throws -> Bench {
+    private func bench(removing: Bool = true) async throws -> Bench {
         let w = try ServicesWorkspace()
         await w.bootstrap()
         for i in 1...3 {
             try w.write("旧/(同人誌) [サークル値\(i) (著者値\(i))] 作品タイトル\(i) (ジャンル値1).cbz")
         }
         let id = try await w.enable("builtin.doujinshi-a")
-        // **孤立が生まれる設定にしてから走査する** [ID-13]。既定の
-        // `.sameName` は「名前が同じなら黙って引き継ぐ」なので、下で作る
-        // 「別の場所へ、サイズを変えて移した」状態は自動的に解消されてしまう
-        // ——このスイートが確かめたいのは孤立の一覧なので、それでは
-        // 主張が成り立つ前提が無いことになる。
-        try await w.editSettings(id) { $0.identityMatchPolicy = .alwaysConfirm }
         _ = try await w.services.scan(libraryID: id, root: w.libraryRoot)
 
-        if moving {
+        if removing {
             let name = "(同人誌) [サークル値1 (著者値1)] 作品タイトル1 (ジャンル値1).cbz"
-            let from = w.libraryRoot.appendingPathComponent("旧/\(name)")
-            let to = w.libraryRoot.appendingPathComponent("新/\(name)")
-            try FileManager.default.createDirectory(at: to.deletingLastPathComponent(),
-                                                    withIntermediateDirectories: true)
-            // **サイズを変えて移す。** 同じサイズだと走査が [ID-03]② で自動的に
-            // 紐づけ直してしまい（それが正しい）、孤立が 1 件も生まれない。
-            try Data(repeating: 0x42, count: 32).write(to: to)
-            try FileManager.default.removeItem(at: from)
+            try FileManager.default.removeItem(
+                at: w.libraryRoot.appendingPathComponent("旧/\(name)"))
             _ = try await w.services.scan(libraryID: id, root: w.libraryRoot)
         }
 
@@ -182,122 +171,16 @@ struct OrphanCleanupModelIntegrationTests {
         #expect(b.model.orphanCounts[b.libraryID] == 1)
     }
 
-    @Test("同じ名前で生きている行が候補として出る [OR-02][ID-05]")
-    @MainActor
-    func offersTheMovedFileAsACandidate() async throws {
-        let b = try await bench()
-        let file = try #require(b.model.files.first)
-        #expect(file.candidates.count == 1)
-        #expect(file.candidates[0].relativePath.hasPrefix("新/"))
-    }
-
     @Test("孤立が無ければ一覧は空（検索で 0 件になった場合と区別できる）")
     @MainActor
     func reportsAnEmptyVaultDistinctly() async throws {
-        let b = try await bench(moving: false)
+        let b = try await bench(removing: false)
         #expect(b.model.state == .ready)
         #expect(b.model.hasNoOrphans)
 
         b.model.searchText = "存在しない語"
         #expect(b.model.visibleFiles.isEmpty)
         #expect(b.model.hasNoOrphans, "検索の結果と、そもそも 0 件であることは別")
-    }
-
-    // MARK: - 同一性の確認 [ID-05][ID-09〜ID-12]
-    //
-    // **結び直しはこのウインドウの仕事ではない**［ユーザー判断、2026-08］。
-    // 走査後の一括確認 [ID-05] が引き受けるので、ここではそのコマンドを直接
-    // 動かして「孤立側が生き残る」ことを固定する。
-
-    @Test("承認すると孤立側の行が生き残り、覚えていた値を引き継ぐ [ID-04][ID-05]")
-    @MainActor
-    func acceptingAMatchKeepsTheOrphanRow() async throws {
-        let b = try await bench()
-        let pending = try await b.workspace.services
-            .identityMatchesAwaitingDecision(libraryID: b.libraryID)
-        let file = try #require(pending.first)
-        let orphanID = file.row.id
-        // 覚えていた値（評価）が引き継がれることを見る。
-        try await b.workspace.services.setRating(4, ids: [orphanID])
-
-        _ = try await b.commands.run(ApplyIdentityDecisionsCommand(
-            accepted: [IdentityMatch(orphanID: orphanID,
-                                     candidateID: file.candidates[0].fileID)],
-            rejected: [], services: b.workspace.services))
-
-        await b.model.reload()
-        #expect(b.model.files.isEmpty, "見つからない扱いが解消される")
-        let library = try #require(b.workspace.services.libraries.first)
-        let row = try #require(try await b.workspace.services.fileRow(
-            at: b.workspace.libraryRoot.appendingPathComponent(
-                "新/(同人誌) [サークル値1 (著者値1)] 作品タイトル1 (ジャンル値1).cbz"),
-            in: library))
-        #expect(row.id == orphanID, "候補側ではなく孤立側の行が残る")
-        #expect(row.rating == 4, "覚えていた値が引き継がれる")
-        #expect(row.state == .active)
-    }
-
-    @Test("承認を ⌘Z で戻すと、消した候補側の行も復活する [UD-03]")
-    @MainActor
-    func undoingAnAcceptRevivesBothRows() async throws {
-        let b = try await bench()
-        let pending = try await b.workspace.services
-            .identityMatchesAwaitingDecision(libraryID: b.libraryID)
-        let file = try #require(pending.first)
-        let candidateID = file.candidates[0].fileID
-        _ = try await b.commands.run(ApplyIdentityDecisionsCommand(
-            accepted: [IdentityMatch(orphanID: file.row.id, candidateID: candidateID)],
-            rejected: [], services: b.workspace.services))
-
-        _ = await b.commands.undo()
-        await b.model.reload()
-
-        #expect(b.model.files.map(\.row.id) == [file.row.id], "見つからない側へ戻る")
-        #expect(b.model.files[0].row.relativePath.hasPrefix("旧/"))
-        let revived = try await b.workspace.services.files(
-            FileQuery(libraryID: b.libraryID, mode: .libraryFlat, limit: 100))
-        #expect(revived.rows.contains { $0.id == candidateID }, "候補側の行も戻る")
-    }
-
-    /// **一度「別物」と答えた組を毎回聞き直しては使い物にならない** [ID-11]。
-    @Test("却下すると以後の確認に出てこない [ID-11]")
-    @MainActor
-    func rejectingAMatchStopsAsking() async throws {
-        let b = try await bench()
-        let pending = try await b.workspace.services
-            .identityMatchesAwaitingDecision(libraryID: b.libraryID)
-        let file = try #require(pending.first)
-        let match = IdentityMatch(orphanID: file.row.id,
-                                  candidateID: file.candidates[0].fileID)
-
-        _ = try await b.commands.run(ApplyIdentityDecisionsCommand(
-            accepted: [], rejected: [match], services: b.workspace.services))
-
-        #expect(try await b.workspace.services
-            .identityMatchesAwaitingDecision(libraryID: b.libraryID).isEmpty)
-        // **見つからないファイルの一覧からは消えない**——実体はまだ無いので、
-        // 利用者が削除するまで残る [OR-01][OR-04]。
-        await b.model.reload()
-        #expect(b.model.files.map(\.row.id) == [file.row.id])
-    }
-
-    /// 却下も戻せなければ行き止まりになる（以後聞かれないため）。
-    @Test("却下を ⌘Z で戻すと、また確認に出てくる [ID-11]")
-    @MainActor
-    func undoingARejectMakesItAskAgain() async throws {
-        let b = try await bench()
-        let pending = try await b.workspace.services
-            .identityMatchesAwaitingDecision(libraryID: b.libraryID)
-        let file = try #require(pending.first)
-        let match = IdentityMatch(orphanID: file.row.id,
-                                  candidateID: file.candidates[0].fileID)
-        _ = try await b.commands.run(ApplyIdentityDecisionsCommand(
-            accepted: [], rejected: [match], services: b.workspace.services))
-
-        _ = await b.commands.undo()
-
-        #expect(try await b.workspace.services
-            .identityMatchesAwaitingDecision(libraryID: b.libraryID).count == 1)
     }
 
     @Test("削除すると一覧から消え、⌘Z で同じ行 ID へ戻る [OR-04][UD-03]")

@@ -16,6 +16,7 @@ public enum QooMigrations {
     public static let identifiers: [String] = [
         "v1_initial", "v2_regexPatterns", "v3_embeddedMetadata", "v4_fsEventsCheckpoint",
         "v5_identityRejection", "v6_duplicateTitleKey", "v7_identityPending",
+        "v8_stage1Removals",
     ]
 
     public static var migrator: DatabaseMigrator {
@@ -28,6 +29,7 @@ public enum QooMigrations {
         m.registerMigration(identifiers[4], migrate: v5IdentityRejection)
         m.registerMigration(identifiers[5], migrate: v6DuplicateTitleKey)
         m.registerMigration(identifiers[6], migrate: v7IdentityPending)
+        m.registerMigration(identifiers[7], migrate: v8Stage1Removals)
         return m
     }
 
@@ -106,6 +108,37 @@ public enum QooMigrations {
     /// 組には誤った組が混ざっているので、それを引き継ぐと欠陥ごと持ち越す。
     /// 取り残された孤立レコードは §15.7 の一覧から片付けられるし、実体が
     /// 差し替えられていれば次の走査が正しい組を作り直す。
+    // MARK: - v8
+
+    /// 概念モデル v3 のステージ 1（撤去）[§19.8][§19.10]。
+    ///
+    /// - `identityPending`／`identityRejection` を落とす [ID-09〜ID-15 撤回]。
+    ///   差し替えは走査がガード付き [ID3-08] で自動的に引き継ぐので、
+    ///   確認待ちの記録も「別物だ」という判断の記録も要らなくなった。
+    ///   溜まっていた確認待ちは**確認されないまま消える**——孤立レコード
+    ///   自体は残るので、「見つからないファイル」一覧から片付けられる。
+    /// - `library.caseSensitive` を落とす [N-04 撤回]。照合は常に同一視。
+    ///   大小だけ違うラベルの normalizedName が既に分かれている店では、
+    ///   以後の照合で新しい行が増えないだけで、既存の行はそのまま残る
+    ///   （改名・統合はいつでもできる）。
+    /// - `managedFile.isDuplicateRepresentativePinned` を落とす [DU-08 撤回]。
+    ///   代表は自動選定（評価 → サイズ → 名前）に任せる。
+    ///
+    /// どの列も索引・トリガ・ビューから参照されていないので
+    /// `ALTER TABLE … DROP COLUMN` で足りる（SQLite 3.35+、この環境は 3.51）。
+    static func v8Stage1Removals(_ db: Database) throws {
+        try db.drop(table: "identityPending")
+        try db.drop(table: "identityRejection")
+        try db.alter(table: "library") { t in
+            t.drop(column: "caseSensitive")
+        }
+        try db.alter(table: "managedFile") { t in
+            t.drop(column: "isDuplicateRepresentativePinned")
+        }
+        try db.execute(sql: "UPDATE storeMetadata SET schemaVersion = ? WHERE id = 1",
+                       arguments: [identifiers[7]])
+    }
+
     static func v7IdentityPending(_ db: Database) throws {
         try db.create(table: "identityPending") { t in
             t.belongsTo("orphanFile", inTable: "managedFile", onDelete: .cascade).notNull()
@@ -137,10 +170,8 @@ public enum QooMigrations {
     /// 畳んでおくしかない——`searchKey` / `seriesKey` と同じ形にしてある。
     ///
     /// **既存の行は NULL のままで、次の走査が埋める**（再生成可能 [DB-03] なので
-    /// JSON にも持たない）。移行時に埋めないのは、正規化がライブラリごとの
-    /// `caseSensitive` 設定に依存するのに、移行はストアを開く前＝設定を読む前に
-    /// 走るため——**ここで埋めると、大小を区別する設定のライブラリだけ
-    /// 間違った鍵が入る。**
+    /// JSON にも持たない）。移行時に埋めなかったのは、当時の正規化が
+    /// ライブラリごとの `caseSensitive` 設定（v8 で撤去）に依存していたため。
     ///
     /// 索引は `(libraryId, titleKey)`。グループ化は必ずライブラリ単位で
     /// 絞ってから行う [DU-04]。

@@ -56,7 +56,6 @@ struct TemplateDraftTests {
         #expect(stored.displayName == shown.displayName)
         #expect(stored.libraryTypeName == shown.libraryTypeName)
         #expect(stored.targetExtensions == shown.targetExtensions)
-        #expect(stored.caseSensitive == shown.caseSensitive)
         #expect(stored.delimiters == shown.delimiters)
         #expect(stored.semanticBindings == shown.semanticBindings)
         #expect(stored.seriesTitleCompositionFormat == shown.seriesTitleCompositionFormat)
@@ -87,7 +86,6 @@ struct TemplateDraftTests {
         draft.labelGroups[0].name = "自分で決めた名前"
         draft.filenameFormats.append(FilenameFormatDraft(source: "@title"))
         draft.targetExtensions = ["cbz"]
-        draft.caseSensitive = true
 
         let id = try await repository.register(
             LibraryRegistration(uuid: UUID(), displayName: "テスト", bookmarkData: Data(),
@@ -99,7 +97,6 @@ struct TemplateDraftTests {
         #expect(stored.labelGroups[0].name == "自分で決めた名前")
         #expect(stored.filenameFormats.contains { $0.source == "@title" })
         #expect(stored.targetExtensions == ["cbz"])
-        #expect(stored.caseSensitive)
     }
 
     @Test("白紙から登録できる [LT-02]")

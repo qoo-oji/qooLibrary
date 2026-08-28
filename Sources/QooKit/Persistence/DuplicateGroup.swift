@@ -47,10 +47,11 @@ public enum DuplicateSelection {
 
     /// 表示順に並べ替える。**先頭が代表**になる。
     ///
-    /// ①手で固定したもの [DU-08] ②評価が高いもの ③サイズが大きいもの
-    /// ④ファイル名の自然順で先頭 [DU-05]。
+    /// ①評価が高いもの ②サイズが大きいもの ③ファイル名の自然順で先頭
+    /// [DU-05]。手動のピン留め [DU-08] は撤回した [§19.8]——代表は自動選定に
+    /// 任せ、残す 1 冊は比較ビューで選べば足りる［ユーザー判断］。
     ///
-    /// **④まで同点になることはある**（同じ名前のファイルは同じフォルダには
+    /// **③まで同点になることはある**（同じ名前のファイルは同じフォルダには
     /// 置けないが、別のフォルダになら置ける）。そのときは `id` で決める
     /// ——順序が実行のたびに変わると、代表が理由なく入れ替わって見える。
     public static func inRepresentativeOrder(_ rows: [FileRow]) -> [FileRow] {
@@ -63,9 +64,6 @@ public enum DuplicateSelection {
     }
 
     static func precedes(_ a: FileRow, _ b: FileRow) -> Bool {
-        if a.isDuplicateRepresentativePinned != b.isDuplicateRepresentativePinned {
-            return a.isDuplicateRepresentativePinned            // [DU-08]
-        }
         if a.rating != b.rating { return a.rating > b.rating }  // [DU-05]①
         if a.fileSize != b.fileSize { return a.fileSize > b.fileSize } // ②
         let byName = a.filename.localizedStandardCompare(b.filename)   // ③ 自然順

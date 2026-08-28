@@ -16,10 +16,10 @@ public enum CharacterCanonicalization {
         return single(String(view)) ?? c
     }
 
-    /// 照合用の正準形。全角→半角に加え、`caseSensitive == false` なら小文字化する。
-    public static func canonical(_ c: Character, caseSensitive: Bool) -> Character {
+    /// 照合用の正準形。全角→半角に加えて小文字化する
+    /// （大文字・小文字は常に同一視する［N-04 撤回、§19.8］）。
+    public static func canonical(_ c: Character) -> Character {
         let folded = foldWidth(c)
-        guard !caseSensitive else { return folded }
         guard folded.isUppercase || folded.unicodeScalars.contains(where: { $0.properties.isUppercase })
         else { return folded }
         // ケース変換が grapheme を分割する場合は畳まない（添字の一対一対応を守る）。

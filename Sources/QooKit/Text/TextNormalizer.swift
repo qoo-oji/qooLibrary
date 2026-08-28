@@ -18,16 +18,20 @@ public enum TextNormalizer {
     @inlinable
     public static func display(_ s: String) -> String { s }
 
-    /// 照合用。①NFC ②全角→半角 ③空白の畳み込み ④ケース（options 次第）。
+    /// 照合用。①NFC ②全角→半角 ③空白の畳み込み ④小文字化。
+    ///
+    /// 大文字・小文字は**常に同一視する**［N-04 撤回、§19.8］——以前は
+    /// ライブラリ設定で切り替えられたが、この設定が制御していたのは語彙の
+    /// 同一視ルールであってファイルシステムの性質ではなく、名前が誤解を
+    /// 招いていた。
     ///
     /// 冪等（`normalize(normalize(x)) == normalize(x)`）であることを単体テストで
     /// 固定している。DB の `normalizedName` はこの結果を保存したもの [NM-05]。
-    public static func normalize(_ s: String, options: NormalizationOptions = .default) -> String {
+    public static func normalize(_ s: String) -> String {
         // 全角畳み込みとケース変換は NFC/NFD のどちらでも同じ結果になる
         // （U+FF01〜FF5E と U+3000 は正準分解を持たない）ため、順序は自由。
         // NFC は最後に 1 回だけ通す——ケース変換が非 NFC を作りうるため。
-        var t = WidthFolding.fold(s)
-        if !options.caseSensitive { t = t.lowercased() }
+        var t = WidthFolding.fold(s).lowercased()
         t = collapseWhitespace(t)
         return t.precomposedStringWithCanonicalMapping
     }
@@ -58,8 +62,8 @@ public enum TextNormalizer {
     /// 2,953 件のうち半角カナを含むファイル名は 1 件（0.03%）で、濁点の合成
     /// （`ｶ` + `ﾞ` → `ガ`）は 2 文字 → 1 文字の写像になり `normalize` の
     /// 「長さを変えない」性質も崩す。必要になったらここへ足す。
-    public static func searchKey(_ s: String, options: NormalizationOptions = .default) -> String {
-        let normalized = normalize(s, options: options)
+    public static func searchKey(_ s: String) -> String {
+        let normalized = normalize(s)
         guard normalized.unicodeScalars.contains(where: isHiragana) else { return normalized }
         var out = String.UnicodeScalarView()
         out.reserveCapacity(normalized.unicodeScalars.count)
@@ -91,13 +95,12 @@ public enum TextNormalizer {
     /// `nil`・空・**既に入っている部品と同一のもの**は落とす。ファイル名の
     /// stem がタイトルと一致する（自動抽出ではごく普通）ときに同じ文字列を
     /// 2 回持つと、索引 `mf_search` が理由もなく倍の大きさになる。
-    public static func searchKey(joining parts: [String?],
-                                 options: NormalizationOptions = .default) -> String {
+    public static func searchKey(joining parts: [String?]) -> String {
         var out: [String] = []
         out.reserveCapacity(parts.count)
         for part in parts {
             guard let part else { continue }
-            let key = searchKey(part, options: options)
+            let key = searchKey(part)
             guard !key.isEmpty, !out.contains(key) else { continue }
             out.append(key)
         }

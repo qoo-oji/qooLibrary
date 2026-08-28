@@ -142,8 +142,7 @@ public enum TemplateInstantiation {
                                protectedTokens: [ProtectedToken]
                                    = AppDefaults.Library.protectedTokenPatterns.map {
                                        ProtectedToken(pattern: $0)
-                                   },
-                               normalization: NormalizationOptions = .default)
+                                   })
         throws(Error) -> LibrarySettingsSnapshot
     {
         guard let volumePatterns = volumeSets.patterns(named: template.volumeSet) else {
@@ -155,8 +154,7 @@ public enum TemplateInstantiation {
             allLibraryTypeNames: allLibraryTypeNames.isEmpty
                 ? [template.libraryTypeName] : allLibraryTypeNames,
             allLibraryDisplayNames: allLibraryDisplayNames,
-            semanticBindings: semantic,
-            normalization: normalization)
+            semanticBindings: semantic)
 
         var formats: [CompiledFormat] = []
         formats.reserveCapacity(template.filenameFormats.count)
@@ -208,8 +206,7 @@ public enum TemplateInstantiation {
             filenameFormats: formats,
             folderLevelAssignments: levels,
             volumeFormats: VolumePatternCompiler.compileAll(volumePatterns),
-            semanticBindings: semantic,
-            normalization: normalization)
+            semanticBindings: semantic)
     }
 }
 
@@ -277,7 +274,6 @@ extension TemplateInstantiation {
         return LibrarySettingsDraft(
             displayName: displayName,
             libraryTypeName: template.libraryTypeName,
-            caseSensitive: false,
             thumbnailsAlwaysHidden: false,
             // **テンプレートは対象拡張子を持たない** [要件定義書 11.4 節:
             // 「対象拡張子は全テンプレート共通」]。空で登録すると走査が

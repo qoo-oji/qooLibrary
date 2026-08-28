@@ -1,39 +1,11 @@
 //
-//  重複グループの読み書き [DU-05][DU-08][DU-20]。
+//  重複グループの読み書き [DU-05][DU-20]。
 //
 import Foundation
 import GRDB
 import QooKit
 
 extension SQLiteManagedFileRepository {
-
-    /// 代表の手動固定 [DU-08]。
-    ///
-    /// **同じ組の他のファイルの固定は外す。** 1 つの組に固定が 2 つあると、
-    /// どちらが代表になるかは残りの条件（評価・サイズ・名前）で決まってしまい、
-    /// 「固定したのに代表にならない」という説明の付かない状態になる。
-    ///
-    /// 組の範囲は**そのとき有効な判定キー** [DU-02] で決まるので、
-    /// 呼び出し側が現在のモードを渡すこと。
-    /// - Parameter mode: **既定値を持たせない。** 組の範囲はそのとき有効な
-    ///   判定キー [DU-02] で決まるので、既定で決め打ちすると `.byTitle` の
-    ///   ライブラリで**違う組の固定を外す**（結果、1 つの組に固定が 2 つ残る）。
-    public func setDuplicateRepresentativePinned(
-        _ pinned: Bool, for id: FileID, mode: DuplicateGrouping) async throws
-    {
-        try await database.writer.write { db in
-            if pinned, let siblings = try Self.groupMemberIDs(db, containing: id, mode: mode),
-               !siblings.isEmpty {
-                try db.execute(sql: """
-                    UPDATE managedFile SET isDuplicateRepresentativePinned = 0
-                     WHERE id IN (\(Self.placeholders(siblings.count)))
-                    """, arguments: StatementArguments(siblings.map(\.rawValue)))
-            }
-            try db.execute(sql: """
-                UPDATE managedFile SET isDuplicateRepresentativePinned = ? WHERE id = ?
-                """, arguments: [pinned, id.rawValue])
-        }
-    }
 
     /// 比較ビュー [DU-20] のための、同じ組の全メンバー。
     ///

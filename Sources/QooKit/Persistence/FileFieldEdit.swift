@@ -11,10 +11,9 @@ import Foundation
 
 /// タイトル・シリーズ名・巻数・著者の書き換え 1 件ぶん [RP-10〜RP-12]。
 ///
-/// **`seriesKey` は持たない。** 正規化は書き込み側（リポジトリ）が
-/// `NormalizationOptions` を見て導出する [3.8 節: 正規化は `TextNormalizer`
-/// のみが行う]——呼び出し側に持たせると、ライブラリの `caseSensitive` 設定を
-/// 知らない場所で正規化することになり、表記ゆれが黙って別のシリーズになる。
+/// **`seriesKey` は持たない。** 正規化は書き込み側（リポジトリ）が導出する
+/// [3.8 節: 正規化は `TextNormalizer` のみが行う]——呼び出し側に持たせると、
+/// 表記ゆれの畳み込みが 2 箇所に散り、黙って別のシリーズになる。
 public struct FileFieldEdit: Sendable, Hashable {
     public var title: String?
     /// 手動編集なら `.manual` [RP-11]。以後の自動上書きから守られる。

@@ -64,7 +64,6 @@ public struct ManagedFileSnapshot: Sendable, Hashable {
     public let archivedFromPath: String?       // [FA-04]
     public let archivedAt: Date?
     public let isBookFolder: Bool              // 再生成可能 [IF-04]
-    public let isDuplicateRepresentativePinned: Bool
     public let pageCount: Int?                 // 再生成可能 [DT-05]
     public let subfolderCount: Int?            // 再生成可能 [DT-06]
     public let firstImageWidth: Int?           // 再生成可能 [DU-21]
@@ -88,7 +87,7 @@ public struct ManagedFileSnapshot: Sendable, Hashable {
                 volume: VolumeValue, authorName: String?, rating: Int,
                 coverImageRef: String?, coverImageSource: CoverSource,
                 isArchived: Bool, archivedFromPath: String?, archivedAt: Date?,
-                isBookFolder: Bool, isDuplicateRepresentativePinned: Bool,
+                isBookFolder: Bool,
                 pageCount: Int?, subfolderCount: Int?,
                 firstImageWidth: Int?, firstImageHeight: Int?,
                 trashedAt: Date?, state: FileState,
@@ -119,7 +118,6 @@ public struct ManagedFileSnapshot: Sendable, Hashable {
         self.archivedFromPath = archivedFromPath
         self.archivedAt = archivedAt
         self.isBookFolder = isBookFolder
-        self.isDuplicateRepresentativePinned = isDuplicateRepresentativePinned
         self.pageCount = pageCount
         self.subfolderCount = subfolderCount
         self.firstImageWidth = firstImageWidth
@@ -136,75 +134,23 @@ public struct ManagedFileSnapshot: Sendable, Hashable {
     }
 }
 
-/// 孤立レコード 1 件と、その再照合候補 [OR-01][OR-02][ID-05]。
+/// 孤立レコード 1 件 [OR-01]。「見つからないファイル」一覧の 1 行ぶん。
 ///
-/// **候補は DB に保存されていない。** `ScanEngine.reconcile` は `.nameOnly` で
-/// しか一致しなかったものを `candidatesForReview` として数えるだけで、その
-/// 実ファイルは**新規レコードとして別に作られる**。つまり候補はここで引き直す
-/// ——孤立レコードと同じ名前を持つ、生きている（`active`）レコードを探す。
+/// かつてここにあった再照合候補（`OrphanCandidate`）と確認待ちの組
+/// （`IdentityMatch`）は、同一性確認の撤去 [ID-09〜15 撤回、§19.8] とともに
+/// 消えた——差し替えは走査がガード付きで自動的に引き継ぐ（`ScanEngine.reconcile`
+/// の [ID3-08] ガード参照）ので、確認に出す組がそもそも生まれない。
 public struct OrphanedFile: Sendable, Hashable, Identifiable {
     public let row: FileRow
     /// ラベル紐づけの件数。削除の確認で「何件のラベルが外れるか」を見せる
     /// [LE-08 と同じ考え方]。`manuallyRemoved` は数えない——利用者から見て
     /// 「付いている」ラベルだけを数えなければ、確認の数字が画面と食い違う。
     public let labelCount: Int
-    /// 再照合候補 [OR-02]。確度の高い順。空なら「候補なし」。
-    public let candidates: [OrphanCandidate]
 
     public var id: FileID { row.id }
 
-    public init(row: FileRow, labelCount: Int, candidates: [OrphanCandidate]) {
+    public init(row: FileRow, labelCount: Int) {
         self.row = row
         self.labelCount = labelCount
-        self.candidates = candidates
-    }
-}
-
-/// 孤立レコードの再照合候補 1 件 [OR-02][ID-03]③。
-public struct OrphanCandidate: Sendable, Hashable, Identifiable {
-    public let fileID: FileID
-    public let relativePath: String
-    public let filename: String
-    public let fileSize: Int64
-    /// 孤立レコードと**同じ相対パス**か [ID-09]。
-    ///
-    /// **確信度がまったく違う。** 同じ場所の同じ名前なら差し替え（スキャン版を
-    /// 電子版へ、低画質を高画質へ、破損したものを取り直す）がほぼ確実だが、
-    /// 別の場所の同名ファイルは「移動」かもしれないし「別シリーズの同じ巻数」
-    /// かもしれない——`第01巻.cbz` は複数のシリーズに存在しうる。
-    public let samePath: Bool
-    /// 孤立レコードと同じ大きさか。**名前だけの一致 [ID-03]③ より、大きさも
-    /// 一致するほうが確からしい**ので並べ替えに使う（`ID-03` の①②は走査が
-    /// 自動で紐づけ済みなので、ここへ来るのは原則③だけ）。
-    public let sizeMatches: Bool
-
-    public var id: FileID { fileID }
-
-    public init(fileID: FileID, relativePath: String, filename: String,
-                fileSize: Int64, samePath: Bool = false, sizeMatches: Bool) {
-        self.fileID = fileID
-        self.relativePath = relativePath
-        self.filename = filename
-        self.fileSize = fileSize
-        self.samePath = samePath
-        self.sizeMatches = sizeMatches
-    }
-}
-
-/// 「この孤立レコードは、この実ファイルのことかもしれない」という組 [ID-05]。
-///
-/// 走査は名前が同じで inode が違うものを見つけても**自動では紐づけない**。
-/// 走り切ってから一括の確認ダイアログでまとめて問い合わせ、承認された組だけを
-/// 確定する。**組そのものを記録する必要は無い**——「孤立していて、同じ名前の
-/// 生きている行がある」という状態が DB にそのまま表れているため。
-public struct IdentityMatch: Sendable, Hashable {
-    /// 実体を失った側（ラベル・評価・手動タイトルを持っている）。
-    public let orphanID: FileID
-    /// 実際に観測された側（走査が新規として作った行）。
-    public let candidateID: FileID
-
-    public init(orphanID: FileID, candidateID: FileID) {
-        self.orphanID = orphanID
-        self.candidateID = candidateID
     }
 }

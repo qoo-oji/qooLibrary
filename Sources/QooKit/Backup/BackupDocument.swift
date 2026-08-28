@@ -63,7 +63,6 @@ public struct LibraryBackup: Codable, Sendable, Equatable {
     public var rootPath: String
     public var volumeUUID: String
     public var libraryType: LibraryTypeBackup
-    public var caseSensitive: Bool
     public var duplicateGrouping: String
     public var thumbnailsAlwaysHidden: Bool
     /// `library.settingsJSON` をそのまま持つ [07章 §7.3]。対象拡張子・区切り・
@@ -77,7 +76,7 @@ public struct LibraryBackup: Codable, Sendable, Equatable {
     public var files: [FileBackup]
 
     public init(uuid: UUID, displayName: String, rootPath: String, volumeUUID: String,
-                libraryType: LibraryTypeBackup, caseSensitive: Bool,
+                libraryType: LibraryTypeBackup,
                 duplicateGrouping: String, thumbnailsAlwaysHidden: Bool,
                 settings: String, labelGroups: [LabelGroupBackup],
                 filenameFormats: [FormatBackup], volumeFormats: [VolumeFormatBackup],
@@ -88,7 +87,6 @@ public struct LibraryBackup: Codable, Sendable, Equatable {
         self.rootPath = rootPath
         self.volumeUUID = volumeUUID
         self.libraryType = libraryType
-        self.caseSensitive = caseSensitive
         self.duplicateGrouping = duplicateGrouping
         self.thumbnailsAlwaysHidden = thumbnailsAlwaysHidden
         self.settings = settings
@@ -314,7 +312,6 @@ public struct FileBackup: Codable, Sendable, Equatable {
     public var isArchived: Bool
     public var archivedFromPath: String?
     public var archivedAt: Date?
-    public var isDuplicateRepresentativePinned: Bool
     public var state: String
     public var trashedAt: Date?
     /// 未解決一覧で「以後無視する」を立てたか [AL-33][MG-22]。
@@ -336,7 +333,6 @@ public struct FileBackup: Codable, Sendable, Equatable {
                 titleOrigin: String, title: String?,
                 coverImageSource: String, coverImageRef: String?,
                 isArchived: Bool, archivedFromPath: String?, archivedAt: Date?,
-                isDuplicateRepresentativePinned: Bool,
                 state: String, trashedAt: Date?,
                 isUnresolvedIgnored: Bool? = nil, labels: [FileLabelBackup]) {
         self.relativePath = relativePath
@@ -349,7 +345,6 @@ public struct FileBackup: Codable, Sendable, Equatable {
         self.isArchived = isArchived
         self.archivedFromPath = archivedFromPath
         self.archivedAt = archivedAt
-        self.isDuplicateRepresentativePinned = isDuplicateRepresentativePinned
         self.state = state
         self.trashedAt = trashedAt
         self.isUnresolvedIgnored = isUnresolvedIgnored

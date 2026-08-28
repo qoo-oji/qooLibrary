@@ -34,7 +34,6 @@ public struct LibrarySettingsSnapshot: Sendable {
 
     /// セマンティック予約語 → ラベルグループ番号 [RW-13]。
     public let semanticBindings: [SemanticKeyword: Int]
-    public let normalization: NormalizationOptions
     /// 既定 `"@series @volume"` [SE-33]。
     public let seriesTitleCompositionFormat: String
     public let maxLabelGroups: Int
@@ -45,8 +44,6 @@ public struct LibrarySettingsSnapshot: Sendable {
     public let comicInfoVolumeSource: ComicInfoVolumeSource
     /// ブックフォルダの「開く」を関連付けアプリに任せるか [IF-18][AS-06]。
     public let opensBookFolderWithApp: Bool
-    /// どこまでを黙って同じファイルとみなすか [ID-13]。
-    public let identityMatchPolicy: IdentityMatchPolicy
 
     public init(libraryID: LibraryID,
                 settingsRevision: Int = 0,
@@ -62,13 +59,11 @@ public struct LibrarySettingsSnapshot: Sendable {
                 folderLevelAssignments: [Int: FolderLevelMappingSpec.Assignment] = [:],
                 volumeFormats: [CompiledVolumePattern] = [],
                 semanticBindings: [SemanticKeyword: Int] = [:],
-                normalization: NormalizationOptions = .default,
                 seriesTitleCompositionFormat: String = "@series @volume",
                 maxLabelGroups: Int = AppLimits.Format.maxLabelGroups,
                 readsEmbeddedMetadata: Bool = true,
                 comicInfoVolumeSource: ComicInfoVolumeSource = .ask,
-                opensBookFolderWithApp: Bool = false,
-                identityMatchPolicy: IdentityMatchPolicy = .default) {
+                opensBookFolderWithApp: Bool = false) {
         self.libraryID = libraryID
         self.settingsRevision = settingsRevision
         self.displayName = displayName
@@ -83,13 +78,11 @@ public struct LibrarySettingsSnapshot: Sendable {
         self.folderLevelAssignments = folderLevelAssignments
         self.volumeFormats = volumeFormats
         self.semanticBindings = semanticBindings
-        self.normalization = normalization
         self.seriesTitleCompositionFormat = seriesTitleCompositionFormat
         self.maxLabelGroups = maxLabelGroups
         self.readsEmbeddedMetadata = readsEmbeddedMetadata
         self.comicInfoVolumeSource = comicInfoVolumeSource
         self.opensBookFolderWithApp = opensBookFolderWithApp
-        self.identityMatchPolicy = identityMatchPolicy
     }
 
     /// フォーマットのコンパイルに渡す文脈を組み立てる。
@@ -98,7 +91,6 @@ public struct LibrarySettingsSnapshot: Sendable {
                                  maxLabelGroups: maxLabelGroups,
                                  allLibraryTypeNames: allLibraryTypeNames,
                                  allLibraryDisplayNames: allLibraryDisplayNames,
-                                 semanticBindings: semanticBindings,
-                                 normalization: normalization)
+                                 semanticBindings: semanticBindings)
     }
 }

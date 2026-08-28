@@ -472,11 +472,11 @@ public final class LibraryServices {
         try await repository.restore(snapshots)
     }
 
-    // MARK: - 孤立ファイルの整理 [OR-01〜OR-05][ID-05][ID-07]
+    // MARK: - 孤立ファイルの整理 [OR-01][OR-04][ID-07]
     //
     // **Undo は `OrphanCommands` のコマンドが担う**ので、UI から直接
-    // `reattachOrphan` / `deleteFiles` を呼ばないこと（呼ぶと ⌘Z で戻せない
-    // 操作ができる。`setRating` / `deleteLabels` と同じ約束）。
+    // `deleteFiles` を呼ばないこと（呼ぶと ⌘Z で戻せない操作ができる。
+    // `setRating` / `deleteLabels` と同じ約束）。
 
     public func orphanedFiles(libraryID: LibraryID) async throws -> [OrphanedFile] {
         guard let repository = fileRepository else { throw ServiceError.notReady }
@@ -521,34 +521,6 @@ public final class LibraryServices {
         return outcome
     }
 
-    // MARK: - 同一性の確認 [ID-05][ID-09〜ID-12]
-    //
-    // **Undo は `ApplyIdentityDecisionsCommand` が担う**ので、UI から直接
-    // `acceptIdentityMatches` / `rejectIdentityMatches` を呼ばないこと。
-
-    public func identityMatchesAwaitingDecision(libraryID: LibraryID) async throws
-        -> [OrphanedFile]
-    {
-        guard let repository = fileRepository else { throw ServiceError.notReady }
-        return try await repository.identityMatchesAwaitingDecision(libraryID: libraryID)
-    }
-
-    @discardableResult
-    public func acceptIdentityMatches(_ matches: [IdentityMatch]) async throws -> [FileID] {
-        guard let repository = fileRepository else { throw ServiceError.notReady }
-        return try await repository.acceptIdentityMatches(matches)
-    }
-
-    public func rejectIdentityMatches(_ matches: [IdentityMatch]) async throws {
-        guard let repository = fileRepository else { throw ServiceError.notReady }
-        try await repository.rejectIdentityMatches(matches)
-    }
-
-    public func clearIdentityRejections(_ matches: [IdentityMatch]) async throws {
-        guard let repository = fileRepository else { throw ServiceError.notReady }
-        try await repository.clearIdentityRejections(matches)
-    }
-
     public func orphanedFileCounts() async throws -> [LibraryID: Int] {
         guard let repository = fileRepository else { throw ServiceError.notReady }
         return try await repository.orphanedFileCounts()
@@ -568,14 +540,6 @@ public final class LibraryServices {
                                       mode: DuplicateGrouping) async throws -> [FileRow] {
         guard let repository = fileRepository else { throw ServiceError.notReady }
         return try await repository.duplicateGroupMembers(containing: id, mode: mode)
-    }
-
-    /// 代表の手動固定 [DU-08]。
-    public func setDuplicateRepresentativePinned(
-        _ pinned: Bool, for id: FileID, mode: DuplicateGrouping) async throws
-    {
-        guard let repository = fileRepository else { throw ServiceError.notReady }
-        try await repository.setDuplicateRepresentativePinned(pinned, for: id, mode: mode)
     }
 
     /// 容器を開いてページ数と解像度を数え、DB へ控える [DU-21][DU-22][MD-02]。

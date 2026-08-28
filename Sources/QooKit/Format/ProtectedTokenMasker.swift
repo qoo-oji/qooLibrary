@@ -16,11 +16,10 @@ public enum ProtectedTokenMasker {
     /// - `prefix` / `suffix` 指定は一致範囲で絞る [PT-05]。
     /// - 照合は全角を畳んだ射影に対して行い、大文字小文字は無視する [PT-04]。
     public static func mask(_ text: String,
-                            tokens: [CompiledProtectedToken],
-                            caseSensitive: Bool = false) -> ParseInput {
+                            tokens: [CompiledProtectedToken]) -> ParseInput {
         let original = Array(text)
         guard !tokens.isEmpty else {
-            return ParseInput(text, caseSensitive: caseSensitive)
+            return ParseInput(text)
         }
 
         let subject = FoldedSubject(original)
@@ -45,7 +44,7 @@ public enum ProtectedTokenMasker {
         }
 
         guard !candidates.isEmpty else {
-            return ParseInput(text, caseSensitive: caseSensitive)
+            return ParseInput(text)
         }
 
         // 左端優先 → 長い方 → 登録順。
@@ -96,7 +95,7 @@ public enum ProtectedTokenMasker {
             originalChars: original,
             maskedChars: maskedChars,
             canonicalChars: maskedChars.map {
-                CharacterCanonicalization.canonical($0, caseSensitive: caseSensitive)
+                CharacterCanonicalization.canonical($0)
             },
             originRanges: originRanges,
             maskTruncated: truncated)

@@ -13,14 +13,13 @@ struct DuplicateGroupingTests {
 
     private func row(_ id: Int64, name: String, title: String?,
                      volume: VolumeValue = .none, rating: Int = 0,
-                     size: Int64 = 100, pinned: Bool = false,
+                     size: Int64 = 100,
                      pages: Int? = nil, width: Int? = nil, height: Int? = nil) -> FileRow {
         FileRow(id: FileID(rawValue: id), libraryID: LibraryID(rawValue: 1),
                 relativePath: name, filename: name, fileSize: size,
                 createdAt: .distantPast, modifiedAt: .distantPast,
                 title: title, seriesName: nil, volume: volume, rating: rating,
                 state: .active, isArchived: false, isBookFolder: false,
-                isDuplicateRepresentativePinned: pinned,
                 pageCount: pages, firstImageWidth: width, firstImageHeight: height)
     }
 
@@ -87,13 +86,7 @@ struct DuplicateGroupingTests {
         #expect(DuplicateGrouping(storedValue: "byTitle") == .byTitle)
     }
 
-    // MARK: - 代表の決定 [DU-05][DU-08]
-
-    @Test func pinnedWinsOverEverythingElse() {
-        let pinned = row(1, name: "z.cbz", title: "A", rating: 0, size: 1, pinned: true)
-        let rich = row(2, name: "a.cbz", title: "A", rating: 5, size: 999)
-        #expect(DuplicateSelection.representative(of: [rich, pinned])?.id == pinned.id)
-    }
+    // MARK: - 代表の決定 [DU-05]
 
     @Test func ratingBeatsSize() {
         let rated = row(1, name: "z.cbz", title: "A", rating: 3, size: 1)

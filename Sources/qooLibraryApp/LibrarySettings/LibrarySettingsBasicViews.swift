@@ -29,30 +29,11 @@ struct SettingsSectionHeader: View {
 
 struct LibraryBasicsSettingsView: View {
     @Binding var draft: LibrarySettingsDraft
-    /// 同一性の確認待ちの件数 [ID-12]。**0 なら何も出さない**——判断すべき
-    /// ものが無いときに空の導線を置かない。
-    var pendingIdentityMatches: Int = 0
-    var onReviewIdentity: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.l) {
             SettingsSectionHeader(title: "librarySettings.section.basics",
                                   explanation: "librarySettings.basics.explanation")
-            // **後回しにできる** [ID-12]。走査完了の通知を閉じてしまっても、
-            // ここからいつでも開ける（巻数の確認 [EM-35] と同じ扱い）。
-            if pendingIdentityMatches > 0 {
-                HStack(spacing: Tokens.spacing.s) {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .foregroundStyle(Color.accentColor)
-                    Text(String(format: String(localized: "librarySettings.identityPending"),
-                                pendingIdentityMatches))
-                    Spacer()
-                    Button("library.scan.reviewIdentity") { onReviewIdentity() }
-                }
-                .padding(Tokens.spacing.m)
-                .background(RoundedRectangle(cornerRadius: Tokens.radius.s)
-                    .fill(Color(nsColor: .textBackgroundColor)))
-            }
             // **入力欄には必ず `.editableFieldChrome()` を付ける** [ユーザー指摘、
             // 2 度目]。`Form` の中の素の `TextField` は、値が右端に寄った
             // ただのテキストにしか見えず、**そこが入力できる場所だと気づけない**
@@ -82,7 +63,6 @@ struct LibraryBasicsSettingsView: View {
                 } label: {
                     Text("librarySettings.basics.typeName")
                 }
-                Toggle("librarySettings.basics.caseSensitive", isOn: $draft.caseSensitive)
                 Toggle("librarySettings.basics.thumbnailsAlwaysHidden",
                        isOn: $draft.thumbnailsAlwaysHidden)
                 // [IF-18][AS-06] ブックフォルダの「開く」の既定。**偽が既定**で
@@ -104,39 +84,6 @@ struct LibraryBasicsSettingsView: View {
                         .editableFieldChrome()
                 } label: {
                     Text("librarySettings.basics.seriesComposition")
-                }
-                // [ID-13] どこまでを黙って同じファイルとみなすか。**既定は
-                // 「名前が同じなら確認しない」**——差し替えは日常的に起きるので、
-                // 既定で尋ねると邪魔になる［ユーザー判断］。厳しくしたい人だけが
-                // 上の 2 つを選ぶ。判断の実体は `IdentityMatchPolicy` にある。
-                VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
-                    // **`Form` の中の `radioGroup` は `LabeledContent` で包む** [CP-07]。
-                    // 素で置くと、`Form` が選択肢の 1 行ずつを「ラベル＋操作」の
-                    // 行として扱い、**丸だけが右端へ飛ばされて文字と数百 pt
-                    // 離れる**——どれが選ばれているか画面から読めなくなる
-                    // （AX の値では読めるので、実機で見るまで気づけない）。
-                    // 包むと選択肢ひとまとまりが 1 つの操作として扱われ、
-                    // 丸が文字の隣に戻る［実測で 8 通り比べて決めた］。
-                    LabeledContent {
-                        Picker("", selection: $draft.identityMatchPolicy) {
-                            Text("librarySettings.basics.identityMatch.alwaysConfirm")
-                                .tag(IdentityMatchPolicy.alwaysConfirm)
-                            Text("librarySettings.basics.identityMatch.samePath")
-                                .tag(IdentityMatchPolicy.samePath)
-                            Text("librarySettings.basics.identityMatch.sameName")
-                                .tag(IdentityMatchPolicy.sameName)
-                        }
-                        .labelsHidden()
-                        .pickerStyle(.radioGroup)
-                    } label: {
-                        Text("librarySettings.basics.identityMatch")
-                    }
-                    // **何が引き継がれるかを書く。** 選択肢の名前だけでは
-                    // 「確認しない」と何が起きるのかが読み取れない。
-                    Text("librarySettings.basics.identityMatchHint")
-                        .font(.system(size: Tokens.fontSize.caption))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
                 // [DU-01][DU-02] 同じ作品のファイルを 1 行に畳むか。**既定は
                 // 無効**——畳むのは表示を減らす操作なので、頼まれていないのに

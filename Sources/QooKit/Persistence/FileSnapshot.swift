@@ -115,8 +115,6 @@ public struct FileRow: Sendable, Hashable, Identifiable {
     /// 保管庫へ移した日時 [FAW-05]。
     public let archivedAt: Date?
     public let isBookFolder: Bool
-    /// 代表を手で固定したか [DU-08]。**再生成不可能**なので JSON にも入る [MG-22]。
-    public let isDuplicateRepresentativePinned: Bool
     /// ページ数（画像ファイル数）[DU-21]。アーカイブを開かないと分からないので
     /// **遅延取得**し、`nil` は「まだ数えていない」を意味する [DU-22][MD-01]。
     public let pageCount: Int?
@@ -134,7 +132,6 @@ public struct FileRow: Sendable, Hashable, Identifiable {
                 isArchived: Bool,
                 archivedFromPath: String? = nil, archivedAt: Date? = nil,
                 isBookFolder: Bool,
-                isDuplicateRepresentativePinned: Bool = false,
                 pageCount: Int? = nil,
                 firstImageWidth: Int? = nil, firstImageHeight: Int? = nil) {
         self.id = id
@@ -157,7 +154,6 @@ public struct FileRow: Sendable, Hashable, Identifiable {
         self.archivedFromPath = archivedFromPath
         self.archivedAt = archivedAt
         self.isBookFolder = isBookFolder
-        self.isDuplicateRepresentativePinned = isDuplicateRepresentativePinned
         self.pageCount = pageCount
         self.firstImageWidth = firstImageWidth
         self.firstImageHeight = firstImageHeight
@@ -179,7 +175,6 @@ public struct FileRow: Sendable, Hashable, Identifiable {
                 coverImageSource: coverImageSource, state: state,
                 isArchived: isArchived, archivedFromPath: archivedFromPath,
                 archivedAt: archivedAt, isBookFolder: isBookFolder,
-                isDuplicateRepresentativePinned: isDuplicateRepresentativePinned,
                 pageCount: pageCount, firstImageWidth: width, firstImageHeight: height)
     }
 
@@ -210,8 +205,8 @@ public struct FilePage: Sendable {
 public struct ReidentificationCandidate: Sendable, Hashable {
     /// 確度。**宣言順が確度の高い順**で、`Comparable` はそれに従う。
     ///
-    /// どこまでを自動で引き継ぐかは `IdentityMatchPolicy` が決める [ID-13]。
-    /// ここは「何がどう一致したか」だけを表し、判断は持たない。
+    /// 引き継ぎは常に自動［ID-13〜15 撤回、§19.8］。確度は候補の並べ替え
+    /// （最も確からしい 1 件を選ぶ）にだけ使い、判断は持たない。
     public enum Confidence: Sendable, Hashable, Comparable, CaseIterable {
         /// 同一相対パス + 同一サイズ [ID-03]①
         case pathAndSize
@@ -221,20 +216,6 @@ public struct ReidentificationCandidate: Sendable, Hashable {
         case pathOnly
         /// 同一ファイル名のみ [ID-03]③b — 移動と差し替えが同時か、別作品の同名
         case nameOnly
-
-        /// 孤立一覧の候補（`OrphanCandidate`）から確度を復元する。
-        ///
-        /// **走査とあとからの引き直しで同じ物差しを使うため**にここへ置く。
-        /// 呼び出し側で `samePath ? .pathOnly : .nameOnly` のように畳むと、
-        /// サイズも一致している組が実際より低い確度に落ちる。
-        public init(samePath: Bool, sizeMatches: Bool) {
-            switch (samePath, sizeMatches) {
-            case (true, true):   self = .pathAndSize
-            case (false, true):  self = .nameAndSize
-            case (true, false):  self = .pathOnly
-            case (false, false): self = .nameOnly
-            }
-        }
     }
 
     public let fileID: FileID

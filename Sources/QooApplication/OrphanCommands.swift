@@ -1,77 +1,13 @@
 //
-//  孤立ファイルを整理するコマンド [OR-02][OR-03][OR-04][UD-03]。
+//  孤立ファイルを整理するコマンド [OR-04][UD-03]。
 //
 //  `LabelEditCommands` の「行が消えるもの」と同じ形——**写しを控えて、同じ
 //  行 ID で作り直す**。`managedFile.id` も AUTOINCREMENT なので削除された ID は
 //  再利用されず、元の ID をそのまま取り戻せる［実測］。
 //
-//  ## どちらも「1 回の `restore` で全部戻す」
-//  再紐づけは孤立側と候補側の 2 行を同時に動かすので、片方ずつ戻すと
-//  「孤立は戻ったが候補が消えたまま」というどちらでもない状態が残る。
-//  リポジトリが 1 トランザクションで書くので、写しをまとめて渡す。
-//
 import Foundation
 import QooInfrastructure
 import QooKit
-
-/// 同一性の確認の結果をまとめて適用する [ID-05][ID-11]。
-///
-/// **1 回の「適用」が 1 つの Undo 単位** [UD-04]。承認と却下を同じコマンドに
-/// 入れてあるのは、利用者から見て 1 度の操作だから——分けると、⌘Z を 2 回
-/// 押さないと元に戻らない画面になる。
-///
-/// 却下も戻せるようにしてあるのが要点。**一度「別物」と答えると以後聞かれ
-/// なくなる** [ID-11] ので、間違えたときに取り消せないと行き止まりになる。
-@MainActor
-public final class ApplyIdentityDecisionsCommand: Command {
-    private let accepted: [IdentityMatch]
-    private let rejected: [IdentityMatch]
-    private let services: LibraryServices
-    /// `execute()` が控える。`undo()` はこれを戻す。
-    private var before: [ManagedFileSnapshot] = []
-
-    public init(accepted: [IdentityMatch], rejected: [IdentityMatch],
-                services: LibraryServices) {
-        self.accepted = accepted
-        self.rejected = rejected
-        self.services = services
-    }
-
-    public var displayName: String {
-        accepted.count == 1 && rejected.isEmpty
-            ? "1 件のファイルの記録の引き継ぎ"
-            : "\(accepted.count + rejected.count) 件のファイルの同一性の判断"
-    }
-    /// **ファイル名は書かない**——ここで持っているのは行 ID だけなので、
-    /// そもそも利用者由来の語が入らない [LG2-06]。
-    public var logDescription: String {
-        "applyIdentityDecisions: 承認 \(accepted.count) / 却下 \(rejected.count)"
-    }
-    public let isUndoable = true
-
-    public func execute() async throws -> CommandResult {
-        guard !accepted.isEmpty || !rejected.isEmpty else { return .success }
-        // **写しは実行の直前に取る**（`DeleteLabelsCommand` と同じ理由）。
-        // 承認は孤立側と候補側の**両方**を動かすので、両方を控える。
-        let touched = accepted.flatMap { [$0.orphanID, $0.candidateID] }
-        before = try await services.fileSnapshots(ids: touched)
-        try await services.acceptIdentityMatches(accepted)
-        try await services.rejectIdentityMatches(rejected)
-        return .success
-    }
-
-    public func undo() async throws -> UndoResult {
-        do {
-            if !before.isEmpty { try await services.restoreFiles(before) }
-            // **却下の記録も消す。** 残したままだと、⌘Z のあと同じ組が
-            // 二度と確認に出てこない（「別物」の判断だけが生き残る）。
-            try await services.clearIdentityRejections(rejected)
-            return .complete
-        } catch {
-            return .impossible(reason: error.localizedDescription)
-        }
-    }
-}
 
 /// 不要になった孤立レコードを消す [OR-04]。
 ///

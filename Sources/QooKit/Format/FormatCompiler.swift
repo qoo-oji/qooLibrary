@@ -21,20 +21,17 @@ public struct FormatCompilationContext: Sendable {
     /// 知らない [A-01]。番号（`labelGroup.groupIndex`）はライブラリ内で一意なので
     /// 同じ役割を果たす。[設計判断]
     public var semanticBindings: [SemanticKeyword: Int]
-    public var normalization: NormalizationOptions
 
     public init(delimiters: DelimiterSet = .default,
                 maxLabelGroups: Int = AppLimits.Format.maxLabelGroups,
                 allLibraryTypeNames: [String] = [],
                 allLibraryDisplayNames: [String] = [],
-                semanticBindings: [SemanticKeyword: Int] = [:],
-                normalization: NormalizationOptions = .default) {
+                semanticBindings: [SemanticKeyword: Int] = [:]) {
         self.delimiters = delimiters
         self.maxLabelGroups = maxLabelGroups
         self.allLibraryTypeNames = allLibraryTypeNames
         self.allLibraryDisplayNames = allLibraryDisplayNames
         self.semanticBindings = semanticBindings
-        self.normalization = normalization
     }
 }
 
@@ -59,7 +56,7 @@ public enum FormatCompiler {
         nodes = assignIgnoreNumbers(nodes)
         nodes = resolveFieldKinds(nodes, context: context)
         try validate(nodes, context: context)
-        nodes = canonicalizeLiterals(nodes, options: context.normalization)
+        nodes = canonicalizeLiterals(nodes)
 
         let order = nodes.flatMap { $0.fieldsInOrder() }
         return CompiledFormat(id: id, source: normalizedSource, nodes: nodes,
@@ -152,18 +149,18 @@ public enum FormatCompiler {
     ///
     /// 照合のたびに変換すると、1 ファイル名 × 50 フォーマットの走査で無駄が積み上がる。
     /// 表示用の原文は `CompiledFormat.source` が保持しているので情報は失われない。
-    /// **`ParseInput` も同じ `NormalizationOptions` で作らなければならない**——
-    /// 片方だけ小文字化すると照合が静かに壊れる。
-    static func canonicalizeLiterals(_ nodes: [FormatNode],
-                                     options: NormalizationOptions) -> [FormatNode] {
+    /// **`ParseInput` も同じ正準化で作られる**——片方だけ小文字化すると
+    /// 照合が静かに壊れる（正準化は `CharacterCanonicalization.canonical` の
+    /// 1 箇所だけが持つ）。
+    static func canonicalizeLiterals(_ nodes: [FormatNode]) -> [FormatNode] {
         nodes.map { node in
             switch node {
             case .literal(let s):
                 return .literal(String(s.map {
-                    CharacterCanonicalization.canonical($0, caseSensitive: options.caseSensitive)
+                    CharacterCanonicalization.canonical($0)
                 }))
             case .group(let pair, let children):
-                return .group(pair, children: canonicalizeLiterals(children, options: options))
+                return .group(pair, children: canonicalizeLiterals(children))
             default:
                 return node
             }

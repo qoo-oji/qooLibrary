@@ -41,10 +41,9 @@ public enum DuplicateGroupKey {
     /// 正規化は N-01〜N-03 + WS-06 [DU-03]。**`TextNormalizer.searchKey` では
     /// なく `normalize` を使う**——searchKey はひらがな→カタカナの畳み込みも
     /// 行うので、`DU-03` が定める範囲より広い。
-    public static func titleKey(title: String?,
-                                options: NormalizationOptions = .default) -> String? {
+    public static func titleKey(title: String?) -> String? {
         guard let title else { return nil }
-        let normalized = TextNormalizer.normalize(title, options: options)
+        let normalized = TextNormalizer.normalize(title)
         return normalized.isEmpty ? nil : normalized
     }
 
@@ -71,10 +70,9 @@ public enum DuplicateGroupKey {
     ///
     /// `nil` はグループ化の対象外。
     public static func make(title: String?, volume: VolumeValue,
-                            mode: DuplicateGrouping,
-                            options: NormalizationOptions = .default) -> String? {
+                            mode: DuplicateGrouping) -> String? {
         guard mode.isEnabled else { return nil }
-        guard let key = titleKey(title: title, options: options) else { return nil }
+        guard let key = titleKey(title: title) else { return nil }
         switch mode {
         case .off:             return nil
         case .byTitle:         return key

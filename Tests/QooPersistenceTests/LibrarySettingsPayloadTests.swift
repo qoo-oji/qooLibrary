@@ -31,8 +31,7 @@ struct LibrarySettingsPayloadTests {
             labelGroupOrder: [3, 1, 2],
             readsEmbeddedMetadata: false,
             comicInfoVolumeSource: .number,
-            opensBookFolderWithApp: true,
-            identityMatchPolicy: .alwaysConfirm)      // 既定は .sameName [ID-13]
+            opensBookFolderWithApp: true)
     }
 
     /// 足したフィールドが**読み戻される**ことを、フィールドを列挙せずに固定する。
@@ -61,6 +60,13 @@ struct LibrarySettingsPayloadTests {
         #expect(payload.targetExtensions == ["cbz"])
         #expect(payload.readsEmbeddedMetadata)          // 既定 true
         #expect(!payload.opensBookFolderWithApp)        // 既定 false [IF-18]
-        #expect(payload.identityMatchPolicy == .sameName)  // 既定 [ID-13]
+    }
+
+    /// 撤回した鍵 [§19.8] が残った JSON でも読める（読み飛ばすだけ）。
+    @Test("撤回済みの identityMatchPolicy / caseSensitive が残っていても読める")
+    func withdrawnKeysAreIgnored() throws {
+        let old = Data(#"{"targetExtensions":["cbz"],"identityMatchPolicy":"alwaysConfirm"}"#.utf8)
+        let payload = try JSONDecoder().decode(LibrarySettingsPayload.self, from: old)
+        #expect(payload.targetExtensions == ["cbz"])
     }
 }

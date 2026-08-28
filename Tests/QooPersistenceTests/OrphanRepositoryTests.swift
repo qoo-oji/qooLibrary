@@ -29,20 +29,10 @@ struct OrphanRepositoryTests {
             return Setup(f: f, orphan: orphan, group: group)
         }
 
-        /// 同じ名前で生きているレコード（走査が新規として作ったもの）を足し、
-        /// **確認待ちとして記録する** [ID3-08]。
-        ///
-        /// 走査は差し替えを疑った時点で組を記録する。記録の無い組は
-        /// 「たまたま同じ名前の別のファイル」なので候補にならない。
+        /// 生きているレコードを 1 件足す（走査が新規として作ったものに相当）。
         @discardableResult
-        func addCandidate(inode: UInt64, path: String, size: Int64,
-                          pending: Bool = true) async throws -> FileID {
-            let id = try await f.files.upsert(f.snapshot(inode: inode, path: path, size: size))
-            if pending {
-                try await f.files.recordIdentityPending(
-                    [IdentityMatch(orphanID: orphan, candidateID: id)])
-            }
-            return id
+        func addLiveFile(inode: UInt64, path: String, size: Int64) async throws -> FileID {
+            try await f.files.upsert(f.snapshot(inode: inode, path: path, size: size))
         }
     }
 
@@ -51,71 +41,11 @@ struct OrphanRepositoryTests {
     @Test("孤立だけを返し、生きている行は返さない [OR-01]")
     func listsOnlyOrphanedRows() async throws {
         let s = try await Setup.make()
-        try await s.addCandidate(inode: 2, path: "新/作品名A 第01巻.cbz", size: 1000)
+        try await s.addLiveFile(inode: 2, path: "新/作品名A 第01巻.cbz", size: 1000)
 
         let rows = try await s.f.files.orphanedFiles(libraryID: s.f.libraryID)
         #expect(rows.map(\.row.id) == [s.orphan])
         #expect(rows[0].row.state == .orphaned)
-    }
-
-    @Test("同じ名前で生きている行を候補として出す [OR-02][ID-05]")
-    func surfacesCandidatesByName() async throws {
-        let s = try await Setup.make()
-        let candidate = try await s.addCandidate(inode: 2, path: "新/作品名A 第01巻.cbz", size: 1000)
-
-        let rows = try await s.f.files.orphanedFiles(libraryID: s.f.libraryID)
-        #expect(rows[0].candidates.map(\.fileID) == [candidate])
-        #expect(rows[0].candidates[0].sizeMatches)
-        #expect(rows[0].candidates[0].relativePath == "新/作品名A 第01巻.cbz")
-    }
-
-    /// **この一連の要** [ID3-08]。走査が疑っていない組を候補にすると、
-    /// 同名の無関係なファイルの行が「差し替え」と誤認され、既定の設定
-    /// [ID-13] がそれを黙って承認して**行ごと消してしまう**。
-    @Test("走査が疑っていない同名の行は候補にしない [ID3-08]")
-    func doesNotSurfaceLiveRowsThatWereNeverSuspected() async throws {
-        let s = try await Setup.make()
-        try await s.addCandidate(inode: 2, path: "新/作品名A 第01巻.cbz",
-                                 size: 1000, pending: false)
-
-        let rows = try await s.f.files.orphanedFiles(libraryID: s.f.libraryID)
-        #expect(rows[0].candidates.isEmpty)
-        #expect(try await s.f.files
-            .identityMatchesAwaitingDecision(libraryID: s.f.libraryID).isEmpty)
-    }
-
-    @Test("名前が違えば候補にしない")
-    func doesNotSurfaceUnrelatedFiles() async throws {
-        let s = try await Setup.make()
-        try await s.addCandidate(inode: 2, path: "新/作品名B 第01巻.cbz", size: 1000)
-
-        let rows = try await s.f.files.orphanedFiles(libraryID: s.f.libraryID)
-        #expect(rows[0].candidates.isEmpty)
-    }
-
-    @Test("大きさも一致する候補を先に並べる")
-    func ordersCandidatesBySizeMatchFirst() async throws {
-        let s = try await Setup.make(orphanSize: 1000)
-        // わざと「大きさの違うほう」を先に入れて、並べ替えが効くことを見る。
-        try await s.addCandidate(inode: 2, path: "A/作品名A 第01巻.cbz", size: 55)
-        let same = try await s.addCandidate(inode: 3, path: "B/作品名A 第01巻.cbz", size: 1000)
-
-        let rows = try await s.f.files.orphanedFiles(libraryID: s.f.libraryID)
-        #expect(rows[0].candidates.count == 2)
-        #expect(rows[0].candidates[0].fileID == same)
-        #expect(rows[0].candidates[0].sizeMatches)
-        #expect(!rows[0].candidates[1].sizeMatches)
-    }
-
-    @Test("孤立どうしは候補にしない（生きている行だけ）")
-    func doesNotOfferAnotherOrphanAsCandidate() async throws {
-        let s = try await Setup.make()
-        let other = try await s.addCandidate(inode: 2, path: "他/作品名A 第01巻.cbz", size: 1000)
-        try await s.f.files.setState(.orphaned, ids: [other])
-
-        let rows = try await s.f.files.orphanedFiles(libraryID: s.f.libraryID)
-        #expect(rows.count == 2)
-        #expect(rows.allSatisfy { $0.candidates.isEmpty })
     }
 
     @Test("ラベル件数は manuallyRemoved を数えない [RC-04]")
@@ -138,166 +68,6 @@ struct OrphanRepositoryTests {
         try await other.files.setState(.orphaned, ids: [id])
 
         #expect(try await s.f.files.orphanedFiles(libraryID: s.f.libraryID).count == 1)
-    }
-
-    // MARK: - 再紐づけ [OR-02][OR-03][ID-04]
-
-    @Test("候補側のレコードを消して、孤立側を結び直す［ユーザー判断］")
-    func reattachRemovesTheDuplicateAndKeepsTheOrphanRow() async throws {
-        let s = try await Setup.make()
-        let candidate = try await s.addCandidate(inode: 2, path: "新/作品名A 第01巻.cbz", size: 1000)
-        let label = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "サークル値A")
-        try await s.f.labels.assign(fileID: s.orphan, labelID: label, origin: .manual)
-        try await s.f.files.setRating(4, ids: [s.orphan])
-
-        let observed = s.f.snapshot(inode: 2, path: "新/作品名A 第01巻.cbz", size: 1000)
-        let removed = try await s.f.files.reattachOrphan(s.orphan, to: observed)
-
-        #expect(removed == candidate)
-        #expect(try await s.f.files.row(id: candidate) == nil)
-        let row = try #require(try await s.f.files.row(id: s.orphan))
-        // 孤立側の行が生き残り、ラベルと評価がそのまま残る [ID-04]。
-        #expect(row.state == .active)
-        #expect(row.relativePath == "新/作品名A 第01巻.cbz")
-        #expect(row.rating == 4)
-        #expect(try await s.f.labels.labelIDs(fileID: s.orphan).map(\.labelID) == [label])
-        // 同一性が観測したものへ移っている。
-        #expect(try await s.f.files.find(identity: observed.identity) == s.orphan)
-    }
-
-    @Test("候補が DB に無くても結び直せる（手動選択）[OR-03]")
-    func reattachWorksWhenNoDuplicateExists() async throws {
-        let s = try await Setup.make()
-        let observed = s.f.snapshot(inode: 7, path: "どこか/別名.cbz", size: 2000)
-
-        let removed = try await s.f.files.reattachOrphan(s.orphan, to: observed)
-
-        #expect(removed == nil)
-        let row = try #require(try await s.f.files.row(id: s.orphan))
-        #expect(row.state == .active)
-        #expect(row.filename == "別名.cbz")
-        #expect(row.fileSize == 2000)
-    }
-
-    @Test("再紐づけのあと、タイトルでの検索に出る [SR-03]")
-    func reattachRebuildsTheSearchKey() async throws {
-        let s = try await Setup.make()
-        // 手動タイトルを持つ孤立レコード。`updateInPlace` は searchKey に
-        // stem しか書かないので、作り直さないとこの語で引けなくなる。
-        try await s.f.files.setFields(
-            FileFieldEdit(title: "ZZZTitle", titleOrigin: .manual, seriesName: nil,
-                          volume: .none, authorName: nil),
-            id: s.orphan)
-        let observed = s.f.snapshot(inode: 2, path: "新/作品名A 第01巻.cbz", size: 1000)
-        try await s.f.files.reattachOrphan(s.orphan, to: observed)
-
-        var q = FileQuery(libraryID: s.f.libraryID, mode: .libraryFlat)
-        q.searchText = "zzztitle"
-        #expect(try await s.f.files.query(q).rows.map(\.id) == [s.orphan])
-    }
-
-    // MARK: - 同一性の確認 [ID-05][ID-11]
-
-    @Test("確認待ちは候補を持つものだけ [ID-05]")
-    func awaitingDecisionOnlyIncludesRowsWithCandidates() async throws {
-        let s = try await Setup.make()
-        // 候補なしの孤立を 1 件足す（名前が違うので候補が付かない）。
-        let lonely = try await s.addCandidate(inode: 8, path: "旧/別作品.cbz", size: 10)
-        try await s.f.files.setState(.orphaned, ids: [lonely])
-        try await s.addCandidate(inode: 2, path: "新/作品名A 第01巻.cbz", size: 1000)
-
-        let pending = try await s.f.files.identityMatchesAwaitingDecision(libraryID: s.f.libraryID)
-        #expect(pending.map(\.row.id) == [s.orphan])
-    }
-
-    /// **同じ場所の差し替えは、別の場所の同名ファイルより確からしい** [ID-09]。
-    @Test("同じパスの候補には印が付き、先に並ぶ [ID-09]")
-    func samePathCandidatesAreMarkedAndSortedFirst() async throws {
-        let s = try await Setup.make()
-        try await s.addCandidate(inode: 2, path: "別/作品名A 第01巻.cbz", size: 55)
-        // 孤立と同じ場所に、大きさの違うファイルが置き直された（差し替え）。
-        let replaced = try await s.addCandidate(inode: 3, path: "旧/作品名A 第01巻.cbz", size: 77)
-
-        let pending = try await s.f.files.identityMatchesAwaitingDecision(libraryID: s.f.libraryID)
-        let candidates = try #require(pending.first?.candidates)
-        #expect(candidates.first?.fileID == replaced)
-        #expect(candidates.first?.samePath == true)
-        #expect(candidates.last?.samePath == false)
-    }
-
-    @Test("承認すると孤立側が生き残り、候補側は消える [ID-05]")
-    func acceptingKeepsTheOrphanRow() async throws {
-        let s = try await Setup.make()
-        let candidate = try await s.addCandidate(inode: 2, path: "新/作品名A 第01巻.cbz", size: 1000)
-        let label = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "サークル値A")
-        try await s.f.labels.assign(fileID: s.orphan, labelID: label, origin: .manual)
-
-        let removed = try await s.f.files.acceptIdentityMatches(
-            [IdentityMatch(orphanID: s.orphan, candidateID: candidate)])
-
-        #expect(removed == [candidate])
-        let row = try #require(try await s.f.files.row(id: s.orphan))
-        #expect(row.state == .active)
-        #expect(row.relativePath == "新/作品名A 第01巻.cbz")
-        #expect(try await s.f.labels.labelIDs(fileID: s.orphan).map(\.labelID) == [label])
-        #expect(try await s.f.files.row(id: candidate) == nil)
-    }
-
-    /// **一度答えた組を毎回聞き直しては使い物にならない** [ID-11]。
-    @Test("却下した組は以後の確認に出てこない [ID-11]")
-    func rejectedMatchesAreNotAskedAgain() async throws {
-        let s = try await Setup.make()
-        let candidate = try await s.addCandidate(inode: 2, path: "新/作品名A 第01巻.cbz", size: 1000)
-        let match = IdentityMatch(orphanID: s.orphan, candidateID: candidate)
-
-        try await s.f.files.rejectIdentityMatches([match])
-
-        #expect(try await s.f.files.identityMatchesAwaitingDecision(libraryID: s.f.libraryID)
-            .isEmpty)
-        // **見つからないファイルの一覧からは消えない**——実体はまだ無いので、
-        // 利用者が削除するまで残る [OR-01][OR-04]。
-        #expect(try await s.f.files.orphanedFiles(libraryID: s.f.libraryID).count == 1)
-    }
-
-    @Test("却下を取り消すと、また確認に出てくる [ID-11]")
-    func clearingARejectionMakesItAskAgain() async throws {
-        let s = try await Setup.make()
-        let candidate = try await s.addCandidate(inode: 2, path: "新/作品名A 第01巻.cbz", size: 1000)
-        let match = IdentityMatch(orphanID: s.orphan, candidateID: candidate)
-        try await s.f.files.rejectIdentityMatches([match])
-
-        try await s.f.files.clearIdentityRejections([match])
-
-        #expect(try await s.f.files.identityMatchesAwaitingDecision(libraryID: s.f.libraryID)
-            .count == 1)
-    }
-
-    /// 却下の記録は組の片方が消えれば意味を持たない（`ON DELETE CASCADE`）。
-    @Test("孤立レコードを削除すると却下の記録も消える")
-    func deletingTheOrphanClearsTheRejection() async throws {
-        let s = try await Setup.make()
-        let candidate = try await s.addCandidate(inode: 2, path: "新/作品名A 第01巻.cbz", size: 1000)
-        try await s.f.files.rejectIdentityMatches(
-            [IdentityMatch(orphanID: s.orphan, candidateID: candidate)])
-
-        try await s.f.files.deleteFiles([s.orphan])
-
-        let count = try await s.f.database.writer.read { db in
-            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM identityRejection") ?? -1
-        }
-        #expect(count == 0)
-    }
-
-    @Test("却下は空でも二重でも落ちない")
-    func rejectToleratesEmptyAndDuplicateInput() async throws {
-        let s = try await Setup.make()
-        let candidate = try await s.addCandidate(inode: 2, path: "新/作品名A 第01巻.cbz", size: 1000)
-        let match = IdentityMatch(orphanID: s.orphan, candidateID: candidate)
-        try await s.f.files.rejectIdentityMatches([])
-        try await s.f.files.rejectIdentityMatches([match])
-        try await s.f.files.rejectIdentityMatches([match])
-        #expect(try await s.f.files.identityMatchesAwaitingDecision(libraryID: s.f.libraryID)
-            .isEmpty)
     }
 
     // MARK: - 削除 [OR-04]
@@ -369,7 +139,7 @@ struct OrphanRepositoryTests {
     func restoreRecountsLabels() async throws {
         let s = try await Setup.make()
         let label = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "サークル値A")
-        let live = try await s.addCandidate(inode: 5, path: "生きている.cbz", size: 10)
+        let live = try await s.addLiveFile(inode: 5, path: "生きている.cbz", size: 10)
         try await s.f.labels.assign(fileID: live, labelID: label, origin: .auto)
         try await s.f.files.setState(.active, ids: [s.orphan])
         try await s.f.labels.assign(fileID: s.orphan, labelID: label, origin: .auto)
@@ -396,7 +166,7 @@ struct OrphanRepositoryTests {
     func changingStateUpdatesLabelCounts() async throws {
         let s = try await Setup.make()
         let label = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "サークル値A")
-        let live = try await s.addCandidate(inode: 5, path: "生きている.cbz", size: 10)
+        let live = try await s.addLiveFile(inode: 5, path: "生きている.cbz", size: 10)
         try await s.f.labels.assign(fileID: live, labelID: label, origin: .auto)
 
         func count() async throws -> Int? {
@@ -410,25 +180,6 @@ struct OrphanRepositoryTests {
 
         try await s.f.files.setState(.active, ids: [live])
         #expect(try await count() == 1, "戻したら数に入る")
-    }
-
-    @Test("再紐づけの Undo は、消した候補側も一緒に戻る")
-    func restoringBothSidesUndoesAReattach() async throws {
-        let s = try await Setup.make()
-        let candidate = try await s.addCandidate(inode: 2, path: "新/作品名A 第01巻.cbz", size: 1000)
-        let before = try await s.f.files.fileSnapshots(ids: [s.orphan, candidate])
-
-        let observed = s.f.snapshot(inode: 2, path: "新/作品名A 第01巻.cbz", size: 1000)
-        try await s.f.files.reattachOrphan(s.orphan, to: observed)
-        try await s.f.files.restoreFiles(before)
-
-        let orphan = try #require(try await s.f.files.row(id: s.orphan))
-        #expect(orphan.state == .orphaned)
-        #expect(orphan.relativePath == "旧/作品名A 第01巻.cbz")
-        let revived = try #require(try await s.f.files.row(id: candidate))
-        #expect(revived.relativePath == "新/作品名A 第01巻.cbz")
-        // 同一性の UNIQUE 制約に阻まれず、候補側が inode を取り戻している。
-        #expect(try await s.f.files.find(identity: observed.identity) == candidate)
     }
 
     @Test("写しは存在しない ID を飛ばす")
@@ -465,7 +216,7 @@ extension Fixture {
                     volumeNumber = ?, volumeKind = ?, volumeRaw = ?, authorName = ?,
                     rating = ?, coverImageRef = ?, coverImageSource = ?,
                     isArchived = 1, archivedFromPath = ?, archivedAt = ?,
-                    isBookFolder = 1, isDuplicateRepresentativePinned = 1,
+                    isBookFolder = 1,
                     pageCount = ?, subfolderCount = ?,
                     firstImageWidth = ?, firstImageHeight = ?,
                     trashedAt = ?, lastParsedFormatID = ?, libraryTypeMismatch = 1,

@@ -57,7 +57,6 @@ struct BackupTests {
                    SET rating = 3, title = '題', titleOrigin = 'manual',
                        coverImageSource = 'userSpecified', coverImageRef = 'cover-ref',
                        isArchived = 1, archivedFromPath = 'old/path.cbz', archivedAt = 100,
-                       isDuplicateRepresentativePinned = 1,
                        state = 'trashed', trashedAt = 200
                  WHERE id = ?
                 """, arguments: [full.rawValue])

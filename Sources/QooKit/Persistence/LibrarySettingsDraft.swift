@@ -106,7 +106,6 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
     /// の判定に使われる（実蔵書との突き合わせで、ここの食い違いが 146 件の
     /// 未解決を生んだ実例がある）。
     public var libraryTypeName: String
-    public var caseSensitive: Bool             // [N-04]
     public var thumbnailsAlwaysHidden: Bool    // [DS-04]
     /// 重複ファイルをまとめて表示するか [DU-01][DU-02]。**既定は `.off`。**
     ///
@@ -115,10 +114,8 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
     /// 選ぶのは「問い合わせのときに巻数まで見るかどうか」だけ。
     ///
     /// **ただし v6 より前からある行は `titleKey` が NULL** で、走査が埋め直す
-    /// まで組に加わらない（移行時に埋めないのは、正規化がライブラリごとの
-    /// `caseSensitive` に依存するのに、移行はその設定を読む前に走るため）。
-    /// **既存のライブラリで初めて有効にしたときは、一度再スキャンするまで
-    /// 何も畳まれない。**
+    /// まで組に加わらない。**既存のライブラリで初めて有効にしたときは、
+    /// 一度再スキャンするまで何も畳まれない。**
     public var duplicateGrouping: DuplicateGrouping  // [DU-01][DU-02]
 
     // --- 対象 ---
@@ -150,8 +147,6 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
     /// ブックフォルダの「開く」を関連付けアプリに任せるか [IF-18][AS-06]。
     /// 偽なら既定どおりフォルダを開く（配下の画像一覧を表示する）。
     public var opensBookFolderWithApp: Bool
-    /// どこまでを黙って同じファイルとみなすか [ID-13]。
-    public var identityMatchPolicy: IdentityMatchPolicy
 
     // --- 照合の文脈（編集不可） ---
     /// **この**ライブラリを除いた他ライブラリの型名・表示名。型付き照合 [TY-01]
@@ -162,7 +157,6 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
 
     public init(displayName: String = "",
                 libraryTypeName: String = "",
-                caseSensitive: Bool = false,
                 thumbnailsAlwaysHidden: Bool = false,
                 duplicateGrouping: DuplicateGrouping = .off,
                 targetExtensions: [String] = [],
@@ -178,12 +172,10 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
                 readsEmbeddedMetadata: Bool = true,
                 comicInfoVolumeSource: ComicInfoVolumeSource = .ask,
                 opensBookFolderWithApp: Bool = false,
-                identityMatchPolicy: IdentityMatchPolicy = .default,
                 otherLibraryTypeNames: [String] = [],
                 otherLibraryDisplayNames: [String] = []) {
         self.displayName = displayName
         self.libraryTypeName = libraryTypeName
-        self.caseSensitive = caseSensitive
         self.thumbnailsAlwaysHidden = thumbnailsAlwaysHidden
         self.duplicateGrouping = duplicateGrouping
         self.targetExtensions = targetExtensions
@@ -199,7 +191,6 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
         self.readsEmbeddedMetadata = readsEmbeddedMetadata
         self.comicInfoVolumeSource = comicInfoVolumeSource
         self.opensBookFolderWithApp = opensBookFolderWithApp
-        self.identityMatchPolicy = identityMatchPolicy
         self.otherLibraryTypeNames = otherLibraryTypeNames
         self.otherLibraryDisplayNames = otherLibraryDisplayNames
     }
@@ -214,10 +205,6 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
         Array(Set(otherLibraryDisplayNames + [displayName])).filter { !$0.isEmpty }.sorted()
     }
 
-    public var normalization: NormalizationOptions {
-        NormalizationOptions(caseSensitive: caseSensitive)
-    }
-
     /// フォーマットのコンパイルに渡す文脈。**検証もプレビューもこれを使う**
     /// ——別々に組み立てると、片方だけ設定変更に追随しない形になる。
     public var compilationContext: FormatCompilationContext {
@@ -225,8 +212,7 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
                                  maxLabelGroups: AppLimits.Format.maxLabelGroups,
                                  allLibraryTypeNames: allLibraryTypeNames,
                                  allLibraryDisplayNames: allLibraryDisplayNames,
-                                 semanticBindings: semanticBindings,
-                                 normalization: normalization)
+                                 semanticBindings: semanticBindings)
     }
 
     public var definedLabelGroupIndexes: Set<Int> { Set(labelGroups.map(\.index)) }
@@ -583,7 +569,6 @@ extension LibrarySettingsDraft {
             folderLevelAssignments: levels,
             volumeFormats: VolumePatternCompiler.compileAll(patterns),
             semanticBindings: semanticBindings,
-            normalization: normalization,
             seriesTitleCompositionFormat: seriesTitleCompositionFormat)
     }
 }

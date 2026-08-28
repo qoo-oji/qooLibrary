@@ -153,8 +153,7 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
     }
 
     static func ensureLabel(_ db: Database, groupID: LabelGroupID, name: String) throws -> LabelID {
-        let options = try normalizationOptions(db, groupID: groupID)
-        let key = TextNormalizer.normalize(name, options: options)
+        let key = TextNormalizer.normalize(name)
         let stmt = try db.cachedStatement(sql:
             "SELECT id FROM label WHERE labelGroupId = ? AND normalizedName = ?")
         if let existing = try Int64.fetchOne(stmt, arguments: [groupID.rawValue, key]) {
@@ -356,9 +355,7 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
             guard let record = try LabelRecord.fetchOne(db, key: id.rawValue) else {
                 throw LabelEditError.labelNotFound(id)
             }
-            let options = try Self.normalizationOptions(
-                db, groupID: LabelGroupID(rawValue: record.labelGroupId))
-            let normalized = TextNormalizer.normalize(name, options: options)
+            let normalized = TextNormalizer.normalize(name)
             // **自分自身は衝突ではない。** 大小文字や全角半角だけを直す改名
             // （`abc` → `ABC`）は正規化名が変わらないので、`id != ?` で外さないと
             // 表記を整える操作が一切できなくなる。
@@ -555,14 +552,4 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
         }
     }
 
-    static func normalizationOptions(_ db: Database, groupID: LabelGroupID) throws
-        -> NormalizationOptions
-    {
-        let caseSensitive = try Bool.fetchOne(db, sql: """
-            SELECT library.caseSensitive FROM library
-            JOIN labelGroup ON labelGroup.libraryId = library.id
-            WHERE labelGroup.id = ?
-            """, arguments: [groupID.rawValue]) ?? false
-        return NormalizationOptions(caseSensitive: caseSensitive)
-    }
 }

@@ -13,11 +13,13 @@ import SwiftUI
 @MainActor
 enum NotificationRouteAction {
 
-    /// 走査結果の通知から同一性の確認を開く [ID-05]。
+    /// 未解決ファイルの整理ウインドウを開く [UR2-02][AL-30]。
     /// **ドットを含めない**——`check-localization-keys` が文字列カタログの鍵と
     /// 誤検出するため（1-15 の実装時に判明）。
-    static let reviewIdentity = "review-identity-matches"
-    /// 未解決ファイルの整理ウインドウを開く [UR2-02][AL-30]。
+    ///
+    /// かつてここにあった `review-identity-matches` [ID-05] は同一性確認の
+    /// 撤去 [§19.8] とともに消えた——古い履歴の行に残っていても、下の
+    /// 「知らない識別子では何もしない」に落ちるだけで害は無い。
     static let reviewUnresolved = "review-unresolved-files"
     /// 巻数の確認ダイアログを開く [EM-30〜EM-35]。
     static let reviewVolumes = "review-volume-decisions"
@@ -35,8 +37,6 @@ enum NotificationRouteAction {
     static func perform(actionID: String, libraryID: LibraryID, locale: Locale,
                         openWindow: OpenWindowAction?) -> Bool {
         switch actionID {
-        case reviewIdentity:
-            IdentityDecisionAction.present(libraryID: libraryID, locale: locale)
         case reviewVolumes:
             VolumeDecisionAction.present(libraryID: libraryID, locale: locale)
         case reviewUnresolved:
@@ -65,7 +65,7 @@ enum NotificationRouteAction {
     static func canPerform(_ link: NotificationLink, target: NotificationTarget?,
                            in libraries: [LibrarySummary]) -> Bool {
         guard library(for: target, in: libraries) != nil else { return false }
-        return [reviewIdentity, reviewUnresolved, reviewVolumes, reviewOrphans]
+        return [reviewUnresolved, reviewVolumes, reviewOrphans]
             .contains(link.actionID)
     }
 }

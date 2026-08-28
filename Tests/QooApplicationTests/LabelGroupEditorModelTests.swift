@@ -64,36 +64,19 @@ struct LabelGroupEditorRowTests {
         #expect(rows.count == 2)
     }
 
-    @Test("紐づけ 0 件は印が付く [LE-04][RC-07]")
-    func zeroCountIsFlagged() {
-        let rows = LabelGroupEditorModel.rows(
-            from: [label("使われていない", count: 0), label("使われている", count: 5)],
-            sortedBy: .name, matching: "")
-        #expect(rows.first { $0.name == "使われていない" }?.isOrphaned == true)
-        #expect(rows.first { $0.name == "使われている" }?.isOrphaned == false)
-    }
-
     /// **保管庫にあるラベルも一覧に出す** [LE-06][LA-06]。この画面と保管庫の
     /// 整理ウインドウだけが、それを見せてよい場所。
-    /// **バッジは保管庫のファイルも数える** [LE-05]。フィルタからは外れる
-    /// [FA-05] が、紐づけは維持されているので、保管庫へ入れただけでラベルが
-    /// 「0 件」＝赤字＝消してよさそう [LE-04] に見えてはならない。
-    @Test("全ファイルが保管庫にあるラベルは、0 件にも赤字にもならない [LE-05]")
-    func vaultOnlyLabelIsNotShownAsOrphaned() {
+    /// **バッジは保管庫のファイルも数える** [LE-05]——フィルタからは外れる
+    /// [FA-05] が、紐づけは維持されているので、保管庫へ入れただけで
+    /// 「0 件」に見えてはならない。かつての 0 件の赤字 [LE-04][RC-07] は
+    /// 撤回した [§19.8]。
+    @Test("全ファイルが保管庫にあっても件数バッジは 0 にならない [LE-05]")
+    func vaultOnlyLabelKeepsItsBadgeCount() {
         let rows = LabelGroupEditorModel.rows(
             from: [label("全部が保管庫", count: 0, countWithVault: 3)],
             sortedBy: .name, matching: "")
         let row = try! #require(rows.first)
         #expect(row.fileCount == 3, "バッジは保管庫のぶんも数える [LE-03][LE-05]")
-        #expect(row.isOrphaned == false, "保管庫にあるだけで「消してよさそう」に見せない")
-    }
-
-    @Test("本当に 0 件のラベルだけが赤字になる [LE-04][RC-07]")
-    func onlyTrulyUnusedLabelsAreFlagged() {
-        let rows = LabelGroupEditorModel.rows(
-            from: [label("誰も使っていない", count: 0, countWithVault: 0)],
-            sortedBy: .name, matching: "")
-        #expect(rows.first?.isOrphaned == true)
     }
 
     /// 件数順の並べ替えも**バッジと同じ件数**で決める——一覧に出ている数字と

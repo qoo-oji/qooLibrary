@@ -56,11 +56,9 @@ public enum FolderLabelResolver {
 
             case .format(let format):
                 let input = ProtectedTokenMasker.mask(
-                    name, tokens: settings.protectedTokens,
-                    caseSensitive: settings.normalization.caseSensitive)
+                    name, tokens: settings.protectedTokens)
                 let outcome = FormatMatcher.match(format, input: input,
-                                                  volumePatterns: settings.volumeFormats,
-                                                  options: settings.normalization)
+                                                  volumePatterns: settings.volumeFormats)
                 // [AL-23] 想定した階層にフォルダがない配置ではエラーにせず素通しする。
                 guard let result = outcome.result else { continue }
                 for (ref, value) in result.fields {

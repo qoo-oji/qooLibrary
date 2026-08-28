@@ -15,7 +15,6 @@ public struct ScanSummary: Sendable, Equatable {
     public var updated = 0
     public var reidentified = 0        // [ID-04]
     public var orphaned = 0            // [ID-06]
-    public var candidatesForReview = 0 // [ID-05]
     public var unresolvedNames = 0     // [AL-31]
     /// 巻数の判断待ち [EM-26]。`ComicInfo.xml` の `Number` と `Volume` が
     /// 食い違ったファイルの件数。**スキャンは止めず、完了後にまとめて聞く** [EM-31]。
@@ -259,7 +258,6 @@ public actor ScanEngine {
             summary.added += outcome.added
             summary.updated += outcome.updated
             summary.reidentified += outcome.reidentified
-            summary.candidatesForReview += outcome.candidatesForReview
             summary.unresolvedNames += outcome.unresolvedNames
             summary.volumeConflicts += outcome.volumeConflicts
             processed += chunk.count
@@ -310,41 +308,6 @@ public actor ScanEngine {
                     try await deps.files.setState(.orphaned, ids: stillOrphaned)   // [ID-06]
                 }
                 summary.orphaned += stillOrphaned.count
-            }
-        }
-
-        // ⑤ 設定が許すものを黙って引き継ぐ [ID-13]。
-        //
-        // **④ のあとでなければならない。** このスキャンで新しく孤立になった
-        // ものも対象にするため。あわせて、設定を緩めた直後の走査で
-        // **前の設定で溜まっていた確認待ちもここで片付く**
-        // ［ユーザー判断: 次の走査で自動適用］——④ までの経路だけでは、
-        // 既に新しい行が `active` として存在するので `findCandidates` を
-        // 通らず、いつまでも孤立のまま残ってしまう。
-        //
-        // 却下された組（`identityRejection`）は候補に挙がらないので、
-        // 「別のファイルだ」という利用者の判断がこの設定に上書きされることはない。
-        if !summary.cancelled, settings.identityMatchPolicy != .alwaysConfirm {
-            var accepted: [IdentityMatch] = []
-            for orphan in try await deps.files
-                .identityMatchesAwaitingDecision(libraryID: library.id)
-            {
-                guard let best = orphan.candidates.first else { continue }
-                let confidence = ReidentificationCandidate.Confidence(
-                    samePath: best.samePath, sizeMatches: best.sizeMatches)
-                guard settings.identityMatchPolicy.acceptsAutomatically(confidence)
-                else { continue }
-                accepted.append(IdentityMatch(orphanID: orphan.id,
-                                              candidateID: best.fileID))
-            }
-            if !accepted.isEmpty {
-                try await deps.files.acceptIdentityMatches(accepted)
-                summary.reidentified += accepted.count
-                // ここで引き継いだぶんは確認の対象ではなくなる。数え漏らすと
-                // 「確認してください」と言いながら一覧が空になる。
-                summary.candidatesForReview =
-                    max(0, summary.candidatesForReview - accepted.count)
-                summary.orphaned = max(0, summary.orphaned - accepted.count)
             }
         }
 
@@ -477,7 +440,6 @@ public actor ScanEngine {
         var added = 0
         var updated = 0
         var reidentified = 0
-        var candidatesForReview = 0
         var unresolvedNames = 0
         var volumeConflicts = 0
     }
@@ -489,8 +451,6 @@ public actor ScanEngine {
 
         // 既存かどうかを先に見る（`upsertBatch` は「あれば更新」なので区別が付かない）。
         var existing: [FileIdentity: FileID] = [:]
-        /// 差し替えを疑ったが、この設定では自動で紐づけなかった組 [ID3-08]。
-        var suspected: [FileIdentity: [FileID]] = [:]
         for snapshot in snapshots {
             if let id = try await deps.files.find(identity: snapshot.identity) {
                 existing[snapshot.identity] = id
@@ -523,37 +483,21 @@ public actor ScanEngine {
             let free = try await unclaimedCandidates(candidates, for: snapshot,
                                                      rootURL: rootURL, claimed: claimed)
             guard let best = free.first else { continue }
-            if settings.identityMatchPolicy.acceptsAutomatically(best.confidence) {
-                // inode を更新して既存レコードとみなす。ラベルは維持される [ID-04]。
-                try await deps.files.reidentify(best.fileID, to: snapshot.identity)
-                existing[snapshot.identity] = best.fileID
-                claimed.insert(best.fileID)
-                outcome.reidentified += 1
-            } else {
-                // **この設定では自動で紐づけない** [ID-05][ID-13]。新規として作り、
-                // 走査後にまとめて確認してもらう [ID-09]。
-                //
-                // **疑ったことをここで記録する** [ID3-08]。行 ID は
-                // `upsertBatch` の後でないと分からないので、識別子で覚えておく。
-                outcome.candidatesForReview += 1
-                suspected[snapshot.identity] = free.map(\.fileID)
-            }
+            // inode を更新して既存レコードとみなす。ラベルは維持される [ID-04]。
+            //
+            // **確認は挟まない** [ID-09〜ID-15 撤回、§19.8]——差し替えは
+            // ガード付き（上の [ID3-08]。生きている行・inode で引けた行は
+            // 候補に入らない）で常に自動で引き継ぐ。以前ここにあった
+            // 3 段階ポリシー [ID-13] は既定の `sameName`（＝全確度を自動）
+            // へ固定して撤去した。
+            try await deps.files.reidentify(best.fileID, to: snapshot.identity)
+            existing[snapshot.identity] = best.fileID
+            claimed.insert(best.fileID)
+            outcome.reidentified += 1
         }
 
         let ids = try await deps.files.upsertBatch(snapshots)
 
-        // 疑った組を確認待ちとして残す [ID3-08][ID-09]。**導出に頼らない**
-        // ——「孤立していて同じ名前の生きている行がある」は、無関係な同名
-        // ファイルでも成り立ってしまう。
-        if !suspected.isEmpty {
-            var pending: [IdentityMatch] = []
-            for (offset, id) in ids.enumerated() {
-                for orphanID in suspected[snapshots[offset].identity] ?? [] {
-                    pending.append(IdentityMatch(orphanID: orphanID, candidateID: id))
-                }
-            }
-            try await deps.files.recordIdentityPending(pending)
-        }
         for (offset, id) in ids.enumerated() {
             outcome.seen.insert(id)
             if existing[snapshots[offset].identity] == nil { outcome.added += 1 }

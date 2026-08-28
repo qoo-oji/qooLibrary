@@ -14,9 +14,9 @@ public struct NormalizedString: Sendable, Hashable, Codable, CustomStringConvert
     /// 正規化済み（照合用）。
     public let key: String
 
-    public init(_ raw: String, options: NormalizationOptions = .default) {
+    public init(_ raw: String) {
         self.raw = raw
-        self.key = TextNormalizer.normalize(raw, options: options)
+        self.key = TextNormalizer.normalize(raw)
     }
 
     /// 既に正規化済みの値から組み立てる（DB からの読み出し等）。

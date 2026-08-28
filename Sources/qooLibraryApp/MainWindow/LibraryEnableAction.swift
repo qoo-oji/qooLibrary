@@ -281,19 +281,6 @@ enum LibraryEnableAction {
                 title: String(localized: "library.scan.reviewVolumes", locale: locale),
                 kind: .openWindow(NotificationRouteAction.reviewVolumes)))
         }
-        // **同一性の確認待ち** [ID-05]。名前は同じだが inode が違うので、
-        // 自動では紐づけない。走り切ってからまとめて聞く——差し替え
-        // （スキャン版を電子版へ、など）は日常的に起こるので、1 件ずつ
-        // 止めていては使い物にならない。
-        if summary.candidatesForReview > 0 {
-            lines.append(String(format: String(localized: "library.scan.identityMatches",
-                                               locale: locale),
-                                summary.candidatesForReview))
-            actions.append(RecoveryAction(
-                id: NotificationRouteAction.reviewIdentity,
-                title: String(localized: "library.scan.reviewIdentity", locale: locale),
-                kind: .openWindow(NotificationRouteAction.reviewIdentity)))
-        }
         guard !lines.isEmpty else { return }
 
         let chosen = await NotificationRouter.shared.present(NotificationItem(
@@ -332,22 +319,14 @@ enum LibraryEnableAction {
 
     /// 自動走査（FSEvents の追随・定期フルスキャン）の結果を受け取る。
     ///
-    /// 出し方を 2 つに分ける［ユーザー判断、2026-08］:
+    /// **割り込まない。** 孤立 [ID-06]・未解決 [AL-31]・1 冊扱いの解除 [IF-05] は
+    /// 強度 4 で履歴とバッジにだけ残す。以前ここでシートを出していた
+    /// 「差し替えの確認待ち」[ID-05] は同一性確認の撤去 [§19.8] とともに消えた
+    /// ——差し替えは走査が自動で引き継ぐので、割り込む理由が無くなった。
     ///
-    /// | 何 | どう出すか |
-    /// |---|---|
-    /// | 差し替えの確認待ち [ID-05] | **従来どおりシート**。放置すると記録が失われたままになるので割り込む |
-    /// | 孤立 [ID-06]・未解決 [AL-31]・1 冊扱いの解除 [IF-05] | **強度 4**。履歴とバッジにだけ残し、割り込まない |
-    ///
-    /// **後者は 1-12b の時点では出せなかった。** 「強度 4 は提示先が無く、
-    /// ログだけになって届かない」と記録していたのがそれで、通知履歴と
-    /// ステータスバーのバッジ [NT-02] ができたことで初めて成立する
-    /// ——それまでは**自動走査で孤立が起きても誰も知らなかった**。
-    ///
-    /// **同じ確認待ちを何度も出すことにはならない。** `candidatesForReview` は
-    /// 走査が `.nameOnly` [ID-03]③ を新しく検出したときにしか数えられず、
-    /// 既に確認待ちのものは次の走査では（新しい行が同一性で引けるので）
-    /// この経路を通らない。
+    /// 強度 4 は 1-12b の時点では出せなかった（提示先が無くログだけに
+    /// なって届かない）。通知履歴とステータスバーのバッジ [NT-02] が
+    /// できたことで初めて成立する。
     @MainActor
     static func notifyAutomaticScan(libraryID: LibraryID, summary: ScanSummary,
                                     locale: Locale) {
@@ -358,26 +337,6 @@ enum LibraryEnableAction {
         recordQuietFindings(summary, libraryID: libraryID, displayName: displayName,
                             target: target, locale: locale)
 
-        guard summary.candidatesForReview > 0 else { return }
-        Task {
-            let chosen = await NotificationRouter.shared.present(NotificationItem(
-                category: .warning,
-                severity: .sheet,
-                target: target,
-                title: String(localized: "library.scan.identityTitle", locale: locale),
-                body: String(format: String(localized: "library.scan.identityMatches",
-                                            locale: locale), summary.candidatesForReview),
-                actions: [RecoveryAction(
-                    id: NotificationRouteAction.reviewIdentity,
-                    title: String(localized: "library.scan.reviewIdentity", locale: locale),
-                    kind: .openWindow(NotificationRouteAction.reviewIdentity))]))
-            if let chosen {
-                // 自動走査の受け口は View の外にいるので `openWindow` を持てない。
-                // ここで出る行き先（同一性の確認）はダイアログなので開ける。
-                NotificationRouteAction.perform(actionID: chosen.id, libraryID: libraryID,
-                                                locale: locale, openWindow: nil)
-            }
-        }
     }
 
     /// 自動走査で同じ知らせを繰り返さないための番人 [NT-07]。

@@ -45,11 +45,11 @@ public struct ParseInput: Sendable {
     }
 
     /// マスクを行わない入力（保護文字列が 1 つも無い場合の速い経路）。
-    public init(_ text: String, caseSensitive: Bool = false) {
+    public init(_ text: String) {
         let chars = Array(text)
         self.init(originalChars: chars,
                   maskedChars: chars,
-                  canonicalChars: chars.map { CharacterCanonicalization.canonical($0, caseSensitive: caseSensitive) },
+                  canonicalChars: chars.map { CharacterCanonicalization.canonical($0) },
                   originRanges: chars.indices.map { $0..<($0 + 1) })
     }
 

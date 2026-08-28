@@ -16,16 +16,15 @@ public enum FormatMatcher {
     public static func match(_ format: CompiledFormat,
                              input: ParseInput,
                              volumePatterns: [CompiledVolumePattern] = [],
-                             options: NormalizationOptions = .default,
                              stepLimit: Int = AppLimits.Format.maxMatchSteps) -> MatchOutcome {
         let ctx = Context(input: input, volumePatterns: volumePatterns,
-                          caseSensitive: options.caseSensitive, stepLimit: stepLimit)
+                          stepLimit: stepLimit)
         let ok = matchAll(format.nodes, 0, input.count, ctx)
         guard ok, !ctx.exceededStepLimit else {
             return MatchOutcome(result: nil, furthestIndex: ctx.furthest,
                                 exceededStepLimit: ctx.exceededStepLimit, steps: ctx.steps)
         }
-        return MatchOutcome(result: assemble(format, ctx, options: options),
+        return MatchOutcome(result: assemble(format, ctx),
                             furthestIndex: ctx.furthest,
                             exceededStepLimit: false, steps: ctx.steps)
     }
@@ -35,7 +34,6 @@ public enum FormatMatcher {
     final class Context {
         let input: ParseInput
         let volumePatterns: [CompiledVolumePattern]
-        let caseSensitive: Bool
         let stepLimit: Int
 
         var steps = 0
@@ -45,10 +43,9 @@ public enum FormatMatcher {
         var bindings: [(field: FieldRef, range: Range<Int>, volume: VolumeValue?)] = []
 
         init(input: ParseInput, volumePatterns: [CompiledVolumePattern],
-             caseSensitive: Bool, stepLimit: Int) {
+             stepLimit: Int) {
             self.input = input
             self.volumePatterns = volumePatterns
-            self.caseSensitive = caseSensitive
             self.stepLimit = stepLimit
         }
 
@@ -122,7 +119,7 @@ public enum FormatMatcher {
         case .field(let ref, .enumerated(let values)):
             for value in values.sorted(by: { ($0.count, $0) > ($1.count, $1) }) {
                 let cand = Array(value).map {
-                    CharacterCanonicalization.canonical($0, caseSensitive: ctx.caseSensitive)
+                    CharacterCanonicalization.canonical($0)
                 }
                 guard matchLiteral(cand, at: ii, hi, ctx) else { continue }
                 ctx.bindings.append((ref, ii..<(ii + cand.count), nil))
@@ -171,7 +168,7 @@ public enum FormatMatcher {
 
         for variant in sep.variantsByLengthDesc {
             let v = Array(variant).map {
-                CharacterCanonicalization.canonical($0, caseSensitive: ctx.caseSensitive)
+                CharacterCanonicalization.canonical($0)
             }
             guard matchLiteral(v, at: i + lead, hi, ctx) else { continue }
             var trail = 0
@@ -208,8 +205,7 @@ public enum FormatMatcher {
 
     // MARK: - 結果の組み立て
 
-    static func assemble(_ format: CompiledFormat, _ ctx: Context,
-                         options: NormalizationOptions) -> ParseResult {
+    static func assemble(_ format: CompiledFormat, _ ctx: Context) -> ParseResult {
         var fields: [FieldRef: FieldValue] = [:]
         var spans: [FieldSpan] = []
         for binding in ctx.bindings {
@@ -219,7 +215,7 @@ public enum FormatMatcher {
             let trimmed = TextNormalizer.trimWhitespace(raw)
             fields[binding.field] = FieldValue(
                 text: trimmed,
-                normalized: TextNormalizer.normalize(trimmed, options: options),
+                normalized: TextNormalizer.normalize(trimmed),
                 volume: binding.volume)
             spans.append(FieldSpan(field: binding.field, range: originalRange))
         }

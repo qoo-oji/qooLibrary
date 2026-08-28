@@ -75,8 +75,7 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
     /// **2 つの鍵を 1 回で書く。** どちらも「タイトルが変わったら作り直す」
     /// という同じ条件で、別々の関数に分けると片方だけ呼ぶ経路がいずれできる
     /// ——`searchKey` は 2-9 の時点で実際にそうなっていた（CLAUDE.md）。
-    static func refreshDerivedKeys(_ db: Database, id: FileID,
-                                   options: NormalizationOptions) throws {
+    static func refreshDerivedKeys(_ db: Database, id: FileID) throws {
         let stmt = try db.cachedStatement(sql:
             "SELECT filename, title, seriesName FROM managedFile WHERE id = ?")
         guard let row = try Row.fetchOne(stmt, arguments: [id.rawValue]) else { return }
@@ -84,9 +83,9 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
         let title: String? = row["title"]
         let key = ManagedFileSearchKey.make(
             stem: ManagedFileSearchKey.stem(ofFilename: filename),
-            title: title, seriesName: row["seriesName"], options: options)
+            title: title, seriesName: row["seriesName"])
         // `nil` は「グループ化の対象外」——空文字にしてはならない [DU-02]。
-        let titleKey = DuplicateGroupKey.titleKey(title: title, options: options)
+        let titleKey = DuplicateGroupKey.titleKey(title: title)
         try db.execute(sql: "UPDATE managedFile SET searchKey = ?, titleKey = ? WHERE id = ?",
                        arguments: [key, titleKey, id.rawValue])
     }
@@ -96,8 +95,9 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
     /// ① 同一相対パス + 同一サイズ ② 同一ファイル名 + 同一サイズ
     /// ③a 同一相対パス（サイズ違い）③b 同一ファイル名のみ。
     ///
-    /// **どこまでを自動で紐づけるかはここでは決めない** [ID-05][ID3-03]。
-    /// 呼び出し側が `IdentityMatchPolicy.acceptsAutomatically(_:)` に委ねる [ID-13]。
+    /// **生きている行を除くガードはここでは掛けない** [ID3-03]。呼び出し側
+    /// （`ScanEngine.unclaimedCandidates` [ID3-08]）が実体を見て絞る——
+    /// リポジトリはディスクを知らない。
     public func findCandidates(for snapshot: FileSnapshot) async throws
         -> [ReidentificationCandidate]
     {
@@ -164,7 +164,6 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
     public func upsertBatch(_ snapshots: [FileSnapshot]) async throws -> [FileID] {
         guard !snapshots.isEmpty else { return [] }
         return try await database.writer.write { db in
-            let options = try Self.normalizationOptions(db, libraryID: snapshots[0].libraryID)
             var out: [FileID] = []
             out.reserveCapacity(snapshots.count)
             // 保管庫の出入りが起きた行 [FA-05]。ラベルの非正規化件数 [DB-02] は
@@ -179,11 +178,10 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
                         vaultFlipped.append(existing.id)
                     }
                     // パス・ファイル名の変化を追従更新する [ID-02]
-                    try Self.updateInPlace(db, id: existing.id, snapshot: snapshot,
-                                           options: options)
+                    try Self.updateInPlace(db, id: existing.id, snapshot: snapshot)
                     out.append(existing.id)
                 } else {
-                    var record = ManagedFileRecord(snapshot: snapshot, options: options)
+                    var record = ManagedFileRecord(snapshot: snapshot)
                     try record.insert(db)
                     out.append(FileID(rawValue: record.id ?? 0))
                 }
@@ -204,7 +202,7 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
     }
 
     static func updateInPlace(_ db: Database, id: FileID,
-                              snapshot: FileSnapshot, options: NormalizationOptions) throws {
+                              snapshot: FileSnapshot) throws {
         let stem = snapshot.nameWithoutExtension
         let stmt = try db.cachedStatement(sql: """
             UPDATE managedFile SET
@@ -221,14 +219,13 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
             """)
         try stmt.execute(arguments: [
             snapshot.relativePath, snapshot.filename,
-            TextNormalizer.normalize(stem, options: options),
+            TextNormalizer.normalize(stem),
             // **stem だけ**を書く [SR-03]。タイトル・シリーズを混ぜた最終形は
             // 直後に走る `applyParsedFields` が書く——走査は upsert と
             // `applyParsedFields` を必ず対にして呼ぶ（`ScanEngine` の ②→④）。
             // ここで DB のタイトルを読み直すと、走査の内側の輪で 1 ファイルにつき
             // SELECT が 1 本増える。**この対を崩す経路を作らないこと。**
-            ManagedFileSearchKey.make(stem: stem, title: nil, seriesName: nil,
-                                      options: options),
+            ManagedFileSearchKey.make(stem: stem, title: nil, seriesName: nil),
             snapshot.fileSize,
             snapshot.modifiedAt.timeIntervalSinceReferenceDate,
             snapshot.isBookFolder, snapshot.isArchived, id.rawValue])
@@ -370,11 +367,9 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
                     """, arguments: [id.rawValue])
                 // タイトルは `titleOrigin = 'manual'` なら残るので、消した枝でも
                 // 鍵は作り直す [SR-03]。
-                try Self.refreshDerivedKeys(db, id: id,
-                                          options: try Self.normalizationOptions(db, fileID: id))
+                try Self.refreshDerivedKeys(db, id: id)
                 return
             }
-            let options = try Self.normalizationOptions(db, fileID: id)
             try db.execute(sql: """
                 UPDATE managedFile SET
                     title = CASE WHEN titleOrigin = 'manual' THEN title ELSE ? END,
@@ -385,7 +380,7 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
                 """, arguments: [
                     fields.title,
                     fields.seriesName,
-                    fields.seriesName.map { TextNormalizer.normalize($0, options: options) },
+                    fields.seriesName.map { TextNormalizer.normalize($0) },
                     fields.volume.number,
                     fields.volume.kind.rawValue,
                     fields.volume.raw,
@@ -395,7 +390,7 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
                     id.rawValue])
             // タイトル・シリーズ名も検索対象 [SR-03]。**書いた値ではなく行を
             // 読み直す**（上の `CASE WHEN titleOrigin = 'manual'` があるため）。
-            try Self.refreshDerivedKeys(db, id: id, options: options)
+            try Self.refreshDerivedKeys(db, id: id)
         }
     }
 
@@ -585,7 +580,6 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
             // 正規化はここで行う [3.8 節]。`applyParsedFields` とまったく同じ
             // 導出を通すので、手で編集したシリーズ名でも表記ゆれの吸収
             // （`filesInSameSeries` の照合）が走査由来のものと揃う。
-            let options = try Self.normalizationOptions(db, fileID: id)
             try db.execute(sql: """
                 UPDATE managedFile SET
                     title = ?, titleOrigin = ?,
@@ -597,7 +591,7 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
                     edit.title,
                     edit.titleOrigin.rawValue,
                     edit.seriesName,
-                    edit.seriesName.map { TextNormalizer.normalize($0, options: options) },
+                    edit.seriesName.map { TextNormalizer.normalize($0) },
                     edit.volume.number,
                     edit.volume.kind.rawValue,
                     edit.volume.raw,
@@ -606,7 +600,7 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
             // 手で直したタイトル・シリーズ名も、その場で検索に出る [SR-03]。
             // ここを忘れると「直したのに検索で見つからない」という、
             // 画面からは理由の読み取れない形になる。
-            try Self.refreshDerivedKeys(db, id: id, options: options)
+            try Self.refreshDerivedKeys(db, id: id)
         }
     }
 
@@ -732,8 +726,7 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
                      COUNT(*) OVER dupWindow AS dupCount,
                      ROW_NUMBER() OVER (
                        PARTITION BY \(partition)
-                       ORDER BY isDuplicateRepresentativePinned DESC,
-                                rating DESC, fileSize DESC,
+                       ORDER BY rating DESC, fileSize DESC,
                                 filename COLLATE qooNaturalOrder ASC, id ASC
                      ) AS dupRank
                 FROM managedFile
@@ -989,23 +982,4 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
         path.isEmpty ? "" : escapeLike(path) + "/"
     }
 
-    static func normalizationOptions(_ db: Database, libraryID: LibraryID) throws
-        -> NormalizationOptions
-    {
-        let caseSensitive = try Bool.fetchOne(
-            db, sql: "SELECT caseSensitive FROM library WHERE id = ?",
-            arguments: [libraryID.rawValue]) ?? false
-        return NormalizationOptions(caseSensitive: caseSensitive)
-    }
-
-    static func normalizationOptions(_ db: Database, fileID: FileID) throws
-        -> NormalizationOptions
-    {
-        let caseSensitive = try Bool.fetchOne(db, sql: """
-            SELECT library.caseSensitive FROM library
-            JOIN managedFile ON managedFile.libraryId = library.id
-            WHERE managedFile.id = ?
-            """, arguments: [fileID.rawValue]) ?? false
-        return NormalizationOptions(caseSensitive: caseSensitive)
-    }
 }

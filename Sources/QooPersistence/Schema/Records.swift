@@ -35,7 +35,6 @@ struct LibraryRecord: Codable, FetchableRecord, MutablePersistableRecord, Sendab
     var libraryTypeId: Int64
     var libraryTypeVersion: Int
     var settingsJSON: String
-    var caseSensitive: Bool
     var duplicateGrouping: String
     var thumbnailsAlwaysHidden: Bool
     var lastFSEventID: Int64
@@ -121,7 +120,6 @@ struct ManagedFileRecord: Codable, FetchableRecord, MutablePersistableRecord, Se
     var archivedFromPath: String?
     var archivedAt: Double?
     var isBookFolder: Bool
-    var isDuplicateRepresentativePinned: Bool
     var pageCount: Int?
     var subfolderCount: Int?
     var firstImageWidth: Int?
@@ -143,7 +141,7 @@ struct ManagedFileRecord: Codable, FetchableRecord, MutablePersistableRecord, Se
 
 extension ManagedFileRecord {
     /// スキャンが観測した内容から新規レコードを作る。
-    init(snapshot: FileSnapshot, options: NormalizationOptions) {
+    init(snapshot: FileSnapshot) {
         let stem = snapshot.nameWithoutExtension
         self.init(
             id: nil,
@@ -152,11 +150,11 @@ extension ManagedFileRecord {
             volumeUUID: snapshot.identity.volumeUUID,
             relativePath: snapshot.relativePath,
             filename: snapshot.filename,
-            normalizedName: TextNormalizer.normalize(stem, options: options),
+            normalizedName: TextNormalizer.normalize(stem),
             // 挿入時点ではタイトル・シリーズはまだ無い（走査は upsert の
             // **あと**に `applyParsedFields` を呼ぶ）。そちらが最終形を書く。
             searchKey: ManagedFileSearchKey.make(stem: stem, title: nil,
-                                                 seriesName: nil, options: options),
+                                                 seriesName: nil),
             titleKey: nil,
             fileSize: snapshot.fileSize,
             createdAt: snapshot.createdAt.timeIntervalSinceReferenceDate,
@@ -172,7 +170,6 @@ extension ManagedFileRecord {
             // 入れられたものは `VaultPath.original` から導く [FA-03]。
             isArchived: snapshot.isArchived, archivedFromPath: nil, archivedAt: nil,
             isBookFolder: snapshot.isBookFolder,
-            isDuplicateRepresentativePinned: false,
             pageCount: nil, subfolderCount: nil,
             firstImageWidth: nil, firstImageHeight: nil,
             trashedAt: nil, state: FileState.active.rawValue,
@@ -204,7 +201,6 @@ extension ManagedFileRecord {
             archivedFromPath: archivedFromPath,
             archivedAt: archivedAt.map { Date(timeIntervalSinceReferenceDate: $0) },
             isBookFolder: isBookFolder,
-            isDuplicateRepresentativePinned: isDuplicateRepresentativePinned,
             pageCount: pageCount,
             firstImageWidth: firstImageWidth,
             firstImageHeight: firstImageHeight)
@@ -248,7 +244,6 @@ extension ManagedFileRecord {
             archivedFromPath: archivedFromPath,
             archivedAt: archivedAt.map { Date(timeIntervalSinceReferenceDate: $0) },
             isBookFolder: isBookFolder,
-            isDuplicateRepresentativePinned: isDuplicateRepresentativePinned,
             pageCount: pageCount,
             subfolderCount: subfolderCount,
             firstImageWidth: firstImageWidth,
@@ -295,7 +290,6 @@ extension ManagedFileRecord {
             archivedFromPath: s.archivedFromPath,
             archivedAt: s.archivedAt?.timeIntervalSinceReferenceDate,
             isBookFolder: s.isBookFolder,
-            isDuplicateRepresentativePinned: s.isDuplicateRepresentativePinned,
             pageCount: s.pageCount,
             subfolderCount: s.subfolderCount,
             firstImageWidth: s.firstImageWidth,
@@ -429,9 +423,6 @@ struct LibrarySettingsPayload: Codable, Sendable {
     /// ブックフォルダの「開く」を関連付けアプリに任せるか [IF-18][AS-06]。
     /// **既定は偽**（＝フォルダを開く）——要件が既定をそう定めている。
     var opensBookFolderWithApp: Bool = false
-    /// どこまでを黙って同じファイルとみなすか [ID-13]。
-    /// **既定は `.sameName`**（＝確認しない）——要件が既定をそう定めている。
-    var identityMatchPolicy: IdentityMatchPolicy = .default
 
     static let empty = LibrarySettingsPayload()
 
@@ -441,8 +432,7 @@ struct LibrarySettingsPayload: Codable, Sendable {
          semanticBindings: [String: Int], seriesTitleCompositionFormat: String,
          labelGroupOrder: [Int], readsEmbeddedMetadata: Bool,
          comicInfoVolumeSource: ComicInfoVolumeSource,
-         opensBookFolderWithApp: Bool,
-         identityMatchPolicy: IdentityMatchPolicy) {
+         opensBookFolderWithApp: Bool) {
         self.targetExtensions = targetExtensions
         self.imageExtensions = imageExtensions
         self.delimiters = delimiters
@@ -452,7 +442,6 @@ struct LibrarySettingsPayload: Codable, Sendable {
         self.readsEmbeddedMetadata = readsEmbeddedMetadata
         self.comicInfoVolumeSource = comicInfoVolumeSource
         self.opensBookFolderWithApp = opensBookFolderWithApp
-        self.identityMatchPolicy = identityMatchPolicy
     }
 
     /// **すべてのキーを `decodeIfPresent` で読む。**
@@ -477,7 +466,9 @@ struct LibrarySettingsPayload: Codable, Sendable {
         readsEmbeddedMetadata = try value(.readsEmbeddedMetadata, true)
         comicInfoVolumeSource = try value(.comicInfoVolumeSource, .ask)
         opensBookFolderWithApp = try value(.opensBookFolderWithApp, false)
-        identityMatchPolicy = try value(.identityMatchPolicy, .default)
+        // かつてここにあった `identityMatchPolicy` [ID-13] と `caseSensitive`
+        // [N-04] は撤回された [§19.8]——旧 DB の JSON に鍵が残っていても
+        // 読み飛ばされるだけで害は無い。
         // **フィールドを足したら、ここへ 1 行足すこと。**`CodingKeys` は
         // プロパティから合成されるので鍵は増えるが、この本体に書き忘れても
         // コンパイラは何も言わず、**読まれないまま既定値に落ちる**

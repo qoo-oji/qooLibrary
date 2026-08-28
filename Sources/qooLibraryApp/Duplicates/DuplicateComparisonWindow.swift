@@ -78,8 +78,7 @@ struct DuplicateComparisonWindow: View {
                         row: row,
                         userCoverURL: userCoverURL(for: row),
                         isKeeper: model.keepID == row.id,
-                        onChoose: { model.chooseKeeper(row.id) },
-                        onTogglePin: { Task { await togglePin(row) } })
+                        onChoose: { model.chooseKeeper(row.id) })
                 }
             }
             .padding(Tokens.spacing.m)
@@ -149,26 +148,6 @@ struct DuplicateComparisonWindow: View {
               })
         else { return nil }
         return LibraryServices.shared.userCoverURL(ref: ref, library: library)
-    }
-
-    /// 代表の手動固定 [DU-08][DG-04]。**一覧側からは代表しか選べない**ので、
-    /// 別の 1 件を代表に指名できるのはこの画面だけ。
-    private func togglePin(_ row: DuplicateComparisonRow) async {
-        guard let pending = DuplicateComparisonNavigation.shared.pending,
-              let library = LibraryServices.shared.libraries.first(where: {
-                  $0.id == pending.library
-              })
-        else { return }
-        do {
-            try await LibraryServices.shared.setDuplicateRepresentativePinned(
-                !row.file.isDuplicateRepresentativePinned, for: row.id,
-                mode: library.duplicateGrouping)
-            await prepare()
-            // 一覧側の代表も入れ替わるので読み直させる。
-            SessionState.shared.reloadToken += 1
-        } catch {
-            errorText = error.localizedDescription
-        }
     }
 
     private func prepare() async {
