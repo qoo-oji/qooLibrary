@@ -30,6 +30,18 @@ public enum BookFolderDetector {
     /// 判定対象から外すフォルダ名 [IF-03]。
     public static let excludedFolderNames: Set<String> = ["covers", ".qooarchive"]
 
+    /// 設定の `imageExtensions` の実効値。**空は「既定」を意味する**——
+    /// テンプレート草案は空で来る（`TemplateDefinition` 参照）ため、空を
+    /// 文字どおり「画像拡張子なし」と読むと、ブックフォルダが 1 つも
+    /// 検出されない。**この解釈はここ 1 箇所**——走査（`ScanEngine`）と
+    /// 登録ウィザードの推定が同じ関数を通る（別々に解釈を持つと、
+    /// ウィザードには出ないのに走査では検出される、という食い違いになる。
+    /// 実機検証で実際に踏んだ形 [§19.10 ステージ 2]）。
+    public static func effectiveImageExtensions(from configured: some Collection<String>) -> Set<String> {
+        configured.isEmpty ? defaultImageExtensions
+                           : Set(configured.map { $0.lowercased() })
+    }
+
     /// ① サブフォルダを持たない ② 直下に対象拡張子ファイルが 0 件
     /// ③ 直下に画像ファイルが 1 件以上 [IF-01]。
     public static func isBookFolder(_ url: URL,

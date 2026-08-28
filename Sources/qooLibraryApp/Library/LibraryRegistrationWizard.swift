@@ -327,9 +327,15 @@ final class LibraryRegistrationWizardModel {
 
     /// 画像ファイルが含まれるか（＝画像フォルダ［ブックフォルダ IF-01］が
     /// ありそうか）。ウィザードの推定はこれで足りる——正確な判定は走査が行う。
+    ///
+    /// **空の `imageExtensions` は「既定の画像拡張子」を意味する**
+    /// （`BookFolderDetector.effectiveImageExtensions`、走査側と共有）。
+    /// テンプレート草案は空で来るので、この解釈が無いと画像フォルダの行が
+    /// 永久に出ない［実機検証で発見、§19.10 ステージ 2］。
     func hasImageFolders(draft: LibrarySettingsDraft) -> Bool {
         guard let counts = enable?.sampleExtensionCounts else { return false }
-        return draft.imageExtensions.contains { (counts[$0.lowercased()] ?? 0) > 0 }
+        let extensions = BookFolderDetector.effectiveImageExtensions(from: draft.imageExtensions)
+        return extensions.contains { (counts[$0] ?? 0) > 0 }
     }
 
     /// 「N 階層目 = サークル」の形の説明 [RG3-24]。singleLabelGroup は

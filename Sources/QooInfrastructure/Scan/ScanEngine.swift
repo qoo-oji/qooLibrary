@@ -256,8 +256,7 @@ public actor ScanEngine {
             }
             let options = LibraryEnumerator.Options(
                 targetExtensions: settings.targetExtensions,
-                imageExtensions: settings.imageExtensions.isEmpty
-                    ? BookFolderDetector.defaultImageExtensions : settings.imageExtensions,
+                imageExtensions: BookFolderDetector.effectiveImageExtensions(from: settings.imageExtensions),
                 subPath: subPath, recursive: recursive)
             do {
                 try await FileIO.perform {

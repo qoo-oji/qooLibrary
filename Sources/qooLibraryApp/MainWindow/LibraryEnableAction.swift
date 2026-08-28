@@ -205,10 +205,15 @@ enum LibraryEnableAction {
         // ファイル単位の報告 [RG3-32] を 10 回/秒に間引いてから UI へ流す。
         // エンジンは間引かない（`ScanEngine.scan` の注記）——間引きは表示側の
         // 仕事で、実装は転送・展開と同じ `ProgressThrottle` を使う。
+        // 副題は**件数**（転送と同じ鍵で「N 件中 M 件目 — 残り K 件」）。
+        // ファイル名を渡してはいけない——進捗ウインドウは
+        // `currentItemName` を自分の行で出すので、同じ名前が 2 行並ぶ
+        // ［実機検証で発見、§19.10 ステージ 2］。
         let throttled = ProgressThrottle.wrap(ProgressReporter { progress in
             Task { @MainActor in
                 OperationProgressCenter.shared.update(
-                    handle, progress: progress, detail: progress.currentItemName)
+                    handle, progress: progress,
+                    detail: scanDetailText(progress, locale: locale))
             }
         }, totalItems: 0, totalBytes: 0)
         do {
@@ -260,6 +265,32 @@ enum LibraryEnableAction {
     /// - Note: どのファイルが孤立したかを一覧で見て片付ける手段
     ///   （`OR-01〜05` の整理ウインドウ）は 2-14 の担当［ユーザー判断: 今は
     ///   件数を知らせるだけにする］。ここで一覧を出す造りにはしない。
+    /// 走査の進捗の副題。「2,501 件中 300 件目 — 残り 2,201 件」——転送
+    /// （`FolderOperations.progressDetail`）と同じ鍵で見え方を揃える [RG3-32]。
+    /// 列挙の段（総数が未確定＝ `totalItems == 0`）は見つけた件数だけを出す。
+    ///
+    /// 走査の `processed` は「いま処理しているファイルの通し番号」（1 始まり）
+    /// なので、転送側と違い +1 しない。
+    private static func scanDetailText(_ progress: OperationProgress,
+                                       locale: Locale) -> String? {
+        if progress.totalItems > 1 {
+            let current = min(max(progress.completedItems, 1), progress.totalItems)
+            var parts = [String(format: String(localized: "progress.itemCount", locale: locale),
+                               current, progress.totalItems)]
+            let remaining = progress.totalItems - current
+            if remaining > 0 {
+                parts.append(String(format: String(localized: "progress.remainingItems", locale: locale),
+                                    remaining))
+            }
+            return parts.joined(separator: " — ")
+        }
+        if progress.completedItems > 0 {
+            return String(format: String(localized: "progress.scanFound", locale: locale),
+                          progress.completedItems)
+        }
+        return nil
+    }
+
     private static func notifyIfNoteworthy(_ summary: ScanSummary,
                                            displayName: String,
                                            libraryID: LibraryID?,

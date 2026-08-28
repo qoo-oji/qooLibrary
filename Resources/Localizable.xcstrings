@@ -14689,6 +14689,22 @@
         }
       }
     },
+    "progress.scanFound": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d items found"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d 件を見つけました"
+          }
+        }
+      }
+    },
     "progress.windowTitle": {
       "extractionState": "manual",
       "localizations": {

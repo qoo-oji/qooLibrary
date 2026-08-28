@@ -36,6 +36,12 @@ enum LibrarySetupPrompt {
         // [ER-03] ほうが、起動直後に説明なしのウィザードが出るより読める。
         guard await waitUntilServicesReady() else { return }
         let services = LibraryServices.shared
+        // **一覧を読み直してから判定する**——`isReady` は DB が開いた瞬間に
+        // 真になるが、`libraries` の初回読み込みは `bootstrap()` の末尾で走る。
+        // 読み込み前に判定すると有効化済みの登録がすべて「未有効」に見え、
+        // **ウィザードが毎起動誤発火する**［実機検証で発見、§19.10 ステージ 2。
+        // 実際に全登録が有効化済みの環境で毎回出ていた］。
+        await services.refreshLibraries()
 
         for folder in await RegisteredFolderStore.shared.folders(kind: .library) {
             // `library.uuid` は登録フォルダ ID をそのまま持つ [07章 §7.3]。
