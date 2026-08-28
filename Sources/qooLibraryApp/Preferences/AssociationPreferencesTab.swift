@@ -49,6 +49,12 @@ struct AssociationPreferencesTab: View {
     var body: some View {
         Form {
             Section {
+                // 画像フォルダ（ブックフォルダ [IF-01]）の「開くアプリ」。
+                // 拡張子を持たないので擬似キー [`AppAssociationKeys.folder`] で
+                // 保存し、専用の行として常に描く（削除ボタンは付けない——
+                // 拡張子の管理一覧の項目ではないため）[§19.10 ステージ 2]。
+                folderAssociationRow
+
                 ForEach(extensions, id: \.self) { ext in
                     HStack {
                         associationRow(for: ext)
@@ -86,6 +92,27 @@ struct AssociationPreferencesTab: View {
         .padding(Tokens.spacing.l)
         .task {
             await reload()
+        }
+    }
+
+    /// 画像フォルダの行。`associationRow(for:)` と同じ形だが、題は拡張子の
+    /// 大文字化ではなく訳語、候補は `candidatesForFolders()`（`public.folder`
+    /// ベース。拡張子からは引けない）。
+    private var folderAssociationRow: some View {
+        let key = AppAssociationKeys.folder
+        return LabeledContent(String(localized: "preferences.associations.folderRow", locale: locale)) {
+            Picker("preferences.associations.folderRow", selection: primaryBinding(for: key)) {
+                Text("preferences.associations.systemDefault").tag(Optional<String>.none)
+                ForEach(options(for: key)) { candidate in
+                    Label {
+                        Text(candidate.name)
+                    } icon: {
+                        Image(nsImage: NSWorkspace.shared.icon(forFile: candidate.url.path))
+                    }
+                    .tag(Optional(candidate.bundleID))
+                }
+            }
+            .labelsHidden()
         }
     }
 
@@ -200,6 +227,10 @@ struct AssociationPreferencesTab: View {
             candidatesByExtension[ext] = service.candidates(for: ext)
             await refreshPrimary(for: ext)
         }
+        // 画像フォルダの擬似キー行 [§19.10 ステージ 2]。`extensions()` には
+        // 載らない（拡張子ではない）ので、ここで独立に読み込む。
+        candidatesByExtension[AppAssociationKeys.folder] = service.candidatesForFolders()
+        await refreshPrimary(for: AppAssociationKeys.folder)
     }
 
     /// 既定アプリを読み直し、`candidates(for:)` に含まれない場合は

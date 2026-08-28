@@ -11,14 +11,14 @@ import QooKit
 /// 間引きは `ProgressTracker` と同じ 10 回/秒。1000 ページの cbz を展開すると
 /// エントリ単位で 1000 回、バイト単位ではさらに桁が増えるため、そのまま
 /// メインアクタへ流すと更新だけで忙しくなる。
-enum ProgressThrottle {
+public enum ProgressThrottle {
     /// 報告の最短間隔。`ProgressTracker.updateInterval` と揃える。
     private static let interval: Duration = .milliseconds(100)
 
     /// - Parameters:
     ///   - totalItems: 総項目数（0 なら埋めない）
     ///   - totalBytes: 総バイト数（0 なら不定進捗のまま）
-    static func wrap(
+    public static func wrap(
         _ inner: ProgressReporter,
         totalItems: Int,
         totalBytes: Int64

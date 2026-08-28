@@ -86,9 +86,9 @@ public final class RegisteredFolderIndex {
     /// 副次的に、バックグラウンドの動画サムネイル生成 [9.6 節] もこの一覧を
     /// 掃くので、ゴミ箱の中や未接続のボリュームを掃きに行かなくなる。
     private static func entries(from states: [RegisteredFolderState], kind: RegisteredFolderKind) -> [Entry] {
+        // 並びはツリーと同じ保存順 [RG3-33]（`states()` が配列順で返す）。
         states
             .filter { $0.folder.kind == kind }
-            .sorted { $0.folder.displayName.localizedStandardCompare($1.folder.displayName) == .orderedAscending }
             .compactMap { state in
                 guard state.status.allowsNavigation, let url = state.status.resolvedURL else { return nil }
                 return Entry(

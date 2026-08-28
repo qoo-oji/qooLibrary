@@ -22,6 +22,38 @@ final class ProgressBox: @unchecked Sendable {
     func observe(_ n: Int) { lock.lock(); _value = max(_value, n); lock.unlock() }
 }
 
+/// 進捗の報告を数える箱 [RG3-32]。
+final class NameBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _enumerating = 0
+    private var _processing = 0
+    private var _names = Set<String>()
+    private var _sawTotal = false
+    private var _processedValues = Set<Int>()
+
+    var enumeratingReports: Int { lock.lock(); defer { lock.unlock() }; return _enumerating }
+    var processingReports: Int { lock.lock(); defer { lock.unlock() }; return _processing }
+    var distinctNames: Set<String> { lock.lock(); defer { lock.unlock() }; return _names }
+    var sawTotal: Bool { lock.lock(); defer { lock.unlock() }; return _sawTotal }
+    /// 突き合わせ段の `processed` の異なる値。**件数がファイルごとに
+    /// 進んでいる**ことの検査——報告の回数だけを数えると、件数の進まない
+    /// 別の報告（メタデータ読みの名前だけの報告）に吸収されて空振りする
+    /// （変異検証で発覚）。
+    var distinctProcessedValues: Set<Int> { lock.lock(); defer { lock.unlock() }; return _processedValues }
+
+    func observe(_ progress: ScanProgress) {
+        lock.lock(); defer { lock.unlock() }
+        switch progress.phase {
+        case .enumerating: _enumerating += 1
+        case .processing:
+            _processing += 1
+            _processedValues.insert(progress.processed)
+        }
+        _names.insert(progress.currentName)
+        if progress.total > 0 { _sawTotal = true }
+    }
+}
+
 /// 一時ディレクトリ上の擬似ライブラリ。
 final class ScanWorkspace {
     let root: URL
@@ -380,12 +412,36 @@ struct ScanIntegrationTests {
             try w.write("(同人誌) [サークル\(i % 7)] 作品\(i) (オリジナル).cbz", bytes: 8)
         }
         let lastProgress = ProgressBox()
-        let summary = try await w.engine.scan(.full(libraryID: w.libraryID), root: w.root) { n, _ in
-            lastProgress.observe(n)
+        let summary = try await w.engine.scan(.full(libraryID: w.libraryID), root: w.root) { progress in
+            lastProgress.observe(progress.processed)
         }
         #expect(summary.added == 1200)
         #expect(lastProgress.value == 1200)
         #expect(try await w.libraries.totalFileCount() == 1200)
+    }
+
+    /// **進捗はファイル単位で動き続ける** [RG3-32]。以前は 500 件のバッチ
+    /// 境界でしか報告されず、1 バッチが長引くと表示が凍って見えた。
+    @Test("進捗はバッチ境界ではなくファイル単位で報告される [RG3-32]")
+    func progressMovesPerFile() async throws {
+        let w = try await ScanWorkspace()
+        for i in 1...20 {
+            try w.write("(同人誌) [サークル\(i % 3)] 作品\(i) (オリジナル).cbz", bytes: 8)
+        }
+        let names = NameBox()
+        _ = try await w.engine.scan(.full(libraryID: w.libraryID), root: w.root) { progress in
+            names.observe(progress)
+        }
+        // バッチ境界だけの報告なら 20 件で 1 回しか来ない。ファイル単位なら
+        // 列挙で 20 回 ＋ 突き合わせで 20 回来る（間引きはしない——表示側の
+        // `ProgressThrottle` の仕事）。
+        #expect(names.processingReports >= 20, "突き合わせがファイル単位で報告していない")
+        #expect(names.enumeratingReports >= 20, "列挙がファイル単位で報告していない")
+        #expect(names.distinctNames.count >= 20, "名前が 1 件ずつ動いていない")
+        #expect(names.sawTotal, "総数（N 件中）が一度も報告されていない")
+        // 件数そのものが 1 件ずつ進み、最後のファイルで総数へ到達すること。
+        #expect(names.distinctProcessedValues.count >= 20, "件数がファイルごとに進んでいない")
+        #expect(names.distinctProcessedValues.max() == 20, "件数が総数へ到達していない")
     }
 }
 

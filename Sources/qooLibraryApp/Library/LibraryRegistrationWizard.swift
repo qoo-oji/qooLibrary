@@ -46,6 +46,43 @@ enum LibraryRegistrationWizard {
             }
         }
     }
+
+    /// 登録済みだが未有効の登録を、**ステップ 3（テンプレートの選択）から
+    /// 再開する**［§19.10 ステージ 2・§19.3 移行］。
+    ///
+    /// フォルダは登録で決まっているので選び直させない（戻れるのはステップ 3
+    /// まで）。**登録はし直さない**——確定は既存登録の有効化
+    /// （`LibraryEnableAction.enableRegistered`）で、コード経路を 2 つ
+    /// 作らない。
+    static func resume(folder: RegisteredFolder, url: URL, locale: Locale,
+                       openWindow: OpenWindowAction,
+                       onFinished: (@MainActor () -> Void)? = nil) {
+        let services = LibraryServices.shared
+        guard services.isReady, let volumeSets = services.volumeSetDefinition else { return }
+        let model = LibraryRegistrationWizardModel(
+            templates: services.presetTemplates,
+            volumeSets: volumeSets,
+            otherTypeNames: services.libraries.map(\.libraryTypeName),
+            otherDisplayNames: services.libraries.map(\.displayName),
+            minStep: .template)
+        model.step = .template
+        // サンプル収集は提示と並行に走らせる。`chooseFolder` は先頭で
+        // `enable` を同期的に作るので、テンプレート一覧は空振りしない
+        // （適合率と推奨はサンプルが揃った時点で埋まる）。
+        Task { await model.chooseFolder(url) }
+        DialogWindowPresenter.shared.present(
+            title: String(localized: "libraryWizard.title", locale: locale)
+        ) { _ in
+            LibraryRegistrationWizardView(model: model) { _, _, draft, template in
+                Task {
+                    await LibraryEnableAction.enableRegistered(
+                        folder: folder, url: url, draft: draft, template: template,
+                        locale: locale, openWindow: openWindow)
+                    onFinished?()
+                }
+            }
+        }
+    }
 }
 
 // MARK: - 状態
@@ -70,6 +107,9 @@ final class LibraryRegistrationWizardModel {
     }
 
     var step: Step = .intro
+    /// 戻れる最初のステップ。起動時の再開 [§19.10 ステージ 2] では
+    /// `.template`——フォルダは登録で決まっているので選び直させない。
+    let minStep: Step
     private(set) var folderURL: URL?
 
     /// 有効化画面と同じモデルを内側に持つ。サンプル収集 [HP-05]・草案・
@@ -119,11 +159,13 @@ final class LibraryRegistrationWizardModel {
     private(set) var isEvaluating = false
 
     init(templates: [LibraryTypeTemplate], volumeSets: VolumeSetDefinition,
-         otherTypeNames: [String], otherDisplayNames: [String]) {
+         otherTypeNames: [String], otherDisplayNames: [String],
+         minStep: Step = .intro) {
         self.templates = templates
         self.volumeSets = volumeSets
         self.otherTypeNames = otherTypeNames
         self.otherDisplayNames = otherDisplayNames
+        self.minStep = minStep
         self.merged = Self.mergeVariants(templates)
     }
 
@@ -266,8 +308,10 @@ final class LibraryRegistrationWizardModel {
 
     // MARK: 開くアプリ [ユーザー要望: 含まれる形式ごとに既定アプリを選ぶ]
 
-    /// 画像フォルダ（ブックフォルダ）行の擬似キー。拡張子と衝突しない語。
-    static let folderViewerKey = "folder"
+    /// 画像フォルダ（ブックフォルダ）行の擬似キー。定義は `QooKit` の
+    /// `AppAssociationKeys`（読む側＝ IF-18 の開く経路と共有する。2 か所に
+    /// 持つと保存した設定を誰も読まない迷子になる）。
+    static let folderViewerKey = AppAssociationKeys.folder
 
     /// 形式ごとに選んだ「開くアプリ」。鍵は拡張子（小文字）または
     /// `folderViewerKey`。**含まれていない形式は並べない**——選ばなかった
@@ -332,7 +376,8 @@ final class LibraryRegistrationWizardModel {
     }
 
     func goBack() {
-        guard let prev = Step(rawValue: step.rawValue - 1) else { return }
+        guard step.rawValue > minStep.rawValue,
+              let prev = Step(rawValue: step.rawValue - 1) else { return }
         step = prev
     }
 }
@@ -342,6 +387,7 @@ final class LibraryRegistrationWizardModel {
 struct LibraryRegistrationWizardView: View {
     @Environment(\.locale) private var locale
     @Environment(\.dialogDismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
 
     @State private var model: LibraryRegistrationWizardModel
     /// 確定 [RG3-25]。(フォルダ, 表示名, 草案, 起点テンプレート)。
@@ -368,8 +414,13 @@ struct LibraryRegistrationWizardView: View {
     // MARK: 進行表示
 
     private var stepIndicator: some View {
-        HStack(spacing: Tokens.spacing.m) {
-            ForEach(LibraryRegistrationWizardModel.Step.allCases) { step in
+        // 再開モード [§19.10 ステージ 2] では、飛ばしたステップ（説明と
+        // フォルダ選択）を出さない——戻れない丸が並ぶと「戻れそうで戻れない」
+        // 見た目になる。
+        let steps = LibraryRegistrationWizardModel.Step.allCases
+            .filter { $0.rawValue >= model.minStep.rawValue }
+        return HStack(spacing: Tokens.spacing.m) {
+            ForEach(steps) { step in
                 HStack(spacing: Tokens.spacing.xs) {
                     ZStack {
                         Circle()
@@ -949,9 +1000,9 @@ struct LibraryRegistrationWizardView: View {
             ?? (item.filename as NSString).deletingPathExtension
         let series = item.fields.first { $0.ref == .series }?.value
         let volume = item.fields.first { $0.ref == .volume }?.value
-        let chips: [String] = item.fields.compactMap { field in
+        let chips: [(ref: FieldRef, value: String)] = item.fields.compactMap { field in
             switch field.ref {
-            case .author, .labelGroup: return field.value
+            case .author, .labelGroup: return (ref: field.ref, value: field.value)
             default: return nil
             }
         }
@@ -978,13 +1029,11 @@ struct LibraryRegistrationWizardView: View {
             }
             if !chips.isEmpty {
                 HStack(spacing: 3) {
-                    ForEach(Array(chips.prefix(2)), id: \.self) { chip in
-                        Text(chip)
-                            .font(.system(size: 9))
-                            .lineLimit(1)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(Color(nsColor: .quaternarySystemFill), in: Capsule())
+                    // チップはフィールドの色 [RG3-25][§19.10 ステージ 2]。
+                    // 実際のライブラリのラベルチップと同じ見え方になり、
+                    // カスタマイズで選んだ色がそのまま確認できる。
+                    ForEach(Array(chips.prefix(2)), id: \.value) { chip in
+                        mockChip(chip, draft: draft)
                     }
                 }
             }
@@ -994,6 +1043,23 @@ struct LibraryRegistrationWizardView: View {
         .frame(maxWidth: .infinity, minHeight: 158, alignment: .topLeading)
         .background(Color(nsColor: .quinarySystemFill),
                     in: RoundedRectangle(cornerRadius: Tokens.radius.m))
+    }
+
+    private func mockChip(_ chip: (ref: FieldRef, value: String),
+                          draft: LibrarySettingsDraft) -> some View {
+        let hex = FormatMatchPreview.colorHex(for: chip.ref, draft: draft,
+                                              darkMode: colorScheme == .dark)
+        let background = hex.flatMap { Color(labelHex: $0) }
+            ?? Color(nsColor: .quaternarySystemFill)
+        let foreground = hex.flatMap { LabelColorPalette.readableForeground(on: $0) }
+            .flatMap { Color(labelHex: $0) } ?? .primary
+        return Text(chip.value)
+            .font(.system(size: 9))
+            .lineLimit(1)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(background, in: Capsule())
+            .foregroundStyle(foreground)
     }
 
     // MARK: フッター
@@ -1023,7 +1089,7 @@ struct LibraryRegistrationWizardView: View {
                 },
                 cancel: DialogButton(title: String(localized: "common.cancel", locale: locale),
                                      role: .cancel) { dismiss() },
-                extra: model.step == .intro ? [] : [
+                extra: model.step == model.minStep ? [] : [
                     DialogButton(title: String(localized: "libraryWizard.back", locale: locale)) {
                         model.goBack()
                     }

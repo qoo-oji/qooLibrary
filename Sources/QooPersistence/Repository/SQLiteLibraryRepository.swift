@@ -312,6 +312,16 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
         }
     }
 
+    public func setDisplayName(_ name: String, libraryID: LibraryID) async throws {
+        try await database.writer.write { db in
+            try db.execute(sql: """
+                UPDATE library SET displayName = ?,
+                       settingsRevision = settingsRevision + 1
+                 WHERE id = ? AND displayName <> ?
+                """, arguments: [name, libraryID.rawValue, name])
+        }
+    }
+
     // MARK: - 監視と差分スキャンの状態 [SY-01〜SY-05]
 
     public func watchStates() async throws -> [LibraryWatchState] {

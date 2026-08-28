@@ -189,6 +189,13 @@ public final class LibrarySyncCoordinator {
                 try await deps.libraries.setResolvedPath(url.path, libraryID: state.id)
                 Log.watch.info("ライブラリの根が移動した: \(Log.redactable(state.displayName)) → \(Log.path(url))")
             }
+            // フォルダ名＝表示名 [RG3-31]。根の移動（＝リネームを含む）に
+            // 表示名も追随させる。`settingsRevision` はリポジトリ側が上げる。
+            if let url = location.url, url.lastPathComponent != state.displayName {
+                try await deps.libraries.setDisplayName(url.lastPathComponent,
+                                                        libraryID: state.id)
+                onOnlineStateChanged?()   // 一覧の読み直し（displayName も変わった）
+            }
         } catch {
             Log.watch.error("ライブラリの状態を書き戻せない: \(String(describing: error))")
         }

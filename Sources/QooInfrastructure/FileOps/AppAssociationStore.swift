@@ -102,7 +102,14 @@ public actor AppAssociationStore: AppAssociationService {
             // 設定した関連付けが画面に現れず、後から確認も変更もできない
             // 迷子の設定になる。呼び出し側ではなくストア側で保証する
             // （経路が増えても破れないようにするため）。
-            extensionSet.insert(key)
+            //
+            // **擬似キー（`AppAssociationKeys.folder`）は載せない**——拡張子では
+            // ないので、拡張子の一覧に混ぜると「.FOLDER」という嘘の行になる。
+            // 迷子にはならない：「ビューア」タブが専用の行として常に描く
+            // [§19.10 ステージ 2]。
+            if key != AppAssociationKeys.folder {
+                extensionSet.insert(key)
+            }
         } else {
             associations.removeValue(forKey: key) // [AS-01] `nil` でシステムの既定へ戻す
             // 一覧からは外さない — 「システムの既定に従う」に戻しただけで、
@@ -144,7 +151,9 @@ public actor AppAssociationStore: AppAssociationService {
 
     public func extensions() async -> [String] {
         ensureLoaded()
-        return extensionSet.sorted()
+        // 擬似キーは拡張子ではないので除く（`setPrimary` 側でも入れないが、
+        // この修正より前の版が保存したファイルには入っていることがある）。
+        return extensionSet.filter { $0 != AppAssociationKeys.folder }.sorted()
     }
 
     public func addExtension(_ ext: String) async throws {

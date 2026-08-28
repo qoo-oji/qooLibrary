@@ -95,6 +95,12 @@ public protocol LibraryRepository: Sendable {
     /// ボリュームの改名で移動した根を書き直す [VD-06]。`volumeUUID` は不変なので
     /// ファイルの紐づけは維持される。
     func setResolvedPath(_ path: String, libraryID: LibraryID) async throws
+    /// フォルダ名＝表示名 [RG3-31]。リネームへの追随のためにだけ呼ぶ。
+    ///
+    /// **`settingsRevision` も上げる**——表示名は `@libraryname` の照合値
+    /// [RW-04] としてパーサのスナップショットに焼き込まれているので、
+    /// 上げないと改名後もキャッシュされた古い名前で照合され続ける [VT-02]。
+    func setDisplayName(_ name: String, libraryID: LibraryID) async throws
 
     // MARK: - 監視と差分スキャンの状態 [SY-01〜SY-05]
 

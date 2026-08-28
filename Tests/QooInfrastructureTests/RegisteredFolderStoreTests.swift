@@ -571,6 +571,120 @@ import Testing
         let refreshed = await store.folders(kind: .library)
         #expect(refreshed[0].lastKnownPath == target.resolvingSymlinksInPath().standardizedFileURL.path)
     }
+
+    // MARK: - 並べ替え [RG3-33]
+
+    /// 並びは保存順＝利用者が決めた順。並べ替えは永続化され、別インスタンス
+    /// （＝次の起動）でも保たれる。
+    @Test func reorderPersistsAcrossInstances() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        var ids: [UUID] = []
+        let storageURL = root.appendingPathComponent("state.json")
+        let store = makeStore(storageURL: storageURL)
+        for name in ["A", "B", "C"] {
+            let target = root.appendingPathComponent(name, isDirectory: true)
+            try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+            ids.append(try await store.register(url: target, kind: .library, displayName: nil).folder.id)
+        }
+
+        await store.reorder(ids: [ids[2], ids[0], ids[1]], kind: .library)
+
+        let after = await store.folders(kind: .library).map(\.id)
+        #expect(after == [ids[2], ids[0], ids[1]])
+        let reopened = makeStore(storageURL: storageURL)
+        let persisted = await reopened.folders(kind: .library).map(\.id)
+        #expect(persisted == [ids[2], ids[0], ids[1]])
+    }
+
+    /// 渡されなかった登録は末尾へ寄せるだけで落とさない——順序の更新で
+    /// レコードが消える経路を作らない。
+    @Test func reorderDoesNotDropUnlistedRegistrations() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        var ids: [UUID] = []
+        let store = makeStore(storageURL: root.appendingPathComponent("state.json"))
+        for name in ["A", "B", "C"] {
+            let target = root.appendingPathComponent(name, isDirectory: true)
+            try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+            ids.append(try await store.register(url: target, kind: .library, displayName: nil).folder.id)
+        }
+
+        await store.reorder(ids: [ids[1]], kind: .library)
+
+        let after = await store.folders(kind: .library).map(\.id)
+        #expect(after.count == 3)
+        #expect(after.first == ids[1])
+        #expect(Set(after) == Set(ids))
+    }
+
+    /// 並べ替えは種別の中で閉じる——ライブラリを並べ替えてもテンポラリの
+    /// 並びは動かない。
+    @Test func reorderKeepsTheOtherKindUntouched() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = makeStore(storageURL: root.appendingPathComponent("state.json"))
+        var libraryIDs: [UUID] = []
+        var temporaryIDs: [UUID] = []
+        for name in ["L1", "T1", "L2", "T2"] {
+            let target = root.appendingPathComponent(name, isDirectory: true)
+            try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+            let kind: RegisteredFolderKind = name.hasPrefix("L") ? .library : .temporary
+            let id = try await store.register(url: target, kind: kind, displayName: nil).folder.id
+            if kind == .library { libraryIDs.append(id) } else { temporaryIDs.append(id) }
+        }
+
+        await store.reorder(ids: [libraryIDs[1], libraryIDs[0]], kind: .library)
+
+        let libraries = await store.folders(kind: .library).map(\.id)
+        #expect(libraries == [libraryIDs[1], libraryIDs[0]])
+        let temporaries = await store.folders(kind: .temporary).map(\.id)
+        #expect(temporaries == temporaryIDs)
+    }
+
+    // MARK: - フォルダ名＝表示名 [RG3-31]
+
+    /// ライブラリの表示名は、実フォルダがリネームされたら解決時に追随する。
+    /// 追随した名前は永続化される（次の起動で古い名前へ戻らない）。
+    @Test func libraryDisplayNameFollowsAFolderRename() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let target = root.appendingPathComponent("旧名", isDirectory: true)
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        let storageURL = root.appendingPathComponent("state.json")
+        let store = makeStore(storageURL: storageURL)
+        let folder = try await store.register(url: target, kind: .library, displayName: nil).folder
+        #expect(folder.displayName == "旧名")
+
+        let renamed = root.appendingPathComponent("新名", isDirectory: true)
+        try FileManager.default.moveItem(at: target, to: renamed)
+
+        let resolved = await store.resolvedURL(for: folder)
+        #expect(resolved?.lastPathComponent == "新名")
+        let after = await store.folders(kind: .library)
+        #expect(after.first?.displayName == "新名")
+        let reopened = makeStore(storageURL: storageURL)
+        let persisted = await reopened.folders(kind: .library)
+        #expect(persisted.first?.displayName == "新名")
+    }
+
+    /// テンポラリの表示名 [RG-05] は利用者が付けた名前なので、リネームに
+    /// 追随しない（ライブラリの「フォルダ名＝表示名」とは別の規則）。
+    @Test func temporaryDisplayNameDoesNotFollowARename() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let target = root.appendingPathComponent("取り込み元", isDirectory: true)
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        let store = makeStore(storageURL: root.appendingPathComponent("state.json"))
+        let folder = try await store.register(url: target, kind: .temporary, displayName: "取り込み用").folder
+
+        let renamed = root.appendingPathComponent("別の名前", isDirectory: true)
+        try FileManager.default.moveItem(at: target, to: renamed)
+
+        _ = await store.resolvedURL(for: folder)
+        let after = await store.folders(kind: .temporary)
+        #expect(after.first?.displayName == "取り込み用")
+    }
 }
 
 /// 登録は通すが警告を返すフェイク（ネットワークボリュームの模擬）。

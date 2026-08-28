@@ -154,6 +154,17 @@ enum LibraryEnableAction {
         }
     }
 
+    /// 既存の登録を有効化する（起動時の再開ウィザード [§19.10 ステージ 2] の
+    /// 確定）。**登録はし直さない**——`registerAndEnable` と違い、フォルダは
+    /// もう `RegisteredFolderStore` にある。
+    static func enableRegistered(folder: RegisteredFolder, url: URL,
+                                 draft: LibrarySettingsDraft,
+                                 template: LibraryTypeTemplate?,
+                                 locale: Locale, openWindow: OpenWindowAction) async {
+        await enable(folder: folder, url: url, draft: draft, template: template,
+                     locale: locale, openWindow: openWindow)
+    }
+
     // MARK: - 実処理
 
     private static func enable(folder: RegisteredFolder, url: URL,
@@ -191,18 +202,24 @@ enum LibraryEnableAction {
             cancel: { task.cancel() })
         defer { OperationProgressCenter.shared.finish(handle) }
 
+        // ファイル単位の報告 [RG3-32] を 10 回/秒に間引いてから UI へ流す。
+        // エンジンは間引かない（`ScanEngine.scan` の注記）——間引きは表示側の
+        // 仕事で、実装は転送・展開と同じ `ProgressThrottle` を使う。
+        let throttled = ProgressThrottle.wrap(ProgressReporter { progress in
+            Task { @MainActor in
+                OperationProgressCenter.shared.update(
+                    handle, progress: progress, detail: progress.currentItemName)
+            }
+        }, totalItems: 0, totalBytes: 0)
         do {
             let summary = try await task.run {
                 try await LibraryServices.shared.scan(
                     libraryID: libraryID, root: url,
-                    onProgress: { count, name in
-                        Task { @MainActor in
-                            OperationProgressCenter.shared.update(
-                                handle,
-                                progress: OperationProgress(completedItems: count,
-                                                            currentItemName: name),
-                                detail: name)
-                        }
+                    onProgress: { scan in
+                        throttled.report(OperationProgress(
+                            completedItems: scan.processed,
+                            totalItems: scan.total,
+                            currentItemName: scan.currentName))
                     })
             }
             guard !summary.cancelled else { return }

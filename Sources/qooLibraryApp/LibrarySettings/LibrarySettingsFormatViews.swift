@@ -610,6 +610,25 @@ struct FormatMatchPreview: View {
         case .labelGroup(let n): draft.labelGroupName(at: n) ?? "@labelgroup\(n)"
         }
     }
+
+    /// フィールドの色 [RG3-24 ①][§19.10 ステージ 2]。**ラベルへ流れる
+    /// フィールドだけが色を持つ**——`@labelgroupN` はそのフィールドの色、
+    /// `@author` は意味束縛 [RW-13] で流れる先のフィールドの色。タイトル・
+    /// シリーズ・巻（ファイルの属性）は色を持たない（付けると「ラベルとして
+    /// 付く値」と「属性として記録される値」の見分けが消える）。
+    static func colorHex(for field: FieldRef, draft: LibrarySettingsDraft,
+                         darkMode: Bool) -> String? {
+        let index: Int?
+        switch field {
+        case .labelGroup(let n): index = n
+        case .author: index = draft.semanticBindings[.author]
+        default: index = nil
+        }
+        guard let index,
+              let group = draft.labelGroups.first(where: { $0.index == index })
+        else { return nil }
+        return darkMode ? group.colorHexDark : group.colorHexLight
+    }
 }
 
 // MARK: - フォルダ階層割り当て

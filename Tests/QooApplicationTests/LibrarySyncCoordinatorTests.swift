@@ -22,6 +22,7 @@ final class FakeLibraryRepository: LibraryRepository, @unchecked Sendable {
     private(set) var checkpointWrites: [(LibraryID, FSEventsCheckpoint)] = []
     private(set) var fullScanWrites: [LibraryID] = []
     private(set) var pathWrites: [(LibraryID, String)] = []
+    var displayNameWrites: [(LibraryID, String)] = []
 
     init(_ states: [LibraryWatchState]) { _states = states }
 
@@ -49,6 +50,20 @@ final class FakeLibraryRepository: LibraryRepository, @unchecked Sendable {
     }
     func setResolvedPath(_ path: String, libraryID: LibraryID) async throws {
         withLock { pathWrites.append((libraryID, path)) }
+    }
+    func setDisplayName(_ name: String, libraryID: LibraryID) async throws {
+        withLock {
+            displayNameWrites.append((libraryID, name))
+            // `setOnline` と同じ理由で書いた値を反映する——反映しないと
+            // 「同じ名前なら書かない」を検査できない。
+            guard let i = _states.firstIndex(where: { $0.id == libraryID }) else { return }
+            let old = _states[i]
+            _states[i] = LibraryWatchState(
+                id: old.id, uuid: old.uuid, displayName: name,
+                resolvedPath: old.resolvedPath, volumeUUID: old.volumeUUID,
+                isOnline: old.isOnline, checkpoint: old.checkpoint,
+                lastFullScanAt: old.lastFullScanAt)
+        }
     }
     func setFSEventsCheckpoint(_ checkpoint: FSEventsCheckpoint,
                                libraryID: LibraryID) async throws {
@@ -258,6 +273,25 @@ struct LibrarySyncCoordinatorTests {
 
         await coordinator.resync()
         #expect(repo.pathWrites.map(\.1) == [url.path])
+    }
+
+    /// **フォルダ名＝表示名** [RG3-31]。根の移動（リネームを含む）で表示名も
+    /// 追随する。`settingsRevision` の更新はリポジトリの実装が担う。
+    @Test("根が移動したら表示名もフォルダ名へ追随する [RG3-31]")
+    func rewritesTheDisplayNameWhenTheRootMoves() async throws {
+        let roots = try Roots()
+        let url = try roots.make("新しい名前")
+        let uuid = UUID()
+        let recorder = ScanRecorder()
+        let (coordinator, repo, _) = makeCoordinator(
+            states: [state(id: 1, uuid: uuid, path: "/Volumes/古い名前/lib")],
+            locations: [uuid: .online(url)], recorder: recorder)
+
+        await coordinator.resync()
+        #expect(repo.displayNameWrites.map(\.1) == [url.lastPathComponent])
+        // 名前が既に一致していれば書かない（冪等）。
+        await coordinator.resync()
+        #expect(repo.displayNameWrites.count == 1)
     }
 
     /// ゴミ箱の中・実体消失・ファイルシステム非対応も「走査しない」に畳む。

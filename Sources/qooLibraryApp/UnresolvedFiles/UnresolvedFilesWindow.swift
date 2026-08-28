@@ -123,6 +123,12 @@ struct UnresolvedFilesWindow: View {
     ///
     /// **オフラインでも件数を出す**（孤立側との違い）。実体を見ない判断なので、
     /// 接続していなくても数字が正しい。
+
+    /// 同名ライブラリの注記 [RG3-31]。衝突している行にだけパスが付く。
+    private var nameAnnotations: [LibraryID: String] {
+        LibraryNameDisambiguation.annotations(for: model.libraries)
+    }
+
     private var libraryList: some View {
         List(selection: $model.selectedLibraryID) {
             Section("librarySettings.librariesHeader") {
@@ -131,6 +137,8 @@ struct UnresolvedFilesWindow: View {
                     Label {
                         VStack(alignment: .leading, spacing: 1) {
                             Text(library.displayName)
+                            // 同名のライブラリはパスで区別する [RG3-31]。
+                            LibraryPathCaption(annotation: nameAnnotations[library.id])
                             Text(String(format: String(localized: "unresolvedFiles.count",
                                                        locale: locale), count))
                                 .font(.system(size: Tokens.fontSize.caption))

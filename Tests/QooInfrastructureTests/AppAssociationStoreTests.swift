@@ -1,4 +1,5 @@
 import Foundation
+import QooKit
 import Testing
 
 @testable import QooInfrastructure
@@ -264,5 +265,54 @@ import Testing
         let reloaded = await reopened.extensions()
         #expect(!reloaded.contains("zip"))
         #expect(reloaded.contains("mkv")) // 他の項目は保持される
+    }
+
+    // MARK: - 画像フォルダの擬似キー [§19.10 ステージ 2]
+
+    /// 擬似キー `folder` は拡張子ではないので、設定しても拡張子の一覧には
+    /// 載らない（載せると「ビューア」タブに「.FOLDER」という嘘の行が出る）。
+    /// 設定そのものは `primary(for:)` で読める。
+    ///
+    /// **永続化ファイルの側も見る**——読み出しフィルタ（`extensions()`）が
+    /// あるため `setPrimary` 側の関門を外しても API の挙動は変わらないが、
+    /// 一覧へ書かれたファイルはフィルタを持たない旧版に「.FOLDER」として
+    /// 読まれる。書かないことが不変条件。
+    @Test func folderPseudoKeyDoesNotAppearInTheExtensionList() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let storageURL = root.appendingPathComponent("state.json")
+        let store = AppAssociationStore(storageURL: storageURL)
+
+        try await store.setPrimary("com.apple.TextEdit", for: AppAssociationKeys.folder)
+
+        let extensions = await store.extensions()
+        #expect(!extensions.contains(AppAssociationKeys.folder))
+        let primary = await store.primary(for: AppAssociationKeys.folder)
+        #expect(primary?.bundleID == "com.apple.TextEdit")
+
+        let stored = try JSONSerialization.jsonObject(with: Data(contentsOf: storageURL)) as? [String: Any]
+        let storedExtensions = stored?["customExtensions"] as? [String] ?? []
+        #expect(!storedExtensions.contains(AppAssociationKeys.folder))
+    }
+
+    /// この修正より前の版が擬似キーを拡張子の一覧へ保存していた場合も、
+    /// 読み出し側で除く（永続化ファイルの掃除は要らない）。
+    @Test func legacyFolderPseudoKeyInTheStoredListIsFilteredOut() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let storageURL = root.appendingPathComponent("state.json")
+        let legacy: [String: Any] = [
+            "associations": [AppAssociationKeys.folder: "com.apple.TextEdit"],
+            "customExtensions": [AppAssociationKeys.folder, "zip"],
+            "hasUnifiedDefaults": true,
+        ]
+        try JSONSerialization.data(withJSONObject: legacy).write(to: storageURL)
+
+        let store = AppAssociationStore(storageURL: storageURL)
+        let extensions = await store.extensions()
+        #expect(!extensions.contains(AppAssociationKeys.folder))
+        #expect(extensions.contains("zip"))
+        let primary = await store.primary(for: AppAssociationKeys.folder)
+        #expect(primary?.bundleID == "com.apple.TextEdit")
     }
 }

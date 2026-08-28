@@ -2484,10 +2484,18 @@ struct FolderContentView: View {
     }
 
     /// [ER-01] 開くのに失敗した場合もエラーを握りつぶさず提示する。
+    ///
+    /// この経路の対象は画像フォルダ（ブックフォルダ [IF-18]）だけ。フォルダは
+    /// 拡張子を持たないので、`open(_:with: nil)` の拡張子ベースの解決には
+    /// 乗らない——擬似キー [`AppAssociationKeys.folder`] で選ばれた
+    /// 「開くアプリ」をここで引いて渡す [§19.10 ステージ 2]。未設定なら
+    /// `nil` のまま＝システムの既定（Finder）で開く。
     private func openWithAssociation(_ url: URL) {
         Task {
             do {
-                try await appAssociationService.open([url], with: nil)
+                let folderApp = await appAssociationService
+                    .primary(for: AppAssociationKeys.folder)?.bundleID
+                try await appAssociationService.open([url], with: folderApp)
             } catch {
                 presentError(error, whatHappened: String(localized: "error.openFailed", locale: locale))
             }

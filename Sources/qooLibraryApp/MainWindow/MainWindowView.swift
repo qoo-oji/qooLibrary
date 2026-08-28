@@ -825,6 +825,9 @@ struct MainWindowView: View {
             // メインスレッドで FS を待たない [NV6-02]。
             windowState.title = await FileIO.perform { FileManager.default.displayName(atPath: url.path) }
             startupFolderResolved = true
+            // 登録済みだが未有効のライブラリがあれば、ウィザードをステップ 3
+            // から再開して有効化まで導く [§19.10 ステージ 2]。起動につき 1 回。
+            LibrarySetupPrompt.runOnce(locale: locale, openWindow: openWindow)
         }
     }
 }

@@ -258,6 +258,7 @@ struct LibraryEnableView: View {
 /// 自分の蔵書がどう解釈されるかは分からない。
 struct LibraryEnablePreviewPane: View {
     @Environment(\.locale) private var locale
+    @Environment(\.colorScheme) private var colorScheme
     let model: LibraryEnableModel
 
     var body: some View {
@@ -347,7 +348,6 @@ struct LibraryEnablePreviewPane: View {
                 if item.matched {
                     Text(fieldSummary(item))
                         .font(.system(size: Tokens.fontSize.caption))
-                        .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
                     Text("libraryEnable.preview.unresolvedHint")
@@ -376,9 +376,32 @@ struct LibraryEnablePreviewPane: View {
 
     /// 「タイトル: ○○ ・ サークル: ○○」の形にする。**ラベルグループは
     /// 番号ではなく名前で出す**——`@labelgroup3` と言われても何のことか分からない。
-    private func fieldSummary(_ item: LibraryPreview.Item) -> String {
-        item.fields.map { field in
-            "\(FormatMatchPreview.label(for: field.ref, draft: model.draft)): \(field.value)"
-        }.joined(separator: " ・ ")
+    ///
+    /// ラベルへ流れる値には**フィールドの色を敷く** [§19.10 ステージ 2]。
+    /// どの値がどのフィールドのラベルになるかが一目で分かり、色はそのまま
+    /// カスタマイズ（フィールドの色）へ追随する。1 本の `AttributedString` に
+    /// するのは、行数の多い一覧でチップの部品を並べるより軽く、自然に
+    /// 折り返せるため。
+    private func fieldSummary(_ item: LibraryPreview.Item) -> AttributedString {
+        var out = AttributedString()
+        for (offset, field) in item.fields.enumerated() {
+            if offset > 0 { out += AttributedString("  ") }
+            var label = AttributedString(
+                "\(FormatMatchPreview.label(for: field.ref, draft: model.draft)): ")
+            label.foregroundColor = .secondary
+            out += label
+            var value = AttributedString(field.value)
+            if let hex = FormatMatchPreview.colorHex(for: field.ref, draft: model.draft,
+                                                     darkMode: colorScheme == .dark),
+               let background = Color(labelHex: hex) {
+                value.backgroundColor = background
+                if let fgHex = LabelColorPalette.readableForeground(on: hex),
+                   let foreground = Color(labelHex: fgHex) {
+                    value.foregroundColor = foreground
+                }
+            }
+            out += value
+        }
+        return out
     }
 }

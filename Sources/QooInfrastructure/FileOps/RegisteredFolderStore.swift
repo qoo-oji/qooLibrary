@@ -228,9 +228,32 @@ public actor RegisteredFolderStore {
 
     public func folders(kind: RegisteredFolderKind) async -> [RegisteredFolder] {
         await ensureLoaded()
-        return folders
-            .filter { $0.kind == kind }
-            .sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
+        // **並びは保存順＝利用者が決めた順** [RG3-33]。以前は表示名順に
+        // 並べ直していたが、D&D の並べ替えを永続化するようにしたので、
+        // 配列の順序そのものが正である（`reorder` 参照）。
+        return folders.filter { $0.kind == kind }
+    }
+
+    /// フォルダツリーの D&D 並べ替え [RG3-33]。順序は保存され、全ウインドウで
+    /// 共有する（ラベルグループの表示順 [LG-07][ST-23] と同じ扱い）。
+    /// 並べ替えは種別（テンポラリ／ライブラリ）の中で閉じる。
+    public func reorder(ids: [UUID], kind: RegisteredFolderKind) async {
+        await ensureLoaded()
+        var inKind = folders.filter { $0.kind == kind }
+        let position: [UUID: Int] = Dictionary(
+            uniqueKeysWithValues: ids.enumerated().map { ($0.element, $0.offset) })
+        // 渡されなかった登録（並べ替え中に増えた等）は末尾へ寄せるだけで
+        // 落とさない——順序の更新でレコードが消える経路を作らない。
+        inKind.sort { (position[$0.id] ?? Int.max) < (position[$1.id] ?? Int.max) }
+        var iterator = inKind.makeIterator()
+        let merged = folders.map { $0.kind == kind ? (iterator.next() ?? $0) : $0 }
+        guard merged.map(\.id) != folders.map(\.id) else { return }
+        folders = merged
+        do {
+            try save()
+        } catch {
+            Log.sandbox.warning("登録フォルダの並び順を保存できません: \(error.localizedDescription)")
+        }
     }
 
     /// 起動時にセキュリティスコープを開始できた登録の件数。
@@ -267,6 +290,13 @@ public actor RegisteredFolderStore {
     public func resolvedURL(for folder: RegisteredFolder) async -> URL? {
         let resolution = await bookmarks.resolve(folder.bookmarkData, waitingAtMost: resolutionDeadline)
         guard case .resolved(let url, _) = resolution else { return nil }
+        // フォルダ名＝表示名 [RG3-31]。`rememberResolvedPaths` と同じ追随を、
+        // 1 件だけ解決する経路（走査の起点解決など）でも行う。
+        if folder.kind == .library, folder.displayName != url.lastPathComponent,
+           let index = folders.firstIndex(where: { $0.id == folder.id }) {
+            folders[index].displayName = url.lastPathComponent
+            try? save()
+        }
         return url
     }
 
@@ -347,11 +377,9 @@ public actor RegisteredFolderStore {
         }
     }
 
-    /// 種別で絞った状態一覧。並びは ``folders(kind:)`` と同じ表示名順。
+    /// 種別で絞った状態一覧。並びは ``folders(kind:)`` と同じ保存順 [RG3-33]。
     public func states(kind: RegisteredFolderKind) async -> [RegisteredFolderState] {
-        await states()
-            .filter { $0.folder.kind == kind }
-            .sorted { $0.folder.displayName.localizedStandardCompare($1.folder.displayName) == .orderedAscending }
+        await states().filter { $0.folder.kind == kind }
     }
 
     /// 実体を見失った登録に、新しい場所を割り当て直す [RG3-04 の「場所を選び直す…」]。
@@ -575,9 +603,20 @@ public actor RegisteredFolderStore {
             guard let url = status.resolvedURL else { continue }
             let path = url.standardizedFileURL.path
             guard let index = folders.firstIndex(where: { $0.id == id }) else { continue }
-            guard folders[index].lastKnownPath != path else { continue }
-            folders[index].lastKnownPath = path
-            changed = true
+            // **ライブラリはフォルダ名＝表示名** [RG3-31]。外部・アプリ内を
+            // 問わずフォルダがリネームされたら、解決した実名へ追随する
+            // （テンポラリの表示名 [RG-05] は利用者が付けた名前なので触らない）。
+            // DB 側（`library.displayName`）への同期は `LibraryServices` が
+            // この値を見て行う——層の向き [A-01] 上、ストアから DB は呼べない。
+            if folders[index].kind == .library,
+               folders[index].displayName != url.lastPathComponent {
+                folders[index].displayName = url.lastPathComponent
+                changed = true
+            }
+            if folders[index].lastKnownPath != path {
+                folders[index].lastKnownPath = path
+                changed = true
+            }
         }
         guard changed else { return }
         do {

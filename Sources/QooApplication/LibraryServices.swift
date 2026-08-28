@@ -260,6 +260,33 @@ public final class LibraryServices {
         }
     }
 
+    /// フォルダ名＝表示名 [RG3-31] を DB 側にも揃える。
+    ///
+    /// ストア（`RegisteredFolderStore`）は解決のたびに実フォルダ名へ追随して
+    /// いる（`rememberResolvedPaths`）が、DB の `library.displayName` は
+    /// 別に持っている——設定ウインドウの一覧・通知・`@libraryname` の照合が
+    /// こちらを見るので、ずれたままだと改名が画面に出ない。**ストアの
+    /// 同期済みの名前だけを見る**ので、ここではブックマークを解決しない
+    /// （解決の費用と副作用はストア側に閉じる）。
+    public func syncLibraryDisplayNames() async {
+        guard let repository = libraryRepository else { return }
+        let folders = await RegisteredFolderStore.shared.folders(kind: .library)
+        var changed = false
+        for folder in folders {
+            guard let summary = libraries.first(where: { $0.uuid == folder.id }),
+                  summary.displayName != folder.displayName else { continue }
+            do {
+                try await repository.setDisplayName(folder.displayName,
+                                                    libraryID: summary.id)
+                changed = true
+                Log.app.info("ライブラリの表示名をフォルダ名へ追随: \(Log.redactable(folder.displayName)) [RG3-31]")
+            } catch {
+                Log.app.error("表示名を同期できない: \(String(describing: error))")
+            }
+        }
+        if changed { await refreshLibraries() }
+    }
+
     /// 登録フォルダ ID（フェーズ 1 の `registeredFolders.json` の `id`）で引く。
     ///
     /// **`library.uuid` は登録フォルダ ID をそのまま持つ** [07章 §7.3]ので、
@@ -951,7 +978,7 @@ public final class LibraryServices {
         libraryID: LibraryID,
         mode: ScanEngine.Mode? = nil,
         root: URL? = nil,
-        onProgress: (@Sendable (Int, String) -> Void)? = nil
+        onProgress: (@Sendable (ScanProgress) -> Void)? = nil
     ) async throws -> ScanSummary {
         guard let engine = makeScanEngineIfNeeded() else { throw ServiceError.notReady }
         let scanMode = mode ?? .full(libraryID: libraryID)

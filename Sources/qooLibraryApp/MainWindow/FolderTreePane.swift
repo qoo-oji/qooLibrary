@@ -530,7 +530,21 @@ struct FolderTreePane: View {
         if entries.isEmpty {
             EmptyGroupRow(message: String(localized: "folderTree.noneRegistered", locale: locale))
         } else {
-            ForEach(entries) { entry in
+            registeredRowsForEach(entries, kind: kind)
+                // D&D で並べ替えられる [RG3-33]。順序はストアに保存され、
+                // 全ウインドウ・「移動」メニューで共有する（`reorder` 参照）。
+                .onMove { from, to in
+                    moveRegisteredFolders(kind, from: from, to: to)
+                }
+        }
+    }
+
+    /// 登録ルート行の `ForEach` 本体。`.onMove` [RG3-33] を付けるために
+    /// `if/else` の外へ切り出してある（`onMove` は `ForEach` 自身にしか
+    /// 付けられない）。
+    private func registeredRowsForEach(_ entries: [RegisteredFolderEntry],
+                                       kind: RegisteredFolderKind) -> some DynamicViewContent {
+        ForEach(entries) { entry in
                 if let node = entry.node {
                     FolderTreeRow(
                         node: node, expandedIDs: $expandedNodeIDs, visibleIDs: $visibleNodeIDs,
@@ -565,6 +579,22 @@ struct FolderTreePane: View {
                     )
                 }
             }
+    }
+
+    /// フォルダツリーの D&D 並べ替え [RG3-33]。
+    ///
+    /// **先にローカルの並びを動かしてからストアへ書く**——ストアの保存を
+    /// 待ってから描き直すと、ドロップの瞬間に一度元の位置へ戻って見える。
+    /// 保存後の `reloadToken` で他のウインドウとメニューが追随する。
+    private func moveRegisteredFolders(_ kind: RegisteredFolderKind,
+                                       from: IndexSet, to: Int) {
+        var entries = kind == .library ? libraryEntries : temporaryEntries
+        entries.move(fromOffsets: from, toOffset: to)
+        if kind == .library { libraryEntries = entries } else { temporaryEntries = entries }
+        let ids = entries.map(\.folder.id)
+        Task {
+            await RegisteredFolderStore.shared.reorder(ids: ids, kind: kind)
+            SessionState.shared.reloadToken += 1
         }
     }
 
@@ -1026,6 +1056,11 @@ struct FolderTreePane: View {
         // すべてこのメソッドを経由するため、更新経路をここ 1 本に集約できる
         // [`RegisteredFolderIndex` のコメント参照]。
         await RegisteredFolderIndex.shared.refresh()
+        // フォルダ名＝表示名 [RG3-31]。`states()` がストア側の表示名を実名へ
+        // 追随させたので、DB 側（設定ウインドウの一覧・通知・@libraryname）も
+        // 揃える。リネームの検知（RG3-07 の親の見張り）はこのメソッドへ
+        // 合流するので、呼び出しはここ 1 本で足りる。
+        await LibraryServices.shared.syncLibraryDisplayNames()
     }
 
     /// 登録ルートの親フォルダの見張りを、いまの登録内容に合わせる [1-17]。
@@ -1074,9 +1109,9 @@ struct FolderTreePane: View {
         from states: [RegisteredFolderState], kind: RegisteredFolderKind
     ) -> [RegisteredFolderEntry] {
         let nodeKind: FolderTreeNode.Kind = kind == .library ? .library : .temporary
+        // 並びは保存順（`states()` が `folders` の配列順で返す）[RG3-33]。
         return states
             .filter { $0.folder.kind == kind }
-            .sorted { $0.folder.displayName.localizedStandardCompare($1.folder.displayName) == .orderedAscending }
             .map { state in
                 let node = state.status.allowsNavigation
                     ? state.status.resolvedURL.map { url in

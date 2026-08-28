@@ -72,6 +72,12 @@ struct LabelVaultWindow: View {
     /// **保管庫が空のライブラリはグレーアウトする** [15.3 節]。選べなくは
     /// しない——「空だった」を確かめに来ることがあるため（押せない項目に
     /// するとその確認ができない）。
+
+    /// 同名ライブラリの注記 [RG3-31]。衝突している行にだけパスが付く。
+    private var nameAnnotations: [LibraryID: String] {
+        LibraryNameDisambiguation.annotations(for: model.libraries)
+    }
+
     private var libraryList: some View {
         List(selection: $model.selectedLibraryID) {
             Section("librarySettings.librariesHeader") {
@@ -80,6 +86,8 @@ struct LabelVaultWindow: View {
                     Label {
                         VStack(alignment: .leading, spacing: 1) {
                             Text(library.displayName)
+                            // 同名のライブラリはパスで区別する [RG3-31]。
+                            LibraryPathCaption(annotation: nameAnnotations[library.id])
                             Text(String(format: String(localized: "labelVault.archivedCount",
                                                        locale: locale), count))
                                 .font(.system(size: Tokens.fontSize.caption))

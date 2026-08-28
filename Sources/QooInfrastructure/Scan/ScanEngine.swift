@@ -38,6 +38,40 @@ public struct ScanSummary: Sendable, Equatable {
     }
 }
 
+/// 走査の進捗 1 報ぶん [RG3-32]。
+///
+/// **報告はファイル単位。** 以前は 500 件のバッチ境界 [SE3-05] でしか名前を
+/// 報告しなかったため、埋め込みメタデータの読み取り等で 1 バッチが長引くと
+/// 表示が凍って見えた［ユーザー指摘: 処理が止まっているように見えて不安になる］。
+/// 間引きは表示側（`ProgressThrottle`）に任せ、エンジンは間引かない。
+public struct ScanProgress: Sendable {
+    public enum Phase: Sendable {
+        /// 実ファイルの列挙中。総数はまだ分からない（`total == 0`）。
+        case enumerating
+        /// DB との突き合わせ・メタデータ読み取り・パース中。
+        case processing
+    }
+
+    public var phase: Phase
+    /// 処理済み（列挙中は見つけた）件数。
+    ///
+    /// **メタデータ読み取りの間は進まない**——読み取りとパースは同じ
+    /// ファイル群を 2 度なめるので、両方で数えると件数が行き来して見える。
+    /// その間は `currentName` のほうが動き続ける（名前か件数のどちらかが
+    /// 動いていればよい [RG3-32]）。
+    public var processed: Int
+    /// 総数。列挙が終わるまでは 0（不定進捗）。
+    public var total: Int
+    public var currentName: String
+
+    public init(phase: Phase, processed: Int, total: Int, currentName: String) {
+        self.phase = phase
+        self.processed = processed
+        self.total = total
+        self.currentName = currentName
+    }
+}
+
 public actor ScanEngine {
     public enum Mode: Sendable {
         /// FSEvents 差分 [SY-03]。渡されたパスの親フォルダだけを見る。
@@ -100,11 +134,12 @@ public actor ScanEngine {
     /// 見ていないものを「無くなった」と読む）ため、ラベルと評価を失う [R-01]。
     /// 手動の再スキャンと自動の追随が同時に起こりうる以上、ここで塞ぐ。
     ///
-    /// - Parameter onProgress: `(処理済み件数, 直近のファイル名)`。
-    ///   件数は逐次、一覧の反映はバッチ境界 [ST-10][ST-12]。
+    /// - Parameter onProgress: ファイル単位の進捗 [RG3-32]。**間引かずに呼ぶ**
+    ///   ので、UI へ流す側が `ProgressThrottle` で間引くこと。一覧への反映は
+    ///   従来どおりバッチ境界 [ST-10][ST-12]。
     public func scan(_ mode: Mode,
                      root: URL? = nil,
-                     onProgress: (@Sendable (Int, String) -> Void)? = nil) async throws -> ScanSummary
+                     onProgress: (@Sendable (ScanProgress) -> Void)? = nil) async throws -> ScanSummary
     {
         guard await acquire(mode.libraryID) else {
             var summary = ScanSummary()
@@ -143,7 +178,7 @@ public actor ScanEngine {
 
     private func performScan(_ mode: Mode,
                              root: URL?,
-                             onProgress: (@Sendable (Int, String) -> Void)?) async throws -> ScanSummary
+                             onProgress: (@Sendable (ScanProgress) -> Void)?) async throws -> ScanSummary
     {
         var summary = ScanSummary()
         guard let library = try await deps.libraries.library(id: mode.libraryID) else {
@@ -228,7 +263,11 @@ public actor ScanEngine {
                 try await FileIO.perform {
                     try enumerator.enumerate(root: rootURL, libraryID: library.id,
                                              volumeUUID: library.volumeUUID, options: options) {
-                        collector.append($0)
+                        let count = collector.append($0)
+                        // 列挙中も名前と件数を動かし続ける [RG3-32]。総数は
+                        // まだ分からないので 0（表示は不定進捗のまま）。
+                        onProgress?(ScanProgress(phase: .enumerating, processed: count,
+                                                 total: 0, currentName: $0.filename))
                     }
                 }
                 enumerated.append(unit)
@@ -251,9 +290,12 @@ public actor ScanEngine {
         //    保存は 500 件のバッチ境界で行う [SE3-05][ST-13]。
         var seen = Set<FileID>()
         var processed = 0
+        let total = snapshots.count
         for chunk in snapshots.chunked(into: AppLimits.Watch.scanBatchSize) {
             if Task.isCancelled { summary.cancelled = true; break }
-            let outcome = try await reconcile(chunk, settings: settings, rootURL: rootURL)
+            let outcome = try await reconcile(chunk, settings: settings, rootURL: rootURL,
+                                              progressBase: processed, progressTotal: total,
+                                              onProgress: onProgress)
             seen.formUnion(outcome.seen)
             summary.added += outcome.added
             summary.updated += outcome.updated
@@ -261,7 +303,6 @@ public actor ScanEngine {
             summary.unresolvedNames += outcome.unresolvedNames
             summary.volumeConflicts += outcome.volumeConflicts
             processed += chunk.count
-            onProgress?(processed, chunk.last?.filename ?? "")
         }
 
         // ④ 観測されなかったレコードを孤立にする [ID-06]。
@@ -446,7 +487,12 @@ public actor ScanEngine {
 
     func reconcile(_ snapshots: [FileSnapshot],
                    settings: LibrarySettingsSnapshot,
-                   rootURL: URL) async throws -> ChunkOutcome {
+                   rootURL: URL,
+                   progressBase: Int = 0,
+                   progressTotal: Int = 0,
+                   onProgress: (@Sendable (ScanProgress) -> Void)? = nil)
+        async throws -> ChunkOutcome
+    {
         var outcome = ChunkOutcome()
 
         // 既存かどうかを先に見る（`upsertBatch` は「あれば更新」なので区別が付かない）。
@@ -506,14 +552,26 @@ public actor ScanEngine {
 
         // ③ 埋め込みメタデータ [EM-09]。**パースより先に読む**——
         //    パース結果へフィールド単位で上書きするため [EM-04]。
+        //    件数はここでは進めない（`ScanProgress.processed` の注記）——
+        //    容器を開くのが走査で最も時間のかかる局面なので、代わりに
+        //    **名前を 1 件ずつ**動かす [RG3-32]。
         let metadata = try await readMetadata(snapshots, ids: ids,
-                                              rootURL: rootURL, settings: settings)
+                                              rootURL: rootURL, settings: settings,
+                                              onFileRead: { name in
+            onProgress?(ScanProgress(phase: .processing, processed: progressBase,
+                                     total: progressTotal, currentName: name))
+        })
 
         // ④ パースとラベル付与 [RC-01]。
         var unresolved: [UnresolvedObservation] = []
         var resolvedIDs: [FileID] = []
         for (offset, id) in ids.enumerated() {
             let snapshot = snapshots[offset]
+            // ファイル単位で件数と名前を進める [RG3-32]。間引きは表示側。
+            onProgress?(ScanProgress(phase: .processing,
+                                     processed: progressBase + offset + 1,
+                                     total: progressTotal,
+                                     currentName: snapshot.filename))
             let embedded = metadata[id]?.metadata
             let isUnresolved = try await applyResolution(
                 relativePath: snapshot.relativePath,
@@ -670,7 +728,8 @@ public actor ScanEngine {
     /// 支配的なので、並行にすると実時間がそのぶん縮む。上限を設けるのは、
     /// ネットワーク共有へ一度に大量の要求を投げるとかえって遅くなるため。
     func readMetadata(_ snapshots: [FileSnapshot], ids: [FileID],
-                      rootURL: URL, settings: LibrarySettingsSnapshot)
+                      rootURL: URL, settings: LibrarySettingsSnapshot,
+                      onFileRead: (@Sendable (String) -> Void)? = nil)
         async throws -> [FileID: EmbeddedMetadataCacheEntry]
     {
         guard settings.readsEmbeddedMetadata else { return [:] }   // [EM-06]
@@ -721,8 +780,12 @@ public actor ScanEngine {
                 }
             }
             for _ in 0..<min(limit, pending.count) { submit() }
+            var names: [FileID: String] = [:]
+            for item in pending { names[item.id] = item.url.lastPathComponent }
             while let (id, entry) = await group.next() {
                 if let entry { fresh[id] = entry }
+                // 容器を 1 つ読み終えるたびに名前を報告する [RG3-32]。
+                if let name = names[id] { onFileRead?(name) }
                 if Task.isCancelled { group.cancelAll(); break }
                 submit()
             }
@@ -779,8 +842,12 @@ final class SnapshotCollector: @unchecked Sendable {
     private let lock = NSLock()
     private var items: [FileSnapshot] = []
 
-    func append(_ snapshot: FileSnapshot) {
-        lock.lock(); items.append(snapshot); lock.unlock()
+    /// - Returns: 追加後の件数（列挙中の進捗表示 [RG3-32] に使う）。
+    @discardableResult
+    func append(_ snapshot: FileSnapshot) -> Int {
+        lock.lock(); defer { lock.unlock() }
+        items.append(snapshot)
+        return items.count
     }
 
     func take() -> [FileSnapshot] {

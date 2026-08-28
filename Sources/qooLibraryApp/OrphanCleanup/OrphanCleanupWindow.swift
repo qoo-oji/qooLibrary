@@ -87,6 +87,12 @@ struct OrphanCleanupWindow: View {
     ///
     /// **オフラインは件数を出さない** [OR2-06]。0 件と紛らわしくなるので
     /// 理由の語を出す——「孤立が無い」のか「見られない」のかは別のことである。
+
+    /// 同名ライブラリの注記 [RG3-31]。衝突している行にだけパスが付く。
+    private var nameAnnotations: [LibraryID: String] {
+        LibraryNameDisambiguation.annotations(for: model.libraries)
+    }
+
     private var libraryList: some View {
         List(selection: $model.selectedLibraryID) {
             Section("librarySettings.librariesHeader") {
@@ -96,6 +102,8 @@ struct OrphanCleanupWindow: View {
                     Label {
                         VStack(alignment: .leading, spacing: 1) {
                             Text(library.displayName)
+                            // 同名のライブラリはパスで区別する [RG3-31]。
+                            LibraryPathCaption(annotation: nameAnnotations[library.id])
                             Text(online
                                  ? String(format: String(localized: "orphanCleanup.count",
                                                          locale: locale), count)

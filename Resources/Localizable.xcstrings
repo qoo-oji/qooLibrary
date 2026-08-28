@@ -12458,6 +12458,22 @@
         }
       }
     },
+    "preferences.associations.folderRow": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Image Folders"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "画像フォルダ"
+          }
+        }
+      }
+    },
     "preferences.associations.footer": {
       "localizations": {
         "en": {
