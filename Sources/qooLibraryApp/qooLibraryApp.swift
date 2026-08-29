@@ -301,16 +301,6 @@ struct QooLibraryApp: App {
         }
         .defaultSize(width: 820, height: 560)
 
-        // ファイル保管庫の整理 [FAW-01〜FAW-05][15.4 節]。開くのはフォルダツリーの
-        // 「ファイルの保管庫…」から（`FileVaultNavigation` が対象を渡す）。
-        // **登録ルート行は 2 種類ある**ので、通常の行と縮退した行の両方に
-        // 配線してある。
-        Window("fileVault.windowTitle", id: "fileVault") {
-            FileVaultWindow()
-                .appLanguageOverride()
-        }
-        .defaultSize(width: 900, height: 560)
-
         // 重複の比較 [DU-20〜DU-29][15.14 節]。開くのは中央ペインの行の
         // 「重複を比較…」から（`DuplicateComparisonNavigation` が対象を渡す）。
         // **1 つの組だけを扱う**ので、他の整理ウインドウと違い左ペインは無い。
@@ -320,26 +310,18 @@ struct QooLibraryApp: App {
         }
         .defaultSize(width: 820, height: 560)
 
-        // 孤立ファイルの整理 [OR-01〜OR-05][15.7 節]。開くのはフォルダツリーの
-        // 「孤立ファイルを整理…」から（`OrphanCleanupNavigation` が対象を渡す）。
-        // **登録ルート行は 2 種類ある**ので、通常の行と縮退した行の両方に
-        // 配線してある。
-        Window("orphanCleanup.windowTitle", id: "orphanCleanup") {
-            OrphanCleanupWindow()
+        // メンテナンス [19章 §19.6、ステージ 4]。ライブラリの「片付けごと」を
+        // 1 枚に集めたウインドウ（見つからないファイル §15.7／保管庫 §15.4）。
+        // 開くのはメニューバー「ライブラリ」と、走査結果・通知履歴からの導線
+        // （`MaintenanceNavigation` が対象とタブを渡す）。
+        //
+        // **旧 `orphanCleanup` / `fileVault` の id はもう無い。** 状態復元が
+        // それらを開こうとしても SwiftUI は黙って無視する [§19.6]。
+        Window("maintenance.windowTitle", id: "maintenance") {
+            MaintenanceWindow()
                 .appLanguageOverride()
         }
-        .defaultSize(width: 880, height: 560)
-
-        // 未解決ファイルの整理 [UR-01〜UR-06][15.6 節]。開くのはフォルダツリーの
-        // 「未解決ファイルを整理…」と、走査結果のシートから
-        // （`UnresolvedFilesNavigation` が対象を渡す）。
-        // **登録ルート行は 2 種類ある**ので、通常の行と縮退した行の両方に
-        // 配線してある。
-        Window("unresolvedFiles.windowTitle", id: "unresolvedFiles") {
-            UnresolvedFilesWindow()
-                .appLanguageOverride()
-        }
-        .defaultSize(width: 980, height: 580)
+        .defaultSize(width: 940, height: 600)
 
         // 通知履歴 [NW-01〜NW-08][15章 §15.11]。開くのは**ステータスバーの
         // 通知バッジ** [NT-02] と**ウインドウメニュー** [13章 §13.7.2] の 2 つ。

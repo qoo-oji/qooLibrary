@@ -62,6 +62,13 @@ public final class LabelFilterModel {
 
     /// フィルタ全 OFF のときのライブラリ全体の件数。分母として出す [LF-11]。
     public private(set) var totalCount: Int?
+    /// 未整理のファイルの件数 [UR3-01]。左ペイン最下部の常設項目に出す。
+    ///
+    /// **ラベルフィルタと同じ読み込みに相乗りしている**——どちらも
+    /// 「表示中のライブラリについて、左ペインが出すもの」で、駆動する鍵
+    /// （`labelFilterLoadKey`）も同じでよい。専用のモデルを足すと、走査・⌘Z の
+    /// たびに読み直す配線をもう 1 組持つことになる。
+    public private(set) var unresolvedCounts: UnresolvedCounts?
 
     /// 中央ペインが残してよい子の名前 [VM-02]。`nil` は「絞らない」。
     public private(set) var allowedChildNames: Set<String>?
@@ -167,6 +174,7 @@ public final class LabelFilterModel {
             groups = []
             labels = [:]
             totalCount = nil
+            unresolvedCounts = nil
             loadFailure = nil
             return
         }
@@ -181,10 +189,12 @@ public final class LabelFilterModel {
             groups = usable
             labels = loaded
             totalCount = try await services.fileCount(FileQuery(libraryID: library.id))
+            unresolvedCounts = try await services.unresolvedFileCounts()[library.id]
             loadFailure = nil
         } catch {
             groups = []
             labels = [:]
+            unresolvedCounts = nil
             loadFailure = String(describing: error)
             Log.ui.warning("ラベルフィルタを読めない: \(String(describing: error))")
         }

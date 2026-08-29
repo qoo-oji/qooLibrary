@@ -40,11 +40,18 @@ enum NotificationRouteAction {
         case reviewVolumes:
             VolumeDecisionAction.present(libraryID: libraryID, locale: locale)
         case reviewUnresolved:
-            guard let openWindow else { return false }
-            UnresolvedFilesNavigation.open(libraryID: libraryID, openWindow: openWindow)
+            // ステージ 4 で専用ウインドウを廃し、**メインウインドウの一覧**へ
+            // 移した [UR3-01][UR3-02]。`openWindow` は要らない——行き先は
+            // 既に開いているメインウインドウの中の状態で、開いていなければ
+            // 何も起きない（`openWindow` が `nil` のときと同じ扱い）。
+            UnresolvedViewNavigation.open(libraryID: libraryID)
         case reviewOrphans:
             guard let openWindow else { return false }
-            OrphanCleanupNavigation.open(libraryID: libraryID, openWindow: openWindow)
+            // ステージ 4 で専用ウインドウからメンテナンスのタブへ移した
+            // [§19.6]。**タブを明示する**——通知は行き先が決まっているので、
+            // 前回開いていたタブのまま出すと押した意味が伝わらない。
+            MaintenanceNavigation.open(libraryID: libraryID, tab: .orphans,
+                                       openWindow: openWindow)
         default:
             return false
         }

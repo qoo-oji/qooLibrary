@@ -14,6 +14,10 @@ import SwiftUI
 struct LabelFilterPane: View {
     @Bindable var model: LabelFilterModel
     let services: LibraryServices
+    /// 未整理ビューを見ているか [UR3-01]。行のハイライトに使う。
+    let isShowingUnresolved: Bool
+    /// 未整理ビューの出入り。実体は `WindowState.toggleUnresolvedFiles()`。
+    let onToggleUnresolved: () -> Void
 
     @Environment(\.locale) private var locale
 
@@ -22,6 +26,49 @@ struct LabelFilterPane: View {
             header
             Divider()
             content
+            // **最下部に独立して置く**［ユーザー指定、2026-08-29］。ラベル
+            // フィルタの中（セクションの 1 つ）にしないのは、これが絞り込みでは
+            // なく**別の一覧への切り替え**だから——同じ List に混ぜると、
+            // チェックを入れる操作と一覧を切り替える操作が並ぶことになる。
+            unresolvedSection
+        }
+    }
+
+    // MARK: - 未整理のファイル [UR3-01][UR3-05]
+
+    /// **ライブラリを見ているときは常設する**（0 件でも消さない）。件数が
+    /// 出ていること自体が「片付けるものは無い」という答えになる——消えると
+    /// 「そんな機能は無い」と読める。
+    @ViewBuilder
+    private var unresolvedSection: some View {
+        if model.library != nil {
+            Divider()
+            let pending = model.unresolvedCounts?.pending ?? 0
+            Button(action: onToggleUnresolved) {
+                HStack(spacing: Tokens.spacing.xs) {
+                    Image(systemName: "tray.full")
+                        .foregroundStyle(pending > 0 ? Color.accentColor : .secondary)
+                    Text("labelFilter.unresolvedTitle")
+                    Spacer(minLength: Tokens.spacing.xs)
+                    Text(pending.formatted(.number.locale(locale)))
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+                .font(.system(size: Tokens.fontSize.caption))
+                .padding(.horizontal, Tokens.spacing.m)
+                .padding(.vertical, Tokens.spacing.xs)
+                // **行全体を当たり判定にする**——文字の幅しか押せないと、
+                // 右端の件数の隣が死んだ領域になる（1-6 で `List` の行に対して
+                // 踏んだのと同じ形）。
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .background(isShowingUnresolved
+                        ? Color(nsColor: .selectedContentBackgroundColor) : Color.clear)
+            .foregroundStyle(isShowingUnresolved
+                             ? Color(nsColor: .alternateSelectedControlTextColor) : Color.primary)
+            .help(String(localized: "labelFilter.unresolvedHint", locale: locale))
         }
     }
 

@@ -937,6 +937,15 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
             args.append("%" + escapeLike(TextNormalizer.searchKey(text)) + "%")
         }
 
+        // 未整理だけに絞る [UR3-01][UR3-05]。**テーブル名で修飾する**
+        // ——`groupedSubquery` はこの句を `FROM managedFile` の窓関数つき
+        // 副問い合わせにも埋めるので、素の `id` では曖昧になりうる。
+        if let unresolved = q.unresolvedFilter {
+            let pendingOnly = unresolved == .pending ? " AND unresolvedFile.isIgnored = 0" : ""
+            clauses.append("EXISTS (SELECT 1 FROM unresolvedFile"
+                           + " WHERE unresolvedFile.managedFileId = managedFile.id\(pendingOnly))")
+        }
+
         if !q.labelSelection.isEmpty {
             var parts: [String] = []
             // グループの順序を安定させる（同じ問い合わせが同じ SQL になるように）。

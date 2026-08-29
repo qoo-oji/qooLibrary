@@ -136,7 +136,8 @@ public final class LibraryContentModel {
                                    sort: sort,
                                    offset: 0,
                                    grouping: grouping,
-                                   duplicatesOnly: onlyDuplicates)
+                                   duplicatesOnly: onlyDuplicates,
+                                   unresolvedFilter: unresolvedFilter)
         generation &+= 1
         let mine = generation
         activeQuery = query
@@ -215,6 +216,22 @@ public final class LibraryContentModel {
         duplicatesOnly = on
     }
 
+    /// 未整理のファイルだけを出す [UR3-01][UR3-02]。**ウインドウ固有の表示
+    /// 状態** [ST-20]——`duplicatesOnly` と同じ扱いで DB には保存しない。
+    ///
+    /// **これは絞り込みであって別の一覧ではない**のが要点。同じ
+    /// `LibraryContentModel` の経路に乗るので、行の描き方も選択もファイル操作も
+    /// 通常のライブラリ表示とまったく同じものが使える [UR3-02]——専用ウインドウ
+    /// （旧 §15.6）はそこを妨げていた。
+    public private(set) var unresolvedFilter: FileQuery.UnresolvedFilter?
+
+    /// 未整理ビューを見ているか。救済アクションの出し分けに使う [UR3-03]。
+    public var showsUnresolvedOnly: Bool { unresolvedFilter != nil }
+
+    public func setUnresolvedFilter(_ filter: FileQuery.UnresolvedFilter?) {
+        unresolvedFilter = filter
+    }
+
     /// 一覧がいま組を畳んでいるか [DU-04]。
     /// バッジ・コンテキストメニューの出し分けはこれを見る。
     public private(set) var grouping: DuplicateGrouping = .off
@@ -231,6 +248,10 @@ public final class LibraryContentModel {
         // 空きスペースに「重複のみを表示」が出続け、そこで切り替えた値が
         // ライブラリ表示へ戻ったときに黙って一覧を絞る。
         grouping = .off
+        // **未整理ビューも解く** [UR3-01]。残したままだと、ライブラリの外へ
+        // 出て戻ってきたときに一覧が黙って絞られたままになる（`grouping` を
+        // 戻しているのと同じ理由）。
+        unresolvedFilter = nil
         state = .inactive
     }
 
@@ -250,7 +271,8 @@ public final class LibraryContentModel {
                                  sort: FileQuery.SortSpec,
                                  offset: Int,
                                  grouping: DuplicateGrouping = .off,
-                                 duplicatesOnly: Bool = false) -> FileQuery {
+                                 duplicatesOnly: Bool = false,
+                                 unresolvedFilter: FileQuery.UnresolvedFilter? = nil) -> FileQuery {
         let text = searchText?.trimmingCharacters(in: .whitespacesAndNewlines)
         return FileQuery(
             libraryID: libraryID,
@@ -260,6 +282,7 @@ public final class LibraryContentModel {
             ratingFilter: ratingFilter,
             searchText: (text?.isEmpty == false) ? text : nil,
             duplicatesOnly: duplicatesOnly,
+            unresolvedFilter: unresolvedFilter,
             grouping: grouping,
             sort: sort,
             offset: offset,

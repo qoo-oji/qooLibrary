@@ -158,6 +158,108 @@ struct UnresolvedFileModelIntegrationTests {
         #expect(b.model.unresolvedCounts[b.libraryID]?.pending == 2)
     }
 
+    // MARK: - 中央ペインの未整理ビューから使う [UR3-03]
+
+    @Test("`FileID` から無視を立てられる（中央ペインの経路）[UR3-03]")
+    @MainActor
+    func ignoreByFileID() async throws {
+        let b = try await bench()
+        // **索引として読む**——無視した行も残るので、印とメニューの向きを
+        // 決められる（一覧として読むと無視した行は落ちる）。
+        await b.model.prepareAsIndex(services: b.workspace.services, libraryID: b.libraryID)
+        // **中央ペインは `FileID` しか持たない**——一覧の源は
+        // `LibraryContentModel` で、行は `FileRow`。
+        let target = try #require(b.model.files.first).row.id
+        try await b.model.setIgnored(fileIDs: [target], true)
+
+        #expect(b.model.ignoredFileIDs == [target])
+        #expect(b.model.unresolvedCounts[b.libraryID]?.pending == 1)
+
+        // 取り消せる操作として同じコマンドを通る [UD-03]。
+        _ = await b.commands.undo()
+        await b.model.reload()
+        #expect(b.model.ignoredFileIDs.isEmpty)
+    }
+
+    @Test("件数は無視したものを含めない（索引には残っていても）[UR3-05]")
+    @MainActor
+    func pendingCountExcludesIgnored() async throws {
+        let b = try await bench()
+        await b.model.prepareAsIndex(services: b.workspace.services, libraryID: b.libraryID)
+        #expect(b.model.pendingCount == 2)
+
+        let target = try #require(b.model.files.first).row.id
+        try await b.model.setIgnored(fileIDs: [target], true)
+
+        // **索引には残るが、片付ける対象からは外れる。** ヘッダの案内が
+        // `files.count` を見ていると、左ペイン・一覧と数字が食い違う。
+        #expect(b.model.files.count == 2)
+        #expect(b.model.pendingCount == 1)
+    }
+
+    @Test("対象を明示すると、選択中でないライブラリの設定を読む [UR3-03]")
+    @MainActor
+    func settingsDraftUsesTheGivenLibrary() async throws {
+        let b = try await bench()
+        // **選択中と対象が食い違う状況を作る。** これを作らないと、この API が
+        // 「渡された ID を使う」のか「選択中を使う」のか区別できない
+        // ——標本が主張の前提を満たしていないと変異検証が空振りする
+        // （このリポジトリで繰り返し踏んでいる形。実際 1 度空振りした）。
+        let otherRoot = b.workspace.libraryRoot.deletingLastPathComponent()
+            .appendingPathComponent("library2")
+        try FileManager.default.createDirectory(at: otherRoot, withIntermediateDirectories: true)
+        let other = try await b.workspace.services.enable(
+            registrationUUID: UUID(), displayName: "2 つ目", url: otherRoot,
+            bookmarkData: Data(),
+            template: try b.workspace.template("builtin.general-comic-a"))
+
+        await b.model.prepareAsIndex(services: b.workspace.services, libraryID: b.libraryID)
+        #expect(b.model.selectedLibraryID == b.libraryID)
+
+        let mine = try #require(try await b.model.settingsDraft(libraryID: b.libraryID))
+        let theirs = try #require(try await b.model.settingsDraft(libraryID: other))
+        // 同人誌(A) と一般コミック(A) はライブラリタイプ名が違う。
+        #expect(mine.libraryTypeName != theirs.libraryTypeName)
+    }
+
+    @Test("直近の再マッチング結果は捨てられる [UR3-03]")
+    @MainActor
+    func rematchResultCanBeCleared() async throws {
+        let b = try await bench()
+        try await b.model.rematch()
+        #expect(b.model.lastRematch != nil)
+        // 未整理ビューの出入りで捨てる——捨てないと「N 件のうち M 件が…」が
+        // そのライブラリのヘッダにセッション中ずっと居座る。
+        b.model.clearRematchResult()
+        #expect(b.model.lastRematch == nil)
+    }
+
+    @Test("未整理でない `FileID` を渡しても何も起きない [UR3-03]")
+    @MainActor
+    func ignoringAnUnknownFileIsANoOp() async throws {
+        let b = try await bench()
+        // 解決済みのファイルには `unresolvedFile` の記録が無い。**索引に無い
+        // ものを黙って無視扱いにしない**——中央ペインの選択には解決済みの行も
+        // 混ざりうる（「無視したものも表示」で見ているときなど）。
+        let before = b.commands.operationHistory.count
+        try await b.model.setIgnored(fileIDs: [FileID(rawValue: 99_999)], true)
+        #expect(b.model.ignoredFileIDs.isEmpty)
+        #expect(b.commands.operationHistory.count == before)
+    }
+
+    @Test("`ignoredFileIDs` は無視したものだけを返す [UR3-03]")
+    @MainActor
+    func ignoredIndexOnlyContainsIgnored() async throws {
+        let b = try await bench()
+        await b.model.prepareAsIndex(services: b.workspace.services, libraryID: b.libraryID)
+        let target = try #require(b.model.files.first).row.id
+        try await b.model.setIgnored(fileIDs: [target], true)
+        await b.model.reload()
+
+        #expect(b.model.files.count == 2)      // 無視しても行は残る [UR2-04]
+        #expect(b.model.ignoredFileIDs == [target])
+    }
+
     @Test("無視すると一覧からも件数からも消え、⌘Z で戻る [AL-33][UR-05]")
     @MainActor
     func ignoreHidesAndUndoRestores() async throws {

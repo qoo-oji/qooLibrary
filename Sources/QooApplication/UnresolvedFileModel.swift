@@ -162,7 +162,7 @@ public final class UnresolvedFileModel {
         guard let services, services.isReady else { state = .notReady; return }
         libraries = services.libraries
         guard !libraries.isEmpty else {
-            unresolvedCounts = [:]; files = []
+            unresolvedCounts = [:]; files = []; rebuildIndexes()
             selectedLibraryID = nil
             state = .noLibrary
             return
@@ -183,10 +183,11 @@ public final class UnresolvedFileModel {
                                                         preferring: preferred)
             }
             guard let library = selectedLibrary else {
-                files = []; state = .noLibrary; return
+                files = []; rebuildIndexes(); state = .noLibrary; return
             }
             files = try await services.unresolvedFiles(libraryID: library.id,
                                                        includeIgnored: includeIgnored)
+            rebuildIndexes()
             // **集合を 1 度作ってから絞る。** 素の `contains` を入れ子にすると
             // 選択数 × 件数になり、⌘A で数万件を選んだ状態の読み直しが
             // MainActor 上で数秒かかる（読み直しは ⌘Z のたびにも走る）。
@@ -219,6 +220,67 @@ public final class UnresolvedFileModel {
             previous: targets.map { .init(fileID: $0.row.id, isIgnored: $0.isIgnored) },
             ignored: ignored, names: changing.map(\.row.filename), services: services))
         await reload()
+    }
+
+    /// 中央ペインの未整理ビュー [UR3-03] から呼ぶ入口。
+    ///
+    /// **中央ペインは `FileID` しか持たない**（一覧の源は `LibraryContentModel`
+    /// で、行は `FileRow`）。このモデルの `files` は**索引として**使う
+    /// ——「その行が無視済みか」はここにしか無く、メニューの向き（無視する／
+    /// 戻す）とバッジの出し分けに要る。
+    ///
+    /// **一覧そのものを二重に持つことになるが、これは意図した重複**である
+    /// ——中央ペインが出すのは「未整理という条件で絞った蔵書の一覧」で、
+    /// 普段のファイル操作がすべて使える [UR3-02] のが要点。ここが持つのは
+    /// `unresolvedFile` テーブルの記録（無視フラグと検出時刻）で、別のもの。
+    public func setIgnored(fileIDs: [FileID], _ ignored: Bool) async throws {
+        let wanted = Set(fileIDs)
+        try await setIgnored(files.filter { wanted.contains($0.row.id) }, ignored)
+    }
+
+    /// 「以後無視する」[AL-33] を立てている行 [UR3-03]。
+    ///
+    /// **`prepareAsIndex` で読んだときだけ全件を答えられる。** 一覧として
+    /// 読んだ（`includeIgnored == false`）場合、無視した行は `files` から
+    /// 落ちるのでここも空になる——だから索引として使う経路は下の入口に
+    /// 一本化してある。
+    ///
+    /// **`files` から都度作らない**［code-review の指摘］。中央ペインは
+    /// **可視行ごとに**これを引くので、5,000 件の未整理 × 100 行で 1 回の
+    /// 描画に 50 万回の挿入が走る（このコードベースが既に 2 度直している形）。
+    public private(set) var ignoredFileIDs: Set<FileID> = []
+
+    /// ライブラリタイプの型条件を満たさなかった行 [TY-01][UR3-04]。
+    ///
+    /// **未解決の理由そのものではない**（別のフォーマットに一致すれば解決する）
+    /// が、「なぜ当たらないか」の手がかりとしては強いので行に印として出す。
+    public private(set) var typeMismatchFileIDs: Set<FileID> = []
+
+    /// 片付ける対象の件数（無視したものを除く）[UR3-05]。
+    ///
+    /// **`files.count` を使ってはならない**［code-review の指摘］——索引として
+    /// 読むと無視済みも含むので、左ペイン・一覧・ヘッダで数字が食い違い、
+    /// 500 件の案内 [UR2-08] も早く出る。
+    public var pendingCount: Int {
+        unresolvedCounts[selectedLibraryID ?? LibraryID(rawValue: -1)]?.pending ?? 0
+    }
+
+    /// `files` を入れ替えたときに索引を作り直す。**代入と同じ場所で必ず呼ぶ。**
+    private func rebuildIndexes() {
+        ignoredFileIDs = Set(files.lazy.filter(\.isIgnored).map(\.row.id))
+        typeMismatchFileIDs = Set(files.lazy.filter(\.libraryTypeMismatch).map(\.row.id))
+    }
+
+    /// 中央ペインの未整理ビューが使う索引として読む [UR3-03]。
+    ///
+    /// **無視したものも必ず含める。** ここが答えるのは「その行が無視済みか」
+    /// で、一覧を絞るのは `LibraryContentModel.unresolvedFilter` の仕事
+    /// ——呼び出し側に `includeIgnored` の設定を委ねると、忘れたときに
+    /// **メニューの向きが常に「無視する」になる**（無視済みの行でも）という
+    /// 静かな壊れ方をする［テストで実際に踏んだ］。
+    public func prepareAsIndex(services: LibraryServices, libraryID: LibraryID) async {
+        includeIgnored = true
+        await prepare(services: services, preferring: libraryID)
     }
 
     public func setSelectedIgnored(_ ignored: Bool) async throws {
@@ -257,8 +319,20 @@ public final class UnresolvedFileModel {
     /// フォーマット編集ダイアログへ渡す草案。プレビューの組み立てにしか
     /// 使わないので、多少古くても害は無い（保存は下記で引き直す）。
     public func settingsDraft() async throws -> LibrarySettingsDraft? {
-        guard let services, let library = selectedLibrary else { return nil }
-        return try await services.settingsDraft(libraryID: library.id)
+        guard let library = selectedLibrary else { return nil }
+        return try await settingsDraft(libraryID: library.id)
+    }
+
+    /// 対象を明示する入口 [UR3-03]。
+    ///
+    /// **中央ペインの未整理ビューはこちらを使う**［code-review の指摘］
+    /// ——`selectedLibrary` は `prepareAsIndex` の最初の `await` を抜けるまで
+    /// 古いままなので、ライブラリを切り替えた直後に押すと**前のライブラリへ
+    /// フォーマットを書き込む**。中央ペインは自分が見ているライブラリを
+    /// 知っているのだから、推測させる必要が無い。
+    public func settingsDraft(libraryID: LibraryID) async throws -> LibrarySettingsDraft? {
+        guard let services else { return nil }
+        return try await services.settingsDraft(libraryID: libraryID)
     }
 
     /// フォーマットをその場で足して、続けて再マッチングする [UR-04][AL-34]。
@@ -268,13 +342,19 @@ public final class UnresolvedFileModel {
     /// そのまま書き戻すと**その変更を黙って巻き戻す**（`updateSettings` は
     /// 設定を丸ごと置き換える）。評価の全巻適用で踏んだのと同じ形。
     public func addFormat(source: String) async throws {
-        guard let services, let library = selectedLibrary else { return }
+        guard let library = selectedLibrary else { return }
+        try await addFormat(source: source, libraryID: library.id)
+    }
+
+    /// 対象を明示する入口 [UR3-03]（上の `settingsDraft(libraryID:)` と同じ理由）。
+    public func addFormat(source: String, libraryID: LibraryID) async throws {
+        guard let services else { return }
         let trimmed = source.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        guard var fresh = try await services.settingsDraft(libraryID: library.id) else { return }
+        guard var fresh = try await services.settingsDraft(libraryID: libraryID) else { return }
         fresh.filenameFormats.append(FilenameFormatDraft(source: trimmed))
-        try await services.updateSettings(fresh, libraryID: library.id)
-        try await rematch()
+        try await services.updateSettings(fresh, libraryID: libraryID)
+        try await rematch(libraryID: libraryID)
     }
 
     /// 現在の設定でパースし直す [AL-34][UR-04]。
@@ -283,8 +363,24 @@ public final class UnresolvedFileModel {
     /// 「解決したことを取り消す」のは意味が薄い——戻したいのは普通
     /// 「足したフォーマット」のほうで、それは設定の編集という別の経路にある。
     public func rematch() async throws {
-        guard let services, let library = selectedLibrary else { return }
-        lastRematch = try await services.rematchUnresolved(libraryID: library.id)
+        guard let library = selectedLibrary else { return }
+        try await rematch(libraryID: library.id)
+    }
+
+    /// 対象を明示する入口 [AL-34]。
+    public func rematch(libraryID: LibraryID) async throws {
+        guard let services else { return }
+        lastRematch = try await services.rematchUnresolved(libraryID: libraryID)
         await reload()
+    }
+
+    /// 直近の再マッチング結果を捨てる [UR3-03]。
+    ///
+    /// **未整理ビューの出入りで呼ぶ**［code-review の指摘］——`lastRematch` は
+    /// ライブラリを切り替えたときにしか消えないので、放っておくと
+    /// 「N 件のうち M 件が一致するようになりました」がそのライブラリの
+    /// ヘッダにセッション中ずっと居座る（走査しても ⌘Z しても消えない）。
+    public func clearRematchResult() {
+        lastRematch = nil
     }
 }

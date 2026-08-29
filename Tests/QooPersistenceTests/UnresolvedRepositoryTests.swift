@@ -200,3 +200,79 @@ struct UnresolvedRepositoryTests {
         #expect(try await f.files.unresolvedFileCounts()[f.libraryID]?.pending == nil)
     }
 }
+
+//
+//  未整理ビューの絞り込み [UR3-01][UR3-05、ステージ 4]。
+//
+//  ステージ 4 で専用ウインドウを廃し、**中央ペインの通常の一覧**として出す
+//  ようにした [UR3-02]。一覧は `FileQuery` を通るので、絞り込みは SQL 側の
+//  1 句として効く必要がある。
+//
+
+@Suite("未整理ビューの絞り込み [UR3-01][UR3-05]")
+struct UnresolvedQueryTests {
+
+    /// 未解決 2 件（a・b）と、解決済み 1 件（c）。
+    private func seeded() async throws -> (Fixture, FileID, FileID, FileID) {
+        let f = try await Fixture.make()
+        let a = try await f.files.upsert(f.snapshot(inode: 1, path: "A/謎の名前1.cbz"))
+        let b = try await f.files.upsert(f.snapshot(inode: 2, path: "A/謎の名前2.cbz"))
+        let c = try await f.files.upsert(f.snapshot(inode: 3, path: "A/解決済み.cbz"))
+        try await f.files.syncUnresolved(
+            unresolved: [.init(fileID: a, filename: "謎の名前1.cbz"),
+                         .init(fileID: b, filename: "謎の名前2.cbz")],
+            resolved: [c], libraryID: f.libraryID, now: Date())
+        return (f, a, b, c)
+    }
+
+    private func query(_ f: Fixture,
+                       _ filter: FileQuery.UnresolvedFilter?) -> FileQuery {
+        var q = FileQuery(libraryID: f.libraryID)
+        q.unresolvedFilter = filter
+        return q
+    }
+
+    @Test("絞らなければ解決済みも出る（既定の一覧を変えない）")
+    func withoutFilterEverythingIsListed() async throws {
+        let (f, _, _, _) = try await seeded()
+        #expect(try await f.files.query(query(f, nil)).totalCount == 3)
+    }
+
+    @Test("未整理だけに絞ると解決済みが消える [UR3-01]")
+    func pendingListsOnlyUnresolved() async throws {
+        let (f, a, b, _) = try await seeded()
+        let page = try await f.files.query(query(f, .pending))
+        #expect(page.totalCount == 2)
+        #expect(Set(page.rows.map(\.id)) == Set([a, b]))
+    }
+
+    @Test("無視したものは既定の一覧から消える [AL-33][UR3-05]")
+    func ignoredIsHiddenByDefault() async throws {
+        let (f, a, b, _) = try await seeded()
+        try await f.files.setUnresolvedIgnored([a], true)
+        let page = try await f.files.query(query(f, .pending))
+        #expect(page.rows.map(\.id) == [b])
+    }
+
+    @Test("「無視したものも表示」なら戻ってくる [UR2-04][UR3-03]")
+    func includingIgnoredShowsThemAgain() async throws {
+        let (f, a, b, _) = try await seeded()
+        try await f.files.setUnresolvedIgnored([a], true)
+        let page = try await f.files.query(query(f, .includingIgnored))
+        #expect(Set(page.rows.map(\.id)) == Set([a, b]))
+        // **解決済みは出ない**——「無視したものも」は未整理の中での話で、
+        // 絞り込みそのものを外すわけではない。
+        #expect(page.totalCount == 2)
+    }
+
+    @Test("解決したら次の走査で一覧から消える [AL-34]")
+    func resolvingRemovesFromTheList() async throws {
+        let (f, a, b, _) = try await seeded()
+        // フォーマットを足して a だけ解決した、という次の走査。
+        try await f.files.syncUnresolved(
+            unresolved: [.init(fileID: b, filename: "謎の名前2.cbz")],
+            resolved: [a], libraryID: f.libraryID, now: Date())
+        let page = try await f.files.query(query(f, .pending))
+        #expect(page.rows.map(\.id) == [b])
+    }
+}

@@ -1,139 +1,33 @@
 //
-//  ファイル保管庫の整理ウインドウ [FAW-01〜FAW-05][15.4 節]。
+//  メンテナンスウインドウの「保管庫」タブ [FAW-01〜FAW-05][15章 §15.4]。
 //
-//  2 ペイン: 左＝ライブラリ一覧（保管庫が空ならグレーアウト）／
-//  右＝保管庫のファイル（元フォルダごとに整理）。`LabelVaultWindow` と同じ
-//  `NavigationSplitView` で見た目を揃える [CP-01]。
+//  ## ステージ 4 で専用ウインドウから移した [19章 §19.6]
+//  左のライブラリ一覧と読み直しの合図は `MaintenanceWindow` が持つ。
+//  **この移設で入口が復活した**——Stage P の右クリック最小化以降、保管庫の
+//  整理ウインドウはどこからも開けなくなっていた（`FileVaultNavigation` の
+//  参照が自ウインドウ内にしか無い状態が続いていた）。
 //
-//  ## ラベル保管庫（§15.3）との違い
-//  あちらは DB の印を切り替えるだけなので**オフラインでも書ける**。こちらは
-//  戻す・削除がどちらも実ファイルを動かすので**ボリュームが要る**——一覧は
-//  出し続け、操作だけを無効にする（「何がしまってあるか」は DB だけで
-//  答えられるし、そこで行き止まりにする理由が無い）。
+//  ## 「見つからないファイル」タブ（§15.7）との違い — **オンラインの要否**
+//  戻す・削除がどちらも実ファイルを動かすので**ボリュームが要る**が、
+//  一覧そのものは DB だけで答えられる——**一覧は出し続け、操作だけを
+//  無効にする**（「何がしまってあるか」を見に来た人をそこで行き止まりに
+//  する理由が無い）。孤立タブは逆に一覧ごと伏せる [OR2-06]。
 //
-//  判定（区画の組み立て・並べ替え・検索・既定のライブラリ・操作の可否）は
-//  `FileVaultModel` が持ち、ここは描くだけ。**この分担を崩さないこと**。
+//  判定（区画の組み立て・並べ替え・検索・操作の可否）は `FileVaultModel` が
+//  持ち、ここは描くだけ。**この分担を崩さないこと**。
 //
 import QooApplication
 import QooKit
 import SwiftUI
 
-struct FileVaultWindow: View {
+struct FileVaultPane: View {
     @Environment(\.locale) private var locale
-    @State private var model = FileVaultModel()
+    @Bindable var model: FileVaultModel
     @State private var errorText: String?
 
+    // MARK: - 一覧と操作
+
     var body: some View {
-        NavigationSplitView(columnVisibility: .constant(.all)) {
-            libraryList
-                .navigationSplitViewColumnWidth(min: 170, ideal: 210, max: 280)
-        } detail: {
-            detailPane
-                .navigationSplitViewColumnWidth(min: 460, ideal: 580)
-        }
-        .navigationTitle(Text("fileVault.windowTitle"))
-        .frame(minWidth: 720, minHeight: 460)
-        .task { await prepare(preferring: FileVaultNavigation.shared.pendingLibraryID) }
-        .onChange(of: FileVaultNavigation.shared.pendingLibraryID) {
-            guard let pending = FileVaultNavigation.shared.pendingLibraryID else { return }
-            FileVaultNavigation.shared.pendingLibraryID = nil
-            Task { await prepare(preferring: pending) }
-        }
-        // **起動と同時に状態復元で開かれると、DB の準備より先に `.notReady` で
-        // 確定する。** `Window(id:)` は `WindowGroup` と違い
-        // `.restorationBehavior(.disabled)` が付いていないので、この経路は実在し、
-        // 一度確定すると再試行する契機が無い（`LabelVaultWindow` と同じ配線）。
-        .onChange(of: LibraryServices.shared.isReady) { _, ready in
-            guard ready else { return }
-            Task { await prepare(preferring: nil) }
-        }
-        .onChange(of: model.selectedLibraryID) { _, _ in
-            Task { await model.reload() }
-        }
-        // **着脱に追随する** [SB-05]［実機検証で発見: この配線が抜けていた］。
-        // 一覧は DB だけで作れるのでオフラインでも出し続けるが、**戻す・削除は
-        // 実ファイルを動かす**ので `canModify` が偽にならなければならない
-        // ——`model.libraries` は `reload()` でしか更新されず、`contentRevision`
-        // も `operationHistory` もイジェクトでは動かないので、開いたままだと
-        // 押せるボタンが残り、押した瞬間に失敗する。
-        //
-        // **§15.7（見つからないファイル）が同じ穴を 2-14 で塞いでいる。**
-        // あちらを写したつもりで、**その前例が何によって守られているかを
-        // 写しきれていなかった**（ラベル保管庫 [§15.3] にはこの配線が無く、
-        // あちらは最後まで DB だけで済むので要らない）。
-        .onChange(of: LibraryServices.shared.libraries) { _, _ in
-            Task { await model.reload() }
-        }
-        // ⌘Z / ⇧⌘Z は View を通らずに DB を変える。含めないと、取り消した
-        // 結果（戻したファイルが保管庫へ返ってくる等）が画面に出ない。
-        .onChange(of: CommandStack.shared.operationHistory.count) { _, _ in
-            Task { await model.reload() }
-        }
-        // 走査が保管庫の中身を変えることがある（外部で `.qooarchive` へ
-        // 出し入れされた場合 [SY-10]）。
-        .onChange(of: LibraryServices.shared.contentRevision) { _, _ in
-            Task { await model.reload() }
-        }
-    }
-
-    private func prepare(preferring libraryID: LibraryID?) async {
-        FileVaultNavigation.shared.pendingLibraryID = nil
-        await model.prepare(services: LibraryServices.shared, preferring: libraryID)
-    }
-
-    // MARK: - 左: ライブラリ一覧
-
-    /// **保管庫が空のライブラリはグレーアウトする**（`LabelVaultWindow` と同じ）。
-    /// 選べなくはしない——「空だった」を確かめに来ることがある。
-
-    /// 同名ライブラリの注記 [RG3-31]。衝突している行にだけパスが付く。
-    private var nameAnnotations: [LibraryID: String] {
-        LibraryNameDisambiguation.annotations(for: model.libraries)
-    }
-
-    private var libraryList: some View {
-        List(selection: $model.selectedLibraryID) {
-            Section("librarySettings.librariesHeader") {
-                ForEach(model.libraries, id: \.id) { library in
-                    let count = model.archivedCounts[library.id] ?? 0
-                    Label {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(library.displayName)
-                            // 同名のライブラリはパスで区別する [RG3-31]。
-                            LibraryPathCaption(annotation: nameAnnotations[library.id])
-                            Text(String(format: String(localized: "fileVault.archivedCount",
-                                                       locale: locale), count))
-                                .font(.system(size: Tokens.fontSize.caption))
-                                .foregroundStyle(.secondary)
-                            if !library.isOnline {
-                                Text("fileVault.offline")
-                                    .font(.system(size: Tokens.fontSize.caption))
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    } icon: {
-                        Image(systemName: "archivebox")
-                            .foregroundStyle(count > 0 ? Color.accentColor : .secondary)
-                    }
-                    .opacity(count > 0 ? 1 : 0.5)
-                    .tag(library.id)
-                }
-            }
-        }
-        .overlay {
-            if model.libraries.isEmpty {
-                ContentUnavailableView {
-                    Label("librarySettings.noLibraries", systemImage: "books.vertical")
-                } description: {
-                    Text("librarySettings.noLibrariesHint")
-                }
-            }
-        }
-    }
-
-    // MARK: - 右: 保管庫のファイル
-
-    private var detailPane: some View {
         VStack(alignment: .leading, spacing: 0) {
             toolbar
             Divider()
@@ -350,24 +244,4 @@ struct FileVaultWindow: View {
         formatter.timeStyle = .short
         return formatter
     }()
-}
-
-/// ウインドウを開く要求を受け渡す [15章 §15.4]。
-///
-/// `LabelVaultNavigation` と同じ形——`Window(id:)` は同じ id で `openWindow` を
-/// 呼び直してもビューを作り直さないので、「開いているウインドウが前面に来た
-/// だけ」の場合にも要求が届くようにする。
-@MainActor
-@Observable
-final class FileVaultNavigation {
-    static let shared = FileVaultNavigation()
-    var pendingLibraryID: LibraryID?
-    private init() {}
-
-    /// 開く経路はここ 1 つ [CP-02]。**フォルダツリーの登録ルート行 2 種**から呼ぶ。
-    @MainActor
-    static func open(libraryID: LibraryID, openWindow: OpenWindowAction) {
-        shared.pendingLibraryID = libraryID
-        openWindow(id: "fileVault")
-    }
 }

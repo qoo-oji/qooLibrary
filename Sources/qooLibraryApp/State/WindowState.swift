@@ -172,6 +172,12 @@ public final class WindowState {
     /// メニューは遅延構築で非同期の後追い更新が効かないため、必要なものを
     /// 事前に読み込んでおく。駆動は `MainWindowView` の `.task(id:)`。
     public let labelMenu = LabelMenuModel()
+    /// 未整理ビューの救済アクション [UR3-03] と、行が「無視済み」かの索引。
+    ///
+    /// **一覧そのものは `libraryContent` が出す** [UR3-02]。こちらが持つのは
+    /// `unresolvedFile` テーブルの記録（無視フラグ・検出時刻）で、中央ペインの
+    /// 行（`FileRow`）には無い情報。駆動は `MainWindowView` の `.task(id:)`。
+    public let unresolvedRescue = UnresolvedFileModel()
     // 既定は `.list`。1-12 で、この既定値自体を環境設定「表示」タブから変更
     // できるようにした（`DisplayPreferencesTab.swift` 参照）。ウインドウ固有
     // 状態自体は引き続き DB に保存しない [ST-20] が、「次に開くウインドウの
@@ -425,6 +431,60 @@ public final class WindowState {
         // [VM-23] 選択が無ければ現在のフォルダに留まる（ここで何もしない）。
         displayMode = mode
         if mode == .folder { libraryContent.clear() }
+    }
+
+    // MARK: - 未整理のファイル [UR3-01][UR3-02]
+
+    /// 未整理ビューを見ているか。左ペインの選択表示に使う。
+    public var showsUnresolvedFiles: Bool { libraryContent.showsUnresolvedOnly }
+
+    /// 未整理のファイルだけの一覧に切り替える [UR3-01]。もう一度呼ぶと戻る。
+    ///
+    /// **ライブラリの根へ移動する**——左ペインが出している件数はライブラリ
+    /// 全体のもの [UR3-05] なのに、一覧は現在フォルダ配下しか出さない
+    /// [VM-11]。根へ移さないと「12 件」と書いてあるのに一覧が 3 件、という
+    /// 食い違いになる（そのあと利用者がフォルダを移れば配下だけに絞られる
+    /// ——それはライブラリ表示モードの一貫した振る舞い）。
+    ///
+    /// **抜ける経路は 3 つある**: もう一度押す／フォルダ表示へ切り替える／
+    /// ライブラリの外へ出る。後ろ 2 つは `libraryContent.clear()` が
+    /// `unresolvedFilter` を戻すので、ここで配線しなくても解ける。
+    public func toggleUnresolvedFiles() {
+        guard libraryContent.showsUnresolvedOnly == false else {
+            libraryContent.setUnresolvedFilter(nil)
+            // **出入りで直近の再マッチング結果を捨てる**［code-review の指摘］。
+            // 捨てないと「N 件のうち M 件が一致するようになりました」がその
+            // ライブラリのヘッダにセッション中ずっと居座る（走査でも ⌘Z でも
+            // 消えない）——あれは「いま押したことの結果」を示す文である。
+            unresolvedRescue.clearRematchResult()
+            return
+        }
+        guard let library = currentLibrary, canUseLibraryDisplayMode else { return }
+        unresolvedRescue.clearRematchResult()
+        let root = URL(fileURLWithPath: library.resolvedPath).standardizedFileURL
+        if folder?.standardizedFileURL != root { navigate(to: root) }
+        if displayMode != .library { setDisplayMode(.library) }
+        libraryContent.setUnresolvedFilter(.pending)
+    }
+
+    /// 指定したライブラリの未整理ビューへ入る [UR3-01][UR2-02]。
+    ///
+    /// **走査結果・通知履歴からの導線**が使う。表示中の場所がどこであれ、
+    /// そのライブラリを**登録フォルダ経由で**開き直してから切り替える
+    /// ——ボリューム経由の入口だと、同じ実フォルダでもライブラリとして
+    /// 扱わない（`NavigationRoot` の約束）ので、未整理ビューにも入れない。
+    public func showUnresolvedFiles(in library: LibrarySummary) {
+        unresolvedRescue.clearRematchResult()
+        let root = URL(fileURLWithPath: library.resolvedPath).standardizedFileURL
+        navigate(to: root, root: .registeredFolder(id: library.uuid, rootURL: root))
+        if displayMode != .library { setDisplayMode(.library) }
+        libraryContent.setUnresolvedFilter(.pending)
+    }
+
+    /// 「無視したものも表示」[UR3-03]。未整理ビューでないときは何もしない。
+    public func setUnresolvedIncludesIgnored(_ includes: Bool) {
+        guard libraryContent.showsUnresolvedOnly else { return }
+        libraryContent.setUnresolvedFilter(includes ? .includingIgnored : .pending)
     }
 
     /// 一覧の表示順で最初に選ばれている行 [VM-22]。判定は

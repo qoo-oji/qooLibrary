@@ -61,6 +61,41 @@ struct LibraryContentModelTests {
         #expect(q.searchText == nil)
     }
 
+    // MARK: - 未整理ビュー [UR3-01][UR3-02]
+
+    @Test("既定では絞らない（通常の一覧を変えない）")
+    func unresolvedFilterIsOffByDefault() {
+        let q = LibraryContentModel.makeQuery(
+            libraryID: LibraryID(rawValue: 1), relativePath: "",
+            labelSelection: [:], ratingFilter: nil, searchText: nil,
+            sort: .byFilename, offset: 0)
+        #expect(q.unresolvedFilter == nil)
+    }
+
+    @Test("未整理ビューの絞り込みが問い合わせへ届く [UR3-01]")
+    func unresolvedFilterReachesTheQuery() {
+        let q = LibraryContentModel.makeQuery(
+            libraryID: LibraryID(rawValue: 1), relativePath: "",
+            labelSelection: [:], ratingFilter: nil, searchText: nil,
+            sort: .byFilename, offset: 0, unresolvedFilter: .pending)
+        #expect(q.unresolvedFilter == .pending)
+        // **他の条件は変わらない**——未整理は絞り込みであって別の一覧ではない。
+        #expect(q.mode == .libraryFlat)
+    }
+
+    @MainActor
+    @Test("ライブラリの外へ出ると未整理ビューも解ける [UR3-01]")
+    func clearingAlsoLeavesTheUnresolvedView() {
+        let model = LibraryContentModel()
+        model.setUnresolvedFilter(.pending)
+        #expect(model.showsUnresolvedOnly)
+        // `clear()` はフォルダ表示への切り替えとライブラリの外への移動で走る。
+        // 戻さないと、戻ってきたときに一覧が黙って絞られたままになる。
+        model.clear()
+        #expect(!model.showsUnresolvedOnly)
+        #expect(model.unresolvedFilter == nil)
+    }
+
     // MARK: - 表示名 [IV-05][IV-07]
 
     @Test("タイトルがあればタイトル、無ければファイル名 [IV-05][IV-07]")

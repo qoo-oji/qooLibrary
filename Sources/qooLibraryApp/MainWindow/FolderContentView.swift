@@ -142,6 +142,13 @@ struct FolderContentView: View {
     /// メニュー構築時に同期で読める事前読み込み（駆動は `MainWindowView` の
     /// `.task(id:)`、`bookFolders` と同じ形）。
     let labelMenu: LabelMenuModel
+    /// 未整理ビューの救済アクション [UR3-03] と「無視済み」の索引。
+    /// 一覧そのものは `libraryContent` が出す（`WindowState` のコメント参照）。
+    let unresolvedRescue: UnresolvedFileModel
+    /// 未整理ビューを抜ける [UR3-01]。実体は `WindowState.toggleUnresolvedFiles()`。
+    let onExitUnresolvedView: () -> Void
+    /// 「無視したものも表示」[UR3-03]。
+    let onSetUnresolvedIncludesIgnored: (Bool) -> Void
     /// 一覧の末尾が見えたら次のページを求める [FI-05][PF-10]。**何度呼ばれても
     /// よい**——受け側（`LibraryContentModel.loadNextPage`）が番人を持つ。
     let onLoadMoreLibraryRows: () -> Void
@@ -322,6 +329,7 @@ struct FolderContentView: View {
         // スクロール領域を包む）[ユーザー要望]。
         ScrollViewReader { scrollProxy in
         VStack(alignment: .leading, spacing: 0) {
+            unresolvedBar
             Group {
             if let loadError {
                 // 権限が無いだけなら、行き止まりにせずその場で許可を求められる
@@ -407,6 +415,7 @@ struct FolderContentView: View {
                                     // [ユーザー要望、環境設定「表示」タブ] 省略位置を選べるようにする。
                                     Text(entry.name)
                                         .truncationMode(nameTruncationMode.swiftUIMode)
+                                    unresolvedRowBadges(entry) // [UR3-03][UR3-04]
                                 }
                             }
                             .font(.system(size: Tokens.fontSize.body))
@@ -804,6 +813,129 @@ struct FolderContentView: View {
     /// `FolderMenuActions` の値。File/Edit メニューの各項目はこの値を通じて
     /// 現在のフォルダ・選択に対して動作する [`.focusedSceneValue` の呼び出し
     /// 箇所参照]。
+    // MARK: - 未整理のファイル [UR3-01〜UR3-04]
+
+    /// 未整理ビューの行の印 [UR3-03][UR3-04]。
+    ///
+    /// **「無視したものも表示」にしたとき、どれが無視済みか分からない**のでは
+    /// あの切り替えが意味を持たない——旧ウインドウ（§15.6）が持っていた印を
+    /// 中央ペインへ引き継ぐ。
+    ///
+    /// **`Table` のセルの式に直接書かない**——中身を増やすと「型検査に時間が
+    /// かかりすぎる」でビルドが落ちる（このコードベースで繰り返し起きている）。
+    @ViewBuilder
+    private func unresolvedRowBadges(_ entry: FolderEntry) -> some View {
+        if libraryContent.showsUnresolvedOnly, let id = entry.libraryRow?.id {
+            if unresolvedRescue.ignoredFileIDs.contains(id) {
+                Image(systemName: "eye.slash")
+                    .font(.system(size: Tokens.fontSize.caption))
+                    .foregroundStyle(.secondary)
+                    .help(String(localized: "unresolvedFiles.ignoredBadge", locale: locale))
+            }
+            if unresolvedRescue.typeMismatchFileIDs.contains(id) {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.system(size: Tokens.fontSize.caption))
+                    .foregroundStyle(.secondary)
+                    .help(String(localized: "unresolvedFiles.typeMismatch", locale: locale))
+            }
+        }
+    }
+
+    /// 未整理ビューのヘッダ。**救済アクションはここに集める** [UR3-03]。
+    ///
+    /// 一覧そのものは通常のライブラリ表示のまま（リネーム・Quick Look・
+    /// インスペクタでのラベル付け・保管庫送りがそのまま使える [UR3-02]）なので、
+    /// **「いま何を見ているか」を示す帯**が要る——出さないと、絞られた一覧が
+    /// 蔵書のすべてに見える。
+    @ViewBuilder
+    private var unresolvedBar: some View {
+        if libraryContent.showsUnresolvedOnly {
+            HStack(spacing: Tokens.spacing.m) {
+                Image(systemName: "tray.full")
+                    .foregroundStyle(Color.accentColor)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("labelFilter.unresolvedTitle")
+                        .font(.system(size: Tokens.fontSize.body, weight: .semibold))
+                    Text(unresolvedSubtitle)
+                        .font(.system(size: Tokens.fontSize.caption))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: Tokens.spacing.s)
+                // 無視したものを戻す唯一の手段 [UR2-04]。**既定では出さない**
+                // ——無視は「一覧から消したい」という意思表示なので。
+                Toggle("unresolvedFiles.showIgnored", isOn: Binding(
+                    get: { libraryContent.unresolvedFilter == .includingIgnored },
+                    set: { onSetUnresolvedIncludesIgnored($0) }))
+                    .toggleStyle(.checkbox)
+                    .font(.system(size: Tokens.fontSize.caption))
+                // フォーマットを足して再マッチング [UR-04][AL-34][UR3-03]。
+                Button("unresolvedFiles.addFormat") { presentUnresolvedFormatEditor() }
+                Button {
+                    onExitUnresolvedView()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help(String(localized: "unresolvedBar.exit", locale: locale))
+            }
+            .padding(.horizontal, Tokens.spacing.m)
+            .padding(.vertical, Tokens.spacing.s)
+            .background(Color.accentColor.opacity(0.08))
+            Divider()
+        }
+    }
+
+    /// 帯の 2 行目。**直近の再マッチング結果があればそれを出す** [AL-34]
+    /// ——「足したフォーマットが効いたのか」がその場で分からないと、
+    /// 足す → 数える → また足す、を画面を行き来しながらやることになる。
+    private var unresolvedSubtitle: String {
+        if let outcome = unresolvedRescue.lastRematch {
+            return String(format: String(localized: "unresolvedFiles.rematchResult", locale: locale),
+                          outcome.resolved, outcome.attempted)
+        }
+        // 500 件超は 1 件ずつ片付けられる規模ではない [UR2-08][OB-08]
+        // ——その量はほぼ確実に「フォーマットが 1 本足りない」から来ている。
+        // **`files.count` を使わない**［code-review の指摘］——索引としては
+        // 無視済みも読んでいるので、左ペイン・一覧と数字が食い違う。
+        if unresolvedRescue.pendingCount > AppLimits.Library.unresolvedBulkThreshold {
+            return String(format: String(localized: "unresolvedFiles.bulkHint", locale: locale),
+                          unresolvedRescue.pendingCount)
+        }
+        return String(localized: "unresolvedBar.subtitle", locale: locale)
+    }
+
+    /// フォーマット編集ダイアログ [UR-04]。設定ウインドウと同じ実装を共有する
+    /// ——**同じ操作に独立した経路を 2 つ作らない**。
+    private func presentUnresolvedFormatEditor() {
+        // **対象は「いま見ているライブラリ」**［code-review の指摘］。モデルの
+        // `selectedLibrary` は索引の読み込みが終わるまで古いままなので、
+        // 切り替えた直後に押すと前のライブラリへ書き込む。
+        guard let libraryID = library?.id else { return }
+        Task {
+            do {
+                guard let draft = try await unresolvedRescue.settingsDraft(libraryID: libraryID)
+                else { return }
+                DialogWindowPresenter.shared.present(
+                    title: String(localized: "librarySettings.filenameFormats.editorTitle",
+                                  locale: locale)
+                ) { _ in
+                    FilenameFormatEditorDialog(source: "", draft: draft) { source in
+                        Task {
+                            do {
+                                try await unresolvedRescue.addFormat(source: source,
+                                                                     libraryID: libraryID)
+                            } catch { presentFailureMessage(error.localizedDescription) }
+                        }
+                    }
+                }
+            } catch {
+                presentFailureMessage(error.localizedDescription)
+            }
+        }
+    }
+
     /// 中央ペイン下端のパスバーとステータスバー [1-16 表示メニューで表示切替を
     /// 追加]。**`body` から切り出している** — ステータスバーを足した時点で
     /// `body` 全体が「型検査に時間がかかりすぎる」というコンパイルエラーに
@@ -1508,6 +1640,9 @@ struct FolderContentView: View {
         /// `DirectoryObservation` では足りない**——ライブラリ表示モードが
         /// 描いているのは DB の行なので、走査が書き終わるまで出す材料が無い。
         let contentRevision: Int
+        /// 未整理ビューの出入り [UR3-01]。**左ペインから切り替わる**ので、
+        /// この View の中の操作だけを見ていると読み直しの契機が無い。
+        let unresolvedFilter: FileQuery.UnresolvedFilter?
     }
 
     /// いまの表示モードで選べる並び替えキー [LV-01][LV-04][VM-15]。
@@ -1536,7 +1671,8 @@ struct FolderContentView: View {
                        filterRevision: labelFilterRevision,
                        searchText: searchText,
                        operationCount: CommandStack.shared.operationHistory.count,
-                       contentRevision: LibraryServices.shared.contentRevision)
+                       contentRevision: LibraryServices.shared.contentRevision,
+                       unresolvedFilter: libraryContent.unresolvedFilter)
     }
 
     /// ライブラリ表示モードでだけ現れる列 [LV-04]。
@@ -2034,6 +2170,7 @@ struct FolderContentView: View {
             }
             Divider()
             labelSubmenu(for: targetEntries) // [RL3-01〜RL3-03]
+            unresolvedIgnoreItem(for: targetEntries) // [UR3-03][AL-33]
             // 単一選択はその場でのインライン編集、複数選択は一括リネームの
             // シート（Finder と同じ使い分け）[FM-05、ユーザー要望]。
             if targets.count == 1, let only = targetEntries.first {
@@ -2144,6 +2281,31 @@ struct FolderContentView: View {
     /// メニューは遅延構築で、**構築後の非同期更新は反映されない**
     /// （`OpenWithMenu` の既知の制約）ため、中身はすべて `labelMenu` が事前に
     /// 読み込んだ状態から**同期で**組み立てる。
+    /// 「以後無視する」[AL-33][UR3-03]。**未整理ビューでだけ出す**——蔵書の
+    /// どのファイルにも出すと、無視という判断が未整理と無関係な場面で下せて
+    /// しまう（記録が無い行に立てても意味が無い）。
+    ///
+    /// **向きは選択の状態で決める。** 選んだものが全部無視済みなら「戻す」、
+    /// そうでなければ「無視する」——混在しているときに「無視する」を出すのは、
+    /// 押した結果が揃うので害が無い。
+    @ViewBuilder
+    private func unresolvedIgnoreItem(for targetEntries: [FolderEntry]) -> some View {
+        if libraryContent.showsUnresolvedOnly {
+            let ids = targetEntries.compactMap { $0.libraryRow?.id }
+            if !ids.isEmpty {
+                let ignored = unresolvedRescue.ignoredFileIDs
+                let allIgnored = ids.allSatisfy { ignored.contains($0) }
+                Button(allIgnored ? "unresolvedFiles.unignore" : "unresolvedFiles.ignore",
+                       systemImage: allIgnored ? "eye" : "eye.slash") {
+                    Task {
+                        do { try await unresolvedRescue.setIgnored(fileIDs: ids, !allIgnored) }
+                        catch { presentFailureMessage(error.localizedDescription) }
+                    }
+                }
+            }
+        }
+    }
+
     @ViewBuilder
     private func labelSubmenu(for targetEntries: [FolderEntry]) -> some View {
         if library != nil, !labelMenu.groups.isEmpty {

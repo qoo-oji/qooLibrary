@@ -539,6 +539,11 @@ struct MainWindowView: View {
                             libraryContent: windowState.libraryContent,
                             library: windowState.currentLibrary,   // [FA-01][LF-01]
                             labelMenu: windowState.labelMenu,      // [RL3-01〜RL3-03]
+                            unresolvedRescue: windowState.unresolvedRescue, // [UR3-03]
+                            onExitUnresolvedView: { windowState.toggleUnresolvedFiles() },
+                            onSetUnresolvedIncludesIgnored: {
+                                windowState.setUnresolvedIncludesIgnored($0)
+                            },
                             onLoadMoreLibraryRows: {
                                 guard let library = windowState.currentLibrary else { return }
                                 Task {
@@ -629,13 +634,24 @@ struct MainWindowView: View {
             settingsRevisions: LibraryServices.shared.libraries.map(\.settingsRevision))
     }
 
+    /// 未整理ビューの索引を読み直す条件 [UR3-03]。**未整理ビューを見ている
+    /// 間だけ読む**——普段の一覧では要らない問い合わせなので、入ってから
+    /// 読み、出たら捨てる。
+    private var unresolvedRescueKey: UnresolvedRescueKey {
+        UnresolvedRescueKey(
+            libraryID: windowState.showsUnresolvedFiles ? windowState.currentLibrary?.id : nil,
+            contentRevision: LibraryServices.shared.contentRevision,
+            operationCount: CommandStack.shared.operationHistory.count)
+    }
+
     private var labelFilterLoadKey: LabelFilterLoadKey {
         LabelFilterLoadKey(
             root: windowState.navigationRoot,
             libraries: LibraryServices.shared.libraries.map {
                 "\($0.id.rawValue):\($0.settingsRevision)"
             },
-            contentRevision: LibraryServices.shared.contentRevision)
+            contentRevision: LibraryServices.shared.contentRevision,
+            operationCount: CommandStack.shared.operationHistory.count)
     }
 
     private var labelFilterResultKey: LabelFilterResultKey {
@@ -724,7 +740,9 @@ struct MainWindowView: View {
                     // 同じ結果を見る必要があり、この View に持たせると
                     // 左ペインを畳んだときに中央の絞り込みが止まる。
                     LabelFilterPane(model: windowState.labelFilter,
-                                    services: LibraryServices.shared)
+                                    services: LibraryServices.shared,
+                                    isShowingUnresolved: windowState.showsUnresolvedFiles,
+                                    onToggleUnresolved: { windowState.toggleUnresolvedFiles() })
                         .frame(minHeight: 80)
                 }
                 }
@@ -807,6 +825,28 @@ struct MainWindowView: View {
                 libraryRows: windowState.displayMode == .library
                     ? windowState.libraryContent.rows.map(\.file) : [],
                 services: LibraryServices.shared)
+        }
+        // 未整理ビューの救済アクションが使う索引 [UR3-03]。
+        .task(id: unresolvedRescueKey) {
+            guard let libraryID = unresolvedRescueKey.libraryID else { return }
+            // **索引としての入口を通す**（無視したものも読む）。一覧を絞るのは
+            // `libraryContent.unresolvedFilter` の役目で、こちらではない。
+            await windowState.unresolvedRescue.prepareAsIndex(
+                services: LibraryServices.shared, libraryID: libraryID)
+        }
+        // 走査結果・通知履歴から未整理ビューへ [UR3-01][UR2-02]。
+        // **最初に気づいたウインドウが引き受ける**（受け皿のコメント参照）。
+        .onChange(of: UnresolvedViewNavigation.shared.pendingLibraryID) { _, _ in
+            // **`onChange` が渡す新しい値ではなく、共有の値を読み直す**
+            // ［code-review の指摘］。メインウインドウは複数開ける [MW-01] ので、
+            // 引数を見ると**開いている枚数だけ**未整理ビューへ切り替わる
+            // ——1 枚目が `nil` に戻しても、2 枚目のクロージャは自分が受け取った
+            // 非 `nil` の値を見てしまう。読み直せば 2 枚目は `nil` で降りる。
+            guard let pending = UnresolvedViewNavigation.shared.pendingLibraryID,
+                  let library = LibraryServices.shared.libraries.first(where: { $0.id == pending })
+            else { return }
+            UnresolvedViewNavigation.shared.pendingLibraryID = nil
+            windowState.showUnresolvedFiles(in: library)
         }
         .onChange(of: SessionState.shared.reloadToken) {
             Task { await refreshEjectState() }
@@ -899,6 +939,13 @@ private struct PaneWidthPersisting: ViewModifier {
 ///
 /// `libraries` の要約まで含めるのは、**有効化・無効化・設定変更に追随する**ため。
 /// `settingsRevision` が変わるとラベルグループの名前や並びも変わり得る [VT-02]。
+private struct UnresolvedRescueKey: Hashable {
+    /// `nil` なら未整理ビューを見ていない（読まない）。
+    let libraryID: LibraryID?
+    let contentRevision: Int
+    let operationCount: Int
+}
+
 private struct LabelFilterLoadKey: Hashable {
     let root: NavigationRoot
     let libraries: [String]
@@ -910,6 +957,13 @@ private struct LabelFilterLoadKey: Hashable {
     /// `settingsRevision` は変わらないため鍵が動かず、**アプリを再起動する
     /// まで「このライブラリにはまだラベルがありません」のまま**だった。
     let contentRevision: Int
+    /// DB を触る操作（⌘Z を含む）のたびに増える [`CommandStack` 参照]。
+    ///
+    /// **未整理の件数 [UR3-01] がこれを要る。**「以後無視する」[AL-33] は
+    /// `CommandStack` 経由の取り消せる操作で、走査ではないので
+    /// `contentRevision` は動かない——含めないと、無視した直後も ⌘Z で戻した
+    /// 直後も左ペインの件数が古いままになる。
+    let operationCount: Int
 }
 
 /// 件数と絞り込み結果を数え直す条件。

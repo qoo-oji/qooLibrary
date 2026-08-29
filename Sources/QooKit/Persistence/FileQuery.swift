@@ -57,6 +57,24 @@ public struct FileQuery: Sendable, Hashable {
         public static let unrated = RatingFilter(stars: 0, mode: .exact)
     }
 
+    /// 未整理のファイルだけに絞る [UR3-01][UR3-05]。
+    ///
+    /// **未整理 ＝ `unresolvedFile` の記録が残っているファイル**（ファイル名が
+    /// どのフォーマットにも一致しなかったもの [AL-30〜34]）。ステージ 4 で
+    /// 専用ウインドウを廃し、**中央ペインの通常の一覧**として出せるように
+    /// した [UR3-02]——リネーム・Quick Look・ラベル付けといった普段の操作が
+    /// そのまま使えることがこの機能の要点だったのに、専用ウインドウはそれを
+    /// 妨げていた。
+    public enum UnresolvedFilter: String, Sendable, Hashable, CaseIterable {
+        /// 片付ける対象だけ。**「以後無視する」[AL-33] としたものは含めない**
+        /// ——これが既定の見え方で、件数もこちらで数える。
+        case pending
+        /// 「無視したものも表示」。**空になった理由を取り違えないため**に要る
+        /// ——全部無視しただけなのに「すべて一致しています」と出ると嘘になる
+        /// ［§15.6 の実機検証で見つけた形］。
+        case includingIgnored
+    }
+
     public var libraryID: LibraryID
     public var scope: Scope
     public var mode: DisplayMode
@@ -68,6 +86,8 @@ public struct FileQuery: Sendable, Hashable {
     /// **`grouping` が `.off` のときは効かない**——グループが無ければ
     /// 「重複」も定義できないため [DU-11]。
     public var duplicatesOnly: Bool          // [DU-11]
+    /// `nil` なら絞らない [UR3-01]。
+    public var unresolvedFilter: UnresolvedFilter?
     /// 同じ作品のファイルを 1 行に畳むか [DU-01][DU-02]。
     ///
     /// **ライブラリ表示モードでしか効かせない** [DU-04]——呼び出し側が
@@ -87,6 +107,7 @@ public struct FileQuery: Sendable, Hashable {
                 searchText: String? = nil,
                 includeArchived: Bool = false,
                 duplicatesOnly: Bool = false,
+                unresolvedFilter: UnresolvedFilter? = nil,
                 grouping: DuplicateGrouping = .off,
                 sort: SortSpec = .byFilename,
                 offset: Int = 0,
@@ -99,6 +120,7 @@ public struct FileQuery: Sendable, Hashable {
         self.searchText = searchText
         self.includeArchived = includeArchived
         self.duplicatesOnly = duplicatesOnly
+        self.unresolvedFilter = unresolvedFilter
         self.grouping = grouping
         self.sort = sort
         self.offset = offset

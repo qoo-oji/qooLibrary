@@ -41,5 +41,14 @@ struct LibraryMenuCommands: View {
             LabelEditorNavigation.open(libraryID: library.id, openWindow: openWindow)
         }
         .disabled(actions?.currentLibrary == nil)
+        Divider()
+        // 片付けごとの入口 [§19.6、ステージ 4]。**表示中のライブラリが無くても
+        // 開ける**——メンテナンスは左ペインでライブラリを選べるので、ここで
+        // 塞ぐと「保管庫を見たいだけなのにライブラリへ移動してから」になる
+        // （旧ウインドウが入口ゼロだった一因でもある）。
+        Button("libraryMenu.maintenanceEllipsis", systemImage: "wrench.and.screwdriver") {
+            MaintenanceNavigation.open(libraryID: actions?.currentLibrary?.id,
+                                       openWindow: openWindow)
+        }
     }
 }
