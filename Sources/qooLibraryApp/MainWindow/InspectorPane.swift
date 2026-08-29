@@ -361,30 +361,16 @@ private struct SingleItemInspector: View {
 
     /// 打ち切られたら `nil`。**途中まで数えた値を返さない** — 呼び出し側が
     /// それを確定値として表示してしまうため [レビューで発見]。
+    ///
+    /// **実体は `DirectoryProbe.containedCounts(at:)` に移した**［2026-08-29］
+    /// ——プライバシー保護された場所へ降りないガードを、呼び出し側ではなく
+    /// 関数の内側に閉じ込めるため（ここに書いていたときは、同じ穴が三角判定と
+    /// この集計の 2 箇所に別々に空いていた）。
     nonisolated private static func computeFolderCounts(_ url: URL) -> ContainedCounts? {
-        var fileCount = 0
-        var folderCount = 0
-        var totalSize: Int64 = 0
-        let fm = FileManager.default
-        guard let enumerator = fm.enumerator(
-            at: url, includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey], options: [.skipsHiddenFiles]
-        ) else {
-            return ContainedCounts(fileCount: 0, folderCount: 0, totalSize: 0)
-        }
-        for case let itemURL as URL in enumerator {
-            // **`Task.isCancelled` ではない** — `FileIO.perform` が借りた
-            // スレッドには Task の文脈が無く、常に `false` を返す
-            // [`Cancellation` のコメント参照]。
-            if Cancellation.isRequested { return nil }
-            guard let values = try? itemURL.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey]) else { continue }
-            if values.isDirectory == true {
-                folderCount += 1
-            } else {
-                fileCount += 1
-                totalSize += Int64(values.fileSize ?? 0)
-            }
-        }
-        return ContainedCounts(fileCount: fileCount, folderCount: folderCount, totalSize: totalSize)
+        guard let counts = DirectoryProbe.containedCounts(at: url) else { return nil }
+        return ContainedCounts(fileCount: counts.fileCount,
+                               folderCount: counts.folderCount,
+                               totalSize: counts.totalSize)
     }
 
     private static func computeArchiveCounts(_ url: URL) async -> ContainedCountsResult {
