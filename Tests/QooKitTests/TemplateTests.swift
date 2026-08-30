@@ -143,30 +143,111 @@ struct LabelColorPaletteTests {
         #expect(Set(palette.map(\.hexLight)).count == n, "色が重複している")
     }
 
-    @Test("ライトモードの既定色は黒フォントで 4.5:1 以上 [CO-03]", arguments: [10, 12, 20])
-    func lightModeContrast(_ n: Int) {
+    /// 既定色は黒か白のどちらかで必ず読める [CO-03][CO-05][CO-07]。
+    ///
+    /// **文字色は色ごとに計算する**造り [CO-05] なので「全部黒」は主張しない
+    /// ——利用者がラベル固有色を選べば当然崩れる。ここで固定するのは
+    /// 「**既定色は必ずどちらかで 4.5:1 を満たす**」という不変条件のほう。
+    @Test("既定色は計算した文字色で 4.5:1 以上 [CO-03][CO-05][CO-07]",
+          arguments: [1, 5, 6, 10, 12, 20])
+    func defaultColorsAreReadable(_ n: Int) throws {
         for (i, c) in LabelColorPalette.palette(count: n).enumerated() {
-            let ratio = LabelColorPalette.contrastRatio(c.hexLight, "#000000") ?? 0
-            #expect(ratio >= 4.5, "グループ\(i + 1) の \(c.hexLight) が \(ratio)")
-            #expect(LabelColorPalette.readableForeground(on: c.hexLight) == "#000000")
+            for hex in [c.hexLight, c.hexDark] {
+                let fg = try #require(LabelColorPalette.readableForeground(on: hex),
+                                      "フィールド\(i + 1) の \(hex) は黒でも白でも読めない")
+                let ratio = try #require(LabelColorPalette.contrastRatio(hex, fg))
+                #expect(ratio >= 4.5, "フィールド\(i + 1) の \(hex) が \(ratio)")
+            }
         }
     }
 
-    @Test("ダークモードの既定色は白フォントで 4.5:1 以上 [CO-07]", arguments: [10, 12, 20])
-    func darkModeContrast(_ n: Int) {
-        for (i, c) in LabelColorPalette.palette(count: n).enumerated() {
-            let ratio = LabelColorPalette.contrastRatio(c.hexDark, "#FFFFFF") ?? 0
-            #expect(ratio >= 4.5, "グループ\(i + 1) の \(c.hexDark) が \(ratio)")
-            #expect(LabelColorPalette.readableForeground(on: c.hexDark) == "#FFFFFF")
+    /// **明るい帯なので、どの色でも黒文字で読める** [CO-03]。
+    ///
+    /// ライトもダークも同じ色を使う［ユーザー指定「なるべく明るい色で」］。
+    /// これが崩れたら明度か色空間の変更を疑う。
+    @Test("ライト・ダークとも全色が黒文字になる [CO-03]",
+          arguments: [1, 5, 6, 10, 12, 20])
+    func foregroundIsUniformWithinAMode(_ n: Int) {
+        for c in LabelColorPalette.palette(count: n) {
+            #expect(LabelColorPalette.readableForeground(on: c.hexLight) == "#000000", "\(c.hexLight)")
+            #expect(c.hexDark == c.hexLight, "モードで色を変えていない")
         }
     }
 
-    @Test("原色のような高彩度は使わない [CO-02]")
-    func lowSaturation() {
-        #expect(LabelColorPalette.lightSaturation >= 0.15)
-        #expect(LabelColorPalette.lightSaturation <= 0.25)
-        #expect(LabelColorPalette.lightValue >= 0.85)
-        #expect(LabelColorPalette.lightValue <= 0.92)
+    /// **原色じみた色を出さない** [CO-02]［ユーザー指定「原色はダメ」］。
+    ///
+    /// HSV で彩度・明度を固定すると、緑と黄だけが飛び抜けて明るく鮮やかになり
+    /// （`#8AFF1A` のような蛍光色）、色相環の一部だけが「警告」に見えた。
+    /// OKLCH は知覚的に均等なので、**どの色も同じ明るさに見える**。
+    @Test("色相によらず明るさが揃い、原色じみた色が出ない [CO-02]",
+          arguments: [5, 6, 8, 10, 12])
+    func noGaringColors(_ n: Int) throws {
+        var lights: [Double] = []
+        for c in LabelColorPalette.palette(count: n) {
+            lights.append(try #require(LabelColorPalette.relativeLuminance(hex: c.hexLight)))
+        }
+        let spread = (lights.max() ?? 0) - (lights.min() ?? 0)
+        // HSV(S=0.85,V=0.97) では 0.30 を超えていた[実測]。
+        #expect(spread < 0.12, "明るさのばらつきが \(spread)")
+        for c in LabelColorPalette.palette(count: n) {
+            let (r, g, b) = try #require(LabelColorPalette.components(hex: c.hexLight))
+            #expect(!(max(r, g, b) > 0.98 && min(r, g, b) < 0.02), "\(c.hexLight) が原色")
+        }
+    }
+
+    /// **青から赤へのグラデーション**［ユーザー指定、2026-08-30］。
+    ///
+    /// 「一番上のラベルが青、一番下が赤」なので、**件数によらず端が固定**される
+    /// ——色相環を一周させる実装に戻すと末尾が青へ帰ってきて落ちる。
+    @Test("先頭は青、末尾は赤で、その間を単調に降りる",
+          arguments: [2, 4, 6, 10, 12])
+    func rampGoesFromBlueToRed(_ n: Int) throws {
+        let colors = LabelColorPalette.palette(count: n)
+        let (fr, fg_, fb) = try #require(LabelColorPalette.components(hex: colors.first!.hexLight))
+        #expect(fb > fr && fb > fg_, "先頭 \(colors.first!.hexLight) が青くない")
+        let (lr, lg, lb) = try #require(LabelColorPalette.components(hex: colors.last!.hexLight))
+        #expect(lr > lg && lr > lb, "末尾 \(colors.last!.hexLight) が赤くない")
+        // 色相が始点から終点へ**単調に降りる**（色相環を一周させない）。
+        // RGB の成分では確かめられない——緑は R=0、赤の端は B>0 になるため。
+        let hues = LabelColorPalette.hues(count: n)
+        #expect(hues.first == LabelColorPalette.hueStart)
+        #expect(hues.last == LabelColorPalette.hueEnd)
+        #expect(hues == hues.sorted(by: >), "色相が単調に降りていない: \(hues)")
+    }
+
+    /// **色相の始点はアプリアイコンの青**［ユーザー指定］。512px の画素を走査し、
+    /// 有彩色 156,252 画素が集まった `#1F9CF8` の OKLCH 色相（247.4 度）。
+    ///
+    /// 明度は後の指定（「なるべく明るい色で」）で上げたので、**RGB は一致しない**
+    /// ——同じ色相の明るい版になる。
+    @Test("先頭の色はアプリアイコンと同じ系統の青")
+    func firstColorMatchesTheAppIcon() throws {
+        #expect(abs(LabelColorPalette.hueStart - 247.4) < 0.1)
+        let first = try #require(LabelColorPalette.palette(count: 10).first)
+        let (r, g, b) = try #require(LabelColorPalette.components(hex: first.hexLight))
+        let (ir, ig, ib) = try #require(LabelColorPalette.components(hex: "#1F9CF8"))
+        // 明るい版なので各チャンネルは上がるが、青が最大・赤が最小という並びは同じ
+        #expect(b > g && g > r, "\(first.hexLight)")
+        #expect(ib > ig && ig > ir)
+        #expect(r >= ir && g >= ig && b >= ib, "アイコンより暗い: \(first.hexLight)")
+    }
+
+    /// **sRGB の外へ出る色相では彩度を落として収める**（gamut mapping）。
+    ///
+    /// 成分を 0...1 へ切り詰めるだけでは色相がずれる（緑が黄緑に転ぶ）——しかも
+    /// 丸めた後で「収まっているか」を見ても必ず真になるので気づけない。**丸める
+    /// 前の彩度で判定する**ことを固定する。
+    @Test("どの色相でも、丸める前から sRGB に収まっている")
+    func staysInSRGB() {
+        for degrees in stride(from: 0.0, to: 360.0, by: 5.0) {
+            let c = LabelColorPalette.gamutMappedChroma(
+                lightness: LabelColorPalette.lightness, chroma: LabelColorPalette.chroma, hue: degrees)
+            #expect(LabelColorPalette.isInSRGB(lightness: LabelColorPalette.lightness,
+                                               chroma: c, hue: degrees),
+                    "色相 \(degrees) で C=\(c) が sRGB の外")
+            // 落としすぎない（探索が 0 へ潰れていないこと）
+            #expect(c > LabelColorPalette.chroma * 0.4, "色相 \(degrees) で彩度が \(c) まで落ちた")
+        }
     }
 
     @Test("相対輝度とコントラスト比が WCAG の定義どおり [CO-03][CO-05]")

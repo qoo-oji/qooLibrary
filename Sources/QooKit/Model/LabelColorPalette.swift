@@ -18,26 +18,60 @@ public struct LabelColor: Sendable, Hashable, Codable {
 }
 
 public enum LabelColorPalette {
-    /// ライトモード: 淡い背景 + 黒フォント [CO-02][CO-03]。
-    /// 彩度 15〜25% / 明度 85〜92% の範囲に収める。
-    static let lightSaturation = 0.20
-    static let lightValue = 0.89
-    /// ダークモード: 同じ色相のまま明度を下げ、白フォント前提にする [CO-07]。
-    static let darkSaturation = 0.32
-    static let darkValue = 0.40
-    /// 色相の起点（度）。**1 番目を薄い青にする**［ユーザー指定、CO-01 改訂］。
-    /// 以降はグループ番号順に色相環を一周し、全フィールドを閉じた一覧が
-    /// きれいなグラデーションになる。彩度は CO-02 の範囲のまま（原色は使わない）。
-    static let hueOrigin = 210.0
+    /// 明度（OKLCH の L）。**ライトもダークも同じ値を使う**。
+    ///
+    /// ［ユーザー指定、2026-08-30「なるべく明るい色で」］——以前はダークだけ
+    /// 明度を落としていた（L=0.52）が、それが「暗い」の正体だった。明るい帯に
+    /// 黒文字なら、暗い地の上でも明るい地の上でも読める（最小 7.9:1[実測]）。
+    ///
+    /// **これ以上明るくすると赤の端がサーモン色に転ぶ**——`一番下が赤` [ユーザー
+    /// 指定] を満たせなくなる。L=0.78 で `#FF9687`、L=0.84 で `#FFB5AA`[実測]。
+    static let lightness = 0.72
+    /// 彩度（OKLCH の C）。**純色は使わない**が [CO-02]、フィールドを色で
+    /// 見分けられるところまで上げる。sRGB の外へ出る色相は自動で落ちる
+    /// （実効 0.122〜0.197[実測]）。
+    static let chroma = 0.22
+    /// 色相の始点（度、OKLCH）＝**アプリアイコンの青**［ユーザー指定］。
+    ///
+    /// **HSV の色相（205 度）とは別の値**——OKLCH は知覚的に均等な空間なので、
+    /// 同じ色でも角度が違う。
+    static let hueStart = 247.4
+    /// 色相の終点＝**赤**（`#FF0000` の OKLCH 色相が 29.2 度）。
+    static let hueEnd = 29.0
 
-    /// グループ数 `count` に対する既定色を色相環の等分で生成する [CO-01][MT-13]。
+    /// グループ数 `count` に対する既定色を生成する [CO-01][MT-13]。
+    ///
+    /// **色相環を一周させず、青から赤までを等分する**［ユーザー指定、2026-08-30:
+    /// 「10 種類をかけて青→緑→黃→赤と変化するようにグラデーションを。一番上の
+    /// ラベルが青、一番下が赤」］。247.4 度から 29.0 度へ**下る**ことで、
+    /// 青 → 水色 → 緑 → 黄 → 橙 → 赤 の順に並ぶ。
+    ///
+    /// **端は件数によらず青と赤**——`count` が 10 でなくても、先頭が青・末尾が
+    /// 赤になる（要望の「一番上／一番下」を満たすため）。`count == 1` は青。
+    ///
+    /// **HSV ではなく OKLCH で回す**。HSV で彩度・明度を固定したまま色相を
+    /// 動かすと、**緑と黄が飛び抜けて明るく・鮮やかに見える**（`#8AFF1A` の
+    /// ような蛍光色になる）——人間の目が色相ごとに違う明るさを感じるため。
+    /// OKLCH なら**どの色相でも同じ明るさに見え**、原色じみた色が出ない。
     public static func palette(count: Int) -> [LabelColor] {
         guard count > 0 else { return [] }
+        return hues(count: count).map { hue in
+            let hex = hex(lightness: lightness, chroma: chroma, hue: hue)
+            // ライトとダークで同じ色を使う（上記）。器は分けたままにしてあるので、
+            // 将来モードごとに変えたくなったらここだけ直せばよい。
+            return LabelColor(hexLight: hex, hexDark: hex)
+        }
+    }
+
+    /// 色相の並び（度）。**青から赤へ単調に降りる**のがこの機能の定義そのもの
+    /// なので、色の生成から切り出して直接検査できるようにしてある
+    /// ——RGB の成分は途中で単調にならない（緑は R=0、赤の端は B>0）ので、
+    /// 「青→赤」を成分の大小で確かめようとすると必ず失敗する[実測]。
+    public static func hues(count: Int) -> [Double] {
+        guard count > 0 else { return [] }
         return (0..<count).map { i in
-            let hue = (hueOrigin + 360.0 * Double(i) / Double(count)).truncatingRemainder(dividingBy: 360)
-            return LabelColor(
-                hexLight: hex(hue: hue, saturation: lightSaturation, value: lightValue),
-                hexDark: hex(hue: hue, saturation: darkSaturation, value: darkValue))
+            let t = count == 1 ? 0 : Double(i) / Double(count - 1)
+            return hueStart + (hueEnd - hueStart) * t
         }
     }
 
@@ -50,28 +84,60 @@ public enum LabelColorPalette {
 
     // MARK: - 色空間
 
-    /// HSV → `#RRGGBB`。
-    public static func hex(hue: Double, saturation: Double, value: Double) -> String {
-        let (r, g, b) = rgb(hue: hue, saturation: saturation, value: value)
-        return String(format: "#%02X%02X%02X",
-                      Int((r * 255).rounded()), Int((g * 255).rounded()), Int((b * 255).rounded()))
+    /// OKLCH → `#RRGGBB`。**sRGB の外へ出る色相では彩度を落として収める**
+    /// （gamut mapping）。単純に切り詰めると色相がずれるため、二分探索で
+    /// 「収まる最大の彩度」を求める。緑・シアンは同じ L でも取れる彩度が
+    /// 低いので、そこだけ少し淡くなる[実測: C=0.169 → 0.118〜0.169]。
+    public static func hex(lightness: Double, chroma: Double, hue: Double) -> String {
+        let c = gamutMappedChroma(lightness: lightness, chroma: chroma, hue: hue)
+        let (r, g, b) = srgb(lightness: lightness, chroma: c, hue: hue)
+        func clamp(_ v: Double) -> Int { Int((min(max(v, 0), 1) * 255).rounded()) }
+        return String(format: "#%02X%02X%02X", clamp(r), clamp(g), clamp(b))
     }
 
-    static func rgb(hue: Double, saturation s: Double, value v: Double) -> (Double, Double, Double) {
-        let h = hue.truncatingRemainder(dividingBy: 360) / 60
-        let c = v * s
-        let x = c * (1 - abs(h.truncatingRemainder(dividingBy: 2) - 1))
-        let m = v - c
-        let (r1, g1, b1): (Double, Double, Double)
-        switch Int(h) {
-        case 0: (r1, g1, b1) = (c, x, 0)
-        case 1: (r1, g1, b1) = (x, c, 0)
-        case 2: (r1, g1, b1) = (0, c, x)
-        case 3: (r1, g1, b1) = (0, x, c)
-        case 4: (r1, g1, b1) = (x, 0, c)
-        default: (r1, g1, b1) = (c, 0, x)
+    /// sRGB に収まる最大の彩度を二分探索で求める。
+    ///
+    /// **切り詰め（clamp）で済ませてはならない**——成分を 0...1 へ丸めると
+    /// 色相がずれ、緑が黄緑に転ぶ。丸めた後では「収まっているか」を検査しても
+    /// 必ず真になるので、**ずれたことに気づけない。**
+    static func gamutMappedChroma(lightness: Double, chroma: Double, hue: Double) -> Double {
+        guard !isInSRGB(lightness: lightness, chroma: chroma, hue: hue) else { return chroma }
+        var lo = 0.0, hi = chroma
+        for _ in 0..<40 {
+            let mid = (lo + hi) / 2
+            if isInSRGB(lightness: lightness, chroma: mid, hue: hue) { lo = mid } else { hi = mid }
         }
-        return (r1 + m, g1 + m, b1 + m)
+        return lo
+    }
+
+    static func isInSRGB(lightness: Double, chroma: Double, hue: Double) -> Bool {
+        let (r, g, b) = linearRGB(lightness: lightness, chroma: chroma, hue: hue)
+        let tolerance = 1e-4
+        return [r, g, b].allSatisfy { $0 >= -tolerance && $0 <= 1 + tolerance }
+    }
+
+    /// OKLCH → 線形 sRGB（gamut の判定に使う。ガンマは掛けない）。
+    static func linearRGB(lightness: Double, chroma: Double, hue: Double) -> (Double, Double, Double) {
+        let a = chroma * cos(hue * .pi / 180)
+        let bb = chroma * sin(hue * .pi / 180)
+        // OKLab → LMS'
+        let l_ = lightness + 0.3963377774 * a + 0.2158037573 * bb
+        let m_ = lightness - 0.1055613458 * a - 0.0638541728 * bb
+        let s_ = lightness - 0.0894841775 * a - 1.2914855480 * bb
+        let l = l_ * l_ * l_, m = m_ * m_ * m_, s = s_ * s_ * s_
+        return (4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+                -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+                -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s)
+    }
+
+    /// OKLCH → sRGB（ガンマ適用済み、0...1）。
+    static func srgb(lightness: Double, chroma: Double, hue: Double) -> (Double, Double, Double) {
+        let (r, g, b) = linearRGB(lightness: lightness, chroma: chroma, hue: hue)
+        func gamma(_ v: Double) -> Double {
+            let c = min(max(v, 0), 1)
+            return c <= 0.0031308 ? 12.92 * c : 1.055 * pow(c, 1 / 2.4) - 0.055
+        }
+        return (gamma(r), gamma(g), gamma(b))
     }
 
     /// WCAG の相対輝度 [CO-03][CO-05]。

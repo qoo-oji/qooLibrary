@@ -241,20 +241,7 @@ struct LabelFilterPane: View {
                 .foregroundStyle(Color.accentColor)
             }
         } label: {
-            HStack(spacing: Tokens.spacing.xs) {
-                // フィールドもラベルと同じ帯で色分けする［ユーザー要望］。
-                // 全フィールドを閉じた一覧が既定色のグラデーションで並ぶ [CO-01]。
-                LabelChip(name: group.name,
-                          color: LabelColor(hexLight: group.colorHexLight,
-                                            hexDark: group.colorHexDark),
-                          uniformWidth: uniformChipWidth)
-                if let selected = model.selection[group.id], !selected.isEmpty {
-                    Text("\(selected.count)")
-                        .font(.system(size: Tokens.fontSize.caption))
-                        .monospacedDigit()
-                        .foregroundStyle(Color.accentColor)
-                }
-            }
+            fieldBand(group)
             // フィールドそのものの手入れ（ラベルの追加・削除・リネーム）は
             // 左ペインから [RL3-04]——本に対する操作（付け外し）は中央ペインと
             // 役割を分ける。編集ウインドウを**そのフィールドを選んだ状態で**開く。
@@ -267,6 +254,40 @@ struct LabelFilterPane: View {
                 }
             }
         }
+    }
+
+    /// フィールドの帯。**左ペインの幅いっぱいに敷く**［ユーザー要望:
+    /// フォルダツリーのハイライトのように］。
+    ///
+    /// ラベル 1 件ぶんのチップ（内容幅）と違い、フィールドは**この一覧の見出し**
+    /// なので、幅いっぱいのほうが階層が読める。選択件数は帯の右端に入れる
+    /// ——外に出すと帯の縁が揃わない。
+    ///
+    /// 文字色は背景から計算する [CO-03][CO-05]——利用者がラベル固有色を選べる
+    /// [CO-06] 以上、既定色が一様であることに寄りかからない。
+    private func fieldBand(_ group: LabelGroupSummary) -> some View {
+        let color = LabelColor(hexLight: group.colorHexLight, hexDark: group.colorHexDark)
+        let hex = colorScheme == .dark ? color.hexDark : color.hexLight
+        let background = Color(labelHex: hex) ?? Color.secondary.opacity(0.2)
+        let foreground = LabelColorPalette.readableForeground(on: hex)
+            .flatMap { Color(labelHex: $0) } ?? Color.primary
+        return HStack(spacing: Tokens.spacing.xs) {
+            Text(group.name)
+                .font(.system(size: Tokens.fontSize.caption))
+                .lineLimit(1)
+            Spacer(minLength: Tokens.spacing.xs)
+            if let selected = model.selection[group.id], !selected.isEmpty {
+                Text("\(selected.count)")
+                    .font(.system(size: Tokens.fontSize.caption))
+                    .monospacedDigit()
+            }
+        }
+        .foregroundStyle(foreground)
+        .padding(.horizontal, Tokens.spacing.s)
+        .padding(.vertical, 3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(background)
+        .clipShape(RoundedRectangle(cornerRadius: Tokens.radius.s))
     }
 
     private func labelRow(_ label: LabelSummary, in group: LabelGroupSummary) -> some View {
@@ -323,9 +344,13 @@ struct LabelFilterPane: View {
     /// フィールド名と全ラベル名の実測幅の最大値。展開状態で幅が動かないよう、
     /// 表示中のものではなく読み込んだ全ラベルで測る。長すぎる名前は
     /// チップ側の中央省略に任せ、上限で止める。
+    /// ラベルの帯の幅を揃える［ユーザー要望: 一番長い文字列に合わせる］。
+    ///
+    /// **フィールド名は数えない**——フィールドは幅いっぱいの帯になった
+    /// ［ユーザー要望］ので、長いフィールド名がラベルの帯まで広げてしまう。
     private var uniformChipWidth: CGFloat {
         let font = NSFont.systemFont(ofSize: Tokens.fontSize.caption)
-        var names = model.groups.map(\.name)
+        var names: [String] = []
         for group in model.groups {
             names += (model.labels[group.id] ?? []).map(\.name)
         }

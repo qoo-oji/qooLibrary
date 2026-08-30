@@ -52,10 +52,12 @@ struct LibraryRepositoryTests {
         let groups = try await f.labels.groups(libraryID: f.libraryID)
         #expect(groups.count == 6)
         #expect(groups.map(\.name).contains("サークル"))
-        // 既定色が割り当てられている [CO-01][MT-13]
+        // 既定色が割り当てられている [CO-01][MT-13]。**文字色は色ごとに決まる**
+        // [CO-03][CO-05]——彩度を上げた [CO-02、2026-08-30] ので「全部黒」ではない。
         for g in groups {
             #expect(g.colorHexLight.hasPrefix("#"))
-            #expect(LabelColorPalette.readableForeground(on: g.colorHexLight) == "#000000")
+            #expect(LabelColorPalette.readableForeground(on: g.colorHexLight) != nil,
+                    "\(g.name) の \(g.colorHexLight) は黒でも白でも読めない")
         }
 
         let settings = try #require(try await f.libraries.settingsSnapshot(libraryID: f.libraryID))
