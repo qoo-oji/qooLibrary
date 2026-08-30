@@ -45,14 +45,6 @@ public struct ParseResult: Sendable {
         self.libraryTypeMismatch = libraryTypeMismatch
     }
 
-    /// ラベルグループ番号 → 抽出値。
-    public var labelGroupValues: [Int: FieldValue] {
-        var out: [Int: FieldValue] = [:]
-        for (ref, value) in fields {
-            if case .labelGroup(let n) = ref { out[n] = value }
-        }
-        return out
-    }
 }
 
 /// 1 フォーマットとの照合結果。失敗しても診断情報を返す。

@@ -106,7 +106,7 @@ struct TemplateDraftTests {
         let repository = SQLiteLibraryRepository(database: db, volumeSets: sets)
 
         var draft = TemplateInstantiation.blankDraft(
-            volumeSets: sets, displayName: "白紙", defaultLabelGroupName: "ラベル")
+            volumeSets: sets, displayName: "白紙", defaultFieldNames: ["著者", "サークル", "ジャンル", "イベント", "キーワード"])
         draft.libraryTypeName = "自作"
         #expect(draft.validationErrors.isEmpty)
         // フォーマットは 1 本も無い——どのファイル名にも一致しないのが正しい。
@@ -122,7 +122,13 @@ struct TemplateDraftTests {
         let summary = try #require(try await repository.library(id: id))
         #expect(summary.libraryTypeName == "自作")
         let stored = try #require(try await repository.settingsDraft(libraryID: id))
-        #expect(stored.labelGroups.count == 1)
+        // 白紙でも既定フィールド 5 種は入る [§19.2]——フォーマットが 1 本も
+        // 無いのとは別で、分類の軸は最初から用意しておく。
+        #expect(stored.labelGroups.map(\.name)
+                == ["著者", "サークル", "ジャンル", "イベント", "キーワード"])
+        for (offset, keyword) in SemanticKeyword.defaultFields.enumerated() {
+            #expect(stored.semanticBindings[keyword] == offset + 1)
+        }
         #expect(stored.filenameFormats.isEmpty)
         // カスタムは非プリセット型 [LT-05]。
         let isPreset = try await db.writer.read { d in
@@ -132,7 +138,7 @@ struct TemplateDraftTests {
     }
 
     /// **プリセットの `libraryType` 行は複数ライブラリで共有される** [LT-05]。
-    /// 型名を書き換えたまま同じ行を使うと、他のライブラリの `@librarytype` の
+    /// 型名を書き換えたまま同じ行を使うと、他のライブラリの `@booktype` の
     /// 照合値まで変わってしまう。
     @Test("型名を変えて登録すると専用の型ができ、他のライブラリに波及しない [LT-05]")
     func editingTheTypeNameForksTheLibraryType() async throws {

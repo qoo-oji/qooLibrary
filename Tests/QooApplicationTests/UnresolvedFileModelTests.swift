@@ -427,7 +427,7 @@ struct UnresolvedFileModelIntegrationTests {
     @MainActor
     func addFormatRematchesImmediately() async throws {
         let b = try await bench()
-        try await b.model.addFormat(source: "独自形式＿@labelgroup2＿@title")
+        try await b.model.addFormat(source: "独自形式＿@circle＿@title")
 
         #expect(b.model.lastRematch?.resolved == 1)
         #expect(b.model.files.map(\.row.filename) == ["まったく別の形式.cbz"])

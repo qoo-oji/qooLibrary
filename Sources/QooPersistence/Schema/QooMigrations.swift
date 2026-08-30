@@ -16,7 +16,7 @@ public enum QooMigrations {
     public static let identifiers: [String] = [
         "v1_initial", "v2_regexPatterns", "v3_embeddedMetadata", "v4_fsEventsCheckpoint",
         "v5_identityRejection", "v6_duplicateTitleKey", "v7_identityPending",
-        "v8_stage1Removals",
+        "v8_stage1Removals", "v9_reservedWordCleanup",
     ]
 
     public static var migrator: DatabaseMigrator {
@@ -30,6 +30,7 @@ public enum QooMigrations {
         m.registerMigration(identifiers[5], migrate: v6DuplicateTitleKey)
         m.registerMigration(identifiers[6], migrate: v7IdentityPending)
         m.registerMigration(identifiers[7], migrate: v8Stage1Removals)
+        m.registerMigration(identifiers[8], migrate: v9ReservedWordCleanup)
         return m
     }
 
@@ -126,6 +127,37 @@ public enum QooMigrations {
     ///
     /// どの列も索引・トリガ・ビューから参照されていないので
     /// `ALTER TABLE … DROP COLUMN` で足りる（SQLite 3.35+、この環境は 3.51）。
+    // MARK: - v9
+
+    /// 予約語の整理（v3 ステージ 5）[RWI-02]。
+    ///
+    /// **保存済みのフォーマットを書き換える。** 予約語の綴りを変えただけでは
+    /// 既存の行が「不明な予約語」になり、`SQLiteLibraryRepository` が `try?` で
+    /// 落とすので**フォーマットが 1 本も無いライブラリ**になる——次の走査が
+    /// タイトルもラベルも全部 nil で上書きする、最も静かな壊れ方をする。
+    ///
+    /// 機械的に置き換えられるのは `@librarytype` → `@booktype` だけ
+    /// （純粋な改名）。`@labelgroupN` と `@libraryname` は**変換先が無い**
+    /// ——前者は番号から意味を復元できず、後者はそもそも撤回した機能なので、
+    /// 該当する行は**無効にして残す**（消すと利用者が何を失ったか分からない。
+    /// 設定画面で見えるので、必要なら書き直せる）。
+    static func v9ReservedWordCleanup(_ db: Database) throws {
+        try db.execute(sql: """
+            UPDATE filenameFormat SET source = REPLACE(source, '@librarytype', '@booktype')
+            """)
+        try db.execute(sql: """
+            UPDATE folderLevelMapping SET formatSource =
+                REPLACE(formatSource, '@librarytype', '@booktype')
+             WHERE formatSource IS NOT NULL
+            """)
+        try db.execute(sql: """
+            UPDATE filenameFormat SET isEnabled = 0
+             WHERE source LIKE '%@labelgroup%' OR source LIKE '%@libraryname%'
+            """)
+        try db.execute(sql: "UPDATE storeMetadata SET schemaVersion = ? WHERE id = 1",
+                       arguments: [identifiers[8]])
+    }
+
     static func v8Stage1Removals(_ db: Database) throws {
         try db.drop(table: "identityPending")
         try db.drop(table: "identityRejection")

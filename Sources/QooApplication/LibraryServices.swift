@@ -323,8 +323,7 @@ public final class LibraryServices {
         // 「見たものが登録される」が経路によらず成り立つ。
         let draft = TemplateInstantiation.draft(
             from: template, volumeSets: volumeSets ?? .empty, displayName: displayName,
-            otherLibraryTypeNames: libraries.map(\.libraryTypeName),
-            otherLibraryDisplayNames: libraries.map(\.displayName))
+            otherLibraryTypeNames: libraries.map(\.libraryTypeName))
         return try await enable(registrationUUID: uuid, displayName: displayName, url: url,
                                 bookmarkData: bookmarkData, draft: draft, template: template)
     }

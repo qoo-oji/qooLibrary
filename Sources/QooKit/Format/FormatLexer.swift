@@ -93,24 +93,12 @@ public enum FormatLexer {
 
     // MARK: - 内部
 
-    /// 予約語を最長一致で読む。`@labelgroup` + 1 桁以上の数字も扱う [LX-01][LX-02]。
-    /// 戻り値は `(フィールド, 消費した文字数)`。
+    /// 予約語を最長一致で読む [LX-01][LX-02]。戻り値は `(フィールド, 消費した文字数)`。
+    ///
+    /// **可変長の予約語はもう無い。** `@labelgroupN`（番号が可変で表に載せられず、
+    /// ここで特別扱いしていた）は v3 ステージ 5 で撤去した——表による最長一致だけで
+    /// 読み切れる。
     static func readReservedWord(_ chars: [Character], at i: Int) -> (FieldRef, Int)? {
-        // `@labelgroup` を先に見る。`@labelgroup1` は `@l…` で始まる他の予約語と
-        // 衝突しないが、桁数が可変なので表による最長一致では扱えない。
-        let prefix = Array(ReservedWordTable.labelGroupPrefix)
-        if matches(chars, at: i, prefix) {
-            var j = i + prefix.count
-            var digits = ""
-            while j < chars.count, let d = chars[j].wholeNumberValue, chars[j].isASCII, (0...9).contains(d) {
-                digits.append(chars[j]); j += 1
-            }
-            // 数字が続かない `@labelgroup` は予約語として認めない（番号が必須）。
-            if let n = Int(digits), !digits.isEmpty {
-                return (.labelGroup(n), j - i)
-            }
-            return nil
-        }
         for entry in ReservedWordTable.entries {
             if matches(chars, at: i, Array(entry.word)) {
                 return (entry.field, entry.word.count)

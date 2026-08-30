@@ -7,9 +7,9 @@
       "expected" : {
         "fields" : {
           "@author" : "著者0",
-          "@labelgroup1" : "サークル値0",
-          "@labelgroup3" : "ジャンル値0",
-          "@labelgroup4" : "その他値0",
+          "@circle" : "サークル値0",
+          "@genre" : "ジャンル値0",
+          "@keyword" : "キーワード値0",
           "@title" : "作品タイトル0 第01巻"
         },
         "formatIndex" : 0,
@@ -23,7 +23,7 @@
         }
       },
       "id" : "builtin.doujin-cg-b.p1",
-      "input" : "(同人CG集) [サークル値0 (著者0)] 作品タイトル0 第01巻 (ジャンル値0) [その他値0].cbz",
+      "input" : "(同人CG集) [サークル値0 (著者0)] 作品タイトル0 第01巻 (ジャンル値0) [キーワード値0].cbz",
       "kind" : "positive"
     },
     {
@@ -33,8 +33,8 @@
       "expected" : {
         "fields" : {
           "@author" : "著者1",
-          "@labelgroup1" : "サークル値1",
-          "@labelgroup3" : "ジャンル値1",
+          "@circle" : "サークル値1",
+          "@genre" : "ジャンル値1",
           "@title" : "作品 タイトル 1 vol.2"
         },
         "formatIndex" : 1,
@@ -58,8 +58,8 @@
       "expected" : {
         "fields" : {
           "@author" : "著者2",
-          "@labelgroup1" : "サークル値2",
-          "@labelgroup4" : "その他値2",
+          "@circle" : "サークル値2",
+          "@keyword" : "キーワード値2",
           "@title" : "作品タイトル2ー長音 上巻"
         },
         "formatIndex" : 2,
@@ -71,7 +71,7 @@
         }
       },
       "id" : "builtin.doujin-cg-b.p3",
-      "input" : "(同人CG集) [サークル値2 (著者2)] 作品タイトル2ー長音 上巻 [その他値2].cbz",
+      "input" : "(同人CG集) [サークル値2 (著者2)] 作品タイトル2ー長音 上巻 [キーワード値2].cbz",
       "kind" : "positive"
     },
     {
@@ -81,7 +81,7 @@
       "expected" : {
         "fields" : {
           "@author" : "著者3",
-          "@labelgroup1" : "サークル値3",
+          "@circle" : "サークル値3",
           "@title" : "作品タイトル3"
         },
         "formatIndex" : 3,
@@ -101,9 +101,9 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "サークル値4",
-          "@labelgroup3" : "ジャンル値4",
-          "@labelgroup4" : "その他値4",
+          "@circle" : "サークル値4",
+          "@genre" : "ジャンル値4",
+          "@keyword" : "キーワード値4",
           "@title" : "サブタイトル付き作品4 第05巻"
         },
         "formatIndex" : 4,
@@ -117,7 +117,7 @@
         }
       },
       "id" : "builtin.doujin-cg-b.p5",
-      "input" : "(同人CG集) [サークル値4] サブタイトル付き作品4 第05巻 (ジャンル値4) [その他値4].cbz",
+      "input" : "(同人CG集) [サークル値4] サブタイトル付き作品4 第05巻 (ジャンル値4) [キーワード値4].cbz",
       "kind" : "positive"
     },
     {
@@ -126,8 +126,8 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "サークル値5",
-          "@labelgroup3" : "ジャンル値5",
+          "@circle" : "サークル値5",
+          "@genre" : "ジャンル値5",
           "@title" : "作品タイトル5 vol.6"
         },
         "formatIndex" : 5,
@@ -150,8 +150,8 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "サークル値6",
-          "@labelgroup4" : "その他値6",
+          "@circle" : "サークル値6",
+          "@keyword" : "キーワード値6",
           "@title" : "作品 タイトル 6 上巻"
         },
         "formatIndex" : 6,
@@ -163,7 +163,7 @@
         }
       },
       "id" : "builtin.doujin-cg-b.p7",
-      "input" : "(同人CG集) [サークル値6] 作品 タイトル 6 上巻 [その他値6].cbz",
+      "input" : "(同人CG集) [サークル値6] 作品 タイトル 6 上巻 [キーワード値6].cbz",
       "kind" : "positive"
     },
     {
@@ -172,7 +172,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "サークル値7",
+          "@circle" : "サークル値7",
           "@title" : "作品タイトル7ー長音"
         },
         "formatIndex" : 7,
@@ -193,9 +193,9 @@
       "expected" : {
         "fields" : {
           "@author" : "著者8",
-          "@labelgroup1" : "サークル値8",
-          "@labelgroup3" : "ジャンル値8",
-          "@labelgroup4" : "その他値8",
+          "@circle" : "サークル値8",
+          "@genre" : "ジャンル値8",
+          "@keyword" : "キーワード値8",
           "@title" : "作品タイトル8 第09巻"
         },
         "formatIndex" : 8,
@@ -209,7 +209,7 @@
         }
       },
       "id" : "builtin.doujin-cg-b.p9",
-      "input" : "[サークル値8 (著者8)] 作品タイトル8 第09巻 (ジャンル値8) [その他値8].cbz",
+      "input" : "[サークル値8 (著者8)] 作品タイトル8 第09巻 (ジャンル値8) [キーワード値8].cbz",
       "kind" : "positive"
     },
     {
@@ -219,8 +219,8 @@
       "expected" : {
         "fields" : {
           "@author" : "著者9",
-          "@labelgroup1" : "サークル値9",
-          "@labelgroup3" : "ジャンル値9",
+          "@circle" : "サークル値9",
+          "@genre" : "ジャンル値9",
           "@title" : "サブタイトル付き作品9 vol.10"
         },
         "formatIndex" : 9,
@@ -244,8 +244,8 @@
       "expected" : {
         "fields" : {
           "@author" : "著者10",
-          "@labelgroup1" : "サークル値10",
-          "@labelgroup4" : "その他値10",
+          "@circle" : "サークル値10",
+          "@keyword" : "キーワード値10",
           "@title" : "作品タイトル10 上巻"
         },
         "formatIndex" : 10,
@@ -257,7 +257,7 @@
         }
       },
       "id" : "builtin.doujin-cg-b.p11",
-      "input" : "[サークル値10 (著者10)] 作品タイトル10 上巻 [その他値10].cbz",
+      "input" : "[サークル値10 (著者10)] 作品タイトル10 上巻 [キーワード値10].cbz",
       "kind" : "positive"
     },
     {
@@ -267,7 +267,7 @@
       "expected" : {
         "fields" : {
           "@author" : "著者11",
-          "@labelgroup1" : "サークル値11",
+          "@circle" : "サークル値11",
           "@title" : "作品 タイトル 11"
         },
         "formatIndex" : 11,
@@ -287,9 +287,9 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "サークル値12",
-          "@labelgroup3" : "ジャンル値12",
-          "@labelgroup4" : "その他値12",
+          "@circle" : "サークル値12",
+          "@genre" : "ジャンル値12",
+          "@keyword" : "キーワード値12",
           "@title" : "作品タイトル12ー長音 第13巻"
         },
         "formatIndex" : 12,
@@ -303,7 +303,7 @@
         }
       },
       "id" : "builtin.doujin-cg-b.p13",
-      "input" : "[サークル値12] 作品タイトル12ー長音 第13巻 (ジャンル値12) [その他値12].cbz",
+      "input" : "[サークル値12] 作品タイトル12ー長音 第13巻 (ジャンル値12) [キーワード値12].cbz",
       "kind" : "positive"
     },
     {
@@ -312,8 +312,8 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "サークル値13",
-          "@labelgroup3" : "ジャンル値13",
+          "@circle" : "サークル値13",
+          "@genre" : "ジャンル値13",
           "@title" : "作品タイトル13 vol.14"
         },
         "formatIndex" : 13,
@@ -336,8 +336,8 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "サークル値14",
-          "@labelgroup4" : "その他値14",
+          "@circle" : "サークル値14",
+          "@keyword" : "キーワード値14",
           "@title" : "サブタイトル付き作品14 上巻"
         },
         "formatIndex" : 14,
@@ -349,7 +349,7 @@
         }
       },
       "id" : "builtin.doujin-cg-b.p15",
-      "input" : "[サークル値14] サブタイトル付き作品14 上巻 [その他値14].cbz",
+      "input" : "[サークル値14] サブタイトル付き作品14 上巻 [キーワード値14].cbz",
       "kind" : "positive"
     },
     {
@@ -358,7 +358,7 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "サークル値15",
+          "@circle" : "サークル値15",
           "@title" : "作品タイトル15"
         },
         "formatIndex" : 15,
@@ -379,9 +379,9 @@
       "expected" : {
         "fields" : {
           "@author" : "著者16",
-          "@labelgroup1" : "サークル値16",
-          "@labelgroup3" : "ジャンル値16",
-          "@labelgroup4" : "その他値16",
+          "@circle" : "サークル値16",
+          "@genre" : "ジャンル値16",
+          "@keyword" : "キーワード値16",
           "@title" : "作品 タイトル 16 第17巻"
         },
         "formatIndex" : 0,
@@ -395,7 +395,7 @@
         }
       },
       "id" : "builtin.doujin-cg-b.p17",
-      "input" : "(同人CG集) [サークル値16 (著者16)] 作品 タイトル 16 第17巻 (ジャンル値16) [その他値16].cbz",
+      "input" : "(同人CG集) [サークル値16 (著者16)] 作品 タイトル 16 第17巻 (ジャンル値16) [キーワード値16].cbz",
       "kind" : "positive"
     },
     {
@@ -405,8 +405,8 @@
       "expected" : {
         "fields" : {
           "@author" : "著者17",
-          "@labelgroup1" : "サークル値17",
-          "@labelgroup3" : "ジャンル値17",
+          "@circle" : "サークル値17",
+          "@genre" : "ジャンル値17",
           "@title" : "作品タイトル17ー長音 vol.18"
         },
         "formatIndex" : 1,
@@ -430,8 +430,8 @@
       "expected" : {
         "fields" : {
           "@author" : "著者18",
-          "@labelgroup1" : "サークル値18",
-          "@labelgroup4" : "その他値18",
+          "@circle" : "サークル値18",
+          "@keyword" : "キーワード値18",
           "@title" : "作品タイトル18 上巻"
         },
         "formatIndex" : 2,
@@ -443,7 +443,7 @@
         }
       },
       "id" : "builtin.doujin-cg-b.p19",
-      "input" : "(同人CG集) [サークル値18 (著者18)] 作品タイトル18 上巻 [その他値18].cbz",
+      "input" : "(同人CG集) [サークル値18 (著者18)] 作品タイトル18 上巻 [キーワード値18].cbz",
       "kind" : "positive"
     },
     {
@@ -453,7 +453,7 @@
       "expected" : {
         "fields" : {
           "@author" : "著者19",
-          "@labelgroup1" : "サークル値19",
+          "@circle" : "サークル値19",
           "@title" : "サブタイトル付き作品19"
         },
         "formatIndex" : 3,
@@ -473,9 +473,9 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "サークル値20",
-          "@labelgroup3" : "ジャンル値20",
-          "@labelgroup4" : "その他値20",
+          "@circle" : "サークル値20",
+          "@genre" : "ジャンル値20",
+          "@keyword" : "キーワード値20",
           "@title" : "作品タイトル20 第21巻"
         },
         "formatIndex" : 4,
@@ -489,7 +489,7 @@
         }
       },
       "id" : "builtin.doujin-cg-b.p21",
-      "input" : "(同人CG集) [サークル値20] 作品タイトル20 第21巻 (ジャンル値20) [その他値20].cbz",
+      "input" : "(同人CG集) [サークル値20] 作品タイトル20 第21巻 (ジャンル値20) [キーワード値20].cbz",
       "kind" : "positive"
     },
     {
@@ -498,8 +498,8 @@
       },
       "expected" : {
         "fields" : {
-          "@labelgroup1" : "サークル値21",
-          "@labelgroup3" : "ジャンル値21",
+          "@circle" : "サークル値21",
+          "@genre" : "ジャンル値21",
           "@title" : "作品 タイトル 21 vol.22"
         },
         "formatIndex" : 5,

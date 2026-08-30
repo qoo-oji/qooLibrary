@@ -80,10 +80,15 @@ enum GoldenGenerator {
             case .series:       return "シリーズ\(variant)"
             case .author:       return "著者\(variant)"
             case .volume:       return String(format: "%02d", variant % 30 + 1)
-            case .libraryType:  return template.libraryTypeName
-            case .libraryName:  return "ライブラリ\(variant)"
-            case .labelGroup(let n):
-                let name = groupNames[n] ?? "グループ\(n)"
+            case .bookType:     return template.libraryTypeName
+            case .circle, .event, .genre, .keyword:
+                // 束縛先のフィールド名から作る [RWI-02]。番号で書いていた頃と
+                // **同じ文字列**になるので、予約語へ書き換えても入力ファイル名は
+                // 1 バイトも変わらない——変わるのは期待値の鍵だけになる。
+                let keyword = SemanticKeyword.allCases.first { $0.fieldRef == ref }
+                let bound = keyword.flatMap { template.semanticKeywordBindings[$0] }
+                let name = bound.flatMap { groupNames[$0] }
+                    ?? keyword?.rawValue.dropFirst().description ?? "フィールド"
                 return "\(name)値\(variant)"
             case .ignore:       return "無視\(variant)"
             }

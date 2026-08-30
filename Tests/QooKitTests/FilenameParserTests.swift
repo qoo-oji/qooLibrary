@@ -34,7 +34,12 @@ func settings(formats: [String],
               types: [String] = ["一般コミック", "成年コミック", "同人誌", "同人CG"],
               volume: [CompiledVolumePattern] = [],
               protectedTokens: [ProtectedToken] = [],
-              semantic: [SemanticKeyword: Int] = [:],
+              /// 既定は**旧 `@labelgroupN` と同じ番号**へ束縛する
+              /// （`@circle`→1・`@genre`→2・`@event`→3・`@keyword`→4・`@author`→5）
+              /// ——`@labelgroupN` の撤去 [v3 ステージ 5] で予約語へ書き換えた際、
+              /// 番号を書いた既存の検査をそのまま生かすため。
+              semantic: [SemanticKeyword: Int] = [.circle: 1, .genre: 2, .event: 3,
+                                                  .keyword: 4, .author: 5],
               delimiters: DelimiterSet = .default) throws -> LibrarySettingsSnapshot {
     let ctxt = FormatCompilationContext(delimiters: delimiters,
                                         allLibraryTypeNames: types,
@@ -60,46 +65,46 @@ struct PresetTemplateTests {
     /// 要件定義書 11.4 節に列挙されたフォーマットをそのまま書き写したもの。
     /// **ここが落ちたら検証器の解釈が実際のテンプレートと食い違っている。**
     static let allPresetFormats: [(preset: String, formats: [String])] = [
-        ("一般コミック(A)", ["(@librarytype) [@labelgroup1] @title",
-                          "[@labelgroup1] @title"]),
-        ("一般コミック(B)", ["(@librarytype) [@labelgroup1] @title",
-                          "[@labelgroup1] @title",
+        ("一般コミック(A)", ["(@booktype) [@circle] @title",
+                          "[@circle] @title"]),
+        ("一般コミック(B)", ["(@booktype) [@circle] @title",
+                          "[@circle] @title",
                           "@title"]),
-        ("成年コミック(A)", ["(@librarytype) [@labelgroup1] @title",
-                          "[@labelgroup1] @title"]),
-        ("成年コミック(B)", ["(@librarytype) [@labelgroup1] @title",
-                          "[@labelgroup1] @title",
+        ("成年コミック(A)", ["(@booktype) [@circle] @title",
+                          "[@circle] @title"]),
+        ("成年コミック(B)", ["(@booktype) [@circle] @title",
+                          "[@circle] @title",
                           "@title"]),
         ("同人誌(A)", [
-            "(@labelgroup1) [@labelgroup2 (@labelgroup3)] @title (@labelgroup4) [@labelgroup5]",
-            "(@labelgroup1) [@labelgroup2 (@labelgroup3)] @title (@labelgroup4)",
-            "(@labelgroup1) [@labelgroup2 (@labelgroup3)] @title [@labelgroup5]",
-            "(@labelgroup1) [@labelgroup2 (@labelgroup3)] @title",
-            "(@labelgroup1) [@labelgroup2] @title (@labelgroup4) [@labelgroup5]",
-            "(@labelgroup1) [@labelgroup2] @title (@labelgroup4)",
-            "(@labelgroup1) [@labelgroup2] @title [@labelgroup5]",
-            "(@labelgroup1) [@labelgroup2] @title",
-            "[@labelgroup2] @title (@labelgroup4) [@labelgroup5]",
-            "[@labelgroup2] @title (@labelgroup4)",
-            "[@labelgroup2] @title [@labelgroup5]",
-            "[@labelgroup2] @title"]),
+            "(@circle) [@genre (@event)] @title (@keyword) [@author]",
+            "(@circle) [@genre (@event)] @title (@keyword)",
+            "(@circle) [@genre (@event)] @title [@author]",
+            "(@circle) [@genre (@event)] @title",
+            "(@circle) [@genre] @title (@keyword) [@author]",
+            "(@circle) [@genre] @title (@keyword)",
+            "(@circle) [@genre] @title [@author]",
+            "(@circle) [@genre] @title",
+            "[@genre] @title (@keyword) [@author]",
+            "[@genre] @title (@keyword)",
+            "[@genre] @title [@author]",
+            "[@genre] @title"]),
         ("同人CG(B)", [
-            "(@librarytype) [@labelgroup1 (@labelgroup2)] @title (@labelgroup3) [@labelgroup4]",
-            "(@librarytype) [@labelgroup1 (@labelgroup2)] @title (@labelgroup3)",
-            "(@librarytype) [@labelgroup1 (@labelgroup2)] @title [@labelgroup4]",
-            "(@librarytype) [@labelgroup1 (@labelgroup2)] @title",
-            "(@librarytype) [@labelgroup1] @title (@labelgroup3) [@labelgroup4]",
-            "(@librarytype) [@labelgroup1] @title (@labelgroup3)",
-            "(@librarytype) [@labelgroup1] @title [@labelgroup4]",
-            "(@librarytype) [@labelgroup1] @title",
-            "[@labelgroup1 (@labelgroup2)] @title (@labelgroup3) [@labelgroup4]",
-            "[@labelgroup1 (@labelgroup2)] @title (@labelgroup3)",
-            "[@labelgroup1 (@labelgroup2)] @title [@labelgroup4]",
-            "[@labelgroup1 (@labelgroup2)] @title",
-            "[@labelgroup1] @title (@labelgroup3) [@labelgroup4]",
-            "[@labelgroup1] @title (@labelgroup3)",
-            "[@labelgroup1] @title [@labelgroup4]",
-            "[@labelgroup1] @title"]),
+            "(@booktype) [@circle (@genre)] @title (@event) [@keyword]",
+            "(@booktype) [@circle (@genre)] @title (@event)",
+            "(@booktype) [@circle (@genre)] @title [@keyword]",
+            "(@booktype) [@circle (@genre)] @title",
+            "(@booktype) [@circle] @title (@event) [@keyword]",
+            "(@booktype) [@circle] @title (@event)",
+            "(@booktype) [@circle] @title [@keyword]",
+            "(@booktype) [@circle] @title",
+            "[@circle (@genre)] @title (@event) [@keyword]",
+            "[@circle (@genre)] @title (@event)",
+            "[@circle (@genre)] @title [@keyword]",
+            "[@circle (@genre)] @title",
+            "[@circle] @title (@event) [@keyword]",
+            "[@circle] @title (@event)",
+            "[@circle] @title [@keyword]",
+            "[@circle] @title"]),
     ]
 
     @Test("すべてのプリセットのファイル名フォーマットがコンパイルできる",
@@ -115,11 +120,11 @@ struct PresetTemplateTests {
 
     @Test("フォルダ階層割り当てのフォーマットもコンパイルできる [AL-01][AL-02]")
     func folderLevelFormatsCompile() throws {
-        // 一般コミック(B) 第1階層: `[@labelgroup1] @labelgroup2`
+        // 一般コミック(B) 第1階層: `[@circle] @genre`
         // 括弧の境界があるので自由文字列の隣接にならない [VD-02]
-        _ = try FormatCompiler.compile("[@labelgroup1] @labelgroup2", context: FormatCompilationContext())
-        _ = try FormatCompiler.compile("@labelgroup2", context: FormatCompilationContext())
-        _ = try FormatCompiler.compile("@labelgroup1", context: FormatCompilationContext())
+        _ = try FormatCompiler.compile("[@circle] @genre", context: FormatCompilationContext())
+        _ = try FormatCompiler.compile("@genre", context: FormatCompilationContext())
+        _ = try FormatCompiler.compile("@circle", context: FormatCompilationContext())
     }
 }
 
@@ -131,12 +136,12 @@ struct FilenameParserRealShapeTests {
 
     @Test("成年コミック: (成年コミック) [作者名] タイトル")
     func adultComic() throws {
-        let s = try settings(formats: ["(@librarytype) [@labelgroup1] @title",
-                                       "[@labelgroup1] @title"],
+        let s = try settings(formats: ["(@booktype) [@circle] @title",
+                                       "[@circle] @title"],
                              typeName: "成年コミック")
         let r = try #require(parser.parse("(成年コミック) [98765架空社] タイトル名",
                                           settings: s, purpose: .libraryScan))
-        #expect(r.fields[.labelGroup(1)]?.text == "98765架空社")
+        #expect(r.fields[.circle]?.text == "98765架空社")
         #expect(r.fields[.title]?.text == "タイトル名")
         #expect(r.libraryTypeMismatch == false)
     }
@@ -144,33 +149,33 @@ struct FilenameParserRealShapeTests {
     @Test("同人誌: (同人誌) [サークル (作家)] タイトル (原作) — 入れ子のペア型 [FF-11]")
     func doujinNested() throws {
         let s = try settings(formats: [
-            "(@librarytype) [@labelgroup2 (@labelgroup3)] @title (@labelgroup4)",
-            "(@librarytype) [@labelgroup2] @title (@labelgroup4)",
+            "(@booktype) [@genre (@event)] @title (@keyword)",
+            "(@booktype) [@genre] @title (@keyword)",
         ], typeName: "同人誌", volume: vsDoujin())
         let r = try #require(parser.parse("(同人誌) [サークル名 (作家名)] 作品タイトル (オリジナル)",
                                           settings: s, purpose: .libraryScan))
-        #expect(r.fields[.labelGroup(2)]?.text == "サークル名")
-        #expect(r.fields[.labelGroup(3)]?.text == "作家名")
+        #expect(r.fields[.genre]?.text == "サークル名")
+        #expect(r.fields[.event]?.text == "作家名")
         #expect(r.fields[.title]?.text == "作品タイトル")
-        #expect(r.fields[.labelGroup(4)]?.text == "オリジナル")
+        #expect(r.fields[.keyword]?.text == "オリジナル")
     }
 
     @Test("サークル名のみ（作家名の併記が無い 12%）は 2 番目のフォーマットで拾う [FF-03]")
     func doujinWithoutArtist() throws {
         let s = try settings(formats: [
-            "(@librarytype) [@labelgroup2 (@labelgroup3)] @title (@labelgroup4)",
-            "(@librarytype) [@labelgroup2] @title (@labelgroup4)",
+            "(@booktype) [@genre (@event)] @title (@keyword)",
+            "(@booktype) [@genre] @title (@keyword)",
         ], typeName: "同人誌")
         let r = try #require(parser.parse("(同人誌) [サークル名] 作品タイトル (オリジナル)",
                                           settings: s, purpose: .libraryScan))
-        #expect(r.fields[.labelGroup(2)]?.text == "サークル名")
-        #expect(r.fields[.labelGroup(3)] == nil)
+        #expect(r.fields[.genre]?.text == "サークル名")
+        #expect(r.fields[.event] == nil)
         #expect(r.fields[.title]?.text == "作品タイトル")
     }
 
     @Test("一般コミック: [著者] タイトル 第01巻 — @title 末尾から巻数を抽出 [SE-02]")
     func generalComicVolume() throws {
-        let s = try settings(formats: ["[@labelgroup1] @title"], volume: vsFull())
+        let s = try settings(formats: ["[@circle] @title"], volume: vsFull())
         let r = try #require(parser.parse("[佐藤秀峰] ブラックジャックによろしく 第01巻",
                                           settings: s, purpose: .libraryScan))
         let f = FieldPostProcessor.postProcess(r, settings: s)
@@ -184,17 +189,17 @@ struct FilenameParserRealShapeTests {
 
     @Test("タイトル中に区切り文字があっても両端アンカーで正しく解釈できる [TY-04][MT2-03]")
     func delimitersInsideTitle() throws {
-        let s = try settings(formats: ["[@labelgroup1] @title (@labelgroup4)"])
+        let s = try settings(formats: ["[@circle] @title (@keyword)"])
         let r = try #require(parser.parse("[著者名] 作品 (副題) の話 (オリジナル)",
                                           settings: s, purpose: .libraryScan))
         #expect(r.fields[.title]?.text == "作品 (副題) の話")
-        #expect(r.fields[.labelGroup(4)]?.text == "オリジナル")
+        #expect(r.fields[.keyword]?.text == "オリジナル")
     }
 
     /// 実コーパスでは `(` 5,953 に対し `)` 5,950 で、**閉じ括弧が欠けたファイル名が実在する**。
     @Test("括弧が閉じていないファイル名で落ちない（照合失敗として扱う）")
     func unbalancedBracketsDoNotCrash() throws {
-        let s = try settings(formats: ["[@labelgroup1] @title"])
+        let s = try settings(formats: ["[@circle] @title"])
         #expect(parser.parse("[著者名 タイトル", settings: s, purpose: .libraryScan) == nil)
         #expect(parser.parse("[[[[[[", settings: s, purpose: .libraryScan) == nil)
         #expect(parser.parse("]]]]]", settings: s, purpose: .libraryScan) == nil)
@@ -203,7 +208,7 @@ struct FilenameParserRealShapeTests {
 
     @Test("全角の括弧・スペース・数字を含んでも一致する [N-02][WS-01]")
     func fullwidthInput() throws {
-        let s = try settings(formats: ["[@labelgroup1] @title"], volume: vsFull())
+        let s = try settings(formats: ["[@circle] @title"], volume: vsFull())
         // 全角スペースが 2 つ、全角数字の巻数
         let r = try #require(parser.parse("[著者名]　　タイトル 第０１巻",
                                           settings: s, purpose: .libraryScan))
@@ -214,29 +219,29 @@ struct FilenameParserRealShapeTests {
 
     @Test("フォーマットは登録順に評価し最初にマッチしたものを採る [FF-03][FF-04]")
     func formatPriority() throws {
-        let s = try settings(formats: ["[@labelgroup1] @title (@labelgroup4)",
-                                       "[@labelgroup1] @title"])
+        let s = try settings(formats: ["[@circle] @title (@keyword)",
+                                       "[@circle] @title"])
         let r = try #require(parser.parse("[著者] タイトル (タグ)", settings: s, purpose: .libraryScan))
-        #expect(r.fields[.labelGroup(4)]?.text == "タグ")   // 1 番目が勝つ
+        #expect(r.fields[.keyword]?.text == "タグ")   // 1 番目が勝つ
     }
 
     @Test("空白だけのフィールドは捕捉しない（意味のないラベルを作らない）[WS-05]")
     func whitespaceOnlyFieldRejected() throws {
-        let s = try settings(formats: ["[@labelgroup1] @title"])
+        let s = try settings(formats: ["[@circle] @title"])
         #expect(parser.parse("[   ] タイトル", settings: s, purpose: .libraryScan) == nil)
         #expect(parser.parse("[著者]    ", settings: s, purpose: .libraryScan) == nil)
     }
 }
 
-// MARK: - @librarytype の扱い [RW-01]
+// MARK: - @booktype の扱い [RW-01]
 
-@Suite("@librarytype の不一致 [RW-01][MV-14b]")
+@Suite("@booktype の不一致 [RW-01][MV-14b]")
 struct LibraryTypeMismatchTests {
     let parser = FilenameParser()
 
     @Test("スキャン時は警告のみでマッチする")
     func scanWarnsOnly() throws {
-        let s = try settings(formats: ["(@librarytype) [@labelgroup1] @title"],
+        let s = try settings(formats: ["(@booktype) [@circle] @title"],
                              typeName: "一般コミック")
         let r = try #require(parser.parse("(成年コミック) [著者] タイトル",
                                           settings: s, purpose: .libraryScan))
@@ -245,7 +250,7 @@ struct LibraryTypeMismatchTests {
 
     @Test("移動時はマッチ失敗として次のフォーマットへ進む")
     func moveRejects() throws {
-        let s = try settings(formats: ["(@librarytype) [@labelgroup1] @title"],
+        let s = try settings(formats: ["(@booktype) [@circle] @title"],
                              typeName: "一般コミック")
         #expect(parser.parse("(成年コミック) [著者] タイトル",
                              settings: s, purpose: .moveToLibrary) == nil)
@@ -253,7 +258,7 @@ struct LibraryTypeMismatchTests {
 
     @Test("一致していれば警告は立たない")
     func matchingTypeIsClean() throws {
-        let s = try settings(formats: ["(@librarytype) [@labelgroup1] @title"],
+        let s = try settings(formats: ["(@booktype) [@circle] @title"],
                              typeName: "一般コミック")
         let r = try #require(parser.parse("(一般コミック) [著者] タイトル",
                                           settings: s, purpose: .moveToLibrary))
@@ -271,11 +276,11 @@ struct ProtectedTokenTests {
     @Test("§4.7.3 の例: 事件記者コナン (仮) (01) - 著者")
     func specExample() throws {
         let token = ProtectedToken(pattern: #"\(仮\)"#)
-        let s = try settings(formats: ["@series (@volume) - @labelgroup1"],
+        let s = try settings(formats: ["@series (@volume) - @circle"],
                              volume: vsFull(), protectedTokens: [token])
         let r = try #require(parser.parse("事件記者コナン (仮) (01) - 著者",
                                           settings: s, purpose: .libraryScan))
-        #expect(r.fields[.labelGroup(1)]?.text == "著者")
+        #expect(r.fields[.circle]?.text == "著者")
         #expect(r.fields[.volume]?.volume?.number == 1)
         // 復元されて原文が返る [PT-03]
         #expect(r.fields[.series]?.text == "事件記者コナン (仮)")
@@ -284,7 +289,7 @@ struct ProtectedTokenTests {
     @Test("保護文字列の位置指定 [PT-05]")
     func positionConstraint() throws {
         let suffixOnly = ProtectedToken(pattern: #"\(完全版\)"#, position: .suffix)
-        let s = try settings(formats: ["[@labelgroup1] @title"], protectedTokens: [suffixOnly])
+        let s = try settings(formats: ["[@circle] @title"], protectedTokens: [suffixOnly])
         // 末尾にあるのでマスクされ、@title に吸収される
         let r = try #require(parser.parse("[著者] タイトル (完全版)", settings: s, purpose: .libraryScan))
         #expect(r.fields[.title]?.text == "タイトル (完全版)")

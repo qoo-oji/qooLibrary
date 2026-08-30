@@ -46,8 +46,8 @@ public struct FilenameParser: FilenameParsing, Sendable {
             guard var result = outcome.result else { continue }
 
             // `@librarytype` の扱い [RW-01]
-            if format.usedFields.contains(.libraryType),
-               let matched = result.fields[.libraryType] {
+            if format.usedFields.contains(.bookType),
+               let matched = result.fields[.bookType] {
                 let expected = TextNormalizer.normalize(settings.libraryTypeName)
                 if matched.normalized != expected {
                     if purpose == .moveToLibrary { continue }   // 次のフォーマットへ

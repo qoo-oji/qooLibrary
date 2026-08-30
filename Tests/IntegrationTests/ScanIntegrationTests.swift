@@ -104,6 +104,17 @@ final class ScanWorkspace {
 
     deinit { try? FileManager.default.removeItem(at: root) }
 
+    /// 意味予約語が流れ込むフィールドを引く [RW-13][RWI-02]。
+    ///
+    /// **番号で引かない。** 既定フィールド 5 種の保証 [§19.2] のように
+    /// テンプレートの並びが変わると、番号は同じでも別のフィールドを指す
+    /// ——検査の主張と無関係に落ちるうえ、落ちるまで気づけない。
+    func field(_ keyword: SemanticKeyword) async throws -> LabelGroupSummary? {
+        guard let draft = try await libraries.settingsDraft(libraryID: libraryID),
+              let index = draft.semanticBindings[keyword] else { return nil }
+        return try await labels.group(libraryID: libraryID, index: index)
+    }
+
     func write(_ relativePath: String, bytes: Int = 16) throws {
         let url = root.appendingPathComponent(relativePath)
         try FileManager.default.createDirectory(
@@ -210,9 +221,9 @@ struct ScanIntegrationTests {
         try w.write("(同人誌) [サークルA (作家B)] 作品2 (オリジナル).cbz")
         _ = try await w.scanFull()
 
-        let circle = try #require(try await w.labels.group(libraryID: w.libraryID, index: 2))
-        let author = try #require(try await w.labels.group(libraryID: w.libraryID, index: 3))
-        let genre = try #require(try await w.labels.group(libraryID: w.libraryID, index: 4))
+        let circle = try #require(try await w.field(.circle))
+        let author = try #require(try await w.field(.author))
+        let genre = try #require(try await w.field(.genre))
         #expect(try await w.labels.labels(groupID: circle.id, includeArchived: false)
             .map(\.name) == ["サークルA"])
         #expect(Set(try await w.labels.labels(groupID: author.id, includeArchived: false)

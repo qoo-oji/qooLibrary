@@ -61,8 +61,9 @@ struct LibraryPreviewTests {
         #expect(values.contains("作品名A"), "タイトルが出ていない")
         #expect(values.contains("サークル値A"), "サークルのラベルが出ていない")
         #expect(values.contains("著者値A"), "著者のラベルが出ていない")
-        // ラベルはグループ番号つきで返る——表示名の解決は UI 層の仕事。
-        #expect(item.fields.contains { if case .labelGroup = $0.ref { true } else { false } })
+        // **ラベルは意味予約語で返る**——束縛先のフィールド名と色の解決は
+        // UI 層の仕事（`@labelgroupN` は v3 ステージ 5 で撤去した）。
+        #expect(item.fields.contains { $0.ref == .circle })
     }
 
     @Test("巻数は原文表記で見せる [SE-02]")
@@ -85,7 +86,7 @@ struct LibraryPreviewTests {
     func blankDraftResolvesNothing() throws {
         let draft = TemplateInstantiation.blankDraft(
             volumeSets: try BuiltInTemplates.volumeSets(),
-            displayName: "白紙", defaultLabelGroupName: "ラベル")
+            displayName: "白紙", defaultFieldNames: ["著者", "サークル", "ジャンル", "イベント", "キーワード"])
         let outcome = LibraryPreview.run(filenames: ["何でもよい名前.zip"], draft: draft)
         #expect(outcome.matched == 0)
         #expect(outcome.unresolved == 1)
@@ -104,7 +105,7 @@ struct LibraryPreviewTests {
 
     /// **型不一致は「他のライブラリの型名に当たった」ときに立つ** [TY-01]。
     ///
-    /// `@librarytype` は型付き照合なので、候補は
+    /// `@booktype` は型付き照合なので、候補は
     /// `allLibraryTypeNames`（＝このライブラリの型名 ＋ 他ライブラリの型名）
     /// に限られる。どれにも当たらなければ単に不一致（未解決）で、
     /// **当たったが自分の型名ではなかった**ときだけ警告になる——
@@ -116,7 +117,7 @@ struct LibraryPreviewTests {
         var draft = TemplateInstantiation.draft(
             from: template, volumeSets: try BuiltInTemplates.volumeSets(),
             displayName: "テスト", otherLibraryTypeNames: ["成年コミック"])
-        draft.filenameFormats = [FilenameFormatDraft(source: "(@librarytype) @title")]
+        draft.filenameFormats = [FilenameFormatDraft(source: "(@booktype) @title")]
 
         // 自分の型名なら警告は出ない（対照）。
         let ok = LibraryPreview.run(filenames: ["(同人誌) 作品名A.zip"], draft: draft)

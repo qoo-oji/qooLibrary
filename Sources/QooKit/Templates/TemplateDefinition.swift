@@ -134,7 +134,6 @@ public enum TemplateInstantiation {
                                libraryID: LibraryID,
                                displayName: String = "",
                                allLibraryTypeNames: [String] = [],
-                               allLibraryDisplayNames: [String] = [],
                                delimiters: DelimiterSet = .default,
                                /// 省略すると `draft(from:)` と**同じ既定**が入る。
                                /// 揃えないと、ここで測った結果が実際に登録された
@@ -153,7 +152,6 @@ public enum TemplateInstantiation {
             delimiters: delimiters,
             allLibraryTypeNames: allLibraryTypeNames.isEmpty
                 ? [template.libraryTypeName] : allLibraryTypeNames,
-            allLibraryDisplayNames: allLibraryDisplayNames,
             semanticBindings: semantic)
 
         var formats: [CompiledFormat] = []
@@ -200,7 +198,6 @@ public enum TemplateInstantiation {
             displayName: displayName,
             libraryTypeName: template.libraryTypeName,
             allLibraryTypeNames: context.allLibraryTypeNames,
-            allLibraryDisplayNames: allLibraryDisplayNames,
             delimiters: delimiters,
             protectedTokens: ProtectedTokenCompiler.compileAll(protectedTokens),
             filenameFormats: formats,
@@ -234,8 +231,7 @@ extension TemplateInstantiation {
     public static func draft(from template: LibraryTypeTemplate,
                              volumeSets: VolumeSetDefinition,
                              displayName: String,
-                             otherLibraryTypeNames: [String] = [],
-                             otherLibraryDisplayNames: [String] = []) -> LibrarySettingsDraft {
+                             otherLibraryTypeNames: [String] = []) -> LibrarySettingsDraft {
         let colors = LabelColorPalette.palette(count: max(template.labelGroups.count, 1))
         let groups = template.labelGroups
             .sorted { $0.index < $1.index }
@@ -294,8 +290,33 @@ extension TemplateInstantiation {
             volumeFormats: volumes,
             folderLevels: levels,
             seriesTitleCompositionFormat: "@series @volume",
-            otherLibraryTypeNames: otherLibraryTypeNames,
-            otherLibraryDisplayNames: otherLibraryDisplayNames)
+            otherLibraryTypeNames: otherLibraryTypeNames)
+    }
+
+    /// 既定フィールド 5 種と、その意味束縛を組み立てる [§19.2][RWI-02]。
+    ///
+    /// **番号は 1〜5 に固定する。** 番号はフィールドの身元ではない（身元は
+    /// 予約語）が、既定が毎回違う番号に散ると、追加フィールドの番号取りと
+    /// 設定画面の並びが登録のたびに変わって読みにくい。
+    public static func defaultFields(named names: [String])
+        -> (groups: [LabelGroupDraft], bindings: [SemanticKeyword: Int])
+    {
+        let keywords = SemanticKeyword.defaultFields
+        let colors = LabelColorPalette.palette(count: keywords.count)
+        var groups: [LabelGroupDraft] = []
+        var bindings: [SemanticKeyword: Int] = [:]
+        for (offset, keyword) in keywords.enumerated() {
+            let index = offset + 1
+            let color = colors[min(offset, colors.count - 1)]
+            let name = offset < names.count && !names[offset].isEmpty
+                ? names[offset]
+                : String(keyword.rawValue.dropFirst())
+            groups.append(LabelGroupDraft(index: index, name: name,
+                                          colorHexLight: color.hexLight,
+                                          colorHexDark: color.hexDark))
+            bindings[keyword] = index
+        }
+        return (groups, bindings)
     }
 
     /// 白紙から始める草案 [LT-02、ユーザー要望]。
@@ -309,21 +330,23 @@ extension TemplateInstantiation {
     /// 巻数フォーマットだけは既定のセットを入れる——巻数の読み取りは
     /// ライブラリタイプに依らずほぼ共通で、空から手で書かせる意味が薄い。
     /// - Parameters:
-    ///   - defaultLabelGroupName: 最初のラベルグループに付ける名前。
+    ///   - defaultFieldNames: 既定フィールド 5 種の名前を
+    ///     `SemanticKeyword.defaultFields` の順で渡す [§19.2]。
     ///     **`QooKit` は表示文字列を持たない** [A-01] ので、UI 層が訳語を渡す。
+    ///     件数が足りなければ予約語の綴りで埋める（訳語が無いことは
+    ///     設定を壊す理由にならない）。
     ///   - volumeSetName: `volume-sets.json` にある名前（`VS-Full` /
     ///     `VS-Doujin` / `VS-None`）。存在しない名前を渡すと巻数フォーマットが
     ///     空になる——**巻数を一切読まない**状態になるので、名前は実在を確かめて渡す。
     public static func blankDraft(volumeSets: VolumeSetDefinition,
                                   displayName: String,
-                                  defaultLabelGroupName: String,
+                                  defaultFieldNames: [String],
                                   libraryTypeName: String = "",
                                   volumeSetName: String = "VS-Full",
-                                  otherLibraryTypeNames: [String] = [],
-                                  otherLibraryDisplayNames: [String] = []) -> LibrarySettingsDraft {
-        let color = LabelColorPalette.palette(count: 1)[0]
+                                  otherLibraryTypeNames: [String] = []) -> LibrarySettingsDraft {
         let volumes = (volumeSets.patterns(named: volumeSetName) ?? [])
             .map { VolumeFormatDraft(source: $0.source, isEnabled: true, kind: $0.kind) }
+        let (groups, bindings) = defaultFields(named: defaultFieldNames)
         return LibrarySettingsDraft(
             displayName: displayName,
             libraryTypeName: libraryTypeName,
@@ -332,14 +355,12 @@ extension TemplateInstantiation {
             protectedTokens: AppDefaults.Library.protectedTokenPatterns.map {
                 ProtectedToken(pattern: $0)
             },
-            // **ラベルグループを 1 つだけ置く。** 0 個だとフォーマットに
-            // `@labelgroup1` を書いた瞬間に不備になり、「何から始めれば
-            // よいか」が分からない。
-            labelGroups: [LabelGroupDraft(index: 1, name: defaultLabelGroupName,
-                                          colorHexLight: color.hexLight,
-                                          colorHexDark: color.hexDark)],
+            // **既定フィールド 5 種を置く** [§19.2]。白紙でも、著者・サークル・
+            // ジャンル・イベント・キーワードは最初から使える——「何から始めれば
+            // よいか」が分かるうえ、プリセットから登録した場合と持ち物が揃う。
+            labelGroups: groups,
+            semanticBindings: bindings,
             volumeFormats: volumes,
-            otherLibraryTypeNames: otherLibraryTypeNames,
-            otherLibraryDisplayNames: otherLibraryDisplayNames)
+            otherLibraryTypeNames: otherLibraryTypeNames)
     }
 }

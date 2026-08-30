@@ -36,7 +36,6 @@ final class LibraryEnableModel {
     let templates: [LibraryTypeTemplate]
     private let volumeSets: VolumeSetDefinition
     private let otherTypeNames: [String]
-    private let otherDisplayNames: [String]
 
     var origin: Origin {
         didSet {
@@ -82,25 +81,22 @@ final class LibraryEnableModel {
 
     init(folderName: String, folderURL: URL, templates: [LibraryTypeTemplate],
          volumeSets: VolumeSetDefinition,
-         otherTypeNames: [String] = [], otherDisplayNames: [String] = []) {
+         otherTypeNames: [String] = []) {
         self.folderName = folderName
         self.folderURL = folderURL
         self.templates = templates
         self.volumeSets = volumeSets
         self.otherTypeNames = otherTypeNames
-        self.otherDisplayNames = otherDisplayNames
         let first = templates.first
         self.origin = first.map { Origin.template(key: $0.key) } ?? .blank
         self.draft = first.map {
             TemplateInstantiation.draft(from: $0, volumeSets: volumeSets,
                                         displayName: folderName,
-                                        otherLibraryTypeNames: otherTypeNames,
-                                        otherLibraryDisplayNames: otherDisplayNames)
+                                        otherLibraryTypeNames: otherTypeNames)
         } ?? TemplateInstantiation.blankDraft(
             volumeSets: volumeSets, displayName: folderName,
-            defaultLabelGroupName: String(localized: "libraryEnable.defaultLabelGroupName"),
-            otherLibraryTypeNames: otherTypeNames,
-            otherLibraryDisplayNames: otherDisplayNames)
+            defaultFieldNames: DefaultFieldNames.localized,
+            otherLibraryTypeNames: otherTypeNames)
         self.selectedFormatID = draft.filenameFormats.first?.id
     }
 
@@ -111,14 +107,12 @@ final class LibraryEnableModel {
             guard let template = templates.first(where: { $0.key == key }) else { return }
             draft = TemplateInstantiation.draft(
                 from: template, volumeSets: volumeSets, displayName: folderName,
-                otherLibraryTypeNames: otherTypeNames,
-                otherLibraryDisplayNames: otherDisplayNames)
+                otherLibraryTypeNames: otherTypeNames)
         case .blank:
             draft = TemplateInstantiation.blankDraft(
                 volumeSets: volumeSets, displayName: folderName,
-                defaultLabelGroupName: String(localized: "libraryEnable.defaultLabelGroupName"),
-                otherLibraryTypeNames: otherTypeNames,
-                otherLibraryDisplayNames: otherDisplayNames)
+                defaultFieldNames: DefaultFieldNames.localized,
+                otherLibraryTypeNames: otherTypeNames)
         }
         selectedFormatID = draft.filenameFormats.first?.id
     }

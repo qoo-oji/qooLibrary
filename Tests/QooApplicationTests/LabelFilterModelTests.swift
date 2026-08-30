@@ -151,7 +151,10 @@ struct LabelFilterModelTests {
     @MainActor
     func pinnedLabelsWin() async throws {
         let (w, model) = try await Self.prepared((0..<12).map { Self.doujin($0, circle: $0) })
-        let circle = try #require(model.groups.first { ($0.labelCount) >= 12 })
+        // **件数で引かない。** 12 サークル × 12 著者を作るので件数が同じ
+        // フィールドが複数あり、既定フィールドの並び [§19.2] が変わると
+        // 別のフィールドを掴む（実際、著者を掴んで落ちた）。
+        let circle = try #require(model.groups.first { $0.name == "サークル" })
         let pinned = try #require(model.labels[circle.id]?.first)
         await model.setPinned(pinned, true, services: w.services)
         #expect(model.visibleLabels(in: circle).map(\.name) == [pinned.name])
@@ -161,7 +164,10 @@ struct LabelFilterModelTests {
     @MainActor
     func checkedLabelsAlwaysVisible() async throws {
         let (w, model) = try await Self.prepared((0..<12).map { Self.doujin($0, circle: $0) })
-        let circle = try #require(model.groups.first { ($0.labelCount) >= 12 })
+        // **件数で引かない。** 12 サークル × 12 著者を作るので件数が同じ
+        // フィールドが複数あり、既定フィールドの並び [§19.2] が変わると
+        // 別のフィールドを掴む（実際、著者を掴んで落ちた）。
+        let circle = try #require(model.groups.first { $0.name == "サークル" })
         let all = try #require(model.labels[circle.id])
         let hidden = try #require(all.last)                   // 上位 10 件の外
         #expect(!model.visibleLabels(in: circle).contains { $0.id == hidden.id })
@@ -175,7 +181,10 @@ struct LabelFilterModelTests {
     func revealedGroupSupportsSearch() async throws {
         let (w, model) = try await Self.prepared((0..<12).map { Self.doujin($0, circle: $0) })
         _ = w
-        let circle = try #require(model.groups.first { ($0.labelCount) >= 12 })
+        // **件数で引かない。** 12 サークル × 12 著者を作るので件数が同じ
+        // フィールドが複数あり、既定フィールドの並び [§19.2] が変わると
+        // 別のフィールドを掴む（実際、著者を掴んで落ちた）。
+        let circle = try #require(model.groups.first { $0.name == "サークル" })
         model.revealedGroups.insert(circle.id)
         model.searchText[circle.id] = "値11"
         #expect(model.visibleLabels(in: circle).map(\.name) == ["サークル値11"])

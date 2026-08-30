@@ -61,9 +61,21 @@ public enum FolderLabelResolver {
                                                   volumePatterns: settings.volumeFormats)
                 // [AL-23] 想定した階層にフォルダがない配置ではエラーにせず素通しする。
                 guard let result = outcome.result else { continue }
-                for (ref, value) in result.fields {
-                    guard case .labelGroup(let group) = ref, !value.text.isEmpty else { continue }
-                    out[group, default: []].append(value.text)
+                // セマンティック予約語をラベルにする [RW-17][RWI-02]。
+                //
+                // **ファイル名側（`FieldPostProcessor.postProcess`）と揃える。**
+                // 揃えないと、同じ `@circle` がファイル名では効いてフォルダ名では
+                // 黙って捨てられる——プリセットを予約語ベースへ書き換えた時点で
+                // フォルダ階層由来のラベルが消える形になる。
+                //
+                // 構造化列（`seriesName` / `authorName`）には入れない。ここが返すのは
+                // ラベルだけで、フォルダ名からタイトル・シリーズを決める経路は
+                // `resolve` が持つ [AL-22]。
+                for keyword in SemanticKeyword.allCases {
+                    guard let group = settings.semanticBindings[keyword],
+                          let text = result.fields[keyword.fieldRef]?.text,
+                          !text.isEmpty else { continue }
+                    out[group, default: []].append(text)
                 }
             }
         }

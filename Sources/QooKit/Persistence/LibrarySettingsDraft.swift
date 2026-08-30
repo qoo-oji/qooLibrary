@@ -153,7 +153,6 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
     /// の列挙候補を組み立てるのに要る。自分の分は編集中の値から足すので、
     /// 型名を書き換えても列挙候補が古いまま取り残されない。
     public let otherLibraryTypeNames: [String]
-    public let otherLibraryDisplayNames: [String]
 
     public init(displayName: String = "",
                 libraryTypeName: String = "",
@@ -172,8 +171,7 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
                 readsEmbeddedMetadata: Bool = true,
                 comicInfoVolumeSource: ComicInfoVolumeSource = .ask,
                 opensBookFolderWithApp: Bool = false,
-                otherLibraryTypeNames: [String] = [],
-                otherLibraryDisplayNames: [String] = []) {
+                otherLibraryTypeNames: [String] = []) {
         self.displayName = displayName
         self.libraryTypeName = libraryTypeName
         self.thumbnailsAlwaysHidden = thumbnailsAlwaysHidden
@@ -192,7 +190,6 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
         self.comicInfoVolumeSource = comicInfoVolumeSource
         self.opensBookFolderWithApp = opensBookFolderWithApp
         self.otherLibraryTypeNames = otherLibraryTypeNames
-        self.otherLibraryDisplayNames = otherLibraryDisplayNames
     }
 
     // MARK: - 派生
@@ -201,17 +198,12 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
         Array(Set(otherLibraryTypeNames + [libraryTypeName])).filter { !$0.isEmpty }.sorted()
     }
 
-    public var allLibraryDisplayNames: [String] {
-        Array(Set(otherLibraryDisplayNames + [displayName])).filter { !$0.isEmpty }.sorted()
-    }
-
     /// フォーマットのコンパイルに渡す文脈。**検証もプレビューもこれを使う**
     /// ——別々に組み立てると、片方だけ設定変更に追随しない形になる。
     public var compilationContext: FormatCompilationContext {
         FormatCompilationContext(delimiters: delimiters,
                                  maxLabelGroups: AppLimits.Format.maxLabelGroups,
                                  allLibraryTypeNames: allLibraryTypeNames,
-                                 allLibraryDisplayNames: allLibraryDisplayNames,
                                  semanticBindings: semanticBindings)
     }
 
@@ -353,12 +345,14 @@ extension LibrarySettingsDraft {
                 else { addWarning(.filenameFormats, message) }
                 continue
             }
-            // コンパイラは番号の上限（1〜10）しか見ない [LG-01]。**このライブラリに
-            // そのグループが実在するか**は見ないので、ここで補う——実在しない
-            // グループへ付与しようとすると、照合は成功するのにラベルが付かない、
-            // という気づきにくい壊れ方をする。
-            for index in referencedLabelGroups(in: format.source) where !defined.contains(index) {
-                let message = "\(i + 1) 番目のフォーマットが、存在しないグループ @labelgroup\(index) を参照しています。"
+            // 束縛の無い意味予約語も同じ壊れ方をする [RW-16][RWI-02]——`@circle`
+            // 等は構造化列を持たないので、束縛が無いと切り出した値が捨てられる。
+            // **`@labelgroupN` と揃えて弾く**: 片方だけ通すと、フィールドを消した
+            // 拍子に「照合は成功するのにラベルが付かない」設定が保存できてしまう。
+            for keyword in unboundSemanticKeywords(in: format.source,
+                                                   keepsStructuredColumns: true) {
+                let message = "\(i + 1) 番目のフォーマットの \(keyword.rawValue) は、"
+                    + "どのフィールドにも紐づいていないため値が失われます。"
                 if severityIsError { addError(.filenameFormats, message) }
                 else { addWarning(.filenameFormats, message) }
             }
@@ -391,9 +385,11 @@ extension LibrarySettingsDraft {
                     addError(.folderLevels, "階層 \(level.level)「\(source)」: \(error.whatHappened)")
                     continue
                 }
-                for index in referencedLabelGroups(in: source) where !defined.contains(index) {
+                for keyword in unboundSemanticKeywords(in: source,
+                                                       keepsStructuredColumns: false) {
                     addError(.folderLevels,
-                          "階層 \(level.level) が、存在しないグループ @labelgroup\(index) を参照しています。")
+                          "階層 \(level.level) の \(keyword.rawValue) は、"
+                          + "どのフィールドにも紐づいていないため値が失われます。")
                 }
             }
         }
@@ -482,34 +478,28 @@ extension LibrarySettingsDraft {
         validate().filter { $0.severity == .error }
     }
 
-    /// フォーマット文字列が参照しているラベルグループ番号。
+    /// フォーマットが参照している意味予約語のうち、**束縛が無く、その用途では
+    /// 値が残らない**もの [RW-16][RWI-02]。
     ///
     /// **コンパイル結果からではなくソースから拾う。** コンパイル済みの構文木は
-    /// 検証を通ったものしか作れないので、「壊れているうえに存在しないグループを
-    /// 参照している」場合に何も言えなくなる。
-    func referencedLabelGroups(in source: String) -> Set<Int> {
-        var found: Set<Int> = []
-        let scalars = Array(source)
-        let keyword = Array("@labelgroup")
-        var i = 0
-        while i < scalars.count {
-            guard scalars[i] == "@",
-                  i + keyword.count <= scalars.count,
-                  Array(scalars[i..<(i + keyword.count)]) == keyword else {
-                i += 1
-                continue
-            }
-            var j = i + keyword.count
-            var digits = ""
-            while j < scalars.count, scalars[j].isNumber {
-                digits.append(scalars[j])
-                j += 1
-            }
-            if let value = Int(digits) { found.insert(value) }
-            i = max(j, i + 1)
+    /// 検証を通ったものしか作れないので、壊れているフォーマットについて
+    /// 何も言えなくなる。
+    ///
+    /// **ファイル名とフォルダ名で「値が残るか」が違う。**
+    /// ファイル名では `@series` / `@author` が構造化列（`seriesName` /
+    /// `authorName`）へ入るので、束縛が無くても書く意味がある——照合だけの
+    /// 用途にも使える。**フォルダ名フォーマットでは入らない**
+    /// （`FolderLabelResolver` が返すのはラベルだけで、タイトル・シリーズ・
+    /// 著者はファイル名側から決まる [AL-22]）ので、束縛が無ければ捨てられる。
+    func unboundSemanticKeywords(in source: String,
+                                 keepsStructuredColumns: Bool) -> [SemanticKeyword] {
+        SemanticKeyword.allCases.filter { keyword in
+            if keepsStructuredColumns, keyword.hasStructuredColumn { return false }
+            guard semanticBindings[keyword] == nil else { return false }
+            return source.contains(keyword.rawValue)
         }
-        return found
     }
+
 }
 
 // MARK: - プレビュー
@@ -560,7 +550,6 @@ extension LibrarySettingsDraft {
             displayName: displayName,
             libraryTypeName: libraryTypeName,
             allLibraryTypeNames: allLibraryTypeNames,
-            allLibraryDisplayNames: allLibraryDisplayNames,
             targetExtensions: Set(targetExtensions),
             imageExtensions: Set(imageExtensions),
             delimiters: delimiters,

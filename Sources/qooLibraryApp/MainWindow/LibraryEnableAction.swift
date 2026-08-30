@@ -40,8 +40,7 @@ enum LibraryEnableAction {
             templates: templates, volumeSets: volumeSets,
             // 型付き照合 [TY-01] の候補は他ライブラリの型名も含む。渡さないと
             // プレビューの結果が実際の走査とずれる。
-            otherTypeNames: services.libraries.map(\.libraryTypeName),
-            otherDisplayNames: services.libraries.map(\.displayName))
+            otherTypeNames: services.libraries.map(\.libraryTypeName))
 
         DialogWindowPresenter.shared.present(
             title: String(localized: "library.enable.title", locale: locale)

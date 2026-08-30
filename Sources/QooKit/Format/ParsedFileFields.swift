@@ -61,21 +61,27 @@ public enum FieldPostProcessor {
             volume = extracted.volume
         }
 
-        // ラベルグループへの割り当て
+        // フィールドへの割り当て。**意味予約語だけが経路**（`@labelgroupN` は
+        // v3 ステージ 5 で撤去した）——番号はフィールドの身元ではないので、
+        // 番号でフォーマットに書けると並べ替えや改名で意味が変わってしまう。
         var labels: [Int: [String]] = [:]
-        for (ref, value) in result.fields {
-            guard case .labelGroup(let n) = ref else { continue }
-            guard !value.text.isEmpty else { continue }
-            labels[n, default: []].append(value.text)
-        }
 
-        // セマンティック予約語のラベル化 [RW-06][RW-11][SE-06][SE-08]
-        if let group = settings.semanticBindings[.series], let seriesName, !seriesName.isEmpty {
-            labels[group, default: []].append(seriesName)
-        }
+        // セマンティック予約語のラベル化 [RW-06][RW-11][RWI-02][SE-06][SE-08]
+        //
+        // **予約語ごとに分岐を書かない。** 書くと、予約語を足したときに
+        // ここへ足し忘れて「フォーマットには書けるのにラベルが付かない」という
+        // 静かな壊れ方をする（`@circle` を足した最初の版で実際に踏みかけた）。
+        //
+        // 列挙は `allCases` の順で回す——辞書の列挙順は不定で、そのまま使うと
+        // 同じ入力でもラベルの並びが実行ごとに変わりうる。
         let authorName = result.fields[.author]?.text
-        if let group = settings.semanticBindings[.author], let authorName, !authorName.isEmpty {
-            labels[group, default: []].append(authorName)
+        for keyword in SemanticKeyword.allCases {
+            guard let group = settings.semanticBindings[keyword] else { continue }
+            // `@series` だけは**導出された値**を使う——`@title` の末尾から
+            // 切り出した場合、`result.fields[.series]` には何も入っていない [SE-02]。
+            let value = keyword == .series ? seriesName : result.fields[keyword.fieldRef]?.text
+            guard let value, !value.isEmpty else { continue }
+            labels[group, default: []].append(value)
         }
 
         return ParsedFileFields(

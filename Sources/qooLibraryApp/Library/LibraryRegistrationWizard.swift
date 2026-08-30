@@ -34,8 +34,7 @@ enum LibraryRegistrationWizard {
         let model = LibraryRegistrationWizardModel(
             templates: services.presetTemplates,
             volumeSets: volumeSets,
-            otherTypeNames: services.libraries.map(\.libraryTypeName),
-            otherDisplayNames: services.libraries.map(\.displayName))
+            otherTypeNames: services.libraries.map(\.libraryTypeName))
         DialogWindowPresenter.shared.present(
             title: String(localized: "libraryWizard.title", locale: locale)
         ) { _ in
@@ -63,7 +62,6 @@ enum LibraryRegistrationWizard {
             templates: services.presetTemplates,
             volumeSets: volumeSets,
             otherTypeNames: services.libraries.map(\.libraryTypeName),
-            otherDisplayNames: services.libraries.map(\.displayName),
             minStep: .template)
         model.step = .template
         // サンプル収集は提示と並行に走らせる。`chooseFolder` は先頭で
@@ -119,7 +117,6 @@ final class LibraryRegistrationWizardModel {
     let templates: [LibraryTypeTemplate]
     private let volumeSets: VolumeSetDefinition
     private let otherTypeNames: [String]
-    private let otherDisplayNames: [String]
 
     /// (A)/(B) を 1 つに畳んだテンプレート [ユーザー指摘: A/B の実差は
     /// フォルダ階層を使うかどうかだけで、それはテンプレートの選択ではなく
@@ -159,12 +156,10 @@ final class LibraryRegistrationWizardModel {
     private(set) var isEvaluating = false
 
     init(templates: [LibraryTypeTemplate], volumeSets: VolumeSetDefinition,
-         otherTypeNames: [String], otherDisplayNames: [String],
-         minStep: Step = .intro) {
+         otherTypeNames: [String] = [], minStep: Step = .intro) {
         self.templates = templates
         self.volumeSets = volumeSets
         self.otherTypeNames = otherTypeNames
-        self.otherDisplayNames = otherDisplayNames
         self.minStep = minStep
         self.merged = Self.mergeVariants(templates)
     }
@@ -201,7 +196,7 @@ final class LibraryRegistrationWizardModel {
         let model = LibraryEnableModel(
             folderName: url.lastPathComponent, folderURL: url,
             templates: templates, volumeSets: volumeSets,
-            otherTypeNames: otherTypeNames, otherDisplayNames: otherDisplayNames)
+            otherTypeNames: otherTypeNames)
         enable = model
         isEvaluating = true
         await model.loadSamples()
@@ -225,8 +220,7 @@ final class LibraryRegistrationWizardModel {
             let draft = TemplateInstantiation.draft(
                 from: item.flat, volumeSets: volumeSets,
                 displayName: model.folderName,
-                otherLibraryTypeNames: otherTypeNames,
-                otherLibraryDisplayNames: otherDisplayNames)
+                otherLibraryTypeNames: otherTypeNames)
             let outcome = LibraryPreview.run(filenames: model.sampleNames, draft: draft,
                                              truncated: model.sampleTruncated)
             map[item.id] = outcome
@@ -958,23 +952,17 @@ struct LibraryRegistrationWizardView: View {
     /// フィールドではないので数えない。
     private func fieldTallies(_ outcome: LibraryPreview.Outcome,
                               draft: LibrarySettingsDraft) -> [FieldTally] {
+        // **「フィールドへ流れる値か」は束縛で判定する** [RWI-02]——
+        // `@labelgroupN` を撤去したので、ラベルになる経路は意味予約語だけ。
         var values: [FieldRef: Set<String>] = [:]
         for item in outcome.items where item.matched {
-            for field in item.fields {
-                switch field.ref {
-                case .author, .labelGroup:
-                    values[field.ref, default: []].insert(field.value)
-                default:
-                    continue
-                }
+            for field in item.fields
+            where FormatMatchPreview.fieldChipIndex(for: field.ref, draft: draft) != nil {
+                values[field.ref, default: []].insert(field.value)
             }
         }
         func order(_ ref: FieldRef) -> Int {
-            switch ref {
-            case .author: return 0
-            case .labelGroup(let index): return index
-            default: return 99
-            }
+            FormatMatchPreview.fieldChipIndex(for: ref, draft: draft) ?? 99
         }
         return values.keys.sorted { order($0) < order($1) }.map { ref in
             FieldTally(id: FormatMatchPreview.label(for: ref, draft: draft),
@@ -1007,10 +995,9 @@ struct LibraryRegistrationWizardView: View {
         let series = item.fields.first { $0.ref == .series }?.value
         let volume = item.fields.first { $0.ref == .volume }?.value
         let chips: [(ref: FieldRef, value: String)] = item.fields.compactMap { field in
-            switch field.ref {
-            case .author, .labelGroup: return (ref: field.ref, value: field.value)
-            default: return nil
-            }
+            guard FormatMatchPreview.fieldChipIndex(for: field.ref, draft: draft) != nil
+            else { return nil }
+            return (ref: field.ref, value: field.value)
         }
         return VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
             RoundedRectangle(cornerRadius: Tokens.radius.s)

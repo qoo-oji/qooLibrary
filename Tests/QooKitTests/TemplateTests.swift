@@ -64,8 +64,10 @@ struct BuiltInTemplateTests {
         // 著者は `@author` で取り、意味束縛で著者グループへ流す [RW-13]
         // ——`authorName` 列にも入るようにするため（束縛が無いと、
         // `@author` で取った値はどのラベルグループにも付かない）。
-        #expect(f.usedFields == [.author, .labelGroup(2)])
-        #expect(s.semanticBindings[.series] == 2)          // @series → シリーズ [SE-06]
+        // 番号ではなく**意味予約語**で書く [RWI-02]——番号はフィールドの身元では
+        // ないので、並べ替えや改名で意味が変わってしまう。
+        #expect(f.usedFields == [.author, .series])
+        #expect(s.semanticBindings[.series] == 6)          // @series → シリーズ [SE-06]
         #expect(s.semanticBindings[.author] == 1)          // @author → 著者 [RW-13]
     }
 

@@ -60,11 +60,10 @@ struct LibraryLabelGroupsSettingsView: View {
 
     private var header: some View {
         HStack(spacing: Tokens.spacing.s) {
-            Text("librarySettings.labelGroups.number").frame(width: 90, alignment: .leading)
+            Text("librarySettings.labelGroups.number").frame(width: 110, alignment: .leading)
             Text("librarySettings.labelGroups.name").frame(minWidth: 120, alignment: .leading)
             Text("librarySettings.labelGroups.color").frame(width: 24, alignment: .leading)
             Spacer(minLength: Tokens.spacing.m)
-            Text("librarySettings.labelGroups.semantic").frame(width: 130, alignment: .leading)
             Text("librarySettings.labelGroups.autoAssign").frame(width: 60, alignment: .center)
             Color.clear.frame(width: 22)
         }
@@ -75,12 +74,14 @@ struct LibraryLabelGroupsSettingsView: View {
 
     private func row(_ group: Binding<LabelGroupDraft>) -> some View {
         HStack(spacing: Tokens.spacing.s) {
-            // `@labelgroupN` の N。**フォーマットから参照される番号**なので、
-            // 付け替えるとフォーマットの意味が変わる。検証が実在確認を行う。
-            Text(verbatim: "@labelgroup\(group.wrappedValue.index)")
+            // **フォーマットからの参照名を出す。** 既定フィールド 5 種だけが
+            // 意味予約語（`@author` 等）で参照でき [RWI-02]、追加フィールドは
+            // ファイル名から参照できない（`@labelgroupN` は撤去した）——手で
+            // 付けるための軸なので、参照名の欄は「—」になる。
+            Text(verbatim: reference(for: group.wrappedValue.index) ?? "—")
                 .font(.system(size: Tokens.fontSize.caption, design: .monospaced))
                 .foregroundStyle(.secondary)
-                .frame(width: 90, alignment: .leading)
+                .frame(width: 110, alignment: .leading)
             TextField("", text: group.name)
                 .labelsHidden()
                 .editableFieldChrome()
@@ -91,9 +92,6 @@ struct LibraryLabelGroupsSettingsView: View {
                            defaultColor: defaultColor(for: group.wrappedValue),
                            previewName: group.wrappedValue.name)
             Spacer(minLength: Tokens.spacing.m)
-            FixedWidthPopUp(items: semanticItems(for: group.wrappedValue.index),
-                            selection: semanticBinding(for: group.wrappedValue.index))
-                .frame(width: 130)
             Toggle("", isOn: group.assignsAutomatically)
                 .labelsHidden()
                 .frame(width: 60, alignment: .center)
@@ -104,6 +102,14 @@ struct LibraryLabelGroupsSettingsView: View {
             }
             .buttonStyle(.borderless)
             .frame(width: 22)
+            // **既定フィールド 5 種は消せない** [§19.2]。予約語の割り当て UI を
+            // 廃止した [§19.7] ので、一度消すと `@author` 等を**二度と束縛し直せず**、
+            // それを使っているフォーマットが黙って値を捨てるだけになる。名前は
+            // 変えられるし、ラベルが 0 件のフィールドはフィルタに出ない [LF-02] ので、
+            // 残しておいても邪魔にならない（Calibre が組み込み列を消させないのと同じ）。
+            .disabled(isDefaultField(group.wrappedValue))
+            .help(isDefaultField(group.wrappedValue)
+                  ? Text("librarySettings.labelGroups.defaultCannotRemove") : Text(""))
         }
         .padding(.vertical, Tokens.spacing.xs)
     }
@@ -133,29 +139,18 @@ struct LibraryLabelGroupsSettingsView: View {
         return palette[position]
     }
 
-    /// セマンティック予約語の紐づけ [LE-01][RW-12]。**1 対 1 を UI で守る**
-    /// [LE-02][RW-14]——別のグループに付け替えると、元の紐づけを外す。
-    private func semanticBinding(for index: Int) -> Binding<String> {
-        Binding(
-            get: { draft.semanticBindings.first { $0.value == index }?.key.rawValue ?? "" },
-            set: { raw in
-                for (keyword, value) in draft.semanticBindings where value == index {
-                    draft.semanticBindings[keyword] = nil
-                }
-                guard let keyword = SemanticKeyword(rawValue: raw) else { return }
-                draft.semanticBindings[keyword] = index      // 他のグループから奪う
-            })
-    }
-
-    private func semanticItems(for index: Int) -> [FixedWidthPopUp<String>.Item] {
-        var items: [FixedWidthPopUp<String>.Item] = [
-            .init(title: String(localized: "librarySettings.labelGroups.noSemantic"), tag: "")
-        ]
-        for keyword in SemanticKeyword.allCases {
-            items.append(.init(title: keyword.rawValue, tag: keyword.rawValue))
-        }
-        _ = index
-        return items
+    /// フォーマットからこのフィールドを指す綴り [RW-13][RWI-02]。
+    ///
+    /// **予約語の割り当てはユーザーに選ばせない** [§19.7][§19.8]——既定
+    /// フィールド 5 種は意味そのものが身元なので、付け替えられると
+    /// 「著者フィールドに `@genre` が流れる」ような、後から辿れない設定が
+    /// 作れてしまう。ここは読むだけの表示にする。
+    ///
+    /// 束縛の無いフィールド（追加分）は**ファイル名から参照できない**
+    /// ——`@labelgroupN` は v3 ステージ 5 で撤去した。手で付けるための軸である。
+    private func reference(for index: Int) -> String? {
+        SemanticKeyword.allCases
+            .first { draft.semanticBindings[$0] == index }?.rawValue
     }
 
     private func addGroup() {
@@ -171,11 +166,18 @@ struct LibraryLabelGroupsSettingsView: View {
     /// **ラベルごと消える**ので確認を挟む [LB-05]。保存するまで実際には
     /// 消えないが、保存の段で警告するのでは遅い（そのときには何を消したか
     /// 忘れている）。
+    /// 既定フィールド 5 種かどうか [§19.2]。**番号ではなく束縛で判定する**
+    /// ——番号はフィールドの身元ではないので、並べ替えると別の行を守ってしまう。
+    private func isDefaultField(_ group: LabelGroupDraft) -> Bool {
+        SemanticKeyword.defaultFields.contains { draft.semanticBindings[$0] == group.index }
+    }
+
     private func removeGroup(_ group: LabelGroupDraft) {
+        guard !isDefaultField(group) else { return }        // ボタンと二重の守り
         DialogWindowPresenter.shared.present(
             title: String(localized: "librarySettings.labelGroups.removeTitle")
         ) { _ in
-            RemoveLabelGroupDialog(groupName: group.name, groupIndex: group.index) {
+            RemoveLabelGroupDialog(groupName: group.name) {
                 draft.labelGroups.removeAll { $0.id == group.id }
                 for (keyword, value) in draft.semanticBindings where value == group.index {
                     draft.semanticBindings[keyword] = nil
@@ -190,7 +192,6 @@ private struct RemoveLabelGroupDialog: View {
     @Environment(\.dialogDismiss) private var dismiss
 
     let groupName: String
-    let groupIndex: Int
     let onConfirm: () -> Void
 
     var body: some View {
@@ -207,11 +208,6 @@ private struct RemoveLabelGroupDialog: View {
             VStack(alignment: .leading, spacing: Tokens.spacing.s) {
                 Text(String(format: String(localized: "librarySettings.labelGroups.removeExplanation",
                                            locale: locale), groupName))
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(String(format: String(localized: "librarySettings.labelGroups.removeWarning",
-                                           locale: locale), groupIndex))
-                    .font(.system(size: Tokens.fontSize.caption))
-                    .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -477,16 +473,23 @@ struct FilenameFormatEditorDialog: View {
         var entries: [(String, String?)] = [
             ("@title", String(localized: "librarySettings.word.title")),
             ("@volume", String(localized: "librarySettings.word.volume")),
-            ("@librarytype", String(localized: "librarySettings.word.libraryType")),
-            ("@libraryname", String(localized: "librarySettings.word.libraryName")),
+            ("@booktype", String(localized: "librarySettings.word.bookType")),
             ("@ignore", String(localized: "librarySettings.word.ignore")),
         ]
+        // **ファイル名から参照できるフィールドだけを出す。** 束縛の無い
+        // フィールド（追加分）は `@labelgroupN` を撤去した [v3 ステージ 5] ので
+        // フォーマットから指せない——出すと、押した瞬間にコンパイルできない
+        // 綴りが挿し込まれる（参照名の列が「—」と出すのと食い違ってもいた）。
         for group in draft.labelGroups.sorted(by: { $0.index < $1.index }) {
-            entries.append(("@labelgroup\(group.index)", group.name))
+            guard let keyword = SemanticKeyword.allCases
+                .first(where: { draft.semanticBindings[$0] == group.index }) else { continue }
+            entries.append((keyword.rawValue, group.name))
         }
-        for keyword in SemanticKeyword.allCases {
-            guard let index = draft.semanticBindings[keyword] else { continue }
-            entries.append((keyword.rawValue, draft.labelGroupName(at: index)))
+        // フィールドへ束縛されていない予約語（`@series` は構造化列を持つので
+        // 束縛が無くても書ける [RW-16]）も出す。
+        for keyword in SemanticKeyword.allCases
+        where keyword.hasStructuredColumn && draft.semanticBindings[keyword] == nil {
+            entries.append((keyword.rawValue, nil))
         }
         return entries.map { (word: $0.0, note: $0.1) }
     }
@@ -527,7 +530,6 @@ struct FormatMatchPreview: View {
             displayName: settings.displayName,
             libraryTypeName: settings.libraryTypeName,
             allLibraryTypeNames: settings.allLibraryTypeNames,
-            allLibraryDisplayNames: settings.allLibraryDisplayNames,
             targetExtensions: settings.targetExtensions,
             imageExtensions: settings.imageExtensions,
             delimiters: settings.delimiters,
@@ -604,11 +606,43 @@ struct FormatMatchPreview: View {
         case .series:      String(localized: "librarySettings.word.series")
         case .author:      String(localized: "librarySettings.word.author")
         case .volume:      String(localized: "librarySettings.word.volume")
-        case .libraryType: String(localized: "librarySettings.word.libraryType")
-        case .libraryName: String(localized: "librarySettings.word.libraryName")
+        case .bookType:    String(localized: "librarySettings.word.bookType")
         case .ignore:      String(localized: "librarySettings.word.ignore")
-        case .labelGroup(let n): draft.labelGroupName(at: n) ?? "@labelgroup\(n)"
+        // サークル・ジャンル・イベント・キーワード [RWI-02] は**束縛先の
+        // フィールド名**を出す。構造化列を持たずラベルにしかならないので、
+        // 予約語の綴りを出すと利用者が見ている「分類の軸」と繋がらない。
+        case .circle, .event, .genre, .keyword:
+            fieldName(for: field, draft: draft)
+                ?? (ReservedWordTable.entries.first { $0.field == field }?.word ?? "")
         }
+    }
+
+    /// 予約語が束縛されているフィールドの番号 [RW-13][RWI-02]。
+    ///
+    /// **名前と色は同じ判定から引く。** 別々の switch に分けると、予約語を
+    /// 足したとき片方だけ直して取り残す。
+    static func boundGroupIndex(for field: FieldRef,
+                                draft: LibrarySettingsDraft) -> Int? {
+        guard let keyword = SemanticKeyword.allCases.first(where: { $0.fieldRef == field })
+        else { return nil }
+        return draft.semanticBindings[keyword]
+    }
+
+    /// **ラベルのチップとして見せてよいか。**
+    ///
+    /// シリーズは束縛できる（一般コミックの「シリーズ」フィールド）が、
+    /// 利用者にとっては**本の属性**であり、タイトル・巻と並んで別に表示される
+    /// ——チップにも出すと同じ値が 2 か所に出て、どちらが何なのか読めなくなる。
+    /// 色を持たせない判断 [下記 `colorHex`] と同じ線で引く。
+    static func fieldChipIndex(for field: FieldRef,
+                               draft: LibrarySettingsDraft) -> Int? {
+        if case .series = field { return nil }
+        return boundGroupIndex(for: field, draft: draft)
+    }
+
+    private static func fieldName(for field: FieldRef,
+                                  draft: LibrarySettingsDraft) -> String? {
+        boundGroupIndex(for: field, draft: draft).flatMap { draft.labelGroupName(at: $0) }
     }
 
     /// フィールドの色 [RG3-24 ①][§19.10 ステージ 2]。**ラベルへ流れる
@@ -618,13 +652,9 @@ struct FormatMatchPreview: View {
     /// 付く値」と「属性として記録される値」の見分けが消える）。
     static func colorHex(for field: FieldRef, draft: LibrarySettingsDraft,
                          darkMode: Bool) -> String? {
-        let index: Int?
-        switch field {
-        case .labelGroup(let n): index = n
-        case .author: index = draft.semanticBindings[.author]
-        default: index = nil
-        }
-        guard let index,
+        // シリーズ・巻はラベルへ流れても色を持たせない——属性としての記録が
+        // 主で、色を付けると「ラベルとして付く値」との見分けが消える。
+        guard let index = fieldChipIndex(for: field, draft: draft),
               let group = draft.labelGroups.first(where: { $0.index == index })
         else { return nil }
         return darkMode ? group.colorHexDark : group.colorHexLight

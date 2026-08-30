@@ -5,14 +5,16 @@
     "`version` はアプリ更新での改訂を検出するために使う [LT-10]。改訂したら上げること。",
     "`folderLevels` のキーは階層番号（1 = ライブラリ直下）[AL-01]。",
     "`assignment` は singleLabelGroup / format / none のいずれか [AL-01〜AL-03]。",
-    "2026-08 改訂: 実蔵書 2,346 件との突き合わせで、同人誌の先頭 `(同人誌)` が イベント名ではなくライブラリタイプの印であること、同人CG の実際の印が `(同人CG集)` であることが分かったため修正した [要件定義書 v2.10]。"
+    "2026-08 改訂: 実蔵書 2,346 件との突き合わせで、同人誌の先頭 `(同人誌)` が イベント名ではなくライブラリタイプの印であること、同人CG の実際の印が `(同人CG集)` であることが分かったため修正した [要件定義書 v2.10]。",
+    "2026-08 改訂（v3 ステージ 5）: 既定フィールド 5 種（著者 1・サークル 2・ジャンル 3・イベント 4・キーワード 5）を全プリセットに持たせ、意味予約語 @author/@circle/@genre/@event/@keyword で束縛する [§19.2][RWI-02]。フォーマットからは @labelgroupN ではなく予約語で参照する——番号はフィールドの身元ではないので、番号で書くと並べ替え・改名で意味が変わる。追加フィールドは 6 以降（一般コミックの「シリーズ」・その他の「プレイ」）。同人誌／同人CG の旧「その他」は既定の「キーワード」へ統合した［ユーザー判断］。",
+    "2026-08-30 改訂（v3 ステージ 5 の続き）: 予約語 @librarytype を @booktype へ改名した——値（一般コミック／同人誌…）は本の種別であって、ライブラリの種別ではない。あわせて @labelgroupN と @libraryname を撤去した。前者は番号がフィールドの身元ではなく、後者は表示名がフォルダ名へ追随する [RG3-31] ため照合値が改名で変わってしまうため。"
   ],
   "presets": [
     {
       "key": "builtin.general-comic-a",
       "displayName": "一般コミック(A)",
       "libraryTypeName": "一般コミック",
-      "version": 1,
+      "version": 3,
       "labelGroups": [
         {
           "index": 1,
@@ -20,16 +22,36 @@
         },
         {
           "index": 2,
+          "name": "サークル"
+        },
+        {
+          "index": 3,
+          "name": "ジャンル"
+        },
+        {
+          "index": 4,
+          "name": "イベント"
+        },
+        {
+          "index": 5,
+          "name": "キーワード"
+        },
+        {
+          "index": 6,
           "name": "シリーズ"
         }
       ],
       "semanticBindings": {
-        "@series": 2,
-        "@author": 1
+        "@author": 1,
+        "@circle": 2,
+        "@genre": 3,
+        "@event": 4,
+        "@keyword": 5,
+        "@series": 6
       },
       "folderLevels": {},
       "filenameFormats": [
-        "(@librarytype) [@author] @title",
+        "(@booktype) [@author] @title",
         "[@author] @title"
       ],
       "volumeSet": "VS-Full"
@@ -38,7 +60,7 @@
       "key": "builtin.general-comic-b",
       "displayName": "一般コミック(B)",
       "libraryTypeName": "一般コミック",
-      "version": 2,
+      "version": 4,
       "labelGroups": [
         {
           "index": 1,
@@ -46,21 +68,41 @@
         },
         {
           "index": 2,
+          "name": "サークル"
+        },
+        {
+          "index": 3,
+          "name": "ジャンル"
+        },
+        {
+          "index": 4,
+          "name": "イベント"
+        },
+        {
+          "index": 5,
+          "name": "キーワード"
+        },
+        {
+          "index": 6,
           "name": "シリーズ"
         }
       ],
       "semanticBindings": {
-        "@series": 2,
-        "@author": 1
+        "@author": 1,
+        "@circle": 2,
+        "@genre": 3,
+        "@event": 4,
+        "@keyword": 5,
+        "@series": 6
       },
       "folderLevels": {
         "1": {
           "kind": "format",
-          "format": "[@author] @labelgroup2"
+          "format": "[@author] @series"
         }
       },
       "filenameFormats": [
-        "(@librarytype) [@author] @title",
+        "(@booktype) [@author] @title",
         "[@author] @title",
         "@title"
       ],
@@ -70,7 +112,7 @@
       "key": "builtin.adult-comic-a",
       "displayName": "成年コミック(A)",
       "libraryTypeName": "成年コミック",
-      "version": 1,
+      "version": 3,
       "labelGroups": [
         {
           "index": 1,
@@ -78,16 +120,36 @@
         },
         {
           "index": 2,
+          "name": "サークル"
+        },
+        {
+          "index": 3,
+          "name": "ジャンル"
+        },
+        {
+          "index": 4,
+          "name": "イベント"
+        },
+        {
+          "index": 5,
+          "name": "キーワード"
+        },
+        {
+          "index": 6,
           "name": "プレイ",
           "autoAssign": false
         }
       ],
       "semanticBindings": {
-        "@author": 1
+        "@author": 1,
+        "@circle": 2,
+        "@genre": 3,
+        "@event": 4,
+        "@keyword": 5
       },
       "folderLevels": {},
       "filenameFormats": [
-        "(@librarytype) [@author] @title",
+        "(@booktype) [@author] @title",
         "[@author] @title"
       ],
       "volumeSet": "VS-None"
@@ -96,7 +158,7 @@
       "key": "builtin.adult-comic-b",
       "displayName": "成年コミック(B)",
       "libraryTypeName": "成年コミック",
-      "version": 1,
+      "version": 3,
       "labelGroups": [
         {
           "index": 1,
@@ -104,12 +166,32 @@
         },
         {
           "index": 2,
+          "name": "サークル"
+        },
+        {
+          "index": 3,
+          "name": "ジャンル"
+        },
+        {
+          "index": 4,
+          "name": "イベント"
+        },
+        {
+          "index": 5,
+          "name": "キーワード"
+        },
+        {
+          "index": 6,
           "name": "プレイ",
           "autoAssign": false
         }
       ],
       "semanticBindings": {
-        "@author": 1
+        "@author": 1,
+        "@circle": 2,
+        "@genre": 3,
+        "@event": 4,
+        "@keyword": 5
       },
       "folderLevels": {
         "1": {
@@ -118,7 +200,7 @@
         }
       },
       "filenameFormats": [
-        "(@librarytype) [@author] @title",
+        "(@booktype) [@author] @title",
         "[@author] @title",
         "@title"
       ],
@@ -128,11 +210,11 @@
       "key": "builtin.doujinshi-a",
       "displayName": "同人誌(A)",
       "libraryTypeName": "同人誌",
-      "version": 2,
+      "version": 4,
       "labelGroups": [
         {
           "index": 1,
-          "name": "イベント"
+          "name": "著者"
         },
         {
           "index": 2,
@@ -140,15 +222,15 @@
         },
         {
           "index": 3,
-          "name": "著者"
-        },
-        {
-          "index": 4,
           "name": "ジャンル"
         },
         {
+          "index": 4,
+          "name": "イベント"
+        },
+        {
           "index": 5,
-          "name": "その他"
+          "name": "キーワード"
         },
         {
           "index": 6,
@@ -157,30 +239,34 @@
         }
       ],
       "semanticBindings": {
-        "@author": 3
+        "@author": 1,
+        "@circle": 2,
+        "@genre": 3,
+        "@event": 4,
+        "@keyword": 5
       },
       "folderLevels": {},
       "filenameFormats": [
-        "(@librarytype) [@labelgroup2 (@author)] @title (@labelgroup4) [@labelgroup5]",
-        "(@librarytype) [@labelgroup2 (@author)] @title (@labelgroup4)",
-        "(@librarytype) [@labelgroup2 (@author)] @title [@labelgroup5]",
-        "(@librarytype) [@labelgroup2 (@author)] @title",
-        "(@librarytype) [@labelgroup2] @title (@labelgroup4) [@labelgroup5]",
-        "(@librarytype) [@labelgroup2] @title (@labelgroup4)",
-        "(@librarytype) [@labelgroup2] @title [@labelgroup5]",
-        "(@librarytype) [@labelgroup2] @title",
-        "(@labelgroup1) [@labelgroup2 (@author)] @title (@labelgroup4) [@labelgroup5]",
-        "(@labelgroup1) [@labelgroup2 (@author)] @title (@labelgroup4)",
-        "(@labelgroup1) [@labelgroup2 (@author)] @title [@labelgroup5]",
-        "(@labelgroup1) [@labelgroup2 (@author)] @title",
-        "(@labelgroup1) [@labelgroup2] @title (@labelgroup4) [@labelgroup5]",
-        "(@labelgroup1) [@labelgroup2] @title (@labelgroup4)",
-        "(@labelgroup1) [@labelgroup2] @title [@labelgroup5]",
-        "(@labelgroup1) [@labelgroup2] @title",
-        "[@labelgroup2] @title (@labelgroup4) [@labelgroup5]",
-        "[@labelgroup2] @title (@labelgroup4)",
-        "[@labelgroup2] @title [@labelgroup5]",
-        "[@labelgroup2] @title"
+        "(@booktype) [@circle (@author)] @title (@genre) [@keyword]",
+        "(@booktype) [@circle (@author)] @title (@genre)",
+        "(@booktype) [@circle (@author)] @title [@keyword]",
+        "(@booktype) [@circle (@author)] @title",
+        "(@booktype) [@circle] @title (@genre) [@keyword]",
+        "(@booktype) [@circle] @title (@genre)",
+        "(@booktype) [@circle] @title [@keyword]",
+        "(@booktype) [@circle] @title",
+        "(@event) [@circle (@author)] @title (@genre) [@keyword]",
+        "(@event) [@circle (@author)] @title (@genre)",
+        "(@event) [@circle (@author)] @title [@keyword]",
+        "(@event) [@circle (@author)] @title",
+        "(@event) [@circle] @title (@genre) [@keyword]",
+        "(@event) [@circle] @title (@genre)",
+        "(@event) [@circle] @title [@keyword]",
+        "(@event) [@circle] @title",
+        "[@circle] @title (@genre) [@keyword]",
+        "[@circle] @title (@genre)",
+        "[@circle] @title [@keyword]",
+        "[@circle] @title"
       ],
       "volumeSet": "VS-Doujin"
     },
@@ -188,11 +274,11 @@
       "key": "builtin.doujinshi-b",
       "displayName": "同人誌(B)",
       "libraryTypeName": "同人誌",
-      "version": 2,
+      "version": 4,
       "labelGroups": [
         {
           "index": 1,
-          "name": "イベント"
+          "name": "著者"
         },
         {
           "index": 2,
@@ -200,15 +286,15 @@
         },
         {
           "index": 3,
-          "name": "著者"
-        },
-        {
-          "index": 4,
           "name": "ジャンル"
         },
         {
+          "index": 4,
+          "name": "イベント"
+        },
+        {
           "index": 5,
-          "name": "その他"
+          "name": "キーワード"
         },
         {
           "index": 6,
@@ -217,7 +303,11 @@
         }
       ],
       "semanticBindings": {
-        "@author": 3
+        "@author": 1,
+        "@circle": 2,
+        "@genre": 3,
+        "@event": 4,
+        "@keyword": 5
       },
       "folderLevels": {
         "1": {
@@ -226,26 +316,26 @@
         }
       },
       "filenameFormats": [
-        "(@librarytype) [@labelgroup2 (@author)] @title (@labelgroup4) [@labelgroup5]",
-        "(@librarytype) [@labelgroup2 (@author)] @title (@labelgroup4)",
-        "(@librarytype) [@labelgroup2 (@author)] @title [@labelgroup5]",
-        "(@librarytype) [@labelgroup2 (@author)] @title",
-        "(@librarytype) [@labelgroup2] @title (@labelgroup4) [@labelgroup5]",
-        "(@librarytype) [@labelgroup2] @title (@labelgroup4)",
-        "(@librarytype) [@labelgroup2] @title [@labelgroup5]",
-        "(@librarytype) [@labelgroup2] @title",
-        "(@labelgroup1) [@labelgroup2 (@author)] @title (@labelgroup4) [@labelgroup5]",
-        "(@labelgroup1) [@labelgroup2 (@author)] @title (@labelgroup4)",
-        "(@labelgroup1) [@labelgroup2 (@author)] @title [@labelgroup5]",
-        "(@labelgroup1) [@labelgroup2 (@author)] @title",
-        "(@labelgroup1) [@labelgroup2] @title (@labelgroup4) [@labelgroup5]",
-        "(@labelgroup1) [@labelgroup2] @title (@labelgroup4)",
-        "(@labelgroup1) [@labelgroup2] @title [@labelgroup5]",
-        "(@labelgroup1) [@labelgroup2] @title",
-        "[@labelgroup2] @title (@labelgroup4) [@labelgroup5]",
-        "[@labelgroup2] @title (@labelgroup4)",
-        "[@labelgroup2] @title [@labelgroup5]",
-        "[@labelgroup2] @title"
+        "(@booktype) [@circle (@author)] @title (@genre) [@keyword]",
+        "(@booktype) [@circle (@author)] @title (@genre)",
+        "(@booktype) [@circle (@author)] @title [@keyword]",
+        "(@booktype) [@circle (@author)] @title",
+        "(@booktype) [@circle] @title (@genre) [@keyword]",
+        "(@booktype) [@circle] @title (@genre)",
+        "(@booktype) [@circle] @title [@keyword]",
+        "(@booktype) [@circle] @title",
+        "(@event) [@circle (@author)] @title (@genre) [@keyword]",
+        "(@event) [@circle (@author)] @title (@genre)",
+        "(@event) [@circle (@author)] @title [@keyword]",
+        "(@event) [@circle (@author)] @title",
+        "(@event) [@circle] @title (@genre) [@keyword]",
+        "(@event) [@circle] @title (@genre)",
+        "(@event) [@circle] @title [@keyword]",
+        "(@event) [@circle] @title",
+        "[@circle] @title (@genre) [@keyword]",
+        "[@circle] @title (@genre)",
+        "[@circle] @title [@keyword]",
+        "[@circle] @title"
       ],
       "volumeSet": "VS-Doujin"
     },
@@ -253,15 +343,15 @@
       "key": "builtin.doujin-cg-a",
       "displayName": "同人CG(A)",
       "libraryTypeName": "同人CG集",
-      "version": 2,
+      "version": 4,
       "labelGroups": [
         {
           "index": 1,
-          "name": "サークル"
+          "name": "著者"
         },
         {
           "index": 2,
-          "name": "著者"
+          "name": "サークル"
         },
         {
           "index": 3,
@@ -269,35 +359,43 @@
         },
         {
           "index": 4,
-          "name": "その他"
+          "name": "イベント"
         },
         {
           "index": 5,
+          "name": "キーワード"
+        },
+        {
+          "index": 6,
           "name": "プレイ",
           "autoAssign": false
         }
       ],
       "semanticBindings": {
-        "@author": 2
+        "@author": 1,
+        "@circle": 2,
+        "@genre": 3,
+        "@event": 4,
+        "@keyword": 5
       },
       "folderLevels": {},
       "filenameFormats": [
-        "(@librarytype) [@labelgroup1 (@author)] @title (@labelgroup3) [@labelgroup4]",
-        "(@librarytype) [@labelgroup1 (@author)] @title (@labelgroup3)",
-        "(@librarytype) [@labelgroup1 (@author)] @title [@labelgroup4]",
-        "(@librarytype) [@labelgroup1 (@author)] @title",
-        "(@librarytype) [@labelgroup1] @title (@labelgroup3) [@labelgroup4]",
-        "(@librarytype) [@labelgroup1] @title (@labelgroup3)",
-        "(@librarytype) [@labelgroup1] @title [@labelgroup4]",
-        "(@librarytype) [@labelgroup1] @title",
-        "[@labelgroup1 (@author)] @title (@labelgroup3) [@labelgroup4]",
-        "[@labelgroup1 (@author)] @title (@labelgroup3)",
-        "[@labelgroup1 (@author)] @title [@labelgroup4]",
-        "[@labelgroup1 (@author)] @title",
-        "[@labelgroup1] @title (@labelgroup3) [@labelgroup4]",
-        "[@labelgroup1] @title (@labelgroup3)",
-        "[@labelgroup1] @title [@labelgroup4]",
-        "[@labelgroup1] @title"
+        "(@booktype) [@circle (@author)] @title (@genre) [@keyword]",
+        "(@booktype) [@circle (@author)] @title (@genre)",
+        "(@booktype) [@circle (@author)] @title [@keyword]",
+        "(@booktype) [@circle (@author)] @title",
+        "(@booktype) [@circle] @title (@genre) [@keyword]",
+        "(@booktype) [@circle] @title (@genre)",
+        "(@booktype) [@circle] @title [@keyword]",
+        "(@booktype) [@circle] @title",
+        "[@circle (@author)] @title (@genre) [@keyword]",
+        "[@circle (@author)] @title (@genre)",
+        "[@circle (@author)] @title [@keyword]",
+        "[@circle (@author)] @title",
+        "[@circle] @title (@genre) [@keyword]",
+        "[@circle] @title (@genre)",
+        "[@circle] @title [@keyword]",
+        "[@circle] @title"
       ],
       "volumeSet": "VS-Doujin"
     },
@@ -305,15 +403,15 @@
       "key": "builtin.doujin-cg-b",
       "displayName": "同人CG(B)",
       "libraryTypeName": "同人CG集",
-      "version": 2,
+      "version": 4,
       "labelGroups": [
         {
           "index": 1,
-          "name": "サークル"
+          "name": "著者"
         },
         {
           "index": 2,
-          "name": "著者"
+          "name": "サークル"
         },
         {
           "index": 3,
@@ -321,40 +419,48 @@
         },
         {
           "index": 4,
-          "name": "その他"
+          "name": "イベント"
         },
         {
           "index": 5,
+          "name": "キーワード"
+        },
+        {
+          "index": 6,
           "name": "プレイ",
           "autoAssign": false
         }
       ],
       "semanticBindings": {
-        "@author": 2
+        "@author": 1,
+        "@circle": 2,
+        "@genre": 3,
+        "@event": 4,
+        "@keyword": 5
       },
       "folderLevels": {
         "1": {
           "kind": "singleLabelGroup",
-          "labelGroup": 1
+          "labelGroup": 2
         }
       },
       "filenameFormats": [
-        "(@librarytype) [@labelgroup1 (@author)] @title (@labelgroup3) [@labelgroup4]",
-        "(@librarytype) [@labelgroup1 (@author)] @title (@labelgroup3)",
-        "(@librarytype) [@labelgroup1 (@author)] @title [@labelgroup4]",
-        "(@librarytype) [@labelgroup1 (@author)] @title",
-        "(@librarytype) [@labelgroup1] @title (@labelgroup3) [@labelgroup4]",
-        "(@librarytype) [@labelgroup1] @title (@labelgroup3)",
-        "(@librarytype) [@labelgroup1] @title [@labelgroup4]",
-        "(@librarytype) [@labelgroup1] @title",
-        "[@labelgroup1 (@author)] @title (@labelgroup3) [@labelgroup4]",
-        "[@labelgroup1 (@author)] @title (@labelgroup3)",
-        "[@labelgroup1 (@author)] @title [@labelgroup4]",
-        "[@labelgroup1 (@author)] @title",
-        "[@labelgroup1] @title (@labelgroup3) [@labelgroup4]",
-        "[@labelgroup1] @title (@labelgroup3)",
-        "[@labelgroup1] @title [@labelgroup4]",
-        "[@labelgroup1] @title"
+        "(@booktype) [@circle (@author)] @title (@genre) [@keyword]",
+        "(@booktype) [@circle (@author)] @title (@genre)",
+        "(@booktype) [@circle (@author)] @title [@keyword]",
+        "(@booktype) [@circle (@author)] @title",
+        "(@booktype) [@circle] @title (@genre) [@keyword]",
+        "(@booktype) [@circle] @title (@genre)",
+        "(@booktype) [@circle] @title [@keyword]",
+        "(@booktype) [@circle] @title",
+        "[@circle (@author)] @title (@genre) [@keyword]",
+        "[@circle (@author)] @title (@genre)",
+        "[@circle (@author)] @title [@keyword]",
+        "[@circle (@author)] @title",
+        "[@circle] @title (@genre) [@keyword]",
+        "[@circle] @title (@genre)",
+        "[@circle] @title [@keyword]",
+        "[@circle] @title"
       ],
       "volumeSet": "VS-Doujin"
     }

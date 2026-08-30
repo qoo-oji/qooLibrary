@@ -70,18 +70,18 @@ struct ParserPerformanceTests {
             .filter { $0 != "@title" }
         // 50 本になるまで、実在する形の変種で埋める（同人誌(B) / 同人CG(A) 相当）。
         let fillers = [
-            "(@labelgroup1) [@labelgroup2 (@labelgroup3)] @title [@labelgroup4] (@labelgroup5)",
-            "(@librarytype) (@labelgroup1) [@labelgroup2] @title",
-            "[@labelgroup1] [@labelgroup2] @title",
-            "[@labelgroup1] @title 【@labelgroup3】",
-            "(@labelgroup1) @title",
-            "[@labelgroup1] (@labelgroup2) @title",
-            "(@librarytype) [@labelgroup1] @series (@volume)",
-            "[@labelgroup1] @series (@volume)",
-            "[@labelgroup1] @title (@volume)",
-            "[@ignore] [@labelgroup1] @title",
-            "[@labelgroup1] @title (@labelgroup2) (@labelgroup3)",
-            "(@labelgroup1) [@labelgroup2] @title [@labelgroup3] (@labelgroup4)",
+            "(@circle) [@genre (@event)] @title [@keyword] (@author)",
+            "(@booktype) (@circle) [@genre] @title",
+            "[@circle] [@genre] @title",
+            "[@circle] @title 【@event】",
+            "(@circle) @title",
+            "[@circle] (@genre) @title",
+            "(@booktype) [@circle] @series (@volume)",
+            "[@circle] @series (@volume)",
+            "[@circle] @title (@volume)",
+            "[@ignore] [@circle] @title",
+            "[@circle] @title (@genre) (@event)",
+            "(@circle) [@genre] @title [@event] (@keyword)",
         ]
         var i = 0
         while sources.count < 50 { sources.append(fillers[i % fillers.count] + String(repeating: " ", count: i / fillers.count)); i += 1 }
@@ -164,7 +164,7 @@ struct ParserPerformanceTests {
         let ctxt = FormatCompilationContext()
         // 自由文字列を境界で細かく区切った、探索の広いフォーマット
         let f = try FormatCompiler.compile(
-            "[@labelgroup1] [@labelgroup2] [@labelgroup3] [@labelgroup4] @title", context: ctxt)
+            "[@circle] [@genre] [@event] [@keyword] @title", context: ctxt)
         let input = ParseInput(String(repeating: "[あ] ", count: 40) + "末尾")
         let outcome = FormatMatcher.match(f, input: input, stepLimit: 500)
         #expect(outcome.steps <= 501)

@@ -8,18 +8,18 @@ struct ParseAllTests {
 
     @Test("一致したフォーマットすべての結果を返す")
     func returnsEveryMatch() throws {
-        let s = try settings(formats: ["[@labelgroup1] @title (@labelgroup4)",
-                                       "[@labelgroup1] @title",
-                                       "(@labelgroup1) @title"])
+        let s = try settings(formats: ["[@circle] @title (@keyword)",
+                                       "[@circle] @title",
+                                       "(@circle) @title"])
         let all = parser.parseAll("[著者] タイトル (タグ)", settings: s)
         #expect(all.count == 2)                      // 3 番目は丸括弧始まりなので不一致
-        #expect(all[0].fields[.labelGroup(4)]?.text == "タグ")
+        #expect(all[0].fields[.keyword]?.text == "タグ")
         #expect(all[1].fields[.title]?.text == "タイトル (タグ)")
     }
 
     @Test("どれにも一致しなければ空を返す")
     func noMatches() throws {
-        let s = try settings(formats: ["[@labelgroup1] @title"])
+        let s = try settings(formats: ["[@circle] @title"])
         #expect(parser.parseAll("括弧のない名前", settings: s).isEmpty)
     }
 }
@@ -31,8 +31,8 @@ struct NearestFormatTests {
     @Test("照合が最も進んだフォーマットを返す")
     func picksFurthest() throws {
         let s = try settings(formats: [
-            "(@labelgroup9) [@labelgroup1] @title",   // 先頭で落ちる
-            "[@labelgroup1] @title (@labelgroup4)",   // 末尾まで進むが最後で落ちる
+            "(@event) [@circle] @title",   // 先頭で落ちる
+            "[@circle] @title (@keyword)",   // 末尾まで進むが最後で落ちる
         ])
         let near = try #require(parser.nearestFormat("[著者] タイトル", settings: s))
         #expect(near.formatID == s.filenameFormats[1].id)
@@ -48,15 +48,14 @@ struct NearestFormatTests {
 
 @Suite("ParseResult / FieldRef の補助")
 struct ParseResultHelpersTests {
-    @Test("labelGroupValues がラベルグループぶんだけ取り出す")
-    func labelGroupValues() throws {
-        let s = try settings(formats: ["[@labelgroup1] @title (@labelgroup4)"])
-        let r = try #require(FilenameParser().parse("[著者] タイトル (タグ)",
+    @Test("意味予約語で切り出した値が取り出せる [RWI-02]")
+    func semanticFieldValues() throws {
+        let s = try settings(formats: ["[@circle] @title (@keyword)"])
+        let r = try #require(FilenameParser().parse("[サークル] タイトル (タグ)",
                                                      settings: s, purpose: .libraryScan))
-        let values = r.labelGroupValues
-        #expect(values[1]?.text == "著者")
-        #expect(values[4]?.text == "タグ")
-        #expect(values.count == 2)          // @title は含まない
+        #expect(r.fields[.circle]?.text == "サークル")
+        #expect(r.fields[.keyword]?.text == "タグ")
+        #expect(r.fields[.title]?.text == "タイトル")
     }
 
     @Test("FieldRef の性質")
@@ -64,31 +63,45 @@ struct ParseResultHelpersTests {
         #expect(FieldRef.title.isFreeText)
         #expect(FieldRef.series.isFreeText)
         #expect(FieldRef.author.isFreeText)
-        #expect(FieldRef.labelGroup(1).isFreeText)
+        #expect(FieldRef.circle.isFreeText)
         #expect(FieldRef.ignore(0).isFreeText)
         #expect(!FieldRef.volume.isFreeText)
-        #expect(!FieldRef.libraryType.isFreeText)
-        #expect(!FieldRef.libraryName.isFreeText)
+        #expect(!FieldRef.bookType.isFreeText)
 
         // 抽出値を捨てるもの [RW-02][RW-04]
         #expect(FieldRef.ignore(0).discardsValue)
-        #expect(FieldRef.libraryName.discardsValue)
-        #expect(FieldRef.libraryType.discardsValue)
+        #expect(FieldRef.bookType.discardsValue)
         #expect(!FieldRef.title.discardsValue)
         #expect(!FieldRef.volume.discardsValue)
 
         // 重複を許すのは @ignore のみ [RW-03]
         #expect(FieldRef.ignore(3).allowsDuplicates)
         #expect(!FieldRef.title.allowsDuplicates)
-        #expect(!FieldRef.labelGroup(1).allowsDuplicates)
+        #expect(!FieldRef.circle.allowsDuplicates)
     }
 
     @Test("SemanticKeyword は FieldRef に対応する [RW-13]")
     func semanticKeywordMapping() {
         #expect(SemanticKeyword.series.fieldRef == .series)
         #expect(SemanticKeyword.author.fieldRef == .author)
-        #expect(SemanticKeyword.allCases.count == 2)
+        #expect(SemanticKeyword.circle.fieldRef == .circle)
+        #expect(SemanticKeyword.event.fieldRef == .event)
+        #expect(SemanticKeyword.genre.fieldRef == .genre)
+        #expect(SemanticKeyword.keyword.fieldRef == .keyword)
+        #expect(SemanticKeyword.allCases.count == 6)        // [RWI-02] で 4 種を追加
         #expect(SemanticKeyword(rawValue: "@series") == .series)
+
+        // **綴りは `ReservedWordTable` から導出する。** 2 箇所に書くと、case を
+        // 足しても字句解析が読めない（＝書いても「不明な予約語」になる）。
+        let words = Set(ReservedWordTable.entries.map(\.word))
+        for keyword in SemanticKeyword.allCases {
+            #expect(words.contains(keyword.rawValue), "\(keyword.rawValue) が対応表に無い")
+        }
+
+        // 既定フィールド 5 種 [§19.2]。`@series` は含まない——シリーズは
+        // 構造化列であってフィールドではない。
+        #expect(SemanticKeyword.defaultFields == [.author, .circle, .genre, .event, .keyword])
+        #expect(!SemanticKeyword.defaultFields.contains(.series))
     }
 
     @Test("FormatNode の境界判定 [VD-02][VD-03]")
@@ -97,7 +110,7 @@ struct ParseResultHelpersTests {
         #expect(!FormatNode.literal("").isBoundary)
         #expect(!FormatNode.whitespace.isBoundary)          // 弾力的空白は境界にならない
         #expect(FormatNode.field(.volume, kind: .volume).isBoundary)
-        #expect(FormatNode.field(.libraryType, kind: .enumerated(["A"])).isBoundary)
+        #expect(FormatNode.field(.bookType, kind: .enumerated(["A"])).isBoundary)
         #expect(!FormatNode.field(.title, kind: .free).isBoundary)
         #expect(FormatNode.separator(SeparatorDelimiter(canonical: "-")).isBoundary)
         #expect(FormatNode.group(PairDelimiter(open: "[", close: "]"), children: []).isBoundary)
@@ -179,12 +192,12 @@ struct SeparatorMatchingTests {
 
     @Test("elastic空白 + variant + elastic空白 を 1 トークンとして消費する [DL-14]")
     func separatorConsumesSurroundingSpace() throws {
-        let s = try separatorSettings(["@series-@labelgroup1"])
+        let s = try separatorSettings(["@series-@circle"])
         for input in ["シリーズ名-著者名", "シリーズ名 - 著者名", "シリーズ名　－　著者名"] {
             let r = try #require(parser.parse(input, settings: s, purpose: .libraryScan),
                                  "一致しない: \(input)")
             #expect(r.fields[.series]?.text == "シリーズ名")
-            #expect(r.fields[.labelGroup(1)]?.text == "著者名")
+            #expect(r.fields[.circle]?.text == "著者名")
         }
     }
 
@@ -196,12 +209,12 @@ struct SeparatorMatchingTests {
                                      PairDelimiter(open: "(", close: ")")],
                              separators: [sep])
         let volume = VolumePatternCompiler.compileAll([VolumePattern(source: "??")])
-        let s = try settings(formats: ["@series（@volume）-@labelgroup1"],
+        let s = try settings(formats: ["@series（@volume）-@circle"],
                              volume: volume, delimiters: d)
         let r = try #require(parser.parse("作品タイトル（１２） - 著者名",
                                           settings: s, purpose: .libraryScan))
         #expect(r.fields[.series]?.text == "作品タイトル")
         #expect(r.fields[.volume]?.volume?.number == 12)
-        #expect(r.fields[.labelGroup(1)]?.text == "著者名")
+        #expect(r.fields[.circle]?.text == "著者名")
     }
 }

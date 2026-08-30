@@ -157,10 +157,17 @@ public enum LibraryPreview {
                 fields.append(Item.Field(ref: .author, value: author))
             }
             // ラベルは**実際に付く値**を出す。予約語の束縛 [RW-13] を畳んだ
-            // 後の姿なので、`@author` がラベルグループへ流れる設定でも正しく出る。
+            // 後の姿なので、`@author` がフィールドへ流れる設定でも正しく出る。
+            //
+            // **束縛先のフィールド番号ではなく予約語で表す。** `@labelgroupN` を
+            // 撤去した [v3 ステージ 5] ので `FieldRef` に番号を表す case は無く、
+            // またフィールドへ値が流れる経路は意味予約語だけになった。表示側は
+            // 予約語から束縛先のフィールド名と色を引ける。
             for (group, values) in parsed.labelValues.sorted(by: { $0.key < $1.key }) {
+                guard let keyword = SemanticKeyword.allCases
+                    .first(where: { draft.semanticBindings[$0] == group }) else { continue }
                 for value in values where !value.isEmpty {
-                    fields.append(Item.Field(ref: .labelGroup(group), value: value))
+                    fields.append(Item.Field(ref: keyword.fieldRef, value: value))
                 }
             }
             items.append(Item(id: index, filename: filename, matched: true,

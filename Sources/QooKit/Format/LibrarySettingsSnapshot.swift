@@ -18,7 +18,6 @@ public struct LibrarySettingsSnapshot: Sendable {
     public let libraryTypeName: String
     /// 型付き照合の列挙候補 [9.2.2][TY-01]。
     public let allLibraryTypeNames: [String]
-    public let allLibraryDisplayNames: [String]
 
     public let targetExtensions: Set<String>
     public let imageExtensions: Set<String>          // [IF-02]
@@ -50,7 +49,6 @@ public struct LibrarySettingsSnapshot: Sendable {
                 displayName: String = "",
                 libraryTypeName: String = "",
                 allLibraryTypeNames: [String] = [],
-                allLibraryDisplayNames: [String] = [],
                 targetExtensions: Set<String> = [],
                 imageExtensions: Set<String> = [],
                 delimiters: DelimiterSet = .default,
@@ -69,7 +67,6 @@ public struct LibrarySettingsSnapshot: Sendable {
         self.displayName = displayName
         self.libraryTypeName = libraryTypeName
         self.allLibraryTypeNames = allLibraryTypeNames
-        self.allLibraryDisplayNames = allLibraryDisplayNames
         self.targetExtensions = targetExtensions
         self.imageExtensions = imageExtensions
         self.delimiters = delimiters
@@ -90,7 +87,6 @@ public struct LibrarySettingsSnapshot: Sendable {
         FormatCompilationContext(delimiters: delimiters,
                                  maxLabelGroups: maxLabelGroups,
                                  allLibraryTypeNames: allLibraryTypeNames,
-                                 allLibraryDisplayNames: allLibraryDisplayNames,
                                  semanticBindings: semanticBindings)
     }
 }

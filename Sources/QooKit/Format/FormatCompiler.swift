@@ -11,11 +11,9 @@ import Foundation
 public struct FormatCompilationContext: Sendable {
     public var delimiters: DelimiterSet
     public var maxLabelGroups: Int
-    /// `@librarytype` の照合候補 [TY-01][9.2.2]。
+    /// `@booktype` の照合候補 [TY-01][9.2.2]。
     public var allLibraryTypeNames: [String]
-    /// `@libraryname` の照合候補 [RW-04]。**参照箇所 2 / 3** [RW-05][RWI-01]。
-    public var allLibraryDisplayNames: [String]
-    /// セマンティック予約語 → ラベルグループ番号 [RW-13][RW-15]。
+    /// セマンティック予約語 → フィールド番号 [RW-13]。
     ///
     /// 仕様書 03章はここを `UUID` としていたが、`QooKit` は DB の識別子を
     /// 知らない [A-01]。番号（`labelGroup.groupIndex`）はライブラリ内で一意なので
@@ -25,12 +23,10 @@ public struct FormatCompilationContext: Sendable {
     public init(delimiters: DelimiterSet = .default,
                 maxLabelGroups: Int = AppLimits.Format.maxLabelGroups,
                 allLibraryTypeNames: [String] = [],
-                allLibraryDisplayNames: [String] = [],
                 semanticBindings: [SemanticKeyword: Int] = [:]) {
         self.delimiters = delimiters
         self.maxLabelGroups = maxLabelGroups
         self.allLibraryTypeNames = allLibraryTypeNames
-        self.allLibraryDisplayNames = allLibraryDisplayNames
         self.semanticBindings = semanticBindings
     }
 }
@@ -122,14 +118,12 @@ public enum FormatCompiler {
     }
 
     /// フィールドの照合方法を設定から決める [TY-01][TY-06]。
-    /// **`@libraryname` の参照箇所 3 / 3** [RW-05][RWI-01]。
     static func resolveFieldKinds(_ nodes: [FormatNode],
                                   context: FormatCompilationContext) -> [FormatNode] {
         func kind(for ref: FieldRef) -> FieldKind {
             switch ref {
             case .volume:      return .volume
-            case .libraryType: return .enumerated(context.allLibraryTypeNames)
-            case .libraryName: return .enumerated(context.allLibraryDisplayNames)
+            case .bookType:    return .enumerated(context.allLibraryTypeNames)
             default:           return .free
             }
         }
@@ -176,28 +170,19 @@ public enum FormatCompiler {
         // ① フィールドの重複 [FF-16]。`@ignore` は対象外 [RW-03]。
         var seen = Set<FieldRef>()
         for f in fields {
-            if case .labelGroup(let n) = f {
-                guard n >= 1, n <= context.maxLabelGroups else {
-                    throw FormatCompileError.labelGroupOutOfRange(index: n, max: context.maxLabelGroups)
-                }
-            }
             guard !f.allowsDuplicates else { continue }
             if seen.contains(f) {
                 switch f {
                 case .title: throw FormatCompileError.duplicateTitle
-                case .labelGroup(let n): throw FormatCompileError.duplicateLabelGroup(index: n)
                 default: throw FormatCompileError.duplicateField(f)
                 }
             }
             seen.insert(f)
         }
 
-        // ② セマンティック予約語と @labelgroup# の衝突 [RW-15]
-        for (keyword, groupIndex) in context.semanticBindings {
-            if seen.contains(keyword.fieldRef), seen.contains(.labelGroup(groupIndex)) {
-                throw FormatCompileError.semanticConflict(keyword: keyword, labelGroup: groupIndex)
-            }
-        }
+        // ② `@labelgroupN` の撤去（v3 ステージ 5）で、番号の範囲検査と
+        //    「予約語と番号の衝突」[旧 RW-15] は不要になった——フィールドを
+        //    指す道が意味予約語 1 本になり、同じ軸を 2 通りで書けなくなった。
 
         // ③ 自由文字列フィールドの隣接 [FF-18][TY-05][VD-02]
         //    弾力的空白は境界にならない——0 個でもよいので終端が決まらない。

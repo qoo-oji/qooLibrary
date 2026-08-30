@@ -85,13 +85,16 @@ struct LibrarySettingsEditingTests {
     func addingALabelGroup() async throws {
         let f = try await Fixture.make(preset: "builtin.general-comic-a")
         var draft = try #require(try await f.libraries.settingsDraft(libraryID: f.libraryID))
+        // **プリセットの件数を直に書かない。** 既定フィールド 5 種の保証 [§19.2]
+        // のようにテンプレート側が増減すると、この検査の主張と無関係に落ちる。
+        let before = try await f.labels.groups(libraryID: f.libraryID).count
         let index = try #require(draft.nextAvailableLabelGroupIndex)
         draft.labelGroups.append(LabelGroupDraft(
             index: index, name: "レーベル", colorHexLight: "#EEDDEE", colorHexDark: "#443344"))
         try await f.libraries.updateSettings(draft, libraryID: f.libraryID)
 
         let groups = try await f.labels.groups(libraryID: f.libraryID)
-        #expect(groups.count == 3)
+        #expect(groups.count == before + 1)
         #expect(groups.contains { $0.name == "レーベル" })
     }
 
@@ -157,9 +160,10 @@ struct LibrarySettingsValidationTests {
         LibrarySettingsDraft(
             displayName: "L", libraryTypeName: "T",
             targetExtensions: ["cbz"],
-            labelGroups: [LabelGroupDraft(index: 1, name: "著者",
+            labelGroups: [LabelGroupDraft(index: 1, name: "サークル",
                                           colorHexLight: "#EEE", colorHexDark: "#444")],
-            filenameFormats: [FilenameFormatDraft(source: "[@labelgroup1] @title")])
+            semanticBindings: [.circle: 1],
+            filenameFormats: [FilenameFormatDraft(source: "[@circle] @title")])
     }
 
     @Test("素直な設定は通る")
@@ -177,14 +181,14 @@ struct LibrarySettingsValidationTests {
     @Test("存在しないラベルグループを参照するフォーマットを拒否する")
     func formatReferencingAMissingLabelGroupIsAnError() {
         var d = base()
-        d.filenameFormats = [FilenameFormatDraft(source: "[@labelgroup3] @title")]
+        d.filenameFormats = [FilenameFormatDraft(source: "[@event] @title")]
         #expect(d.validationErrors.contains { $0.section == .filenameFormats })
     }
 
     @Test("無効にしてあるフォーマットの不備は警告に留める")
     func disabledFormatProblemsAreWarningsOnly() {
         var d = base()
-        d.filenameFormats.append(FilenameFormatDraft(source: "[@labelgroup3] @title", isEnabled: false))
+        d.filenameFormats.append(FilenameFormatDraft(source: "[@event] @title", isEnabled: false))
         #expect(d.validationErrors.isEmpty)
         #expect(d.validate().contains { $0.severity == .warning })
     }
@@ -222,7 +226,7 @@ struct LibrarySettingsValidationTests {
     @Test("壊れたフォーマットを拒否する")
     func malformedFormatIsAnError() {
         var d = base()
-        d.filenameFormats = [FilenameFormatDraft(source: "[@labelgroup1 @title")]
+        d.filenameFormats = [FilenameFormatDraft(source: "[@circle @title")]
         #expect(d.validationErrors.contains { $0.section == .filenameFormats })
     }
 

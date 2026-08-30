@@ -464,7 +464,7 @@ struct DefaultProtectedTokenTests {
     func blankDraftCarriesDefaults() throws {
         let sets = try BuiltInTemplates.volumeSets()
         let draft = TemplateInstantiation.blankDraft(
-            volumeSets: sets, displayName: "L", defaultLabelGroupName: "G")
+            volumeSets: sets, displayName: "L", defaultFieldNames: ["著者", "サークル", "ジャンル", "イベント", "キーワード"])
         #expect(draft.protectedTokens.map(\.pattern)
                 == AppDefaults.Library.protectedTokenPatterns)
     }

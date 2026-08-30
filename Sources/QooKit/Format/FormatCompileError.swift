@@ -10,9 +10,9 @@ public enum FormatCompileError: Error, Equatable, Sendable {
     case unbalancedDelimiter(at: Int)
     case duplicateTitle
     case duplicateField(FieldRef)
-    case duplicateLabelGroup(index: Int)                        // [FF-16]
-    case labelGroupOutOfRange(index: Int, max: Int)             // [LG-01][MT-11]
-    case semanticConflict(keyword: SemanticKeyword, labelGroup: Int)  // [RW-15]
+    // `@labelgroupN` の撤去（v3 ステージ 5）で 3 つの失敗様式が消えた:
+    // 番号の重複・範囲外・意味予約語との衝突 [旧 FF-16 の一部][旧 LG-01][旧 RW-15]。
+    // フィールドを指す道が意味予約語 1 本になり、同じ軸を 2 通りで書けなくなった。
     case adjacentFreeFields(first: FieldRef, second: FieldRef)  // [FF-18][TY-05]
     case unknownReservedWord(String, at: Int)
     case emptyFormat
@@ -34,10 +34,6 @@ extension FormatCompileError: UserPresentableError {
         case .unbalancedDelimiter: return "フォーマットの括弧の対応が取れていません。"
         case .duplicateTitle: return "@title が複数あります。"
         case .duplicateField(let f): return "\(Self.label(f)) が複数あります。"
-        case .duplicateLabelGroup(let i): return "@labelgroup\(i) が複数あります。"
-        case .labelGroupOutOfRange(let i, _): return "@labelgroup\(i) は存在しないラベルグループです。"
-        case .semanticConflict(let kw, let g):
-            return "\(kw.rawValue) と @labelgroup\(g) が同じラベルグループを指しています。"
         case .adjacentFreeFields(let a, let b):
             return "\(Self.label(a)) と \(Self.label(b)) が隣り合っています。"
         case .unknownReservedWord(let w, _): return "「\(w)」は予約語ではありません。"
@@ -50,12 +46,8 @@ extension FormatCompileError: UserPresentableError {
         switch self {
         case .unbalancedDelimiter:
             return "開き括弧と閉じ括弧の数が合っていないか、対応する相手がありません。"
-        case .duplicateTitle, .duplicateField, .duplicateLabelGroup:
+        case .duplicateTitle, .duplicateField:
             return "同じ予約語を 1 つのフォーマットに 2 回以上書くと、どちらへ割り当てるかを決められません。"
-        case .labelGroupOutOfRange(_, let max):
-            return "設定できるラベルグループは 1 〜 \(max) です。"
-        case .semanticConflict:
-            return "1 つのラベルグループに 2 通りの意味を割り当てることはできません。"
         case .adjacentFreeFields:
             return "どちらも自由文字列のため、境目が決まりません。"
         case .unknownReservedWord:
@@ -68,12 +60,8 @@ extension FormatCompileError: UserPresentableError {
     public var recoveryHint: String? {
         switch self {
         case .unbalancedDelimiter: return "括弧を追加するか、余分な括弧を削除してください。"
-        case .duplicateTitle, .duplicateField, .duplicateLabelGroup:
+        case .duplicateTitle, .duplicateField:
             return "片方を削除するか、別の予約語に置き換えてください。"
-        case .labelGroupOutOfRange:
-            return "ライブラリ設定でラベルグループを追加するか、既存の番号を指定してください。"
-        case .semanticConflict:
-            return "ライブラリ設定でセマンティック予約語の割り当てを外すか、別のラベルグループを指定してください。"
         case .adjacentFreeFields:
             return "間に区切り文字やリテラル文字を挟んでください（空白だけでは境目になりません）。"
         case .unknownReservedWord:
@@ -88,16 +76,12 @@ extension FormatCompileError: UserPresentableError {
     /// 編集画面のその場に出す [HP-04]。
     public var severity: NotificationSeverity { .inline }
 
+    /// フィールドを予約語の綴りに戻す。
+    ///
+    /// **綴りは `ReservedWordTable` から引く。** ここに直接書くと、予約語を
+    /// 足したときにエラー文言だけが古い綴りのまま残る。
     static func label(_ f: FieldRef) -> String {
-        switch f {
-        case .title: return "@title"
-        case .series: return "@series"
-        case .author: return "@author"
-        case .volume: return "@volume"
-        case .libraryType: return "@librarytype"
-        case .libraryName: return "@libraryname"
-        case .labelGroup(let i): return "@labelgroup\(i)"
-        case .ignore: return "@ignore"
-        }
+        if case .ignore = f { return "@ignore" }   // 連番の違いを吸収する [RW-03]
+        return ReservedWordTable.entries.first { $0.field == f }?.word ?? "@?"
     }
 }

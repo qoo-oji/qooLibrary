@@ -95,8 +95,6 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                 ?? .empty
             let allTypeNames = try String.fetchAll(
                 db, sql: "SELECT DISTINCT libraryTypeName FROM libraryType ORDER BY libraryTypeName")
-            let allDisplayNames = try String.fetchAll(
-                db, sql: "SELECT displayName FROM library ORDER BY displayName")
 
             let semantic: [SemanticKeyword: Int] = payload.semanticBindings.reduce(into: [:]) {
                 if let k = SemanticKeyword(rawValue: $1.key) { $0[k] = $1.value }
@@ -104,7 +102,6 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
             let context = FormatCompilationContext(
                 delimiters: payload.delimiters,
                 allLibraryTypeNames: allTypeNames,
-                allLibraryDisplayNames: allDisplayNames,
                 semanticBindings: semantic)
 
             // 壊れたフォーマットは黙って落とす——保存時に検証済みなので通常は起こらない
@@ -156,7 +153,6 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                 displayName: library.displayName,
                 libraryTypeName: type.libraryTypeName,
                 allLibraryTypeNames: allTypeNames,
-                allLibraryDisplayNames: allDisplayNames,
                 targetExtensions: Set(payload.targetExtensions),
                 imageExtensions: Set(payload.imageExtensions),
                 delimiters: payload.delimiters,
@@ -390,9 +386,6 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                 WHERE libraryType.id <> ?
                 ORDER BY libraryType.libraryTypeName
                 """, arguments: [library.libraryTypeId])
-            let otherDisplayNames = try String.fetchAll(
-                db, sql: "SELECT displayName FROM library WHERE id <> ? ORDER BY displayName",
-                arguments: [libraryID.rawValue])
 
             let groups = try LabelGroupRecord
                 .filter(sql: "libraryId = ?", arguments: [libraryID.rawValue])
@@ -469,8 +462,7 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                 readsEmbeddedMetadata: payload.readsEmbeddedMetadata,
                 comicInfoVolumeSource: payload.comicInfoVolumeSource,
                 opensBookFolderWithApp: payload.opensBookFolderWithApp,   // [IF-18]
-                otherLibraryTypeNames: otherTypeNames,
-                otherLibraryDisplayNames: otherDisplayNames)
+                otherLibraryTypeNames: otherTypeNames)
         }
     }
 

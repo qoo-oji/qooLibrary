@@ -3334,6 +3334,108 @@
         }
       }
     },
+    "field.default.author": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Author"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "著者"
+          }
+        }
+      }
+    },
+    "field.default.circle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Circle"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サークル"
+          }
+        }
+      }
+    },
+    "field.default.event": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Event"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "イベント"
+          }
+        }
+      }
+    },
+    "field.default.genre": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Genre"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ジャンル"
+          }
+        }
+      }
+    },
+    "field.default.keyword": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keyword"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "キーワード"
+          }
+        }
+      }
+    },
+    "field.default.series": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Series"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "シリーズ"
+          }
+        }
+      }
+    },
     "fileVault.archivedAtUnknown": {
       "extractionState": "manual",
       "localizations": {
@@ -5786,13 +5888,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Label Group"
+            "value": "Field"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ラベルグループ"
+            "value": "フィールド"
           }
         }
       }
@@ -6857,13 +6959,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Select a label group"
+            "value": "Select a field"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ラベルグループを選択してください"
+            "value": "フィールドを選択してください"
           }
         }
       }
@@ -6959,13 +7061,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Unsaved group changes"
+            "value": "Unsaved field changes"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ラベルグループの変更が未保存です"
+            "value": "フィールドの変更が未保存です"
           }
         }
       }
@@ -7926,13 +8028,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The built-in library type definitions could not be loaded."
+            "value": "The built-in book type definitions could not be loaded."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "組み込みのライブラリタイプ定義を読み込めませんでした。"
+            "value": "組み込みのブックタイプ定義を読み込めませんでした。"
           }
         }
       }
@@ -8022,23 +8124,6 @@
         }
       }
     },
-    "libraryEnable.defaultLabelGroupName": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Label"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ラベル"
-          }
-        }
-      }
-    },
     "libraryEnable.headerExplanation": {
       "extractionState": "manual",
       "localizations": {
@@ -8096,13 +8181,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d have a different library type"
+            "value": "%d have a different book type"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d 件はライブラリタイプが違います"
+            "value": "%d 件はブックタイプが違います"
           }
         }
       }
@@ -8215,13 +8300,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d label groups · %d filename formats"
+            "value": "%d fields · %d filename formats"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ラベルグループ %d 件 · ファイル名フォーマット %d 本"
+            "value": "フィールド %d 件 · ファイル名フォーマット %d 本"
           }
         }
       }
@@ -8453,13 +8538,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Library type name"
+            "value": "Book type name"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ライブラリタイプ名"
+            "value": "ブックタイプ名"
           }
         }
       }
@@ -9167,13 +9252,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "One label group"
+            "value": "One field"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "単一のグループ"
+            "value": "単一のフィールド"
           }
         }
       }
@@ -9235,13 +9320,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Add Group"
+            "value": "Add Field"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "グループを追加"
+            "value": "フィールドを追加"
           }
         }
       }
@@ -9280,19 +9365,36 @@
         }
       }
     },
+    "librarySettings.labelGroups.defaultCannotRemove": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Default fields cannot be removed. You can rename them instead."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "既定のフィールドは削除できません。名前は変更できます。"
+          }
+        }
+      }
+    },
     "librarySettings.labelGroups.explanation": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Groups that labels belong to. Filename formats refer to them by number, so renumbering changes what a format means."
+            "value": "The axes you classify books by. The five defaults (author, circle, genre, event, keyword) are always set up for a new library; you can rename them and add your own."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ラベルの入れ物です。ファイル名フォーマットは番号で参照するので、番号を付け替えるとフォーマットの意味が変わります。"
+            "value": "本を分類する軸です。既定の 5 種（著者・サークル・ジャンル・イベント・キーワード）は新しいライブラリに最初から用意されます。名前の変更と追加ができます。"
           }
         }
       }
@@ -9303,13 +9405,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Up to 10 groups."
+            "value": "Up to 10 fields."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "グループは 10 個までです。"
+            "value": "フィールドは 10 個までです。"
           }
         }
       }
@@ -9337,30 +9439,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Group %lld"
+            "value": "Field %lld"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "グループ %lld"
-          }
-        }
-      }
-    },
-    "librarySettings.labelGroups.noSemantic": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "None"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "なし"
+            "value": "フィールド %lld"
           }
         }
       }
@@ -9388,13 +9473,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Remove Group"
+            "value": "Remove Field"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "グループを削除"
+            "value": "フィールドを削除"
           }
         }
       }
@@ -9411,7 +9496,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "「%@」を削除すると、そのグループのラベルと、ファイルとの紐づけもすべて消えます。保存したときに反映されます。"
+            "value": "「%@」を削除すると、そのフィールドのラベルと、ファイルとの紐づけもすべて消えます。保存したときに反映されます。"
           }
         }
       }
@@ -9422,47 +9507,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Remove Label Group"
+            "value": "Remove Field"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ラベルグループの削除"
-          }
-        }
-      }
-    },
-    "librarySettings.labelGroups.removeWarning": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Formats that refer to @labelgroup%lld will need to be edited too."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "@labelgroup%lld を参照しているフォーマットも直す必要があります。"
-          }
-        }
-      }
-    },
-    "librarySettings.labelGroups.semantic": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Reserved word"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "予約語"
+            "value": "フィールドの削除"
           }
         }
       }
@@ -9864,13 +9915,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Label Groups"
+            "value": "Fields"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ラベルグループ"
+            "value": "フィールド"
           }
         }
       }
@@ -10334,6 +10385,23 @@
         }
       }
     },
+    "librarySettings.word.bookType": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Book type"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ブックタイプ"
+          }
+        }
+      }
+    },
     "librarySettings.word.ignore": {
       "extractionState": "manual",
       "localizations": {
@@ -10347,40 +10415,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "無視"
-          }
-        }
-      }
-    },
-    "librarySettings.word.libraryName": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Library name"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ライブラリ名"
-          }
-        }
-      }
-    },
-    "librarySettings.word.libraryType": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Library type"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ライブラリタイプ"
           }
         }
       }
@@ -15117,13 +15151,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "library type does not match"
+            "value": "book type does not match"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ライブラリタイプが一致しません"
+            "value": "ブックタイプが一致しません"
           }
         }
       }

@@ -42,13 +42,13 @@ struct GoldenCase: Codable {
         let matched: Bool
         /// テンプレートの `filenameFormats` における添字 [FF-03]。
         let formatIndex: Int?
-        /// 予約語 → 抽出値（`@title` `@labelgroup1` 等）。
+        /// 予約語 → 抽出値（`@title` `@circle` 等）。
         let fields: [String: String]?
         let series: String?
         let volume: ExpectedVolume?
         /// ラベルグループ名 → 付与されるラベル。
         let labels: [String: [String]]?
-        /// `@librarytype` の不一致が立つか [RW-01]。
+        /// `@booktype` の不一致が立つか [RW-01]。
         let libraryTypeMismatch: Bool?
     }
 
@@ -181,12 +181,11 @@ enum GoldenRunner {
         GoldenCase.ExpectedVolume(kind: v.kind.rawValue, number: v.number, raw: v.raw)
     }
 
+    /// 期待値の鍵（予約語の綴り）→ フィールド。
+    ///
+    /// **可変長の鍵はもう無い。** `@labelgroupN` は v3 ステージ 5 で撤去した。
     static func fieldRef(_ key: String) -> FieldRef? {
-        if key.hasPrefix(ReservedWordTable.labelGroupPrefix) {
-            let digits = key.dropFirst(ReservedWordTable.labelGroupPrefix.count)
-            return Int(digits).map { FieldRef.labelGroup($0) }
-        }
-        return ReservedWordTable.entries.first { $0.word == key }?.field
+        ReservedWordTable.entries.first { $0.word == key }?.field
     }
 }
 
