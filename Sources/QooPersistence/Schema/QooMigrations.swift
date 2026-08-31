@@ -17,6 +17,7 @@ public enum QooMigrations {
         "v1_initial", "v2_regexPatterns", "v3_embeddedMetadata", "v4_fsEventsCheckpoint",
         "v5_identityRejection", "v6_duplicateTitleKey", "v7_identityPending",
         "v8_stage1Removals", "v9_reservedWordCleanup", "v10_metadataProtection",
+        "v11_orphanedProtectedTokens",
     ]
 
     public static var migrator: DatabaseMigrator {
@@ -32,6 +33,7 @@ public enum QooMigrations {
         m.registerMigration(identifiers[7], migrate: v8Stage1Removals)
         m.registerMigration(identifiers[8], migrate: v9ReservedWordCleanup)
         m.registerMigration(identifiers[9], migrate: v10MetadataProtection)
+        m.registerMigration(identifiers[10], migrate: v11OrphanedProtectedTokens)
         return m
     }
 
@@ -128,6 +130,37 @@ public enum QooMigrations {
     ///
     /// どの列も索引・トリガ・ビューから参照されていないので
     /// `ALTER TABLE … DROP COLUMN` で足りる（SQLite 3.35+、この環境は 3.51）。
+    // MARK: - v11
+
+    /// 登録解除で取り残された保護文字列を掃除する [PT-08]。
+    ///
+    /// **`protectedToken` は `ownerKind`／`ownerID` の多相参照なので外部キー
+    /// 制約を張れず、`library` の行を消しても連鎖しない。** `unregister` は
+    /// `DELETE FROM library` しか実行していなかったため、登録・解除のたびに
+    /// 孤児が既定の 3 件ずつ積み上がっていた（実ストアで 12 ライブラリ分・
+    /// 36 件を実測）。書き手側（`SQLiteLibraryRepository.unregister`）も
+    /// 同時に直してある——**移行は 1 回きりなので、掃除だけでは再発する。**
+    ///
+    /// **`PRAGMA foreign_key_check` はこの漏れを検出しない**——制約が無いの
+    /// だから当然で、「検査が通ること」を根拠にできない類の欠陥だった。
+    /// **外部キーで守れない参照は、削除の経路を人が書くしかない。**
+    ///
+    /// `library.id` は AUTOINCREMENT で再利用されない [T-03 決定③] ので、
+    /// 孤児が別のライブラリの保護文字列として蘇ることは無い。実害は増え
+    /// 続けることだけで、掃除そのものは安全に行える。
+    ///
+    /// **`temporary` 側も対称に掃除する。** 現状この種別の行を作る経路は
+    /// 無い（フェーズ 3）が、実装する人は**削除の経路も一緒に書くこと。**
+    static func v11OrphanedProtectedTokens(_ db: Database) throws {
+        try db.execute(sql: """
+            DELETE FROM protectedToken
+             WHERE (ownerKind = 'library'   AND ownerID NOT IN (SELECT id FROM library))
+                OR (ownerKind = 'temporary' AND ownerID NOT IN (SELECT id FROM temporaryFolder))
+            """)
+        try db.execute(sql: "UPDATE storeMetadata SET schemaVersion = ? WHERE id = 1",
+                       arguments: [identifiers[10]])
+    }
+
     // MARK: - v10
 
     /// メタデータの保護 [PR-01〜PR-09]（概念モデル v3 ステージ 6）。

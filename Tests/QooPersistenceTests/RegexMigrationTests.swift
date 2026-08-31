@@ -46,6 +46,17 @@ struct RegexMigrationTests {
     func migratesProtectedTokens() throws {
         let queue = try v1Store()
         try queue.write { db in
+            // **この行だけは親のライブラリを作る。** 外部キーは切ってあるが、
+            // `v11_orphanedProtectedTokens` は「`library` に居ない `ownerID`」を
+            // 孤児として消すので、親が無いと v2 の変換結果ごと消える
+            // ——下で移行を全部当てて確かめる形の副作用で、v2 の欠陥ではない。
+            // 他の検査（`volumeFormat` 等）は外部キーで連鎖する側なので要らない。
+            try db.execute(sql: """
+                INSERT INTO library
+                    (id, uuid, displayName, bookmarkData, resolvedPath, volumeUUID,
+                     libraryTypeId, settingsJSON)
+                VALUES (1, 'U', 'L', X'', '/tmp', 'V', 1, '{}')
+                """)
             try db.execute(sql: """
                 INSERT INTO protectedToken (ownerKind, ownerID, text, position, isEnabled)
                 VALUES ('library', 1, '(完全 版)', 'anywhere', 1)

@@ -101,6 +101,60 @@ struct LibraryRepositoryTests {
         #expect(try await f.libraries.totalFileCount() == 0)
     }
 
+    /// **`protectedToken` は `ownerKind`／`ownerID` の多相参照なので外部キー
+    /// 制約を張れず、`library` を消しても連鎖しない** [PT-08]。実際、解除の
+    /// 経路にだけ削除が無く、登録・解除のたびに孤児が 3 件ずつ積み上がって
+    /// いた（実ストアで 12 ライブラリ分・36 件を実測）。
+    ///
+    /// **`PRAGMA foreign_key_check` はこれを検出しない**ので、件数で見張る。
+    @Test("登録解除で保護文字列も消える（多相参照は連鎖しない）[PT-08]")
+    func unregisterRemovesProtectedTokens() async throws {
+        let f = try await Fixture.make()
+        let before = try await f.database.writer.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM protectedToken") ?? 0
+        }
+        // テンプレート由来の既定が入っていること＝この検査が空振りしない前提。
+        #expect(before > 0)
+
+        try await f.libraries.unregister(id: f.libraryID, keepLabels: false)
+
+        let after = try await f.database.writer.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM protectedToken") ?? 0
+        }
+        #expect(after == 0)
+    }
+
+    /// 削除の範囲が広すぎないこと。`ownerID` で絞らずに消すと、1 つ解除した
+    /// だけで**残っているライブラリの保護文字列まで失われる**——しかも
+    /// 次のパースまで誰も気づけない。
+    @Test("登録解除は他のライブラリの保護文字列に触れない [PT-08]")
+    func unregisterKeepsOtherLibrariesTokens() async throws {
+        let f = try await Fixture.make()
+        let template = try #require(try BuiltInTemplates.libraryTypes().first)
+        let other = try await f.libraries.register(
+            LibraryRegistration(uuid: UUID(), displayName: "もう 1 つ", bookmarkData: Data(),
+                                resolvedPath: "/tmp/other", volumeUUID: "VOL2",
+                                libraryTypeID: LibraryTypeID(rawValue: 0)),
+            template: template)
+        let otherBefore = try await f.database.writer.read { db in
+            try Int.fetchOne(db, sql: """
+                SELECT COUNT(*) FROM protectedToken
+                 WHERE ownerKind = 'library' AND ownerID = ?
+                """, arguments: [other.rawValue]) ?? 0
+        }
+        #expect(otherBefore > 0)
+
+        try await f.libraries.unregister(id: f.libraryID, keepLabels: false)
+
+        let otherAfter = try await f.database.writer.read { db in
+            try Int.fetchOne(db, sql: """
+                SELECT COUNT(*) FROM protectedToken
+                 WHERE ownerKind = 'library' AND ownerID = ?
+                """, arguments: [other.rawValue]) ?? 0
+        }
+        #expect(otherAfter == otherBefore)
+    }
+
     @Test("同じプリセットで 2 つ登録してもライブラリタイプは 1 つ [LT-10]")
     func presetTypeIsShared() async throws {
         let db = try QooDatabase.inMemory()

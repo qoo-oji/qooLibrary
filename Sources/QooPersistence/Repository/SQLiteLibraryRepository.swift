@@ -287,9 +287,24 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
     /// `keepLabels` はフェーズ 2 のラベル保管庫へ回すかどうか。**現時点では
     /// どちらでもライブラリ行を消す**（連鎖でファイル・ラベルも消える）。
     /// 保管庫（2-11）が入ったら `keepLabels == true` の経路をそこへ繋ぐ。
+    ///
+    /// **`protectedToken` は連鎖で消えないので、ここで明示的に消す** [PT-08]。
+    /// `ownerKind`／`ownerID` の多相参照なので外部キー制約を張れず、
+    /// `library` を消しても残る——`writeSettingsTables` は保存のたびに同じ
+    /// 1 行を実行しているのに、解除の経路にだけそれが無く、登録・解除の
+    /// たびに孤児が既定の 3 件ずつ積み上がっていた（実ストアで 12 ライブラリ
+    /// 分・36 件を実測し、移行 `v11_orphanedProtectedTokens` で掃除した）。
+    ///
+    /// **`PRAGMA foreign_key_check` はこの漏れを検出しない**——制約が無いの
+    /// だから当然で、「検査が空だから連鎖は完全」とは言えない。
+    /// **外部キーで守れない参照は、削除の経路を人が書くしかない。**
+    /// 多相参照を持つテーブルは現状 `protectedToken` だけ（`QooMigrations`
+    /// を全走査して確認済み）。新しく増やすなら、ここも同時に増やすこと。
     public func unregister(id: LibraryID, keepLabels: Bool) async throws {
         _ = keepLabels
         try await database.writer.write { db in
+            try db.execute(sql: "DELETE FROM protectedToken WHERE ownerKind = 'library' AND ownerID = ?",
+                           arguments: [id.rawValue])
             try db.execute(sql: "DELETE FROM library WHERE id = ?", arguments: [id.rawValue])
         }
     }
