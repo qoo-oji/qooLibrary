@@ -52,9 +52,9 @@ struct TitleAndCoverTests {
 
     // MARK: - タイトル [RP-10][RP-11]
 
-    @Test("タイトルを手動で書くと origin が manual になる [RP-10][RP-11]")
+    @Test("タイトルを手動で書くと基本情報が保護される [RP-10][PR-03]")
     @MainActor
-    func editingTitleMarksItManual() async throws {
+    func editingTitleProtectsBasicScope() async throws {
         let (w, library, urls) = try await workspace()
         let model = TitleEditorModel(commands: CommandStack())
         await model.load(url: urls[0], library: library, services: w.services)
@@ -62,12 +62,12 @@ struct TitleAndCoverTests {
 
         let row = try #require(try await w.services.fileRow(at: urls[0], in: library))
         #expect(row.title == "手で付けた題")
-        #expect(row.titleOrigin == .manual)
+        #expect(row.protectedScopes.contains(.basic))
     }
 
     /// **これが崩れると、手で直したタイトルが次の走査で黙って消える。**
-    /// 守っているのは `applyParsedFields` の SQL（`CASE WHEN titleOrigin = 'manual'`）。
-    @Test("手動タイトルは再スキャンで上書きされない [RP-11]")
+    /// 守っているのは `applyParsedFields`（保護スコープを読んで据え置く）。
+    @Test("保護された基本情報は再スキャンで上書きされない [PR-01]")
     @MainActor
     func manualTitleSurvivesRescan() async throws {
         let (w, library, urls) = try await workspace()
@@ -79,18 +79,17 @@ struct TitleAndCoverTests {
 
         let row = try #require(try await w.services.fileRow(at: urls[0], in: library))
         #expect(row.title == "手で付けた題")
-        #expect(row.titleOrigin == .manual)
+        #expect(row.protectedScopes.contains(.basic))
     }
 
-    /// **`titleOrigin` まで戻す。** 値だけ戻して印を残すと、次の再スキャンで
-    /// 自動抽出が効かないまま——しかも取り消した直後は正しく見えるので
-    /// 気づけない。
-    @Test("⌘Z はタイトルと origin の両方を戻す [UD-01]")
+    /// **保護まで戻す。** 値だけ戻して鍵を残すと、次の再スキャンで自動抽出が
+    /// 効かないまま——しかも取り消した直後は正しく見えるので気づけない。
+    @Test("⌘Z はタイトルと保護の両方を戻す [UD-01][PR-03]")
     @MainActor
-    func undoRestoresTitleAndOrigin() async throws {
+    func undoRestoresTitleAndProtection() async throws {
         let (w, library, urls) = try await workspace()
         let before = try #require(try await w.services.fileRow(at: urls[0], in: library))
-        #expect(before.titleOrigin == .auto)
+        #expect(!before.protectedScopes.contains(.basic))
 
         let stack = CommandStack()
         let model = TitleEditorModel(commands: stack)
@@ -100,7 +99,7 @@ struct TitleAndCoverTests {
 
         let row = try #require(try await w.services.fileRow(at: urls[0], in: library))
         #expect(row.title == before.title)
-        #expect(row.titleOrigin == .auto)
+        #expect(!row.protectedScopes.contains(.basic), "⌘Z は保護も戻す")
     }
 
     @Test("同じ値の確定では Undo に積まない")
@@ -119,8 +118,8 @@ struct TitleAndCoverTests {
     /// **入力欄に触れただけで `manual` にしない** [RP-10][RP-11]。
     ///
     /// 実機で踏んだ形: ⌘Z でタイトルを取り消したあとフォーカスを外すと、値は
-    /// 正しいのに `titleOrigin` だけ `.manual` へ戻っていた。以後その行は
-    /// 自動抽出から守られるが、**画面上は何も変わらないので気づけない。**
+    /// 正しいのに印だけが戻っていた。以後その行は自動抽出から守られるが、
+    /// **画面上は何も変わらないので気づけない。**
     @Test("打っていなければ確定しない [RP-10]")
     func doesNotCommitWithoutTyping() {
         #expect(!TitleEditorModel.shouldCommit(draft: "作品名A", lastKnown: "作品名A"))
@@ -131,7 +130,7 @@ struct TitleAndCoverTests {
 
     // MARK: - 再取得 [RP-12]
 
-    @Test("ファイル名から再取得すると自動値と origin へ戻る [RP-12]")
+    @Test("ファイル名から再取得すると自動値へ戻り保護も解ける [RP-12][PR-04]")
     @MainActor
     func rederiveRestoresAutomaticValues() async throws {
         let (w, library, urls) = try await workspace()
@@ -145,7 +144,7 @@ struct TitleAndCoverTests {
 
         let row = try #require(try await w.services.fileRow(at: urls[0], in: library))
         #expect(row.title == auto.title)
-        #expect(row.titleOrigin == .auto)
+        #expect(!row.protectedScopes.contains(.basic))
         #expect(row.seriesName == auto.seriesName)
         #expect(row.volume == auto.volume)
         #expect(row.authorName == auto.authorName)
@@ -164,7 +163,7 @@ struct TitleAndCoverTests {
 
         let row = try #require(try await w.services.fileRow(at: urls[0], in: library))
         #expect(row.title == "手で付けた題")
-        #expect(row.titleOrigin == .manual)
+        #expect(row.protectedScopes.contains(.basic))
     }
 
     /// **正規化キーも書き直す。** 書かないと、手で直したシリーズ名では
@@ -181,7 +180,7 @@ struct TitleAndCoverTests {
 
         var edit = FileFieldEdit(first)
         edit.seriesName = "別のシリーズ"
-        try await w.services.setFileFields(edit, id: first.id)
+        try await w.services.setFileFields(edit, id: first.id, protectedScopes: [.basic])
 
         let after = try #require(try await w.services.fileRow(at: urls[0], in: library))
         #expect(after.seriesName == "別のシリーズ")

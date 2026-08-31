@@ -353,44 +353,103 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
         return (sql, args)
     }
 
-    /// パーサの結果を書き戻す [RC-01]。
+    /// パーサの結果を書き戻す [RC-01][PR-01]。
     ///
-    /// `titleOrigin == .manual` のタイトルは上書きしない [RP-11]。
+    /// **基本情報スコープが保護されていれば、タイトル・シリーズ名・巻数・
+    /// 著者名の 4 つとも据え置く** [PR-02]。置き換える前はタイトルだけを
+    /// 守っており、手で直したシリーズ名は次の走査で黙って自動値へ戻っていた。
+    ///
+    /// **`lastParsedFormatID` と `libraryTypeMismatch` は保護されていても
+    /// 更新する。** あれは「どのフォーマットに当たったか」という走査の観測
+    /// 結果であって、利用者が決めたメタデータではない——止めると未整理一覧
+    /// [UR3-01] の判定が保護済みのファイルだけ古いまま凍る。
     public func applyParsedFields(_ fields: ParsedFileFields?, to id: FileID) async throws {
         try await database.writer.write { db in
+            let basicProtected = ProtectionScopeCoding.decode(try String.fetchOne(db, sql:
+                "SELECT protectedScopes FROM managedFile WHERE id = ?",
+                arguments: [id.rawValue])).contains(.basic)
+
             guard let fields else {
-                try db.execute(sql: """
-                    UPDATE managedFile SET seriesName = NULL, seriesKey = NULL,
-                        volumeNumber = NULL, volumeKind = 'none', volumeRaw = NULL,
-                        authorName = NULL, lastParsedFormatID = NULL, libraryTypeMismatch = 0
-                    WHERE id = ?
-                    """, arguments: [id.rawValue])
-                // タイトルは `titleOrigin = 'manual'` なら残るので、消した枝でも
-                // 鍵は作り直す [SR-03]。
+                if basicProtected {
+                    try db.execute(sql: """
+                        UPDATE managedFile SET lastParsedFormatID = NULL,
+                            libraryTypeMismatch = 0
+                        WHERE id = ?
+                        """, arguments: [id.rawValue])
+                } else {
+                    try db.execute(sql: """
+                        UPDATE managedFile SET seriesName = NULL, seriesKey = NULL,
+                            volumeNumber = NULL, volumeKind = 'none', volumeRaw = NULL,
+                            authorName = NULL, title = NULL,
+                            lastParsedFormatID = NULL, libraryTypeMismatch = 0
+                        WHERE id = ?
+                        """, arguments: [id.rawValue])
+                }
                 try Self.refreshDerivedKeys(db, id: id)
                 return
             }
-            try db.execute(sql: """
-                UPDATE managedFile SET
-                    title = CASE WHEN titleOrigin = 'manual' THEN title ELSE ? END,
-                    seriesName = ?, seriesKey = ?,
-                    volumeNumber = ?, volumeKind = ?, volumeRaw = ?,
-                    authorName = ?, lastParsedFormatID = ?, libraryTypeMismatch = ?
-                WHERE id = ?
-                """, arguments: [
-                    fields.title,
-                    fields.seriesName,
-                    fields.seriesName.map { TextNormalizer.normalize($0) },
-                    fields.volume.number,
-                    fields.volume.kind.rawValue,
-                    fields.volume.raw,
-                    fields.authorName,
-                    fields.matchedFormatID.uuidString,
-                    fields.libraryTypeMismatch,
-                    id.rawValue])
+            if basicProtected {
+                try db.execute(sql: """
+                    UPDATE managedFile SET lastParsedFormatID = ?, libraryTypeMismatch = ?
+                    WHERE id = ?
+                    """, arguments: [fields.matchedFormatID.uuidString,
+                                     fields.libraryTypeMismatch, id.rawValue])
+            } else {
+                try db.execute(sql: """
+                    UPDATE managedFile SET
+                        title = ?, seriesName = ?, seriesKey = ?,
+                        volumeNumber = ?, volumeKind = ?, volumeRaw = ?,
+                        authorName = ?, lastParsedFormatID = ?, libraryTypeMismatch = ?
+                    WHERE id = ?
+                    """, arguments: [
+                        fields.title,
+                        fields.seriesName,
+                        fields.seriesName.map { TextNormalizer.normalize($0) },
+                        fields.volume.number,
+                        fields.volume.kind.rawValue,
+                        fields.volume.raw,
+                        fields.authorName,
+                        fields.matchedFormatID.uuidString,
+                        fields.libraryTypeMismatch,
+                        id.rawValue])
+            }
             // タイトル・シリーズ名も検索対象 [SR-03]。**書いた値ではなく行を
-            // 読み直す**（上の `CASE WHEN titleOrigin = 'manual'` があるため）。
+            // 読み直す**（保護されていれば据え置かれるため）。
             try Self.refreshDerivedKeys(db, id: id)
+        }
+    }
+
+    // MARK: - メタデータの保護 [PR-01〜PR-09]
+
+    public func setProtectedScopes(_ scopes: [FileID: Set<ProtectionScope>]) async throws {
+        guard !scopes.isEmpty else { return }
+        try await database.writer.write { db in
+            let stmt = try db.cachedStatement(sql:
+                "UPDATE managedFile SET protectedScopes = ? WHERE id = ?")
+            for (id, set) in scopes {
+                try stmt.execute(arguments: [ProtectionScopeCoding.encode(set), id.rawValue])
+            }
+        }
+    }
+
+    public func protectedScopes(ids: [FileID]) async throws -> [FileID: Set<ProtectionScope>] {
+        guard !ids.isEmpty else { return [:] }
+        return try await database.writer.read { db in
+            var result: [FileID: Set<ProtectionScope>] = [:]
+            // ホスト変数の上限を避けて分ける（`setRating` と同じ事情。**外しても
+            // 結果は正しく、壊れるのは速度のほう**なので変異検証では空振りする）。
+            for start in stride(from: 0, to: ids.count, by: Self.maxBoundParameters) {
+                let chunk = Array(ids[start..<min(start + Self.maxBoundParameters, ids.count)])
+                let rows = try Row.fetchAll(db, sql: """
+                    SELECT id, protectedScopes FROM managedFile
+                    WHERE id IN (\(Self.placeholders(chunk.count)))
+                    """, arguments: StatementArguments(chunk.map { Optional($0.rawValue) }))
+                for row in rows {
+                    result[FileID(rawValue: row["id"])] =
+                        ProtectionScopeCoding.decode(row["protectedScopes"])
+                }
+            }
+            return result
         }
     }
 
@@ -575,21 +634,25 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
 
     // MARK: - 右ペインからの編集 [RP-10〜RP-12][CV-02〜CV-08]
 
-    public func setFields(_ edit: FileFieldEdit, id: FileID) async throws {
+    public func setFields(_ edit: FileFieldEdit, id: FileID,
+                          protectedScopes: Set<ProtectionScope>) async throws {
         try await database.writer.write { db in
+            // **保護も同じトランザクションで** [PR-03]。
+            try db.execute(sql: "UPDATE managedFile SET protectedScopes = ? WHERE id = ?",
+                           arguments: [ProtectionScopeCoding.encode(protectedScopes),
+                                       id.rawValue])
             // 正規化はここで行う [3.8 節]。`applyParsedFields` とまったく同じ
             // 導出を通すので、手で編集したシリーズ名でも表記ゆれの吸収
             // （`filesInSameSeries` の照合）が走査由来のものと揃う。
             try db.execute(sql: """
                 UPDATE managedFile SET
-                    title = ?, titleOrigin = ?,
+                    title = ?,
                     seriesName = ?, seriesKey = ?,
                     volumeNumber = ?, volumeKind = ?, volumeRaw = ?,
                     authorName = ?
                 WHERE id = ?
                 """, arguments: [
                     edit.title,
-                    edit.titleOrigin.rawValue,
                     edit.seriesName,
                     edit.seriesName.map { TextNormalizer.normalize($0) },
                     edit.volume.number,

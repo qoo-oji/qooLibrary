@@ -719,6 +719,36 @@ public actor ScanEngine {
                               resolved: resolvedIDs.count, cancelled: cancelled)
     }
 
+    /// 1 ファイルのメタデータを、いまの設定で導き直す [PR-04]。
+    ///
+    /// **保護を解除した直後に呼ぶ。** 何を守るかはリポジトリ側が
+    /// `protectedScopes` を見て決める（`applyParsedFields` と
+    /// `replaceAutoLabels`）ので、ここでは場合分けしない——解除されたぶん
+    /// だけが自動値へ戻る。
+    ///
+    /// `rematchUnresolved` と同じく**実ファイルを開き直さない**。埋め込み
+    /// メタデータは読み取り済みのキャッシュ [EM-07] から取る。
+    ///
+    /// **未整理の記録は同期しない。** どのフォーマットに当たるかはファイル名
+    /// だけで決まり [AL-30]、保護の有無では変わらないため。
+    public func reapplyMetadata(fileIDs: [FileID], libraryID: LibraryID) async throws {
+        guard !fileIDs.isEmpty else { return }
+        guard await acquire(libraryID) else { return }
+        defer { release(libraryID) }
+        guard let settings = try await deps.libraries.settingsSnapshot(libraryID: libraryID)
+        else { return }
+        let cache = try await deps.files.embeddedMetadataCache(ids: fileIDs)
+        for id in fileIDs {
+            if Task.isCancelled { return }
+            guard let row = try await deps.files.row(id: id) else { continue }
+            _ = try await applyResolution(
+                relativePath: row.relativePath,
+                nameWithoutExtension: row.nameWithoutExtension,
+                isBookFolder: row.isBookFolder,
+                embedded: cache[id]?.metadata, to: id, settings: settings)
+        }
+    }
+
     // MARK: - 埋め込みメタデータ [EM-07][EM-09][SE3-20〜SE3-25]
 
     /// このバッチのメタデータを揃える。**印が一致するものは開かない** [EM-07]。

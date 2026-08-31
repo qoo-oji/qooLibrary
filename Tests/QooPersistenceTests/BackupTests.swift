@@ -26,23 +26,31 @@ struct BackupTests {
 
         // 評価 [RA-01]
         try await f.database.writer.write { db in
-            try db.execute(sql: "UPDATE managedFile SET rating = 5 WHERE id = ?",
-                           arguments: [a.rawValue])
+            // **自動値も入れておく。** これが無いと「保護されていない基本
+            // 情報を出さない」検査が空振りする——出しても中身が nil で、
+            // 出す／出さないの差が観測できない。
             try db.execute(sql: """
-                UPDATE managedFile SET title = ?, titleOrigin = 'manual' WHERE id = ?
+                UPDATE managedFile SET rating = 5, title = ?, seriesName = ?,
+                    volumeNumber = 1, volumeKind = 'numeric', volumeRaw = ?,
+                    authorName = ?
+                 WHERE id = ?
+                """, arguments: ["自動の題", "自動のシリーズ", "第01巻", "自動の著者",
+                                 a.rawValue])
+            try db.execute(sql: """
+                UPDATE managedFile SET title = ?, protectedScopes = '["basic"]' WHERE id = ?
                 """, arguments: ["手で付けた題", b.rawValue])
         }
 
-        // 手動ラベルと「手で外した」記録 [RC-04]
+        // 保護されたフィールドのラベル [PR-02]（＝書き出しの対象）
         let groups = try await f.labels.groups(libraryID: f.libraryID)
         let circle = try #require(groups.first { $0.name == "サークル" })
         let manual = try await f.labels.ensureLabel(groupID: circle.id, name: "サークル値A")
-        try await f.labels.assign(fileID: a, labelID: manual, origin: .manual)
-        let removed = try await f.labels.ensureLabel(groupID: circle.id, name: "サークル値B")
-        try await f.labels.assign(fileID: b, labelID: removed, origin: .manuallyRemoved)
-        // 自動ラベルは再スキャンが付け直すので、書き出しの対象外になるはず
+        try await f.labels.assign(fileID: a, labelID: manual)
+        try await f.files.setProtectedScopes([a: [.field(circle.id)]])
+        // 保護されていないフィールドのラベルは再スキャンが付け直すので、
+        // 書き出しの対象外になるはず
         let auto = try await f.labels.ensureLabel(groupID: circle.id, name: "サークル値C")
-        try await f.labels.assign(fileID: b, labelID: auto, origin: .auto)
+        try await f.labels.assign(fileID: b, labelID: auto)
 
         // ラベルの色・ピン・アーカイブ [MG-22]
         try await f.labels.setPinned(manual, true)
@@ -54,7 +62,7 @@ struct BackupTests {
         try await f.database.writer.write { db in
             try db.execute(sql: """
                 UPDATE managedFile
-                   SET rating = 3, title = '題', titleOrigin = 'manual',
+                   SET rating = 3, title = '題', protectedScopes = '["basic"]',
                        coverImageSource = 'userSpecified', coverImageRef = 'cover-ref',
                        isArchived = 1, archivedFromPath = 'old/path.cbz', archivedAt = 100,
                        state = 'trashed', trashedAt = 200
@@ -64,7 +72,7 @@ struct BackupTests {
                 UPDATE label SET colorHex = '#123456' WHERE name = 'サークル値A'
                 """)
         }
-        try await f.labels.assign(fileID: full, labelID: manual, origin: .manual)
+        try await f.labels.assign(fileID: full, labelID: manual)
 
         // 「以後無視する」[AL-33]。**再生成不可能な列を持つ唯一の行**なので、
         // これが無いと `unresolvedFile` の網羅性の検証が空振りする
@@ -207,7 +215,7 @@ struct BackupTests {
         // 時点では走査済みの行があるのが前提）。
         try await f.database.writer.write { db in
             try db.execute(sql: """
-                UPDATE managedFile SET rating = 0, title = NULL, titleOrigin = 'auto'
+                UPDATE managedFile SET rating = 0, title = NULL, protectedScopes = '[]'
                 """)
             try db.execute(sql: "DELETE FROM fileLabel")
             try db.execute(sql: "DELETE FROM label")
@@ -229,25 +237,44 @@ struct BackupTests {
                 SELECT title FROM managedFile WHERE filename = '作品2.cbz'
                 """)
             #expect(title == "手で付けた題")
-            let origin = try String.fetchOne(db, sql: """
-                SELECT titleOrigin FROM managedFile WHERE filename = '作品2.cbz'
+            let scopes = try String.fetchOne(db, sql: """
+                SELECT protectedScopes FROM managedFile WHERE filename = '作品2.cbz'
                 """)
-            #expect(origin == "manual")
-            // 手で付けたラベルと、手で外した記録の両方が戻る [RC-04]
-            let origins = try String.fetchAll(db, sql: """
-                SELECT fileLabel.origin FROM fileLabel
+            #expect(scopes == #"["basic"]"#, "保護も戻る [PR-09]")
+            // **保護されたフィールドの紐づけだけが戻る** [PR-01]。保護されて
+            // いないフィールドのラベルは再スキャンが付け直すので出していない。
+            let names = try String.fetchAll(db, sql: """
+                SELECT label.name FROM fileLabel
                 JOIN label ON label.id = fileLabel.labelId
                 ORDER BY label.name, fileLabel.managedFileId
                 """)
-            // 自動ラベルは戻らない（書き出していない）。人が付けた 2 件と、
-            // 人が外した 1 件の記録だけが復元される [RC-04]。
-            #expect(origins == ["manual", "manual", "manuallyRemoved"])
+            #expect(names == ["サークル値A"])
             // ピン留めも戻る [LB-03]
             let pinned = try Bool.fetchOne(db, sql: """
                 SELECT isPinned FROM label WHERE name = 'サークル値A'
                 """)
             #expect(pinned == true)
         }
+    }
+
+    /// **保護されていない基本情報は出さない** [PR-01][MG-22]。走査が作り直す
+    /// ので、10 万件ぶん書いても取り込みが何もしない——出す／出さないの判定を
+    /// 落とすと JSON が無意味に膨らむ。
+    @Test("保護されていない基本情報は書き出さない [MG-22]")
+    func exportOmitsUnprotectedBasicFields() async throws {
+        let (_, backup) = try await Self.seeded()
+        let document = try await backup.export(scope: .everything, appVersion: nil)
+        let files = try #require(document.libraries.first?.files)
+        // 作品1: 評価とラベルのために出るが、基本情報は保護されていない。
+        let unprotected = try #require(files.first { $0.filename == "作品1.cbz" })
+        #expect(unprotected.title == nil)
+        #expect(unprotected.seriesName == nil)
+        #expect(unprotected.volumeNumber == nil)
+        #expect(unprotected.authorName == nil)
+        // 作品2: 基本情報が保護されているので出る。
+        let protected = try #require(files.first { $0.filename == "作品2.cbz" })
+        #expect(protected.title == "手で付けた題")
+        #expect(protected.protectedScopes?.contains("basic") == true)
     }
 
     @Test("再生成できる情報しか持たない行は書き出さない")

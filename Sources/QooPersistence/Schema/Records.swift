@@ -83,7 +83,6 @@ struct FileLabelRecord: Codable, FetchableRecord, PersistableRecord, Sendable {
     static let databaseTableName = "fileLabel"
     var managedFileId: Int64
     var labelId: Int64
-    var origin: String
     var assignedAt: Double
 }
 
@@ -106,7 +105,8 @@ struct ManagedFileRecord: Codable, FetchableRecord, MutablePersistableRecord, Se
     var createdAt: Double
     var modifiedAt: Double
     var title: String?
-    var titleOrigin: String
+    /// 自動更新から守られているスコープの JSON 配列 [PR-01][PR-02]。
+    var protectedScopes: String
     var seriesName: String?
     var seriesKey: String?
     var volumeNumber: Double?
@@ -159,7 +159,7 @@ extension ManagedFileRecord {
             fileSize: snapshot.fileSize,
             createdAt: snapshot.createdAt.timeIntervalSinceReferenceDate,
             modifiedAt: snapshot.modifiedAt.timeIntervalSinceReferenceDate,
-            title: nil, titleOrigin: ValueOrigin.auto.rawValue,
+            title: nil, protectedScopes: ProtectionScopeCoding.empty,
             seriesName: nil, seriesKey: nil,
             volumeNumber: nil, volumeKind: VolumeValue.Kind.none.rawValue, volumeRaw: nil,
             authorName: nil, rating: 0,
@@ -188,7 +188,7 @@ extension ManagedFileRecord {
             createdAt: Date(timeIntervalSinceReferenceDate: createdAt),
             modifiedAt: Date(timeIntervalSinceReferenceDate: modifiedAt),
             title: title,
-            titleOrigin: ValueOrigin(rawValue: titleOrigin) ?? .auto,
+            protectedScopes: ProtectionScopeCoding.decode(protectedScopes),
             seriesName: seriesName,
             volume: VolumeValue(kind: VolumeValue.Kind(rawValue: volumeKind) ?? .none,
                                 number: volumeNumber, raw: volumeRaw),
@@ -231,7 +231,7 @@ extension ManagedFileRecord {
             createdAt: Date(timeIntervalSinceReferenceDate: createdAt),
             modifiedAt: Date(timeIntervalSinceReferenceDate: modifiedAt),
             title: title,
-            titleOrigin: ValueOrigin(rawValue: titleOrigin) ?? .auto,
+            protectedScopes: ProtectionScopeCoding.decode(protectedScopes),
             seriesName: seriesName,
             seriesKey: seriesKey,
             volume: VolumeValue(kind: VolumeValue.Kind(rawValue: volumeKind) ?? .none,
@@ -276,7 +276,7 @@ extension ManagedFileRecord {
             createdAt: s.createdAt.timeIntervalSinceReferenceDate,
             modifiedAt: s.modifiedAt.timeIntervalSinceReferenceDate,
             title: s.title,
-            titleOrigin: s.titleOrigin.rawValue,
+            protectedScopes: ProtectionScopeCoding.encode(s.protectedScopes),
             seriesName: s.seriesName,
             seriesKey: s.seriesKey,
             volumeNumber: s.volume.number,

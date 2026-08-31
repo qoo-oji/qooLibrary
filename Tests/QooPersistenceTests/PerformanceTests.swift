@@ -42,8 +42,8 @@ struct PersistencePerformanceTests {
             try await f.database.writer.write { db in
                 let now = Date().timeIntervalSinceReferenceDate
                 let stmt = try db.cachedStatement(sql: """
-                    INSERT INTO fileLabel (managedFileId, labelId, origin, assignedAt)
-                    VALUES (?, ?, 'auto', ?)
+                    INSERT INTO fileLabel (managedFileId, labelId, assignedAt)
+                    VALUES (?, ?, ?)
                     """)
                 for (k, id) in ids.enumerated() {
                     let i = base + k

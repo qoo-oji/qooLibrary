@@ -127,6 +127,15 @@ struct InspectorLabelSection: View {
                 Text(group.name)
                     .font(.system(size: Tokens.fontSize.caption, weight: .medium))
                     .lineLimit(1)
+                // **鍵はフィールド見出しに出す** [PR-02][PR-03]。保護の単位は
+                // フィールドであってラベル 1 つずつではないので、チップに
+                // 印を付けると単位を取り違えて読める。
+                if model.isFieldProtected(group) {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: Tokens.fontSize.caption))
+                        .foregroundStyle(.secondary)
+                        .help(String(localized: "inspector.labels.protected"))
+                }
             }
         }
     }
@@ -141,8 +150,7 @@ struct InspectorLabelSection: View {
             }
             LabelChip(name: label.name,
                       color: labelColor(label, in: group),
-                      count: label.fileCount,
-                      isAutomatic: assignment.isAutomatic)      // [RL-06]
+                      count: label.fileCount)
                 // 改名・統合・保管庫へ送る導線 [LB-06][LB-07][LA-01]。
                 // ここでは付け外ししかできないので、編集は 15.2 のウインドウへ。
                 .contextMenu {

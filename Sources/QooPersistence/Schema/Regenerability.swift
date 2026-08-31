@@ -25,9 +25,7 @@ extension ManagedFileRecord: RegenerabilityDeclaring {
         // **古い値で正しい観測を上書きする**危険だけが残る [MG-21]。
         "fileSize", "createdAt", "modifiedAt",
         "normalizedName", "searchKey", "titleKey",
-        "seriesName", "seriesKey",
-        "volumeNumber", "volumeKind", "volumeRaw",
-        "authorName",
+        "seriesKey",
         "isBookFolder",
         "pageCount", "subfolderCount", "firstImageWidth", "firstImageHeight",
         "lastParsedFormatID", "libraryTypeMismatch",
@@ -37,9 +35,11 @@ extension ManagedFileRecord: RegenerabilityDeclaring {
         // カバー画像は `coverImageSource == 'auto'` のときだけ再生成可能。
         // 列としては「再生成可能」に分類し、`coverImageSource` の値で守る [IV-03]。
         "coverImageRef",
-        // `titleOrigin == 'auto'` のタイトルは再生成可能。手動編集は上書きしない
-        // [RP-11]——`applyParsedFields` の SQL が `titleOrigin` を見て守る。
-        "title",
+        // **基本情報の 4 つは、保護されていないときだけ再生成可能** [PR-01]。
+        // 列としては「再生成可能」に分類し、`protectedScopes` の値で守る
+        // （カバー画像を `coverImageSource` で守るのと同じ形）——`title` だけ
+        // 出して他を落とすと、保護したシリーズ名が復元で失われる。
+        "title", "seriesName", "volumeNumber", "volumeKind", "volumeRaw", "authorName",
     ]
     public static let internalColumns: Set<String> = [
         "id", "libraryId", "inode", "volumeUUID",
@@ -59,9 +59,9 @@ extension LabelGroupRecord: RegenerabilityDeclaring {
 }
 
 extension FileLabelRecord: RegenerabilityDeclaring {
-    /// `origin == 'auto'` の紐づけだけが再生成可能。`manual` と `manuallyRemoved` は
-    /// **再生成不可能** [MG-22][RC-04]——列ではなく値で分かれるので、
-    /// JSON へは `origin` ごと出す必要がある。
+    /// **保護されていないフィールドの紐づけだけが再生成可能** [PR-01][MG-22]。
+    /// 保護は紐づけではなく `managedFile.protectedScopes` にあるので、
+    /// 出す／出さないの判定は書き出し側（`SQLiteBackupRepository`）が行う。
     public static let regenerableColumns: Set<String> = ["assignedAt"]
     public static let internalColumns: Set<String> = ["managedFileId", "labelId"]
 }

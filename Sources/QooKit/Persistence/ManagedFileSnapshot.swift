@@ -25,17 +25,15 @@
 import Foundation
 
 public struct ManagedFileSnapshot: Sendable, Hashable {
-    /// ラベル紐づけ 1 件ぶん。**`manuallyRemoved` の行も含む**——除去の印は
-    /// 「付いていない」ではなく「外したと記録されている」という別の状態で、
-    /// 落とすと ⌘Z のあと再スキャンでラベルが復活する [RC-04]。
+    /// ラベル紐づけ 1 件ぶん。**行があること自体が「付いている」**——
+    /// 「外した」を表す第 3 の状態は保護スコープへ移った [PR-08]ので、
+    /// 行の有無だけで足りる。
     public struct LabelAssignment: Sendable, Hashable {
         public let labelID: LabelID
-        public let origin: LabelOrigin
         public let assignedAt: Date
 
-        public init(labelID: LabelID, origin: LabelOrigin, assignedAt: Date) {
+        public init(labelID: LabelID, assignedAt: Date) {
             self.labelID = labelID
-            self.origin = origin
             self.assignedAt = assignedAt
         }
     }
@@ -52,7 +50,8 @@ public struct ManagedFileSnapshot: Sendable, Hashable {
     public let createdAt: Date
     public let modifiedAt: Date
     public let title: String?
-    public let titleOrigin: ValueOrigin        // [RP-11]
+    /// 自動更新から守られているスコープ [PR-01][PR-02]。
+    public let protectedScopes: Set<ProtectionScope>
     public let seriesName: String?
     public let seriesKey: String?              // [RA-04][DU-02]
     public let volume: VolumeValue             // volumeNumber / volumeKind / volumeRaw
@@ -82,7 +81,7 @@ public struct ManagedFileSnapshot: Sendable, Hashable {
                 relativePath: String, filename: String,
                 normalizedName: String, searchKey: String, titleKey: String? = nil,
                 fileSize: Int64, createdAt: Date, modifiedAt: Date,
-                title: String?, titleOrigin: ValueOrigin,
+                title: String?, protectedScopes: Set<ProtectionScope>,
                 seriesName: String?, seriesKey: String?,
                 volume: VolumeValue, authorName: String?, rating: Int,
                 coverImageRef: String?, coverImageSource: CoverSource,
@@ -106,7 +105,7 @@ public struct ManagedFileSnapshot: Sendable, Hashable {
         self.createdAt = createdAt
         self.modifiedAt = modifiedAt
         self.title = title
-        self.titleOrigin = titleOrigin
+        self.protectedScopes = protectedScopes
         self.seriesName = seriesName
         self.seriesKey = seriesKey
         self.volume = volume
@@ -143,8 +142,7 @@ public struct ManagedFileSnapshot: Sendable, Hashable {
 public struct OrphanedFile: Sendable, Hashable, Identifiable {
     public let row: FileRow
     /// ラベル紐づけの件数。削除の確認で「何件のラベルが外れるか」を見せる
-    /// [LE-08 と同じ考え方]。`manuallyRemoved` は数えない——利用者から見て
-    /// 「付いている」ラベルだけを数えなければ、確認の数字が画面と食い違う。
+    /// [LE-08 と同じ考え方]。
     public let labelCount: Int
 
     public var id: FileID { row.id }

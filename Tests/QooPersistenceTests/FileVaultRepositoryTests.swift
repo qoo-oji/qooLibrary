@@ -25,7 +25,7 @@ struct FileVaultRepositoryTests {
             let file = try await f.files.upsert(f.snapshot(inode: 1, path: path))
             let group = try #require(try await f.labels.group(libraryID: f.libraryID, index: 2))
             let label = try await f.labels.ensureLabel(groupID: group.id, name: "サークル値A")
-            try await f.labels.assign(fileID: file, labelID: label, origin: .auto)
+            try await f.labels.assign(fileID: file, labelID: label)
             return Setup(f: f, file: file, label: label)
         }
 

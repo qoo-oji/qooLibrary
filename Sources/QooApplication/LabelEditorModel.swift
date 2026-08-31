@@ -55,23 +55,23 @@ public final class LabelEditorModel {
 
     /// 1 つのラベルが、選択したファイルにどう付いているか。
     public struct Assignment: Sendable, Equatable {
-        /// 付いている件数（`manuallyRemoved` は「付いていない」）。
+        /// 付いている件数。
         public let assignedCount: Int
         public let targetCount: Int
-        /// **付いているものがすべて自動付与か** [RL-06]。混在なら偽——手動で
-        /// 付けたものが含まれるのに「自動」の印を出すと、再スキャンで消える
-        /// ものだと読めてしまう。
-        public let isAutomatic: Bool
+        /// そのフィールドが**対象すべてで**保護されているか [PR-02][PR-03]。
+        /// 混在なら偽——守られていないファイルが混ざっているのに鍵を出すと、
+        /// 全部が守られているように読める。
+        public let isProtected: Bool
 
         public var checkState: CheckState {
             if assignedCount == 0 { return .none }
             return assignedCount == targetCount ? .all : .some
         }
 
-        public init(assignedCount: Int, targetCount: Int, isAutomatic: Bool) {
+        public init(assignedCount: Int, targetCount: Int, isProtected: Bool) {
             self.assignedCount = assignedCount
             self.targetCount = targetCount
-            self.isAutomatic = isAutomatic
+            self.isProtected = isProtected
         }
     }
 
@@ -118,7 +118,10 @@ public final class LabelEditorModel {
     private var services: LibraryServices?
     private var library: LibrarySummary?
     /// ファイルごとの紐づけ。`undo()` へ渡す「変更前の状態」の出どころ。
-    private var assignmentsByFile: [FileID: [LabelID: LabelOrigin]] = [:]
+    private var assignmentsByFile: [FileID: Set<LabelID>] = [:]
+    /// ファイルごとの保護スコープ [PR-02]。鍵の表示と、`undo()` へ渡す
+    /// 「変更前の保護」の出どころ。
+    private var protectedByFile: [FileID: Set<ProtectionScope>] = [:]
     /// `fileIDs` と同順の URL 対応。
     private var urlByFile: [FileID: URL] = [:]
     /// 直近で読み込んだ対象。**同じ対象の読み直しではスピナーへ戻さない**
@@ -135,19 +138,25 @@ public final class LabelEditorModel {
     /// そのラベルの付き方 [RL-04][RL-06]。
     public func assignment(of label: LabelSummary) -> Assignment {
         guard case .ready(let subject) = state else {
-            return Assignment(assignedCount: 0, targetCount: 0, isAutomatic: false)
+            return Assignment(assignedCount: 0, targetCount: 0, isProtected: false)
         }
         var assigned = 0
-        var allAuto = true
+        var allProtected = !subject.fileIDs.isEmpty
         for id in subject.fileIDs {
-            guard let origin = assignmentsByFile[id]?[label.id], origin != .manuallyRemoved else {
-                continue
-            }
-            assigned += 1
-            if origin != .auto { allAuto = false }
+            if assignmentsByFile[id]?.contains(label.id) == true { assigned += 1 }
+            if protectedByFile[id]?.contains(.field(label.groupID)) != true { allProtected = false }
         }
         return Assignment(assignedCount: assigned, targetCount: subject.targetCount,
-                          isAutomatic: assigned > 0 && allAuto)
+                          isProtected: allProtected)
+    }
+
+    /// そのフィールドが**対象すべてで**保護されているか [PR-02][PR-03]。
+    /// 見出しの鍵の出どころ。
+    public func isFieldProtected(_ group: LabelGroupSummary) -> Bool {
+        guard case .ready(let subject) = state, !subject.fileIDs.isEmpty else { return false }
+        return subject.fileIDs.allSatisfy {
+            protectedByFile[$0]?.contains(.field(group.id)) == true
+        }
     }
 
     /// 1 件でも付いているか。一覧に出すかどうかの判定に使う [RL-05]。
@@ -286,12 +295,17 @@ public final class LabelEditorModel {
                                services: LibraryServices) async throws {
         guard !ordered.isEmpty else {
             assignmentsByFile = [:]
+            protectedByFile = [:]
             state = .notInLibrary
             return
         }
         let fileIDs = ordered.map { $0.1.id }
         urlByFile = Dictionary(uniqueKeysWithValues: ordered.map { ($0.1.id, $0.0) })
         assignmentsByFile = try await services.labelAssignments(fileIDs: fileIDs)
+        // **行から読まない**——ここへ来る `FileRow` は読み込み時点の写しで、
+        // ⌘Z や走査で保護が変わっていても古いまま。書き込みの直前に引き直す
+        // のと同じ理由で、鍵の表示も DB から取る。
+        protectedByFile = try await services.protectedScopes(ids: fileIDs)
 
         let groups = try await services.labelGroups(libraryID: library.id)
         var loaded: [LabelGroupID: [LabelSummary]] = [:]
@@ -357,14 +371,19 @@ public final class LabelEditorModel {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         let id = try await services.ensureLabel(groupID: groupID, name: trimmed)
-        try await applyID(id, name: trimmed, assigning: true)
+        try await applyID(id, groupID: groupID, name: trimmed, assigning: true)
     }
 
     private func apply(_ label: LabelSummary, assigning: Bool) async throws {
-        try await applyID(label.id, name: label.name, assigning: assigning)
+        try await applyID(label.id, groupID: label.groupID, name: label.name,
+                          assigning: assigning)
     }
 
-    private func applyID(_ labelID: LabelID, name: String, assigning: Bool) async throws {
+    /// **フィールドは引数で受け取る**——読み込み済みの一覧から引くと、
+    /// 作ったばかりのラベル（`createAndAdd`）はまだ載っておらず、黙って
+    /// 何もしないコマンドになる。
+    private func applyID(_ labelID: LabelID, groupID group: LabelGroupID,
+                         name: String, assigning: Bool) async throws {
         guard case .ready(let subject) = state, let services else { return }
         // 変更前の拾い方と no-op の判定は `AssignLabelCommand.toggling` に
         // 一本化してある [RL3-03]——中央ペインのメニュー（`LabelMenuModel`）と
@@ -373,10 +392,10 @@ public final class LabelEditorModel {
             (id: id, url: urlByFile[id] ?? subject.urls.first ?? URL(fileURLWithPath: "/"))
         }
         guard let assign = AssignLabelCommand.toggling(
-            labelID: labelID, labelName: name, files: files,
-            assignments: assignmentsByFile, assigning: assigning,
+            labelID: labelID, groupID: group, labelName: name, files: files,
+            assignments: assignmentsByFile, protectedScopes: protectedByFile,
+            assigning: assigning,
             subjectName: subject.displayName, services: services) else { return }
-        let target: LabelOrigin = assigning ? .manual : .manuallyRemoved
         // **付けたときだけ**——外したときに一覧から消してはならない。
         if assigning, let extra = onAssign?(subject.fileIDs) {
             // 表示名はラベル側のものを使う。付随する操作まで Undo メニューへ
@@ -388,9 +407,15 @@ public final class LabelEditorModel {
         }
         // 画面をすぐ合わせる。`.task` の読み直しは後から届く。
         for id in subject.fileIDs {
-            assignmentsByFile[id, default: [:]][labelID] = target
+            if assigning {
+                assignmentsByFile[id, default: []].insert(labelID)
+            } else {
+                assignmentsByFile[id]?.remove(labelID)
+            }
+            protectedByFile[id, default: []].insert(.field(group))
         }
     }
+
 
     /// 書き込みのあと、ラベルの一覧と件数を読み直す。
     ///

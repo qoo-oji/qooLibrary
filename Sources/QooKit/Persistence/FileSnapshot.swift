@@ -46,43 +46,7 @@ public enum FileState: String, Sendable, Codable, Hashable, CaseIterable {
     case active, trashed, orphaned, offline
 }
 
-public enum ValueOrigin: String, Sendable, Codable, Hashable { case auto, manual }
-
 public enum CoverSource: String, Sendable, Codable, Hashable { case auto, sidecar, userSpecified }
-
-/// `.manuallyRemoved` を明示的に持つことで「再計算で復活させてはいけない」を
-/// 表現する [RC-04]。
-public enum LabelOrigin: String, Sendable, Codable, Hashable, CaseIterable {
-    case auto, manual, manuallyRemoved
-
-    /// 統合したとき、同じファイルに付いていた 2 つのラベルの `origin` から
-    /// 残すほうを決める [LB-07][LE-11]［ユーザー判断］。
-    ///
-    /// **manual > auto > manuallyRemoved。** 統合は「同じものに 2 つの名前が
-    /// 付いていた」を是正する操作なので、どちらかで手で付けていたなら手動として
-    /// 残す。素朴に移動先を優先すると、`source` が `manual`・`target` が
-    /// `manuallyRemoved` のファイルで**手動付与が黙って消える**——しかも
-    /// 件数を見ても気づけない。
-    ///
-    /// 逆に「統合したのだから一律 `manual`」にはしない。自動付与されたラベルを
-    /// まとめただけで再スキャン耐性が変わってしまい（`auto` は再計算で更新されるが
-    /// `manual` は守られる [RC-04]）、`manuallyRemoved` の印まで消えて**外した
-    /// はずのラベルが復活する**。
-    ///
-    /// **この 1 行が決定の実体**なので、SQL にも View にも埋めずここに置く
-    /// （`LabelEditorModel.candidates` と同じ理由）。
-    public static func merging(_ a: LabelOrigin, _ b: LabelOrigin) -> LabelOrigin {
-        rank(a) >= rank(b) ? a : b
-    }
-
-    private static func rank(_ origin: LabelOrigin) -> Int {
-        switch origin {
-        case .manual: 2
-        case .auto: 1
-        case .manuallyRemoved: 0
-        }
-    }
-}
 
 /// 一覧に表示する 1 行 [RP2-02]。`Sendable` な値型で、DB の行そのものではない。
 public struct FileRow: Sendable, Hashable, Identifiable {
@@ -94,9 +58,11 @@ public struct FileRow: Sendable, Hashable, Identifiable {
     public let createdAt: Date
     public let modifiedAt: Date
     public let title: String?
-    /// タイトルが手動編集されたか [RP-11]。`.manual` の値は再スキャンでも
-    /// 埋め込みメタデータでも上書きされない（`applyParsedFields` の SQL が守る）。
-    public let titleOrigin: ValueOrigin
+    /// 自動更新から守られているスコープ [PR-01][PR-02]。走査はここに含まれる
+    /// ものに触れない。**基本情報（タイトル・シリーズ・巻・著者）は `.basic`
+    /// の 1 つで表す**——置き換える前の印はタイトルだけを守っており、手で
+    /// 直したシリーズ名は次の走査で黙って自動値へ戻っていた。
+    public let protectedScopes: Set<ProtectionScope>
     public let seriesName: String?
     public let volume: VolumeValue
     public let authorName: String?
@@ -124,7 +90,7 @@ public struct FileRow: Sendable, Hashable, Identifiable {
 
     public init(id: FileID, libraryID: LibraryID, relativePath: String, filename: String,
                 fileSize: Int64, createdAt: Date, modifiedAt: Date, title: String?,
-                titleOrigin: ValueOrigin = .auto,
+                protectedScopes: Set<ProtectionScope> = [],
                 seriesName: String?, volume: VolumeValue, authorName: String? = nil,
                 rating: Int,
                 coverImageRef: String? = nil, coverImageSource: CoverSource = .auto,
@@ -142,7 +108,7 @@ public struct FileRow: Sendable, Hashable, Identifiable {
         self.createdAt = createdAt
         self.modifiedAt = modifiedAt
         self.title = title
-        self.titleOrigin = titleOrigin
+        self.protectedScopes = protectedScopes
         self.seriesName = seriesName
         self.volume = volume
         self.authorName = authorName
@@ -169,7 +135,7 @@ public struct FileRow: Sendable, Hashable, Identifiable {
     public func withArchiveMetadata(pageCount: Int?, width: Int?, height: Int?) -> FileRow {
         FileRow(id: id, libraryID: libraryID, relativePath: relativePath,
                 filename: filename, fileSize: fileSize, createdAt: createdAt,
-                modifiedAt: modifiedAt, title: title, titleOrigin: titleOrigin,
+                modifiedAt: modifiedAt, title: title, protectedScopes: protectedScopes,
                 seriesName: seriesName, volume: volume, authorName: authorName,
                 rating: rating, coverImageRef: coverImageRef,
                 coverImageSource: coverImageSource, state: state,

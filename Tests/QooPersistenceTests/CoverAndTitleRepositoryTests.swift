@@ -15,18 +15,69 @@ import Testing
 @Suite("カバーとタイトルの書き込み [RP-10〜RP-12][CV-06]")
 struct CoverAndTitleRepositoryTests {
 
-    @Test("タイトルと origin を書ける [RP-10][RP-11]")
-    func writesTitleAndOrigin() async throws {
+    @Test("タイトルと保護を書ける [RP-10][PR-03]")
+    func writesTitleAndProtection() async throws {
         let f = try await Fixture.make()
         let id = try await f.files.upsert(f.snapshot(inode: 1, path: "作品.cbz"))
         try await f.files.setFields(FileFieldEdit(
-            title: "手で付けた題", titleOrigin: .manual, seriesName: "作品",
-            volume: .numeric(1, raw: "第01巻"), authorName: "著者"), id: id)
+            title: "手で付けた題", seriesName: "作品",
+            volume: .numeric(1, raw: "第01巻"), authorName: "著者"),
+            id: id, protectedScopes: [.basic])
         let row = try #require(try await f.files.row(id: id))
         #expect(row.title == "手で付けた題")
-        #expect(row.titleOrigin == .manual)
+        #expect(row.protectedScopes == [.basic], "値と保護は同じ書き込みで入る")
         #expect(row.authorName == "著者")
         #expect(row.volume == .numeric(1, raw: "第01巻"))
+    }
+
+    /// **保護されていれば `applyParsedFields` は基本情報 4 つとも据え置く**
+    /// [PR-01][PR-02]。置き換える前はタイトルだけを守っており、手で直した
+    /// シリーズ名は次の走査で黙って自動値へ戻っていた。
+    @Test("保護された基本情報は走査で上書きされない [PR-01]")
+    func protectedBasicFieldsAreNotOverwritten() async throws {
+        let f = try await Fixture.make()
+        let id = try await f.files.upsert(f.snapshot(inode: 1, path: "作品.cbz"))
+        try await f.files.setFields(FileFieldEdit(
+            title: "手の題", seriesName: "手のシリーズ",
+            volume: .numeric(9, raw: "第09巻"), authorName: "手の著者"),
+            id: id, protectedScopes: [.basic])
+
+        try await f.files.applyParsedFields(
+            ParsedFileFields(matchedFormatID: UUID(), title: "自動の題",
+                             seriesName: "自動のシリーズ",
+                             volume: .numeric(1, raw: "第01巻"), authorName: "自動の著者",
+                             labelValues: [:], libraryTypeMismatch: true, spans: []),
+            to: id)
+
+        let row = try #require(try await f.files.row(id: id))
+        #expect(row.title == "手の題")
+        #expect(row.seriesName == "手のシリーズ")
+        #expect(row.volume.number == 9)
+        #expect(row.authorName == "手の著者")
+    }
+
+    /// **走査の観測結果は保護されていても更新する** [PR-01 の注記]。止めると、
+    /// 未整理一覧 [UR3-01] の判定が保護済みのファイルだけ古いまま凍る。
+    @Test("保護されていても、当たったフォーマットの記録は更新される")
+    func protectionDoesNotFreezeTheParsedFormat() async throws {
+        let f = try await Fixture.make()
+        let id = try await f.files.upsert(f.snapshot(inode: 1, path: "作品.cbz"))
+        try await f.files.setFields(FileFieldEdit(title: "手の題", seriesName: nil,
+                                                  volume: .none, authorName: nil),
+                                    id: id, protectedScopes: [.basic])
+        let formatID = UUID()
+        try await f.files.applyParsedFields(
+            ParsedFileFields(matchedFormatID: formatID, title: "自動", seriesName: nil,
+                             volume: .none, authorName: nil, labelValues: [:],
+                             libraryTypeMismatch: true, spans: []),
+            to: id)
+        let stored = try await f.database.writer.read { db in
+            try Row.fetchOne(db, sql: """
+                SELECT lastParsedFormatID, libraryTypeMismatch FROM managedFile WHERE id = ?
+                """, arguments: [id.rawValue])
+        }
+        #expect(stored?["lastParsedFormatID"] == formatID.uuidString)
+        #expect(stored?["libraryTypeMismatch"] == true)
     }
 
     /// **`.userSpecified` 以外では参照を消す。**

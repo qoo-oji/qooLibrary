@@ -3215,6 +3215,23 @@
         }
       }
     },
+    "error.setProtectionFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn’t change the protection"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保護を変更できませんでした"
+          }
+        }
+      }
+    },
     "error.setRatingFailed": {
       "extractionState": "manual",
       "localizations": {
@@ -4592,6 +4609,23 @@
         }
       }
     },
+    "folder.protectMetadata": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Protect Metadata"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "メタデータを保護"
+          }
+        }
+      }
+    },
     "folder.renameEllipsis": {
       "extractionState": "stale",
       "localizations": {
@@ -5542,6 +5576,40 @@
         }
       }
     },
+    "inspector.basic.protected": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Protected from automatic updates"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自動更新から保護されています"
+          }
+        }
+      }
+    },
+    "inspector.basic.unprotect": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unprotect (restore automatic values)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保護を解除（自動の値に戻す）"
+          }
+        }
+      }
+    },
     "inspector.containedFileCount": {
       "extractionState": "stale",
       "localizations": {
@@ -5848,23 +5916,6 @@
         }
       }
     },
-    "inspector.labels.automatic": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Added automatically"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "自動で付与されました"
-          }
-        }
-      }
-    },
     "inspector.labels.createNew": {
       "extractionState": "manual",
       "localizations": {
@@ -5967,6 +6018,23 @@
         }
       }
     },
+    "inspector.labels.protected": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This field is protected from automatic updates"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このフィールドは自動更新から保護されています"
+          }
+        }
+      }
+    },
     "inspector.labels.skipped": {
       "extractionState": "manual",
       "localizations": {
@@ -6014,6 +6082,74 @@
           "stringUnit": {
             "state": "translated",
             "value": "場所"
+          }
+        }
+      }
+    },
+    "inspector.protection.all": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Protect all metadata"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "すべてのメタデータを保護"
+          }
+        }
+      }
+    },
+    "inspector.protection.explainProtected": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scanning won’t change the title, series, volume, or labels of the selected items."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "走査は、選択した項目のタイトル・シリーズ名・巻数・ラベルを変更しません。"
+          }
+        }
+      }
+    },
+    "inspector.protection.explainUnprotected": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Editing any of these values protects it automatically. Turning this on protects everything at once."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "値を編集すると、その項目は自動的に保護されます。ここをオンにすると、まとめて保護します。"
+          }
+        }
+      }
+    },
+    "inspector.protection.header": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Protection"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保護"
           }
         }
       }
@@ -6154,23 +6290,6 @@
         }
       }
     },
-    "inspector.title.manual": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Edited manually"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "手動で編集しました"
-          }
-        }
-      }
-    },
     "inspector.title.notInLibrary": {
       "extractionState": "manual",
       "localizations": {
@@ -6184,23 +6303,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "ライブラリに取り込まれていないため、タイトルを編集できません。"
-          }
-        }
-      }
-    },
-    "inspector.title.rederive": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Get from File Name"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ファイル名から再取得"
           }
         }
       }

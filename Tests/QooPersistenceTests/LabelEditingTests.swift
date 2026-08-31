@@ -39,8 +39,8 @@ struct LabelEditingTests {
         let id = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "消す")
         let keep = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "残す")
         for file in s.fileIDs {
-            try await s.f.labels.assign(fileID: file, labelID: id, origin: .auto)
-            try await s.f.labels.assign(fileID: file, labelID: keep, origin: .manual)
+            try await s.f.labels.assign(fileID: file, labelID: id)
+            try await s.f.labels.assign(fileID: file, labelID: keep)
         }
 
         try await s.f.labels.deleteLabels([id])
@@ -49,7 +49,7 @@ struct LabelEditingTests {
             .map(\.id) == [keep])
         // 紐づけは外部キーの cascade で消える。残っているのは keep だけ。
         for file in s.fileIDs {
-            #expect(try await s.f.labels.labelIDs(fileID: file).map(\.labelID) == [keep])
+            #expect(try await s.f.labels.labelIDs(fileID: file) == [keep])
         }
     }
 
@@ -68,11 +68,9 @@ struct LabelEditingTests {
         let id = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "サークル値A")
         try await s.f.labels.setPinned(id, true)
         try await s.f.labels.setColor(id, hex: "#ABCDEF")
-        try await s.f.labels.assign(fileID: s.fileIDs[0], labelID: id, origin: .manual)
-        try await s.f.labels.assign(fileID: s.fileIDs[1], labelID: id, origin: .auto)
-        // 「外した」印も写しに含まれること [RC-04]
-        try await s.f.labels.unassign(fileID: s.fileIDs[2], labelID: id,
-                                      markManuallyRemoved: true)
+        try await s.f.labels.assign(fileID: s.fileIDs[0], labelID: id)
+        try await s.f.labels.assign(fileID: s.fileIDs[1], labelID: id)
+        try await s.f.labels.assign(fileID: s.fileIDs[2], labelID: id)
 
         let snapshots = try await s.f.labels.snapshot(labelIDs: [id])
         #expect(snapshots.count == 1)
@@ -91,13 +89,10 @@ struct LabelEditingTests {
         #expect(restored.name == "サークル値A")
         #expect(restored.isPinned)
         #expect(restored.colorHex == "#ABCDEF")
-        // origin も 1 件ずつ戻る
+        // 紐づけも 1 件ずつ戻る
         let byFile = try await s.f.labels.assignments(fileIDs: s.fileIDs)
-        #expect(byFile[s.fileIDs[0]]?[id] == .manual)
-        #expect(byFile[s.fileIDs[1]]?[id] == .auto)
-        #expect(byFile[s.fileIDs[2]]?[id] == .manuallyRemoved)
-        // `manuallyRemoved` は数えない
-        #expect(restored.fileCount == 2)
+        for file in s.fileIDs { #expect(byFile[file] == [id]) }
+        #expect(restored.fileCount == 3)
     }
 
     @Test("削除と復元の間に別のラベルを作っても ID が食い合わない")
@@ -122,23 +117,23 @@ struct LabelEditingTests {
     func restoreIsExactNotAdditive() async throws {
         let s = try await Setup.make()
         let id = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "L")
-        try await s.f.labels.assign(fileID: s.fileIDs[0], labelID: id, origin: .auto)
+        try await s.f.labels.assign(fileID: s.fileIDs[0], labelID: id)
 
         let snapshots = try await s.f.labels.snapshot(labelIDs: [id])
         // 写しを取ったあとで増やす
-        try await s.f.labels.assign(fileID: s.fileIDs[1], labelID: id, origin: .manual)
+        try await s.f.labels.assign(fileID: s.fileIDs[1], labelID: id)
 
         try await s.f.labels.restore(snapshots)
         let byFile = try await s.f.labels.assignments(fileIDs: s.fileIDs)
-        #expect(byFile[s.fileIDs[0]]?[id] == .auto)
-        #expect(byFile[s.fileIDs[1]]?[id] == nil)   // 写しに無いので消える
+        #expect(byFile[s.fileIDs[0]] == [id])
+        #expect(byFile[s.fileIDs[1]]?.isEmpty != false, "写しに無いので消える")
     }
 
     @Test("相手のファイルが消えていても、残りの紐づけは戻る")
     func restoreSkipsAssignmentsWhoseFileIsGone() async throws {
         let s = try await Setup.make()
         let id = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "L")
-        for file in s.fileIDs { try await s.f.labels.assign(fileID: file, labelID: id, origin: .auto) }
+        for file in s.fileIDs { try await s.f.labels.assign(fileID: file, labelID: id) }
         let snapshots = try await s.f.labels.snapshot(labelIDs: [id])
         try await s.f.labels.deleteLabels([id])
 
@@ -168,7 +163,7 @@ struct LabelEditingTests {
     func archivedFilesLeaveTheFilterCountButKeepTheBadgeCount() async throws {
         let s = try await Setup.make()
         let id = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "サークル値A")
-        for file in s.fileIDs { try await s.f.labels.assign(fileID: file, labelID: id, origin: .auto) }
+        for file in s.fileIDs { try await s.f.labels.assign(fileID: file, labelID: id) }
         try await s.f.labels.recountAll(libraryID: s.f.libraryID)
 
         var label = try #require(try await s.f.labels
@@ -193,7 +188,7 @@ struct LabelEditingTests {
     func orphanedFilesCountForNeither() async throws {
         let s = try await Setup.make()
         let id = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "L")
-        for file in s.fileIDs { try await s.f.labels.assign(fileID: file, labelID: id, origin: .auto) }
+        for file in s.fileIDs { try await s.f.labels.assign(fileID: file, labelID: id) }
         try await s.f.database.writer.write { db in
             try db.execute(sql: "UPDATE managedFile SET state = 'orphaned' WHERE id = ?",
                            arguments: [s.fileIDs[0].rawValue])
@@ -207,41 +202,25 @@ struct LabelEditingTests {
 
     // MARK: - 統合 [LB-07][LE-11]
 
-    @Test("統合で手動付与が消えない [LB-07]", arguments: [
-        (LabelOrigin.manual, LabelOrigin.manuallyRemoved, LabelOrigin.manual),
-        (LabelOrigin.manuallyRemoved, LabelOrigin.manual, LabelOrigin.manual),
-        (LabelOrigin.manual, LabelOrigin.auto, LabelOrigin.manual),
-        (LabelOrigin.auto, LabelOrigin.manual, LabelOrigin.manual),
-        (LabelOrigin.auto, LabelOrigin.manuallyRemoved, LabelOrigin.auto),
-        (LabelOrigin.manuallyRemoved, LabelOrigin.manuallyRemoved, LabelOrigin.manuallyRemoved),
-        (LabelOrigin.auto, LabelOrigin.auto, LabelOrigin.auto),
-    ])
-    func mergeResolvesOriginByPriority(
-        sourceOrigin: LabelOrigin, targetOrigin: LabelOrigin, expected: LabelOrigin
-    ) async throws {
+    /// **どちらを残すかの規則は要らなくなった** [PR-08]。紐づけは付いている／
+    /// いないの 2 値で、保護は紐づけではなくフィールドに付く [PR-02]。統合は
+    /// 「同じものに 2 つの名前が付いていた」を是正する操作なので、両方に
+    /// 付いていたら 1 行へ畳めばよい。
+    @Test("両方に付いていたら 1 行へ畳む [LB-07]")
+    func mergeFoldsOverlappingAssignments() async throws {
         let s = try await Setup.make(files: 1)
         let file = s.fileIDs[0]
         let source = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "旧表記")
         let target = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "新表記")
-        try await Self.put(s.f, file: file, label: source, origin: sourceOrigin)
-        try await Self.put(s.f, file: file, label: target, origin: targetOrigin)
+        try await s.f.labels.assign(fileID: file, labelID: source)
+        try await s.f.labels.assign(fileID: file, labelID: target)
 
         try await s.f.labels.merge(source, into: target)
 
         let byFile = try await s.f.labels.assignments(fileIDs: [file])
-        #expect(byFile[file]?[target] == expected)
-        #expect(byFile[file]?[source] == nil)
-    }
-
-    /// `assign` は `manuallyRemoved` を書けないので、印を立てる経路を使い分ける。
-    static func put(_ f: Fixture, file: FileID, label: LabelID, origin: LabelOrigin) async throws {
-        switch origin {
-        case .manuallyRemoved:
-            try await f.labels.assign(fileID: file, labelID: label, origin: .auto)
-            try await f.labels.unassign(fileID: file, labelID: label, markManuallyRemoved: true)
-        case .auto, .manual:
-            try await f.labels.assign(fileID: file, labelID: label, origin: origin)
-        }
+        #expect(byFile[file] == [target])
+        #expect(try await s.f.labels.labels(groupID: s.group.id, includeArchived: true)
+            .first?.fileCount == 1, "1 ファイルを二重に数えない")
     }
 
     @Test("統合は片方にしか付いていないファイルもまとめる")
@@ -249,14 +228,14 @@ struct LabelEditingTests {
         let s = try await Setup.make()
         let source = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "旧")
         let target = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "新")
-        try await s.f.labels.assign(fileID: s.fileIDs[0], labelID: source, origin: .manual)
-        try await s.f.labels.assign(fileID: s.fileIDs[1], labelID: target, origin: .auto)
+        try await s.f.labels.assign(fileID: s.fileIDs[0], labelID: source)
+        try await s.f.labels.assign(fileID: s.fileIDs[1], labelID: target)
 
         try await s.f.labels.merge(source, into: target)
 
         let byFile = try await s.f.labels.assignments(fileIDs: s.fileIDs)
-        #expect(byFile[s.fileIDs[0]]?[target] == .manual)
-        #expect(byFile[s.fileIDs[1]]?[target] == .auto)
+        #expect(byFile[s.fileIDs[0]] == [target])
+        #expect(byFile[s.fileIDs[1]] == [target])
         #expect(try await s.f.labels.labels(groupID: s.group.id, includeArchived: true)
             .first?.fileCount == 2)
     }
@@ -277,12 +256,12 @@ struct LabelEditingTests {
         let s = try await Setup.make()
         let source = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "旧")
         let target = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "新")
-        try await s.f.labels.assign(fileID: s.fileIDs[0], labelID: source, origin: .manual)
-        try await s.f.labels.assign(fileID: s.fileIDs[0], labelID: target, origin: .auto)
-        try await s.f.labels.assign(fileID: s.fileIDs[1], labelID: source, origin: .auto)
+        try await s.f.labels.assign(fileID: s.fileIDs[0], labelID: source)
+        try await s.f.labels.assign(fileID: s.fileIDs[0], labelID: target)
+        try await s.f.labels.assign(fileID: s.fileIDs[1], labelID: source)
 
-        // **統合元と統合先の両方を控える**——統合先は origin が書き換わり、
-        // 統合元にしか無かった紐づけも移ってくるため。
+        // **統合元と統合先の両方を控える**——統合元にしか無かった紐づけが
+        // 統合先へ移ってくるため。
         let before = try await s.f.labels.snapshot(labelIDs: [source, target])
         try await s.f.labels.merge(source, into: target)
         #expect(try await s.f.labels.labels(groupID: s.group.id, includeArchived: true)
@@ -293,10 +272,8 @@ struct LabelEditingTests {
         let all = try await s.f.labels.labels(groupID: s.group.id, includeArchived: true)
         #expect(Set(all.map(\.id)) == Set([source, target]))
         let byFile = try await s.f.labels.assignments(fileIDs: s.fileIDs)
-        #expect(byFile[s.fileIDs[0]]?[source] == .manual)
-        #expect(byFile[s.fileIDs[0]]?[target] == .auto)   // 上書きが戻っている
-        #expect(byFile[s.fileIDs[1]]?[source] == .auto)
-        #expect(byFile[s.fileIDs[1]]?[target] == nil)
+        #expect(byFile[s.fileIDs[0]] == [source, target])
+        #expect(byFile[s.fileIDs[1]] == [source], "統合先へ移った紐づけが戻っている")
     }
 
     // MARK: - 改名 [LB-06][LE-11]
@@ -362,22 +339,5 @@ struct LabelEditingTests {
         try await s.f.labels.setColor(id, hex: nil)
         #expect(try await s.f.labels.labels(groupID: s.group.id, includeArchived: true)
             .first?.colorHex == nil)
-    }
-}
-
-@Suite("統合したときの origin [LB-07]")
-struct LabelOriginMergingTests {
-    @Test("manual > auto > manuallyRemoved で、順序を入れ替えても同じ")
-    func priorityIsSymmetric() {
-        let all = LabelOrigin.allCases
-        for a in all {
-            for b in all {
-                #expect(LabelOrigin.merging(a, b) == LabelOrigin.merging(b, a))
-            }
-        }
-        #expect(LabelOrigin.merging(.manual, .manuallyRemoved) == .manual)
-        #expect(LabelOrigin.merging(.auto, .manuallyRemoved) == .auto)
-        #expect(LabelOrigin.merging(.manual, .auto) == .manual)
-        #expect(LabelOrigin.merging(.manuallyRemoved, .manuallyRemoved) == .manuallyRemoved)
     }
 }

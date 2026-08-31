@@ -174,12 +174,11 @@ struct IdentityTests {
         let id = try await f.files.upsert(f.snapshot(inode: 1, path: "作品.cbz"))
         let group = try #require(try await f.labels.group(libraryID: f.libraryID, index: 2))
         let label = try await f.labels.ensureLabel(groupID: group.id, name: "サークルA")
-        try await f.labels.assign(fileID: id, labelID: label, origin: .auto)
+        try await f.labels.assign(fileID: id, labelID: label)
 
         try await f.files.reidentify(id, to: FileIdentity(volumeUUID: "VOL", inode: 777))
         #expect(try await f.files.find(identity: FileIdentity(volumeUUID: "VOL", inode: 777)) == id)
-        let assigned = try await f.labels.labelIDs(fileID: id)
-        #expect(assigned.map(\.labelID) == [label])
+        #expect(try await f.labels.labelIDs(fileID: id) == [label])
     }
 
     @Test("観測されなかったレコードは孤立にする。削除しない [ID-06][ID3-04]")

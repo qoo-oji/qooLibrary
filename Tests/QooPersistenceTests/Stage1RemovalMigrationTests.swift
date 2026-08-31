@@ -99,7 +99,8 @@ struct Stage1RemovalMigrationTests {
             try Row.fetchOne($0, sql: "SELECT * FROM managedFile WHERE id = 1")
         })
         #expect(row["title"] == "手で直した題")
-        #expect(row["titleOrigin"] == "manual")
+        // 手動の印は v10 で保護スコープへ移る [PR-08]。
+        #expect(row["protectedScopes"] == #"["basic"]"#)
         #expect(row["rating"] == 3)
         #expect(row["isArchived"] == true)
     }

@@ -24,17 +24,14 @@ extension SQLiteManagedFileRepository {
             guard !records.isEmpty else { return [] }
             let ids = records.compactMap(\.id)
 
-            // ラベル件数。**`manuallyRemoved` は数えない**——利用者から見て
-            // 「付いている」ラベルだけを数えないと、削除の確認 [FAW-03] の
-            // 数字が右ペインの表示と食い違う [RC-04]。
+            // ラベル件数。行があること＝付いていることなので、素朴に
+            // 数えればよい [PR-08]。
             var labelCounts: [Int64: Int] = [:]
-            var countArgs: [any DatabaseValueConvertible] = ids
-            countArgs.append(LabelOrigin.manuallyRemoved.rawValue)
             for row in try Row.fetchAll(db, sql: """
                 SELECT managedFileId, COUNT(*) AS n FROM fileLabel
-                WHERE managedFileId IN (\(Self.placeholders(ids.count))) AND origin <> ?
+                WHERE managedFileId IN (\(Self.placeholders(ids.count)))
                 GROUP BY managedFileId
-                """, arguments: StatementArguments(countArgs) ?? StatementArguments()) {
+                """, arguments: StatementArguments(ids) ?? StatementArguments()) {
                 labelCounts[row["managedFileId"]] = row["n"]
             }
 

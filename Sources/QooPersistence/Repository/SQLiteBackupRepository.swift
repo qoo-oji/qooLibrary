@@ -105,31 +105,43 @@ public struct SQLiteBackupRepository: BackupRepository, Sendable {
     }
 
     private static func exportFiles(_ db: Database, libraryID: Int64) throws -> [FileBackup] {
+        // 保護スコープの `field:` は**行 ID ではなくフィールド番号**で出す
+        // [JS-04 と同じ理由]——行 ID を書くと、別の環境で取り込んだときに
+        // 無関係なフィールドを保護する。
+        let groupIndexByID = try Row.fetchAll(db, sql:
+            "SELECT id, groupIndex FROM labelGroup WHERE libraryId = ?", arguments: [libraryID])
+            .reduce(into: [Int64: Int]()) { $0[$1["id"] as Int64] = $1["groupIndex"] as Int }
+
         // ラベル紐づけは**ライブラリ単位で 1 回引いて**ファイル ID で束ねる。
         // ファイルごとに引くと 10 万件で 10 万回の問い合わせになる。
         //
-        // **`origin = 'auto'` は引かない** [RC-04]。自動で付いたラベルは
-        // 再スキャンが付け直すので、書き出すと蔵書の規模ぶん無駄に膨らむ。
-        // 残す価値があるのは「人が付けた」と「人が外した」の記録だけ。
+        // **保護されたフィールドの紐づけだけを出す** [PR-02][MG-22]。保護されて
+        // いないフィールドのラベルは再スキャンが付け直すので、書き出しても
+        // 取り込みが何もしない——蔵書の規模ぶん無駄に膨らむだけ。
+        // 保護のあるファイルへ先に絞ってから（`protectedScopes <> '[]'`）
+        // フィールドごとの判定をする。
         var labelsByFile: [Int64: [FileLabelBackup]] = [:]
         let rows = try Row.fetchAll(db, sql: """
-            SELECT fileLabel.managedFileId AS fileId, fileLabel.origin, fileLabel.assignedAt,
-                   label.name AS labelName,
-                   labelGroup.groupIndex AS groupIndex, labelGroup.name AS groupName
+            SELECT fileLabel.managedFileId AS fileId, fileLabel.assignedAt,
+                   label.name AS labelName, label.labelGroupId AS groupId,
+                   labelGroup.groupIndex AS groupIndex, labelGroup.name AS groupName,
+                   mf.protectedScopes AS scopes
             FROM fileLabel
             JOIN label ON label.id = fileLabel.labelId
             JOIN labelGroup ON labelGroup.id = label.labelGroupId
-            WHERE labelGroup.libraryId = ?
-              AND fileLabel.origin <> 'auto'
+            JOIN managedFile mf ON mf.id = fileLabel.managedFileId
+            WHERE labelGroup.libraryId = ? AND mf.protectedScopes <> ?
             ORDER BY fileLabel.managedFileId, labelGroup.groupIndex, label.name
-            """, arguments: [libraryID])
+            """, arguments: [libraryID, ProtectionScopeCoding.empty])
         for row in rows {
+            let scopes = ProtectionScopeCoding.decode(row["scopes"])
+            guard scopes.contains(.field(LabelGroupID(rawValue: row["groupId"] as Int64)))
+            else { continue }
             let fileID: Int64 = row["fileId"]
             labelsByFile[fileID, default: []].append(FileLabelBackup(
                 groupIndex: row["groupIndex"],
                 groupName: row["groupName"],
                 labelName: row["labelName"],
-                origin: row["origin"],
                 assignedAt: Date(timeIntervalSinceReferenceDate: row["assignedAt"])))
         }
 
@@ -146,14 +158,21 @@ public struct SQLiteBackupRepository: BackupRepository, Sendable {
             .compactMap { record -> FileBackup? in
                 let id = record.id ?? 0
                 let labels = labelsByFile[id] ?? []
+                let scopes = ProtectionScopeCoding.decode(record.protectedScopes)
                 let file = FileBackup(
                     relativePath: record.relativePath,
                     filename: record.filename,
                     rating: record.rating,
-                    titleOrigin: record.titleOrigin,
-                    // `titleOrigin == "auto"` のタイトルはパーサが作り直す [RP-11]。
+                    // 保護されていない基本情報はパーサが作り直す [PR-01]。
                     // 出しても害は無いが、10 万件ぶん膨らむだけで復元には使わない。
-                    title: record.titleOrigin == ValueOrigin.auto.rawValue ? nil : record.title,
+                    title: scopes.contains(.basic) ? record.title : nil,
+                    seriesName: scopes.contains(.basic) ? record.seriesName : nil,
+                    volumeNumber: scopes.contains(.basic) ? record.volumeNumber : nil,
+                    volumeKind: scopes.contains(.basic) ? record.volumeKind : nil,
+                    volumeRaw: scopes.contains(.basic) ? record.volumeRaw : nil,
+                    authorName: scopes.contains(.basic) ? record.authorName : nil,
+                    protectedScopes: Self.exportScopes(scopes,
+                                                       groupIndexByID: groupIndexByID),
                     coverImageSource: record.coverImageSource,
                     // 同じ理由で、自動抽出したカバーの参照は出さない [IV-03]。
                     coverImageRef: record.coverImageSource == CoverSource.auto.rawValue
@@ -175,6 +194,59 @@ public struct SQLiteBackupRepository: BackupRepository, Sendable {
     }
 }
 
+extension SQLiteBackupRepository {
+    /// 保護スコープを、環境に依存しない綴りへ翻訳する [PR-09][JS-04]。
+    ///
+    /// `field:` の数字は**行 ID ではなくフィールド番号**にする。行 ID を
+    /// 書くと、別の環境で取り込んだときに無関係なフィールドを保護する。
+    static func exportScopes(_ scopes: Set<ProtectionScope>,
+                             groupIndexByID: [Int64: Int]) -> [String]? {
+        guard !scopes.isEmpty else { return nil }
+        var keys: [String] = []
+        for scope in scopes {
+            switch scope {
+            case .basic:
+                keys.append(ProtectionScope.basicKey)
+            case .field(let id):
+                // **翻訳できない保護は出さない。** フィールドが消えていれば
+                // 番号が無く、取り込み先でも意味を持てない。
+                guard let index = groupIndexByID[id.rawValue] else { continue }
+                keys.append(ProtectionScope.portableFieldKey(index: index))
+            }
+        }
+        return keys.isEmpty ? nil : keys.sorted()
+    }
+
+    /// 文書の保護スコープを、この環境の行 ID へ翻訳する [PR-09]。
+    ///
+    /// **版 2 以前の文書は `protectedScopes` を持たない**ので、`titleOrigin` と
+    /// 紐づけの `origin` から導く——DB の `v10_metadataProtection` と同じ規則
+    /// （`LegacyMetadataProtection`）を通すので、以前書き出した文書と移行済みの
+    /// DB とで結果が食い違わない。
+    static func importScopes(_ file: FileBackup,
+                             groupIDByIndex: [Int: Int64]) -> Set<ProtectionScope> {
+        var result: Set<ProtectionScope> = []
+        if let keys = file.protectedScopes {
+            for key in keys {
+                if key == ProtectionScope.basicKey { result.insert(.basic); continue }
+                guard let index = ProtectionScope.portableFieldIndex(from: key),
+                      let id = groupIDByIndex[index] else { continue }
+                result.insert(.field(LabelGroupID(rawValue: id)))
+            }
+            return result
+        }
+        if LegacyMetadataProtection.basicIsProtected(titleOrigin: file.titleOrigin) {
+            result.insert(.basic)
+        }
+        for link in file.labels
+        where LegacyMetadataProtection.fieldIsProtected(labelOrigin: link.origin) {
+            guard let id = groupIDByIndex[link.groupIndex] else { continue }
+            result.insert(.field(LabelGroupID(rawValue: id)))
+        }
+        return result
+    }
+}
+
 extension FileBackup {
     /// この行に、再スキャンでは作り直せない情報が載っているか [MG-22]。
     ///
@@ -182,7 +254,7 @@ extension FileBackup {
     /// 書き戻すか）が別々の条件を持つと、片方だけ直したときに静かにずれる。
     var carriesUnrecoverableData: Bool {
         if rating != 0 { return true }
-        if titleOrigin != "auto" { return true }
+        if protectedScopes?.isEmpty == false { return true }
         if coverImageSource != "auto" { return true }
         if isArchived || archivedFromPath != nil { return true }
         // `active` 以外の状態（孤立・ゴミ箱）は観測の結果なので再現し得るが、
@@ -190,9 +262,8 @@ extension FileBackup {
         if trashedAt != nil { return true }
         // 「以後無視する」[AL-33] も人の判断。これだけを持つ行も残す。
         if isUnresolvedIgnored == true { return true }
-        // ここへ来る `labels` は `origin != 'auto'` に絞ってある——自動で
-        // 付いたラベルは再スキャンが付け直す [RC-04]。残っているのは
-        // 「人が付けた」「人が外した」の記録だけなので、1 件でもあれば残す。
+        // ここへ来る `labels` は保護されたフィールドのものだけに絞ってある
+        // ——保護されていなければ再スキャンが付け直す [PR-01]。
         return !labels.isEmpty
     }
 }
@@ -352,9 +423,14 @@ extension SQLiteBackupRepository {
             }
             filesUpdated += 1
             if !dryRun {
-                try writeBack(db, file, into: existing, fileID: fileID)
+                try writeBack(db, file, into: existing, fileID: fileID,
+                              scopes: importScopes(file, groupIDByIndex: groupIDByIndex))
             }
             for link in file.labels {
+                // 版 2 以前の「外した」印は紐づけとして取り込まない [PR-08]。
+                // 保護のほうへ読み替え済みで、行を作ると外したはずのラベルが
+                // 復活する。
+                guard LegacyMetadataProtection.isAttached(labelOrigin: link.origin) else { continue }
                 let normalized = TextNormalizer.normalize(link.labelName)
                 let key = LabelKey(groupIndex: link.groupIndex, normalized: normalized)
                 guard let labelID = labelIDByKey[key] else {
@@ -368,8 +444,7 @@ extension SQLiteBackupRepository {
                 if !already { fileLabelsAdded += 1 }
                 guard !dryRun else { continue }
                 try SQLiteLabelRepository.assign(
-                    db, fileID: FileID(rawValue: fileID), labelID: LabelID(rawValue: labelID),
-                    origin: LabelOrigin(rawValue: link.origin) ?? .manual)
+                    db, fileID: FileID(rawValue: fileID), labelID: LabelID(rawValue: labelID))
             }
         }
 
@@ -386,13 +461,22 @@ extension SQLiteBackupRepository {
     /// 古いバックアップで上書きすることになる（ファイルサイズ・更新日時・
     /// パーサの結果など、実体が正である列）。
     private static func writeBack(_ db: Database, _ file: FileBackup,
-                                  into existing: ManagedFileRecord, fileID: Int64) throws {
+                                  into existing: ManagedFileRecord, fileID: Int64,
+                                  scopes: Set<ProtectionScope>) throws {
         var record = existing
         record.rating = file.rating
-        record.titleOrigin = file.titleOrigin
-        // 自動タイトルはパーサが作る。手動編集のときだけ上書きする [RP-11]。
-        if file.titleOrigin != ValueOrigin.auto.rawValue {
+        record.protectedScopes = ProtectionScopeCoding.encode(scopes)
+        // 保護されていない基本情報はパーサが作る。保護されているときだけ
+        // 書き戻す [PR-01]。**4 つとも戻す**——1 つでも落とすと、保護した
+        // つもりの値が復元後に自動値のまま残る。
+        if scopes.contains(.basic) {
             record.title = file.title
+            record.seriesName = file.seriesName
+            record.seriesKey = file.seriesName.map { TextNormalizer.normalize($0) }
+            record.volumeNumber = file.volumeNumber
+            if let kind = file.volumeKind { record.volumeKind = kind }
+            record.volumeRaw = file.volumeRaw
+            record.authorName = file.authorName
         }
         record.coverImageSource = file.coverImageSource
         if file.coverImageSource != CoverSource.auto.rawValue {

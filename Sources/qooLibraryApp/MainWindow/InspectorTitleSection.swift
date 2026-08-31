@@ -82,35 +82,42 @@ struct InspectorTitleSection: View {
             .onChange(of: isEditing) { wasEditing, nowEditing in
                 if wasEditing && !nowEditing { commit() }
             }
-        if subject.canRederive {
-            // [RP-12] **手動編集のときだけ出す**（`canRederive`）——自動のままで
-            // 押しても何も変わらない導線を常駐させない。
-            Button("inspector.title.rederive") {
-                Task { await rederive() }
-            }
-            .buttonStyle(.link)
-            .font(.system(size: Tokens.fontSize.caption))
+        // **シリーズ名と巻数も編集できる** [RP-13][RP-14]。基本情報は 1
+        // かたまり [PR-02] なので、どれを直しても同じスコープが保護される。
+        LabeledContent("inspector.seriesName") {
+            EditableMetadataField(
+                value: subject.seriesName ?? "", identity: subject.url,
+                commit: { text in Task { await commitSeries(text) } })
         }
-        // **この欄の値がどこから来たか**を出す [RP-11]。手動編集は再スキャンで
-        // 上書きされないので、そのことが読み取れないと「なぜ更新されないのか」
-        // が分からない。
-        if subject.titleOrigin == .manual {
-            Label("inspector.title.manual", systemImage: "pencil")
+        LabeledContent("inspector.volume") {
+            EditableMetadataField(
+                value: subject.volumeDisplay ?? "", identity: subject.url,
+                commit: { text in Task { await commitVolume(text) } })
+        }
+        // **保護されていることを出す** [PR-03]。走査が触れないので、
+        // そのことが読み取れないと「なぜ更新されないのか」が分からない。
+        if subject.isBasicProtected {
+            HStack(spacing: Tokens.spacing.xs) {
+                Label("inspector.basic.protected", systemImage: "lock.fill")
+                    .font(.system(size: Tokens.fontSize.caption))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                // [PR-04] 解除 ＝ 手動編集の破棄。**確認は出さない**
+                // ［ユーザー判断］——⌘Z で戻せる操作に毎回 1 枚挟むと、本当に
+                // 見てほしいときの 1 枚まで読み飛ばされる [RA-05 と同じ判断]。
+                Button("inspector.basic.unprotect") {
+                    Task { await rederive() }
+                }
+                .buttonStyle(.link)
                 .font(.system(size: Tokens.fontSize.caption))
-                .foregroundStyle(.secondary)
+            }
         }
     }
 
-    /// シリーズ名・巻数 [DT-09]。**値があるときだけ出す**——空の行が並ぶと、
-    /// 情報が無いのか読み込めていないのか区別が付かない。
+    /// 空の `metadataRows` は残さない（呼び出し側の構造を変えないため）。
     @ViewBuilder
     private func metadataRows(_ subject: TitleEditorModel.Subject) -> some View {
-        if let series = subject.seriesName, !series.isEmpty {
-            LabeledContent("inspector.seriesName", value: series)
-        }
-        if let volume = subject.volumeDisplay {
-            LabeledContent("inspector.volume", value: volume)
-        }
+        EmptyView()
     }
 
     // MARK: - 操作
@@ -165,6 +172,24 @@ struct InspectorTitleSection: View {
         }
     }
 
+    private func commitSeries(_ text: String) async {
+        do {
+            try await model.commitSeriesName(text)
+        } catch {
+            await NotificationRouter.shared.presentError(
+                error, whatHappened: String(localized: "error.setTitleFailed", locale: locale))
+        }
+    }
+
+    private func commitVolume(_ text: String) async {
+        do {
+            try await model.commitVolume(text)
+        } catch {
+            await NotificationRouter.shared.presentError(
+                error, whatHappened: String(localized: "error.setTitleFailed", locale: locale))
+        }
+    }
+
     private func rederive() async {
         do {
             try await model.rederive()
@@ -172,5 +197,62 @@ struct InspectorTitleSection: View {
             await NotificationRouter.shared.presentError(
                 error, whatHappened: String(localized: "error.setTitleFailed", locale: locale))
         }
+    }
+}
+
+/// 基本情報の 1 項目ぶんの入力欄 [RP-13][RP-14]。
+///
+/// **タイトル欄と同じ「打っている最中／外から書き換えられた」の見分け**を
+/// 持つ（`InspectorTitleSection.syncDraft` のコメントに理由がある）。3 つの
+/// 欄でそれぞれ書くと、片方だけ直して取り残す。
+private struct EditableMetadataField: View {
+    let value: String
+    /// 対象が変わったら草案を入れ替えるための鍵。
+    let identity: URL
+    let commit: (String) -> Void
+
+    @State private var draft = ""
+    @State private var draftIdentity: URL?
+    @State private var lastKnown = ""
+    @FocusState private var isEditing: Bool
+
+    var body: some View {
+        TextField("", text: $draft)
+            .editableFieldChrome()
+            .focused($isEditing)
+            .onSubmit { commitIfTyped() }
+            .onChange(of: isEditing) { was, now in
+                if was && !now { commitIfTyped() }
+            }
+            .onChange(of: SyncKey(identity: identity, value: value), initial: true) { _, key in
+                sync(key)
+            }
+    }
+
+    private struct SyncKey: Equatable {
+        let identity: URL
+        let value: String
+    }
+
+    private func sync(_ key: SyncKey) {
+        if draftIdentity != key.identity {
+            draft = key.value
+            draftIdentity = key.identity
+            lastKnown = key.value
+            return
+        }
+        if key.value != lastKnown {          // ⌘Z・再取得・再スキャン
+            draft = key.value
+            lastKnown = key.value
+            return
+        }
+        guard !isEditing, draft != key.value else { return }
+        draft = key.value
+    }
+
+    private func commitIfTyped() {
+        guard TitleEditorModel.shouldCommit(draft: draft, lastKnown: lastKnown) else { return }
+        lastKnown = draft
+        commit(draft)
     }
 }

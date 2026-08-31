@@ -49,7 +49,8 @@ struct EmbeddedMetadataMigrationTests {
         })
         // **手で直した題も評価も残る。**移行で失ってはならない値 [MG-22]。
         #expect(row["title"] == "手で直した題")
-        #expect(row["titleOrigin"] == "manual")
+        // **手動の印は保護スコープへ移る** [PR-08]（`v10_metadataProtection`）。
+        #expect(row["protectedScopes"] == #"["basic"]"#)
         #expect(row["rating"] == 3)
         // **印は NULL。**「まだ読んでいない」＝次のスキャンで読む [EM-07]。
         // 移行時に読みに行かない——移行はストアを開く前に走るので、

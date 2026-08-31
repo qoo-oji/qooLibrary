@@ -36,7 +36,7 @@ struct QueryTests {
                                size: Int64((i + 1) * 100)))
                 s.fileID[name] = id
                 for label in labels {
-                    try await f.labels.assign(fileID: id, labelID: s.labelID[label]!, origin: .auto)
+                    try await f.labels.assign(fileID: id, labelID: s.labelID[label]!)
                 }
             }
             return s
@@ -340,7 +340,7 @@ struct QueryTests {
 
 // MARK: - ラベル
 
-@Suite("SQLiteLabelRepository [LB-01〜LB-07][RC-04][DB-02][IX-03][IX-04]")
+@Suite("SQLiteLabelRepository [LB-01〜LB-07][PR-01][DB-02][IX-03][IX-04]")
 struct LabelRepositoryTests {
     @Test("一意性は (グループ, 正規化名)。表示名は最初の原文 [LB-01][N-03][NM-06]")
     func ensureLabelDeduplicates() async throws {
@@ -378,12 +378,12 @@ struct LabelRepositoryTests {
         #expect(try await count() == 0)
         let f1 = try await f.files.upsert(f.snapshot(inode: 1, path: "1.cbz"))
         let f2 = try await f.files.upsert(f.snapshot(inode: 2, path: "2.cbz"))
-        try await f.labels.assign(fileID: f1, labelID: label, origin: .auto)
-        try await f.labels.assign(fileID: f2, labelID: label, origin: .manual)
+        try await f.labels.assign(fileID: f1, labelID: label)
+        try await f.labels.assign(fileID: f2, labelID: label)
         #expect(try await count() == 2)
-        try await f.labels.assign(fileID: f1, labelID: label, origin: .manual)   // 二重付与
+        try await f.labels.assign(fileID: f1, labelID: label)   // 二重付与
         #expect(try await count() == 2, "同じ組で二重に数えてはいけない")
-        try await f.labels.unassign(fileID: f1, labelID: label, markManuallyRemoved: false)
+        try await f.labels.unassign(fileID: f1, labelID: label)
         #expect(try await count() == 1)
     }
 
@@ -393,7 +393,7 @@ struct LabelRepositoryTests {
         let group = try #require(try await f.labels.group(libraryID: f.libraryID, index: 2))
         let label = try await f.labels.ensureLabel(groupID: group.id, name: "C1")
         let file = try await f.files.upsert(f.snapshot(inode: 1, path: "1.cbz"))
-        try await f.labels.assign(fileID: file, labelID: label, origin: .auto)
+        try await f.labels.assign(fileID: file, labelID: label)
         // 帳簿をわざと壊す
         try await f.database.writer.write {
             try $0.execute(sql: "UPDATE label SET fileCount = 999 WHERE id = ?",
@@ -411,15 +411,15 @@ struct LabelRepositoryTests {
         let group = try #require(try await f.labels.group(libraryID: f.libraryID, index: 2))
         let label = try await f.labels.ensureLabel(groupID: group.id, name: "C1")
         let file = try await f.files.upsert(f.snapshot(inode: 1, path: "1.cbz"))
-        try await f.labels.assign(fileID: file, labelID: label, origin: .auto)
+        try await f.labels.assign(fileID: file, labelID: label)
         try await f.files.markTrashed([file], at: Date())
         try await f.labels.recountAll(libraryID: f.libraryID)
         #expect(try await f.labels.labels(groupID: group.id, includeArchived: true)
             .first { $0.id == label }?.fileCount == 0)
     }
 
-    /// **再計算で復活させてはいけない** [RC-04]。
-    @Test("手動で外したラベルは自動再計算で復活しない [RC-04]")
+    /// **保護されたフィールドは丸ごと据え置く** [PR-01][PR-02]。
+    @Test("保護されたフィールドは走査が動かさない [PR-01][PR-02]")
     func manuallyRemovedIsNotRevived() async throws {
         let f = try await Fixture.make()
         let group = try #require(try await f.labels.group(libraryID: f.libraryID, index: 2))
@@ -428,27 +428,29 @@ struct LabelRepositoryTests {
         let file = try await f.files.upsert(f.snapshot(inode: 1, path: "1.cbz"))
 
         try await f.labels.replaceAutoLabels(fileID: file, labelIDs: [keep, removed])
-        try await f.labels.unassign(fileID: file, labelID: removed, markManuallyRemoved: true)
+        try await f.labels.unassign(fileID: file, labelID: removed)
+        // 外したフィールドは保護される [PR-03]（製品では `AssignLabelCommand` が
+        // 同じトランザクションで立てる）。
+        try await f.files.setProtectedScopes([file: [.field(group.id)]])
 
-        // 再計算で両方が当たっても、外したものは付け直さない
+        // 再計算で両方が当たっても、保護されたフィールドには触れない
         try await f.labels.replaceAutoLabels(fileID: file, labelIDs: [keep, removed])
-        let assigned = try await f.labels.labelIDs(fileID: file)
-        #expect(assigned.first { $0.labelID == keep }?.origin == .auto)
-        #expect(assigned.first { $0.labelID == removed }?.origin == .manuallyRemoved)
+        let assigned = Set(try await f.labels.labelIDs(fileID: file))
+        #expect(assigned == [keep], "保護されたフィールドへ付け足してはいけない")
     }
 
-    @Test("手動で付けたラベルは自動再計算で消えない [RC-04]")
+    @Test("保護されたフィールドのラベルは走査で消えない [PR-01]")
     func manualIsNotRemovedByRecalculation() async throws {
         let f = try await Fixture.make()
         let group = try #require(try await f.labels.group(libraryID: f.libraryID, index: 2))
         let manual = try await f.labels.ensureLabel(groupID: group.id, name: "手動")
         let auto = try await f.labels.ensureLabel(groupID: group.id, name: "自動")
         let file = try await f.files.upsert(f.snapshot(inode: 1, path: "1.cbz"))
-        try await f.labels.assign(fileID: file, labelID: manual, origin: .manual)
+        try await f.labels.assign(fileID: file, labelID: manual)
+        try await f.files.setProtectedScopes([file: [.field(group.id)]])   // [PR-03]
         try await f.labels.replaceAutoLabels(fileID: file, labelIDs: [auto])
-        let assigned = try await f.labels.labelIDs(fileID: file)
-        #expect(Set(assigned.map(\.labelID)) == [manual, auto])
-        #expect(assigned.first { $0.labelID == manual }?.origin == .manual)
+        // 保護されたフィールドは丸ごと据え置き——`auto` も足されない [PR-01]。
+        #expect(Set(try await f.labels.labelIDs(fileID: file)) == [manual])
     }
 
     @Test("自動ラベルの入れ替えで不要になったものは外れる [RC-01]")
@@ -460,7 +462,7 @@ struct LabelRepositoryTests {
         let file = try await f.files.upsert(f.snapshot(inode: 1, path: "1.cbz"))
         try await f.labels.replaceAutoLabels(fileID: file, labelIDs: [old])
         try await f.labels.replaceAutoLabels(fileID: file, labelIDs: [new])
-        #expect(try await f.labels.labelIDs(fileID: file).map(\.labelID) == [new])
+        #expect(try await f.labels.labelIDs(fileID: file) == [new])
     }
 
     @Test("ラベルの統合 [LB-07]")
@@ -471,13 +473,13 @@ struct LabelRepositoryTests {
         let b = try await f.labels.ensureLabel(groupID: group.id, name: "表記ゆれB")
         let f1 = try await f.files.upsert(f.snapshot(inode: 1, path: "1.cbz"))
         let f2 = try await f.files.upsert(f.snapshot(inode: 2, path: "2.cbz"))
-        try await f.labels.assign(fileID: f1, labelID: a, origin: .auto)
-        try await f.labels.assign(fileID: f2, labelID: b, origin: .auto)
-        try await f.labels.assign(fileID: f1, labelID: b, origin: .auto)   // 両方持つ
+        try await f.labels.assign(fileID: f1, labelID: a)
+        try await f.labels.assign(fileID: f2, labelID: b)
+        try await f.labels.assign(fileID: f1, labelID: b)   // 両方持つ
 
         try await f.labels.merge(a, into: b)
         #expect(try await f.labels.labels(groupID: group.id, includeArchived: true).map(\.id) == [b])
-        #expect(try await f.labels.labelIDs(fileID: f1).map(\.labelID) == [b])
+        #expect(try await f.labels.labelIDs(fileID: f1) == [b])
         #expect(try await f.labels.labels(groupID: group.id, includeArchived: true)
             .first?.fileCount == 2)
     }

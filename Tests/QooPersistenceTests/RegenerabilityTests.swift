@@ -45,14 +45,16 @@ struct RegenerabilityTests {
             // 要件が明示する再生成不可能データ [MG-22] が確かに含まれること。
             #expect(report["managedFile"]?.contains("rating") == true)
             #expect(report["managedFile"]?.contains("archivedFromPath") == true)
-            #expect(report["managedFile"]?.contains("titleOrigin") == true)
+            #expect(report["managedFile"]?.contains("protectedScopes") == true)
             #expect(report["managedFile"]?.contains("coverImageSource") == true)
             #expect(report["label"]?.contains("isPinned") == true)
             #expect(report["label"]?.contains("isArchived") == true)
             #expect(report["label"]?.contains("name") == true)
             #expect(report["labelGroup"]?.contains("name") == true)
             #expect(report["labelGroup"]?.contains("colorHexLight") == true)
-            #expect(report["fileLabel"]?.contains("origin") == true)
+            // `fileLabel` に残る非再生成列は主キーだけ——保護は
+            // `managedFile.protectedScopes` にある [PR-02]。
+            #expect(report["fileLabel"]?.isEmpty == true)
 
             FileHandle.standardError.write(Data(
                 ("[MG-22] 再生成不可能な列:\n" + report.sorted { $0.key < $1.key }

@@ -347,10 +347,29 @@ public protocol ManagedFileRepository: Sendable {
     /// タイトル・シリーズ名・巻数・著者をまとめて書く [RP-10][RP-12]。
     ///
     /// **`seriesKey` はここで導出する** — 呼び出し側に正規化させない [3.8 節]。
-    /// `titleOrigin` も渡された値をそのまま書く（`applyParsedFields` のように
-    /// `manual` を守る細工はしない）——守る側と、意図して書き換える側は
-    /// 別の操作である。
-    func setFields(_ edit: FileFieldEdit, id: FileID) async throws
+    /// **保護は見ない**（`applyParsedFields` のように据え置く細工はしない）
+    /// ——守る側と、意図して書き換える側は別の操作である。保護を付けるのは
+    /// 呼び出し側のコマンドで、編集と同じ Undo 単位で行う [PR-03]。
+    /// **保護スコープも同じトランザクションで書く** [PR-03]。別々に呼ぶと
+    /// 「値は変わったが保護が付いていない」状態があり得て、次の走査で手で
+    /// 直した値が黙って自動値へ戻る。呼び出し側が忘れられないよう引数にする。
+    func setFields(_ edit: FileFieldEdit, id: FileID,
+                   protectedScopes: Set<ProtectionScope>) async throws
+
+    // MARK: - メタデータの保護 [PR-01〜PR-09]
+
+    /// 保護スコープを置き換える [PR-03][PR-04][PR-05]。
+    ///
+    /// **ファイルごとに違う集合を渡せる**——Undo が「変更前の集合を 1 件ずつ」
+    /// 書き戻すため [RA-06 と同じ理由]。複数選択に一律の集合を書き戻すと、
+    /// 元から保護されていたファイルの保護まで落とす。
+    func setProtectedScopes(_ scopes: [FileID: Set<ProtectionScope>]) async throws
+
+    /// いま保護されているスコープを読む [PR-05]。
+    ///
+    /// `FileRow` からも取れるが、コマンドは行を持たずに ID だけを持つことが
+    /// あるので、ID から直に引ける口を用意する（変更前の値を控えるのに要る）。
+    func protectedScopes(ids: [FileID]) async throws -> [FileID: Set<ProtectionScope>]
 
     /// カバー画像の割り当てを書く [CV-02][CV-06][CV-07]。
     ///
@@ -482,12 +501,10 @@ public struct LabelSnapshot: Sendable, Hashable {
     /// 紐づけ 1 件ぶん。
     public struct Assignment: Sendable, Hashable {
         public let fileID: FileID
-        public let origin: LabelOrigin
         public let assignedAt: Date
 
-        public init(fileID: FileID, origin: LabelOrigin, assignedAt: Date) {
+        public init(fileID: FileID, assignedAt: Date) {
             self.fileID = fileID
-            self.origin = origin
             self.assignedAt = assignedAt
         }
     }
@@ -499,9 +516,7 @@ public struct LabelSnapshot: Sendable, Hashable {
     public let colorHex: String?
     public let isPinned: Bool
     public let isArchived: Bool
-    /// そのラベルの紐づけ**全件**。`manuallyRemoved` の行も含む——除去の印は
-    /// 「付いていない」ではなく「外したと記録されている」という別の状態で、
-    /// 落とすと ⌘Z のあと再スキャンでラベルが復活する [RC-04]。
+    /// そのラベルの紐づけ全件。
     public let assignments: [Assignment]
 
     public init(id: LabelID, groupID: LabelGroupID, name: String, normalizedName: String,
@@ -533,19 +548,17 @@ public enum LabelEditError: Error, Sendable, Hashable {
 
 /// 1 ファイル 1 ラベルぶんの紐づけの変更 [RL-01][RL-07]。
 ///
-/// **`origin` を `Optional` で持つのは、Undo が「元の状態」をそのまま書き戻す
-/// ため。** `nil` は「紐づけの行が無かった」＝消す、`.manuallyRemoved` は
-/// 「外した印が付いていた」[RC-04] を意味し、この 3 種を区別できないと
-/// ⌘Z が別の状態へ戻してしまう（評価で「変更前の値を 1 件ずつ持つ」と
-/// 決めたのと同じ理由 [RA-06]）。
+/// **付いている／いないの 2 値**。「外した印」という第 3 の状態は保護スコープ
+/// へ移った [PR-08] ので、Undo は行の有無だけを書き戻せばよい（変更前の状態を
+/// 1 件ずつ持つ、という形は評価 [RA-06] と同じ）。
 public struct LabelAssignmentChange: Sendable, Hashable {
     public let fileID: FileID
-    /// `nil` は紐づけを消す。
-    public let origin: LabelOrigin?
+    /// `false` は紐づけを消す。
+    public let isAssigned: Bool
 
-    public init(fileID: FileID, origin: LabelOrigin?) {
+    public init(fileID: FileID, isAssigned: Bool) {
         self.fileID = fileID
-        self.origin = origin
+        self.isAssigned = isAssigned
     }
 }
 
@@ -571,32 +584,42 @@ public protocol LabelRepository: Sendable {
     func archivedLabelCounts() async throws -> [LibraryID: Int]
     /// 無ければ作る。一意性は `(groupID, 正規化名)` [LB-01][N-03][LA-07]。
     func ensureLabel(groupID: LabelGroupID, name: String) async throws -> LabelID
-    func assign(fileID: FileID, labelID: LabelID, origin: LabelOrigin) async throws
-    func unassign(fileID: FileID, labelID: LabelID, markManuallyRemoved: Bool) async throws // [RC-04]
-    /// 1 ファイルの自動ラベルを丸ごと置き換える。手動・手動除外には触れない [RC-04]。
+    func assign(fileID: FileID, labelID: LabelID) async throws
+    func unassign(fileID: FileID, labelID: LabelID) async throws
+    /// 1 ファイルのラベルを、走査が導いた集合へ揃える [RC-01][PR-01]。
+    ///
+    /// **保護されたフィールド [PR-02] のラベルには触れない。** その判定は
+    /// この関数の中で行う（`managedFile.protectedScopes` と `label.labelGroupId`
+    /// を読む）——呼び出し側に渡させると、次に足す呼び出し元が忘れる。
     func replaceAutoLabels(fileID: FileID, labelIDs: Set<LabelID>) async throws
-    func labelIDs(fileID: FileID) async throws -> [(labelID: LabelID, origin: LabelOrigin)]
+    /// 1 ファイルの紐づけを、指定した集合へちょうど揃える。
+    ///
+    /// **保護を見ない**——⌘Z は「元の状態へちょうど戻す」ことなので、いまの
+    /// 保護に左右されてはならない（`replaceAutoLabels` との違いはそこだけ）。
+    func setLabels(fileID: FileID, labelIDs: Set<LabelID>) async throws
+    func labelIDs(fileID: FileID) async throws -> [LabelID]
     /// 複数ファイルの紐づけを 1 度に読む [RL-04][RP-02]。
     ///
     /// 1 件ずつ引くと、選択したファイルの数だけ読み取りトランザクションが
     /// 開く。右ペインは選択が変わるたびに読み直すので、そこは 1 回で済ませる。
-    func assignments(fileIDs: [FileID]) async throws -> [FileID: [LabelID: LabelOrigin]]
+    func assignments(fileIDs: [FileID]) async throws -> [FileID: Set<LabelID>]
     /// 1 つのラベルの紐づけを、ファイルごとに指定した状態へ揃える [RL-01][RL-07]。
     ///
     /// **1 トランザクションで書く** [RP2-04]——一括付与の途中で失敗したときに、
     /// 半分だけ付いた状態を残さない。`AssignLabelCommand` の `execute()` と
     /// `undo()` がどちらもこれを使う（戻すのも「指定した状態へ揃える」ことに
     /// 他ならないので、復元のための別 API を作らない）。
-    func applyAssignments(labelID: LabelID, _ changes: [LabelAssignmentChange]) async throws
+    /// **保護スコープも同じトランザクションで書く** [PR-03]（`setFields` と
+    /// 同じ理由）。ファイルごとに違う集合を渡せる——⌘Z は 1 件ずつ元の集合へ
+    /// 戻す。
+    func applyAssignments(labelID: LabelID, _ changes: [LabelAssignmentChange],
+                          protectedScopes: [FileID: Set<ProtectionScope>]) async throws
     /// 2 つのラベルを統合する [LB-07][LE-11]。`source` の行は消え、紐づけは
     /// `target` へ移る。
     ///
-    /// **同じファイルに両方が付いていたら `origin` は manual > auto >
-    /// manuallyRemoved で決める**［ユーザー判断］。素朴に `UPDATE OR IGNORE` で
-    /// 移すと移動先の値が無条件に残り、`source` が `manual`・`target` が
-    /// `manuallyRemoved` のファイルで**手動付与が黙って消える**。統合は
-    /// 「同じものに 2 つの名前が付いていた」を是正する操作なので、どちらかで
-    /// 手で付けていたなら手動として残す。
+    /// 同じファイルに両方が付いていたら 1 行に畳む。**紐づけは付いている／
+    /// いないの 2 値**になったので、どちらを残すかを決める規則は要らない
+    /// （保護は紐づけではなくフィールド単位に付く [PR-02]）。
     ///
     /// **別グループへは統合できない** [LB-07]——ラベルの一意性はグループ内で
     /// 定義されており [LB-01]、またぐと「グループを移す」という別の操作になる。

@@ -72,6 +72,7 @@ private struct SingleItemInspector: View {
     @State private var cover = CoverEditorModel()
     /// ラベル設定 [RL-01〜RL-07]。同上。
     @State private var labels = LabelEditorModel()
+    @State private var protection = ProtectionEditorModel()
     /// 保管庫 [FA-01][FA-07][DT-11]。
     @State private var vault = VaultEditorModel()
     /// 書き込みのあと一覧と件数を読み直すための合図。**`.task(id:)` の鍵に
@@ -146,6 +147,7 @@ private struct SingleItemInspector: View {
 
                     InspectorRatingSection(model: rating) // [RA-01〜RA-08]
                     InspectorLabelSection(model: labels) { labelRevision &+= 1 } // [RL-01〜RL-07]
+                    InspectorProtectionSection(model: protection)   // [PR-05]
                     InspectorVaultSection(model: vault) // [FA-01][FA-07][DT-11]
 
                     Divider()
@@ -223,6 +225,8 @@ private struct SingleItemInspector: View {
                                commandRevision: CommandStack.shared.operationHistory.count,
                                revision: labelRevision)) {
             await labels.load(urls: [url], library: library, services: LibraryServices.shared)
+            await protection.load(urls: [url], library: library,
+                                  services: LibraryServices.shared)
         }
         // 保管庫の状態を読む [FA-01][DT-11]。鍵の考え方は評価と同じ。
         .task(id: RowLoadKey(url: url, libraryID: library?.id,
@@ -443,6 +447,7 @@ private struct MultiItemInspector: View {
 
     /// ラベルの一括付与／削除 [RP-02][RL-01〜RL-07]。
     @State private var labels = LabelEditorModel()
+    @State private var protection = ProtectionEditorModel()
     @State private var labelRevision = 0
 
     var body: some View {
@@ -453,6 +458,7 @@ private struct MultiItemInspector: View {
                 Divider()
                 LabeledContent("inspector.totalSize", value: Self.sizeFormatter.string(fromByteCount: Self.totalSize(of: urls)))
                 InspectorLabelSection(model: labels) { labelRevision &+= 1 }
+                InspectorProtectionSection(model: protection)   // [PR-05]
             }
             .padding(Tokens.spacing.m)
             .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -461,6 +467,8 @@ private struct MultiItemInspector: View {
                           commandRevision: CommandStack.shared.operationHistory.count,
                           revision: labelRevision)) {
             await labels.load(urls: urls, library: library, services: LibraryServices.shared)
+            await protection.load(urls: urls, library: library,
+                                  services: LibraryServices.shared)
         }
     }
 

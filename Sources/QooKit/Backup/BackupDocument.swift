@@ -15,10 +15,10 @@
 //  漏れないようにするため、テストがその一致を検証する。
 //
 //  ## 値によって再生成可能性が変わる列がある
-//  `title` は `titleOrigin == "manual"` のときだけ再生成不可能 [RP-11]、
+//  `title` は基本情報が保護されているときだけ再生成不可能 [PR-01]、
 //  `coverImageRef` は `coverImageSource == "userSpecified"` のときだけ [IV-03]、
-//  ラベル紐づけは `origin != "auto"` のときだけ [RC-04]。**列ではなく値で
-//  分かれる**ので、これらは判定に使う列ごと JSON へ出す。
+//  ラベル紐づけは**そのフィールドが保護されているときだけ** [PR-02]。
+//  **列ではなく値で分かれる**ので、判定に使う値（保護スコープ）ごと JSON へ出す。
 //
 import Foundation
 
@@ -31,7 +31,13 @@ public struct BackupDocument: Codable, Sendable, Equatable {
     /// - 2: どちらも正規表現。巻数フォーマットは `kind`（volume / separator）を持つ。
     ///      **版 1 の文書は DTO のデコード時にその場で変換する**ので、以前書き出した
     ///      バックアップはそのまま読める。
-    public static let currentSchemaVersion = 2
+    /// - 3: メタデータの保護 [PR-01〜PR-09]。`titleOrigin` とラベル紐づけの
+    ///      `origin` が消え、`protectedScopes` が入る。**版を上げたのは、古い
+    ///      実装が新しい文書を読めなくなるから**——あちらは `titleOrigin` を
+    ///      非 Optional で要求しており、無いと文書全体の取り込みが失敗する。
+    ///      版 1／2 の文書は取り込み時に `LegacyMetadataProtection` で
+    ///      読み替える（DB の `v10_metadataProtection` と同じ規則）。
+    public static let currentSchemaVersion = 3
 
     public var schemaVersion: Int
     public var exportedAt: Date
@@ -297,9 +303,31 @@ public struct FileBackup: Codable, Sendable, Equatable {
     public var filename: String
     /// 評価 [RA-01]。0 は未評価。
     public var rating: Int
-    /// `"auto"` / `"manual"`。`manual` のときだけ `title` が意味を持つ [RP-11]。
-    public var titleOrigin: String
+    /// **版 2 以前を読むためだけに残してある** [PR-08]。書き出しでは常に
+    /// `nil`（キーごと出ない）。取り込みでは `LegacyMetadataProtection` が
+    /// これを基本情報スコープの保護へ読み替える。
+    public var titleOrigin: String?
+    /// 基本情報 [PR-02]。**保護されているときだけ出す**——保護されていない値は
+    /// 走査が作り直すので、10 万件ぶん書いても取り込みが何もしない。
+    /// **4 つとも出す**のが要点で、`title` だけ出すと保護したシリーズ名や
+    /// 巻数が復元で失われる（保護の単位は 4 つで 1 かたまり）。
     public var title: String?
+    public var seriesName: String?
+    public var volumeNumber: Double?
+    public var volumeKind: String?
+    public var volumeRaw: String?
+    public var authorName: String?
+    /// 自動更新から守られているスコープ [PR-02][PR-09]。
+    ///
+    /// **`field:` の番号はライブラリ内のフィールド番号**（`groupIndex`）で、
+    /// DB の行 ID ではない——ラベル紐づけを `groupIndex` で突き合わせるのと
+    /// 同じ理由 [JS-04]。行 ID を書くと、別の環境で取り込んだときに無関係な
+    /// フィールドを保護する。
+    ///
+    /// **`[String]?` なのは版 2 以前の文書を読むため**（`isUnresolvedIgnored`
+    /// と同じ事情）。`nil` は「この文書は保護を知らない」で、そのときは
+    /// `titleOrigin` と紐づけの `origin` から導く。
+    public var protectedScopes: [String]?
     /// `CoverSource` の生値（`"auto"` / `"sidecar"` / `"userSpecified"`）。
     /// `userSpecified` のときだけ `coverImageRef` が意味を持つ [IV-03][CV2-02]。
     ///
@@ -330,7 +358,11 @@ public struct FileBackup: Codable, Sendable, Equatable {
     public var labels: [FileLabelBackup]
 
     public init(relativePath: String, filename: String, rating: Int,
-                titleOrigin: String, title: String?,
+                titleOrigin: String? = nil, title: String?,
+                seriesName: String? = nil, volumeNumber: Double? = nil,
+                volumeKind: String? = nil, volumeRaw: String? = nil,
+                authorName: String? = nil,
+                protectedScopes: [String]? = nil,
                 coverImageSource: String, coverImageRef: String?,
                 isArchived: Bool, archivedFromPath: String?, archivedAt: Date?,
                 state: String, trashedAt: Date?,
@@ -340,6 +372,12 @@ public struct FileBackup: Codable, Sendable, Equatable {
         self.rating = rating
         self.titleOrigin = titleOrigin
         self.title = title
+        self.seriesName = seriesName
+        self.volumeNumber = volumeNumber
+        self.volumeKind = volumeKind
+        self.volumeRaw = volumeRaw
+        self.authorName = authorName
+        self.protectedScopes = protectedScopes
         self.coverImageSource = coverImageSource
         self.coverImageRef = coverImageRef
         self.isArchived = isArchived
@@ -355,22 +393,24 @@ public struct FileBackup: Codable, Sendable, Equatable {
     public var identityKey: String { "\(relativePath)\u{0000}\(filename)" }
 }
 
-/// ファイルとラベルの紐づけ [RC-04]。
+/// ファイルとラベルの紐づけ [PR-08]。
 ///
-/// **`origin` ごと出す。** `auto` は再スキャンで作り直せるが、`manual` と
-/// `manuallyRemoved` は作り直せない——後者は「自動で付いたラベルを人が
-/// 外した」という記録で、失うと再スキャンのたびに復活してしまう。
+/// **行があること＝付いていること。** 再生成できるかどうかは、そのフィールドが
+/// 保護されているか [PR-02] で決まる（`FileBackup.protectedScopes`）。
 public struct FileLabelBackup: Codable, Sendable, Equatable {
     public var groupIndex: Int
     /// 人が読むため、および将来のライブラリ間マージのため [IE-10]。
     /// 復元の主キーは `groupIndex` + `labelName`。
     public var groupName: String
     public var labelName: String
-    public var origin: String
+    /// **版 2 以前を読むためだけに残してある** [PR-08]。書き出しでは常に `nil`。
+    /// `manuallyRemoved` の行は取り込みで落とし、`manual` はそのフィールドの
+    /// 保護へ読み替える。
+    public var origin: String?
     public var assignedAt: Date
 
     public init(groupIndex: Int, groupName: String, labelName: String,
-                origin: String, assignedAt: Date) {
+                origin: String? = nil, assignedAt: Date) {
         self.groupIndex = groupIndex
         self.groupName = groupName
         self.labelName = labelName

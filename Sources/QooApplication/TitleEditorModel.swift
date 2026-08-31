@@ -31,25 +31,31 @@ public final class TitleEditorModel {
         public let filename: String
         /// DB の `title`。`nil` は未設定。
         public let title: String?
-        public let titleOrigin: ValueOrigin
+        /// 自動更新から守られているスコープ [PR-02]。基本情報の鍵の表示と、
+        /// ⌘Z の戻り先に使う。
+        public let protectedScopes: Set<ProtectionScope>
         public let seriesName: String?
         public let volume: VolumeValue
 
         public init(id: FileID, url: URL, filename: String, title: String?,
-                    titleOrigin: ValueOrigin, seriesName: String?, volume: VolumeValue) {
+                    protectedScopes: Set<ProtectionScope>,
+                    seriesName: String?, volume: VolumeValue) {
             self.id = id
             self.url = url
             self.filename = filename
             self.title = title
-            self.titleOrigin = titleOrigin
+            self.protectedScopes = protectedScopes
             self.seriesName = seriesName
             self.volume = volume
         }
 
+        /// 基本情報が保護されているか [PR-02]。鍵アイコンの出どころ。
+        public var isBasicProtected: Bool { protectedScopes.contains(.basic) }
+
         /// 入力欄に出す文字列。**未設定でもファイル名を入れない** [設計判断]
         /// ——入れると、何も打たずに確定しただけで「ファイル名と同じタイトルを
-        /// 手で付けた」ことになり、以後の再スキャンで自動抽出が効かなくなる
-        /// [RP-11]。ファイル名は欄の外（プレースホルダ）で見せる。
+        /// 手で付けた」ことになり、以後の自動抽出が効かなくなる [PR-03]。
+        /// ファイル名は欄の外（プレースホルダ）で見せる。
         public var editableText: String { title ?? "" }
 
         /// タイトルが無いときに代わりに見せる文字列 [IV-07]。
@@ -59,10 +65,10 @@ public final class TitleEditorModel {
 
         /// 「ファイル名から再取得」を出すか [RP-12]。
         ///
-        /// **手動編集されているときだけ。** 自動のままなら押しても何も変わらず、
+        /// **保護されているときだけ。** 保護が無ければ押しても何も変わらず、
         /// 「効果のない導線が常駐する」ことになる（`RatingEditorModel` の
-        /// `canApplyToSeries` と同じ判断）。
-        public var canRederive: Bool { titleOrigin == .manual }
+        /// `canApplyToSeries` と同じ判断）。押すと保護が解ける [PR-04]。
+        public var canRederive: Bool { isBasicProtected }
 
         /// 巻数の表示 [DT-09]。原文表記を優先する——`第01巻` を `1` と
         /// 出し直すと、ファイル名に書いてある表記と食い違って見える。
@@ -113,7 +119,7 @@ public final class TitleEditorModel {
             }
             current = FileFieldEdit(row)
             state = .ready(Subject(id: row.id, url: url, filename: row.filename,
-                                   title: row.title, titleOrigin: row.titleOrigin,
+                                   title: row.title, protectedScopes: row.protectedScopes,
                                    seriesName: row.seriesName, volume: row.volume))
         } catch {
             // **取り消しは失敗ではない**［2-9 の実機検証でユーザーが発見］。
@@ -150,16 +156,39 @@ public final class TitleEditorModel {
     /// タイトルを手動値で確定する [RP-10][RP-11]。
     ///
     /// **値が変わらないときは何もしない**（Undo スタックを無意味に汚さない）。
-    /// ただし `titleOrigin` が `.auto` のままなら、同じ文字列でも書く——
-    /// 「この値を自分で決めた」という表明そのものが意味を持つ [RP-11]。
+    /// ただし保護されていなければ、同じ文字列でも書く——「この値を自分で
+    /// 決めた」という表明そのものが意味を持つ [PR-03]。
     public func commitTitle(_ text: String) async throws {
+        try await commit(kind: .editTitle) { $0.settingTitle(text) }
+    }
+
+    /// シリーズ名を手動値で確定する [RP-13]。**基本情報は 1 かたまり** [PR-02]
+    /// なので、タイトルと同じスコープが保護される。
+    public func commitSeriesName(_ text: String) async throws {
+        try await commit(kind: .editSeriesName) { $0.settingSeriesName(text) }
+    }
+
+    /// 巻数を手動値で確定する [RP-14]。
+    ///
+    /// **数値として読めない入力は書かない**（`VolumeValue.parsingUserInput` が
+    /// `nil` を返す）——`.none` に落とすと、打ち間違いが「巻数を消す操作」
+    /// として黙って通る。
+    public func commitVolume(_ text: String) async throws {
+        guard let volume = VolumeValue.parsingUserInput(text) else { return }
+        try await commit(kind: .editVolume) { $0.settingVolume(volume) }
+    }
+
+    private func commit(kind: SetFileFieldsCommand.Kind,
+                        _ transform: (FileFieldEdit) -> FileFieldEdit) async throws {
         guard case .ready(let subject) = state, let services, let previous = current else { return }
-        let next = previous.settingTitle(text)
-        guard next != previous else { return }
+        let next = transform(previous)
+        // 値も保護も変わらないなら何もしない。
+        guard next != previous || !subject.isBasicProtected else { return }
         try await commands.run(SetFileFieldsCommand(
             fileID: subject.id, url: subject.url, previous: previous, next: next,
-            subjectName: subject.filename, kind: .editTitle, services: services))
-        apply(next, to: subject)
+            previousScopes: subject.protectedScopes,
+            subjectName: subject.filename, kind: kind, services: services))
+        apply(next, to: subject, protectedScopes: subject.protectedScopes.union([.basic]))
     }
 
     /// ファイル名から導き直す [RP-12]。タイトルに加えてシリーズ名・巻数・著者も
@@ -174,20 +203,22 @@ public final class TitleEditorModel {
         guard let row = try await services.fileRow(at: subject.url, in: library) else { return }
         let previous = FileFieldEdit(row)
         let next = try await services.rederivedFields(for: row)
-        guard next != previous else {
-            current = previous
-            return
-        }
+        // **値が同じでも保護は外す** [PR-04]。「再取得」は値を戻す操作である
+        // と同時に保護の解除でもあり、たまたま自動値と一致していたからと
+        // いって鍵が残ると、押しても何も起きないように見える。
         try await commands.run(SetFileFieldsCommand(
             fileID: subject.id, url: subject.url, previous: previous, next: next,
+            previousScopes: row.protectedScopes,
             subjectName: subject.filename, kind: .rederive, services: services))
-        apply(next, to: subject)
+        apply(next, to: subject,
+              protectedScopes: row.protectedScopes.subtracting([.basic]))
     }
 
-    private func apply(_ edit: FileFieldEdit, to subject: Subject) {
+    private func apply(_ edit: FileFieldEdit, to subject: Subject,
+                       protectedScopes: Set<ProtectionScope>) {
         current = edit
         state = .ready(Subject(id: subject.id, url: subject.url, filename: subject.filename,
-                               title: edit.title, titleOrigin: edit.titleOrigin,
+                               title: edit.title, protectedScopes: protectedScopes,
                                seriesName: edit.seriesName, volume: edit.volume))
     }
 }

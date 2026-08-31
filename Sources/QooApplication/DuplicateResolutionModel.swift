@@ -68,38 +68,30 @@ public struct DuplicateLossReport: Sendable, Equatable {
     /// 固定できるようにしてある（この判断が誤ると、引き継いだつもりの
     /// ラベルが消えたまま実ファイルだけ無くなる）。
     ///
-    /// **付与済み（`manual` / `auto`）だけを数える。** `manuallyRemoved` は
-    /// 「利用者が外すと決めた」印 [RC-04] なので、引き継ぐと**外したはずの
-    /// ラベルが復活する**。
-    ///
     /// **突き合わせは `LabelID`。** 名前で比べると、同名の別グループのラベルを
     /// 取り違える [LB-01 はグループ内での一意しか保証しない]。
+    ///
+    /// **残す側で保護されたフィールドへは引き継がない** [PR-02]。保護は
+    /// 「このフィールドの状態は利用者が決めた」という意味なので、捨てる側に
+    /// 付いているからといって足すのは約束違反になる。
     public static func make(keepID: FileID?, rows: [DuplicateComparisonRow],
-                            assignments: [FileID: [LabelID: LabelOrigin]],
-                            names: [LabelID: String]) -> DuplicateLossReport {
-        /// 実際に付いているラベル（引き継ぐ**候補**の側）。
-        func attached(_ file: FileID) -> [LabelID] {
-            (assignments[file] ?? [:]).filter { $0.value != .manuallyRemoved }.map(\.key)
-        }
-        /// 残す側で**既に判断が付いている**ラベル。
-        ///
-        /// **`manuallyRemoved` も含める**のが要点——あれは「このファイルには
-        /// このラベルを付けない」と利用者が決めた印 [RC-04] なので、捨てる側に
-        /// 付いているからといって引き継ぐと**外したはずのラベルが復活する**。
-        /// 除外しておけば、引き継ぐのは「残す側に行が 1 つも無い」ものだけに
-        /// なり、`AssignLabelCommand` へ渡す変更前の値も素直に `nil` でよい。
-        func alreadyDecided(_ file: FileID) -> Set<LabelID> {
-            Set((assignments[file] ?? [:]).keys)
-        }
+                            assignments: [FileID: Set<LabelID>],
+                            names: [LabelID: String],
+                            groupByLabel: [LabelID: LabelGroupID] = [:],
+                            keeperProtections: Set<ProtectionScope> = [])
+        -> DuplicateLossReport
+    {
         guard let keepID, let keeper = rows.first(where: { $0.id == keepID }) else {
             return DuplicateLossReport(labelsOnlyOnDoomed: [:], bestDoomedRating: 0,
                                        keeperRating: 0)
         }
         let doomed = rows.filter { $0.id != keepID }
-        let keeperLabels = alreadyDecided(keepID)
+        let keeperLabels = assignments[keepID] ?? []
+        let protectedFields = keeperProtections.protectedFields
         var lost: [LabelID: String] = [:]
         for row in doomed {
-            for labelID in attached(row.id) where !keeperLabels.contains(labelID) {
+            for labelID in assignments[row.id] ?? [] where !keeperLabels.contains(labelID) {
+                if let group = groupByLabel[labelID], protectedFields.contains(group) { continue }
                 lost[labelID] = names[labelID] ?? ""
             }
         }
@@ -132,8 +124,12 @@ public final class DuplicateResolutionModel {
     private var generation = 0
     /// ラベルの紐づけ。**失われるものの判定は名前ではなく `LabelID` で行う**
     /// ——名前で突き合わせると、同名の別グループのラベルを取り違える。
-    private var assignments: [FileID: [LabelID: LabelOrigin]] = [:]
+    private var assignments: [FileID: Set<LabelID>] = [:]
     private var labelNamesByID: [LabelID: String] = [:]
+    /// ラベル → そのフィールド。保護の判定と、引き継ぎコマンドの組み立てに要る。
+    private var groupByLabel: [LabelID: LabelGroupID] = [:]
+    /// 残す側の保護スコープ [PR-02]。
+    private var protections: [FileID: Set<ProtectionScope>] = [:]
 
     public init() {}
 
@@ -157,21 +153,20 @@ public final class DuplicateResolutionModel {
         do {
             let members = try await services.duplicateGroupMembers(containing: id, mode: mode)
             let assignments = try await services.labelAssignments(fileIDs: members.map(\.id))
-            let names = try await Self.labelNames(for: assignments, library: library,
-                                                  services: services)
+            let protections = try await services.protectedScopes(ids: members.map(\.id))
+            let (names, groups) = try await Self.labelNames(library: library, services: services)
             guard mine == generation else { return }
             self.assignments = assignments
+            self.protections = protections
             self.labelNamesByID = names
+            self.groupByLabel = groups
             let root = URL(fileURLWithPath: library.resolvedPath, isDirectory: true)
             rows = members.map { file in
                 DuplicateComparisonRow(
                     file: file,
                     url: root.appendingPathComponent(file.relativePath,
                                                      isDirectory: file.isBookFolder),
-                    labelNames: (assignments[file.id] ?? [:])
-                        .filter { $0.value != .manuallyRemoved }
-                        .compactMap { names[$0.key] }
-                        .sorted { $0.localizedStandardCompare($1) == .orderedAscending },
+                    labelNames: Self.sortedNames(of: assignments[file.id] ?? [], names: names),
                     // 既に数えてある行はそのまま使う [MD-02]——開き直さない。
                     measurement: file.pageCount.map {
                         .measured(pageCount: $0, width: file.firstImageWidth,
@@ -188,16 +183,27 @@ public final class DuplicateResolutionModel {
         }
     }
 
-    private static func labelNames(for assignments: [FileID: [LabelID: LabelOrigin]],
-                                   library: LibrarySummary,
-                                   services: LibraryServices) async throws -> [LabelID: String] {
+    /// 表示用に名前を並べる。**式を分けてあるのは型検査のため**——`map` の
+    /// 中へ直に書くとコンパイラが「型検査に時間がかかりすぎる」で落ちる。
+    private static func sortedNames(of ids: Set<LabelID>,
+                                    names: [LabelID: String]) -> [String] {
+        ids.compactMap { names[$0] }
+            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    }
+
+    private static func labelNames(library: LibrarySummary,
+                                   services: LibraryServices) async throws
+        -> (names: [LabelID: String], groups: [LabelID: LabelGroupID])
+    {
         var out: [LabelID: String] = [:]
+        var groups: [LabelID: LabelGroupID] = [:]
         for group in try await services.labelGroups(libraryID: library.id) {
             for label in try await services.labels(groupID: group.id, includeArchived: true) {
                 out[label.id] = label.name
+                groups[label.id] = group.id
             }
         }
-        return out
+        return (out, groups)
     }
 
     /// 数えていない行だけを順に数える [DU-22][MD-03]。
@@ -262,21 +268,32 @@ public final class DuplicateResolutionModel {
     /// テスト用の差し込み口。**製品の経路からは呼ばない**——`load` が
     /// 組み立てるのと同じ形の状態を、DB を用意せずに作るためだけにある。
     func seedForTesting(rows: [DuplicateComparisonRow], keepID: FileID?,
-                        assignments: [FileID: [LabelID: LabelOrigin]] = [:],
-                        names: [LabelID: String] = [:]) {
+                        assignments: [FileID: Set<LabelID>] = [:],
+                        names: [LabelID: String] = [:],
+                        groupByLabel: [LabelID: LabelGroupID] = [:],
+                        protections: [FileID: Set<ProtectionScope>] = [:]) {
         self.rows = rows
         self.keepID = keepID
         self.assignments = assignments
         self.labelNamesByID = names
+        self.groupByLabel = groupByLabel
+        self.protections = protections
         self.state = .ready
     }
 
     // MARK: - 失われるもの [DU-27]
 
+    /// 残す側の保護スコープ [PR-02]。
+    private var keeperProtections: Set<ProtectionScope> {
+        guard let keepID else { return [] }
+        return protections[keepID] ?? []
+    }
+
     /// 削除で失われるラベル・評価 [DU-27]。
     public func lossReport() -> DuplicateLossReport {
         DuplicateLossReport.make(keepID: keepID, rows: rows, assignments: assignments,
-                                 names: labelNamesByID)
+                                 names: labelNamesByID, groupByLabel: groupByLabel,
+                                 keeperProtections: keeperProtections)
     }
 }
 
@@ -298,7 +315,8 @@ extension DuplicateResolutionModel {
         let urls = targets.map(\.url)
         let usesTrash = await FileIO.perform { TrashAvailability.hasTrash(forAll: urls) }
         return DuplicateDeletePlan(keeper: keeper, doomed: targets, usesTrash: usesTrash,
-                                   loss: lossReport())
+                                   loss: lossReport(), groupByLabel: groupByLabel,
+                                   keeperProtections: keeperProtections)
     }
 
     /// 1 つの Undo 単位にまとめる [DU-28]。
@@ -318,10 +336,12 @@ extension DuplicateResolutionModel {
             // （2-13 で「新しいコマンドを 1 つも書かなかった」のと同じ判断）。
             for (labelID, name) in plan.loss.labelsOnlyOnDoomed
                 .sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
+                guard let group = plan.groupByLabel[labelID] else { continue }
                 children.append(AssignLabelCommand(
-                    labelID: labelID, labelName: name,
+                    labelID: labelID, groupID: group, labelName: name,
                     previous: [.init(fileID: plan.keeper.id, url: plan.keeper.url,
-                                     origin: nil)],
+                                     wasAssigned: false,
+                                     protectedScopes: plan.keeperProtections)],
                     assigning: true, subjectName: keeperName, services: services))
             }
             // 評価は**残す側が未評価のときだけ**引き継ぐ [DU-27 の趣旨]。
@@ -368,13 +388,21 @@ public struct DuplicateDeletePlan: Sendable, Identifiable {
     /// ゴミ箱を経由できるか。`false` なら完全削除になり **⌘Z は効かない** [PD-05]。
     public let usesTrash: Bool
     public let loss: DuplicateLossReport
+    /// ラベル → そのフィールド。引き継ぎで保護を立てるのに要る [PR-03]。
+    public let groupByLabel: [LabelID: LabelGroupID]
+    /// 残す側の変更前の保護スコープ。⌘Z がここへちょうど戻す。
+    public let keeperProtections: Set<ProtectionScope>
 
     public init(keeper: DuplicateComparisonRow, doomed: [DuplicateComparisonRow],
-                usesTrash: Bool, loss: DuplicateLossReport) {
+                usesTrash: Bool, loss: DuplicateLossReport,
+                groupByLabel: [LabelID: LabelGroupID] = [:],
+                keeperProtections: Set<ProtectionScope> = []) {
         self.keeper = keeper
         self.doomed = doomed
         self.usesTrash = usesTrash
         self.loss = loss
+        self.groupByLabel = groupByLabel
+        self.keeperProtections = keeperProtections
     }
 }
 

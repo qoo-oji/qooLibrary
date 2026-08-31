@@ -311,7 +311,7 @@ final class Evicted: @unchecked Sendable {
         #expect(authorNames.contains("メタの著者B"))
         // グループごと置き換えるので、ファイル名由来の著者はこのファイルには付かない。
         let file = try #require(await row(w, "(同人誌) [サークル値A (ファイル名の著者)] 作品名A"))
-        let assigned = try await w.labels.labelIDs(fileID: file.id).map(\.labelID)
+        let assigned = try await w.labels.labelIDs(fileID: file.id)
         let assignedNames = Set(try await w.labels.labels(groupID: author.id, includeArchived: true)
             .filter { assigned.contains($0.id) }.map(\.name))
         #expect(assignedNames == ["メタの著者A", "メタの著者B"])

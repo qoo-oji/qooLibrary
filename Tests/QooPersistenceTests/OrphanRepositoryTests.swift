@@ -53,11 +53,11 @@ struct OrphanRepositoryTests {
         let s = try await Setup.make()
         let kept = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "サークル値A")
         let removed = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "サークル値B")
-        try await s.f.labels.assign(fileID: s.orphan, labelID: kept, origin: .manual)
-        try await s.f.labels.assign(fileID: s.orphan, labelID: removed, origin: .manuallyRemoved)
+        try await s.f.labels.assign(fileID: s.orphan, labelID: kept)
+        try await s.f.labels.assign(fileID: s.orphan, labelID: removed)
 
         let rows = try await s.f.files.orphanedFiles(libraryID: s.f.libraryID)
-        #expect(rows[0].labelCount == 1)
+        #expect(rows[0].labelCount == 2)
     }
 
     @Test("他のライブラリの孤立は混ざらない")
@@ -76,7 +76,7 @@ struct OrphanRepositoryTests {
     func deleteRemovesAssignments() async throws {
         let s = try await Setup.make()
         let label = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "サークル値A")
-        try await s.f.labels.assign(fileID: s.orphan, labelID: label, origin: .manual)
+        try await s.f.labels.assign(fileID: s.orphan, labelID: label)
 
         try await s.f.files.deleteFiles([s.orphan])
 
@@ -106,7 +106,7 @@ struct OrphanRepositoryTests {
         let s = try await Setup.make()
         try await s.f.fillEveryOptionalColumn(of: s.orphan)
         let label = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "サークル値A")
-        try await s.f.labels.assign(fileID: s.orphan, labelID: label, origin: .manuallyRemoved)
+        try await s.f.labels.assign(fileID: s.orphan, labelID: label)
         let before = try await s.f.recordJSON(id: s.orphan)
         #expect(before.count >= 38, "標本が全列を埋めていない（Optional が nil のまま）")
 
@@ -115,11 +115,9 @@ struct OrphanRepositoryTests {
         try await s.f.files.restoreFiles(snapshots)
 
         #expect(try await s.f.recordJSON(id: s.orphan) == before)
-        // 紐づけは origin ごと戻る——`manuallyRemoved` を落とすと、⌘Z のあと
-        // 再スキャンで外したはずのラベルが復活する [RC-04]。
-        let assignments = try await s.f.labels.labelIDs(fileID: s.orphan)
-        #expect(assignments.map(\.labelID) == [label])
-        #expect(assignments.map(\.origin) == [.manuallyRemoved])
+        // 紐づけも戻る。保護スコープは `managedFile` の列なので、上の
+        // 全列比較（`recordJSON`）が同時に検査している [PR-09]。
+        #expect(try await s.f.labels.labelIDs(fileID: s.orphan) == [label])
     }
 
     @Test("復元は元の行 ID を取り戻す")
@@ -140,9 +138,9 @@ struct OrphanRepositoryTests {
         let s = try await Setup.make()
         let label = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "サークル値A")
         let live = try await s.addLiveFile(inode: 5, path: "生きている.cbz", size: 10)
-        try await s.f.labels.assign(fileID: live, labelID: label, origin: .auto)
+        try await s.f.labels.assign(fileID: live, labelID: label)
         try await s.f.files.setState(.active, ids: [s.orphan])
-        try await s.f.labels.assign(fileID: s.orphan, labelID: label, origin: .auto)
+        try await s.f.labels.assign(fileID: s.orphan, labelID: label)
         #expect(try await s.f.labels.labels(groupID: s.group.id, includeArchived: true)
             .first { $0.id == label }?.fileCount == 2)
 
@@ -167,7 +165,7 @@ struct OrphanRepositoryTests {
         let s = try await Setup.make()
         let label = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "サークル値A")
         let live = try await s.addLiveFile(inode: 5, path: "生きている.cbz", size: 10)
-        try await s.f.labels.assign(fileID: live, labelID: label, origin: .auto)
+        try await s.f.labels.assign(fileID: live, labelID: label)
 
         func count() async throws -> Int? {
             try await s.f.labels.labels(groupID: s.group.id, includeArchived: true)
@@ -212,7 +210,7 @@ extension Fixture {
         try await database.writer.write { db in
             try db.execute(sql: """
                 UPDATE managedFile SET
-                    title = ?, titleOrigin = ?, seriesName = ?, seriesKey = ?,
+                    title = ?, protectedScopes = ?, seriesName = ?, seriesKey = ?,
                     volumeNumber = ?, volumeKind = ?, volumeRaw = ?, authorName = ?,
                     rating = ?, coverImageRef = ?, coverImageSource = ?,
                     isArchived = 1, archivedFromPath = ?, archivedAt = ?,
@@ -223,7 +221,7 @@ extension Fixture {
                     metadataStamp = ?, metadataSource = ?, metadataJSON = ?,
                     hasVolumeConflict = 1
                 WHERE id = ?
-                """, arguments: ["作品名A", ValueOrigin.manual.rawValue, "作品名A", "さくひんめいa",
+                """, arguments: ["作品名A", ProtectionScopeCoding.encode([.basic]), "作品名A", "さくひんめいa",
                                  1.5, VolumeValue.Kind.numeric.rawValue, "第01巻", "著者値A",
                                  3, "cover-ref", CoverSource.userSpecified.rawValue,
                                  "旧/作品名A 第01巻.cbz", 700.0,

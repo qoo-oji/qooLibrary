@@ -39,7 +39,10 @@ public final class LabelMenuModel {
     private var fileIDsByName: [String: FileID] = [:]
     /// 表示中の行の紐づけ。チェック状態の出どころで、トグル直後は
     /// ここを先に書き換えて画面へ即座に反映する（`.task` の読み直しは後から届く）。
-    private var assignmentsByFile: [FileID: [LabelID: LabelOrigin]] = [:]
+    private var assignmentsByFile: [FileID: Set<LabelID>] = [:]
+    /// 表示中の行の保護スコープ [PR-03]。付け外しは同時に保護を立てるので、
+    /// `undo()` へ渡す「変更前の保護」をここから取る。
+    private var protectedByFile: [FileID: Set<ProtectionScope>] = [:]
     private var services: LibraryServices?
     /// 古い結果を捨てるための世代（`BookFolderIndex` と同じ形）。
     private var generation = 0
@@ -93,11 +96,13 @@ public final class LabelMenuModel {
                 ids = libraryRows.map(\.id)
             }
             let assignments = try await services.labelAssignments(fileIDs: ids)
+            let protections = try await services.protectedScopes(ids: ids)
             guard mine == generation else { return }
             groups = loadedGroups
             labelsByGroup = loadedLabels
             fileIDsByName = byName
             assignmentsByFile = assignments
+            protectedByFile = protections
         } catch {
             guard mine == generation else { return }
             // **取り消しは失敗ではない**（他のモデルと同じ扱い）。
@@ -118,6 +123,7 @@ public final class LabelMenuModel {
         labelsByGroup = [:]
         fileIDsByName = [:]
         assignmentsByFile = [:]
+        protectedByFile = [:]
     }
 
     // MARK: - 問い合わせ（メニュー構築時。すべて同期）
@@ -133,9 +139,7 @@ public final class LabelMenuModel {
     /// そのラベルの、対象に対する三状態 [RP-02]。
     public func checkState(of label: LabelSummary, for ids: [FileID]) -> LabelEditorModel.CheckState {
         var assigned = 0
-        for id in ids {
-            guard let origin = assignmentsByFile[id]?[label.id],
-                  origin != .manuallyRemoved else { continue }
+        for id in ids where assignmentsByFile[id]?.contains(label.id) == true {
             assigned += 1
         }
         if assigned == 0 || ids.isEmpty { return .none }
@@ -155,6 +159,37 @@ public final class LabelMenuModel {
     }
 
     // MARK: - 操作
+    /// ファイル全体の保護の三状態 [PR-05]。メニューの印に使う。
+    public func protectionState(for ids: [FileID]) -> LabelEditorModel.CheckState {
+        guard !ids.isEmpty else { return .none }
+        let fields = groups.map(\.id)
+        let full = ids.filter { (protectedByFile[$0] ?? []).coversEverything(fields: fields) }
+        if full.count == ids.count { return .all }
+        return ids.contains { !(protectedByFile[$0] ?? []).isEmpty } ? .some : .none
+    }
+
+
+    /// ファイル全体の保護を切り替える [PR-05]。
+    ///
+    /// 実体は `SetProtectionCommand.togglingAll` で、インスペクタの「保護」節と
+    /// 共有する——控えの取り方を 2 箇所に書かない。
+    public func toggleProtection(targets: [Target], libraryID: LibraryID) async throws {
+        guard let services, !targets.isEmpty else { return }
+        guard let command = try await SetProtectionCommand.togglingAll(
+            files: targets.map { (id: $0.id, url: $0.url) },
+            scopes: protectedByFile, fields: groups.map(\.id),
+            libraryID: libraryID,
+            subjectName: LabelEditorModel.displayName(for: targets.map(\.url)),
+            services: services) else { return }
+        _ = try await commands.run(command)
+        // 画面をすぐ合わせる。`.task` の読み直しは後から届く。
+        let protecting = protectionState(for: targets.map(\.id)) != .all
+        for target in targets {
+            protectedByFile[target.id] = protecting
+                ? .everything(fields: groups.map(\.id))
+                : []
+        }
+    }
 
     /// メニューの項目を押す [RL3-01][RL3-03]。
     ///
@@ -164,16 +199,21 @@ public final class LabelMenuModel {
         guard let services, !targets.isEmpty else { return }
         let assigning = checkState(of: label, for: targets.map(\.id)) != .all
         guard let command = AssignLabelCommand.toggling(
-            labelID: label.id, labelName: label.name,
+            labelID: label.id, groupID: label.groupID, labelName: label.name,
             files: targets.map { (id: $0.id, url: $0.url) },
-            assignments: assignmentsByFile, assigning: assigning,
+            assignments: assignmentsByFile, protectedScopes: protectedByFile,
+            assigning: assigning,
             subjectName: LabelEditorModel.displayName(for: targets.map(\.url)),
             services: services) else { return }
         _ = try await commands.run(command)
         // 画面をすぐ合わせる。`.task` の読み直しは後から届く。
-        let origin: LabelOrigin = assigning ? .manual : .manuallyRemoved
         for target in targets {
-            assignmentsByFile[target.id, default: [:]][label.id] = origin
+            if assigning {
+                assignmentsByFile[target.id, default: []].insert(label.id)
+            } else {
+                assignmentsByFile[target.id]?.remove(label.id)
+            }
+            protectedByFile[target.id, default: []].insert(.field(label.groupID))
         }
     }
 }

@@ -16,16 +16,13 @@ import Foundation
 /// 表記ゆれの畳み込みが 2 箇所に散り、黙って別のシリーズになる。
 public struct FileFieldEdit: Sendable, Hashable {
     public var title: String?
-    /// 手動編集なら `.manual` [RP-11]。以後の自動上書きから守られる。
-    public var titleOrigin: ValueOrigin
     public var seriesName: String?
     public var volume: VolumeValue
     public var authorName: String?
 
-    public init(title: String?, titleOrigin: ValueOrigin, seriesName: String?,
+    public init(title: String?, seriesName: String?,
                 volume: VolumeValue, authorName: String?) {
         self.title = title
-        self.titleOrigin = titleOrigin
         self.seriesName = seriesName
         self.volume = volume
         self.authorName = authorName
@@ -33,22 +30,45 @@ public struct FileFieldEdit: Sendable, Hashable {
 
     /// いまの行の値をそのまま写す（Undo の「変更前」と、部分的な書き換えの土台）。
     public init(_ row: FileRow) {
-        self.init(title: row.title, titleOrigin: row.titleOrigin,
-                  seriesName: row.seriesName, volume: row.volume,
-                  authorName: row.authorName)
+        self.init(title: row.title, seriesName: row.seriesName,
+                  volume: row.volume, authorName: row.authorName)
     }
 
-    /// タイトルだけを手動値へ差し替えた版 [RP-10][RP-11]。
+    /// **手動編集であることはこの型が持たない** [PR-03]。編集したという事実は
+    /// 基本情報スコープの保護として記録され、その付与はコマンド
+    /// （`SetFileFieldsCommand`）が編集と同じ Undo 単位で行う——値の中に印を
+    /// 混ぜると、「印だけ書いて値は書かない」経路（触っただけで手動扱いに
+    /// なる形）がいずれできる。実際、置き換える前の実装ではフォーカスを
+    /// 外しただけで印が立っていた。
+
+    /// タイトルだけを差し替えた版 [RP-10]。
     ///
-    /// 空白のみの入力は `nil`（未設定）として扱う——`titleOrigin` は `.manual`
-    /// のままなので、**「自動抽出値を使わない」という意思表示は残る**
-    /// [ユーザーが明示的に空にした、と「まだ何も無い」を区別する]。
+    /// 空白のみの入力は `nil`（未設定）として扱う。**基本情報が保護されている
+    /// 限り、空のままでも自動値へは戻らない**——「自動抽出値を使わない」と
+    /// 決めたこと自体は保護が担う。
     public func settingTitle(_ newTitle: String) -> FileFieldEdit {
         var copy = self
-        let trimmed = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        copy.title = trimmed.isEmpty ? nil : trimmed
-        copy.titleOrigin = .manual
+        copy.title = Self.trimmed(newTitle)
         return copy
+    }
+
+    /// シリーズ名だけを差し替えた版 [RP-13]。
+    public func settingSeriesName(_ newName: String) -> FileFieldEdit {
+        var copy = self
+        copy.seriesName = Self.trimmed(newName)
+        return copy
+    }
+
+    /// 巻数だけを差し替えた版 [RP-14]。`nil` を渡すと巻数なしになる。
+    public func settingVolume(_ newVolume: VolumeValue) -> FileFieldEdit {
+        var copy = self
+        copy.volume = newVolume
+        return copy
+    }
+
+    private static func trimmed(_ text: String) -> String? {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : t
     }
 }
 

@@ -48,8 +48,8 @@ struct SearchKeyTests {
         #expect(try await count(f, "手で付けた題") == 0)
 
         try await f.files.setFields(FileFieldEdit(
-            title: "手で付けた題", titleOrigin: .manual, seriesName: "手で付けたシリーズ",
-            volume: .none, authorName: nil), id: id)
+            title: "手で付けた題", seriesName: "手で付けたシリーズ",
+            volume: .none, authorName: nil), id: id, protectedScopes: [.basic])
 
         #expect(try await count(f, "手で付けた題") == 1)
         #expect(try await count(f, "手で付けたシリーズ") == 1)
@@ -59,15 +59,15 @@ struct SearchKeyTests {
     /// **手動タイトルは `applyParsedFields` で据え置かれる** [RP-11] ので、
     /// 鍵も据え置かれた側の値で作られていなければならない。
     /// 渡された `fields.title` から素朴に組み立てると、ここで手動の題が消える。
-    @Test("再走査は手動タイトルを鍵から落とさない [RP-11][SR-03]")
-    func rescanKeepsTheManualTitleInTheKey() async throws {
+    @Test("再走査は保護されたタイトルを鍵から落とさない [PR-01][SR-03]")
+    func rescanKeepsTheProtectedTitleInTheKey() async throws {
         let f = try await Fixture.make()
         let id = try await f.files.upsert(f.snapshot(inode: 1, path: "CCC-0003.cbz"))
         try await f.files.setFields(FileFieldEdit(
-            title: "手動の題", titleOrigin: .manual, seriesName: nil,
-            volume: .none, authorName: nil), id: id)
+            title: "手動の題", seriesName: nil,
+            volume: .none, authorName: nil), id: id, protectedScopes: [.basic])
 
-        // 再走査。自動抽出は別の題を出すが、手動の題が勝つ [RP-11]。
+        // 再走査。自動抽出は別の題を出すが、保護された題が勝つ [PR-01]。
         try await f.files.applyParsedFields(fields(title: "自動の題", series: nil), to: id)
 
         #expect(try await f.files.row(id: id)?.title == "手動の題")

@@ -2170,6 +2170,7 @@ struct FolderContentView: View {
             }
             Divider()
             labelSubmenu(for: targetEntries) // [RL3-01〜RL3-03]
+            protectionMenuItem(for: targetEntries) // [PR-05]
             unresolvedIgnoreItem(for: targetEntries) // [UR3-03][AL-33]
             // 単一選択はその場でのインライン編集、複数選択は一括リネームの
             // シート（Finder と同じ使い分け）[FM-05、ユーザー要望]。
@@ -2332,6 +2333,48 @@ struct FolderContentView: View {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    /// ファイル全体の保護 [PR-05]。**ラベルのサブメニューと同じ対象**
+    /// （DB に行のあるものだけ）で、混在の注記もそちらが出す。
+    @ViewBuilder
+    private func protectionMenuItem(for targetEntries: [FolderEntry]) -> some View {
+        if let library, !labelMenu.groups.isEmpty {
+            let targets = labelTargets(for: targetEntries)
+            if !targets.isEmpty {
+                let state = labelMenu.protectionState(for: targets.map(\.id))
+                switch state {
+                case .some:
+                    // 一部だけ保護されている。ネイティブの mixed は出せないので
+                    // マイナスアイコンで代える（ラベルと同じ扱い）。
+                    Button {
+                        toggleProtectionFromMenu(targets, library: library)
+                    } label: {
+                        Label("folder.protectMetadata", systemImage: "minus")
+                    }
+                case .all, .none:
+                    Toggle(isOn: Binding(
+                        get: { state == .all },
+                        set: { _ in toggleProtectionFromMenu(targets, library: library) }
+                    )) {
+                        Label("folder.protectMetadata", systemImage: "lock")
+                    }
+                }
+            }
+        }
+    }
+
+    private func toggleProtectionFromMenu(_ targets: [LabelMenuModel.Target],
+                                          library: LibrarySummary) {
+        Task {
+            do {
+                try await labelMenu.toggleProtection(targets: targets, libraryID: library.id)
+            } catch {
+                await NotificationRouter.shared.presentError(
+                    error, whatHappened: String(localized: "error.setProtectionFailed",
+                                                locale: locale))
             }
         }
     }

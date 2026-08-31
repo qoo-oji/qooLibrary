@@ -187,9 +187,10 @@ struct LabelEditCommandTests {
         }
         let rows = try await w.services.fileRows(at: urls, in: library)
         let assigned = try await w.services.labelAssignments(fileIDs: rows.values.map(\.id))
-        let extra = try #require(rows.values.first { assigned[$0.id]?[target.id] == nil })
+        let extra = try #require(rows.values.first { assigned[$0.id]?.contains(target.id) != true })
         try await w.services.applyLabelAssignments(
-            labelID: target.id, [LabelAssignmentChange(fileID: extra.id, origin: .manual)])
+            labelID: target.id, [LabelAssignmentChange(fileID: extra.id, isAssigned: true)],
+            protectedScopes: [:])
         let countBeforeDelete = try await labels(w, group).first { $0.id == target.id }?.fileCount
         #expect(countBeforeDelete == 2, "前提: 実行の直前に 2 件へ増えていること")
 

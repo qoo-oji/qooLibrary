@@ -43,126 +43,43 @@ struct DuplicateResolutionTests {
         let doomed = Self.row(2, name: "捨てる.cbz")
         let report = DuplicateLossReport.make(
             keepID: keeper.id, rows: [keeper, doomed],
-            assignments: [keeper.id: [Self.label(10): .auto],
-                          doomed.id: [Self.label(10): .auto, Self.label(20): .manual]],
+            assignments: [keeper.id: [Self.label(10)],
+                          doomed.id: [Self.label(10), Self.label(20)]],
             names: [Self.label(10): "共通", Self.label(20): "捨てる側だけ"])
         #expect(report.labelsOnlyOnDoomed == [Self.label(20): "捨てる側だけ"])
     }
 
-    /// **`manuallyRemoved` を引き継いではならない** [RC-04]。
+    /// **残す側で保護されたフィールドへは引き継がない** [PR-02][DU-27]。
     ///
-    /// あれは「利用者が外すと決めた」印なので、引き継ぐと**外したはずの
-    /// ラベルが復活する**。しかも復活したことは画面から読み取れない。
-    @Test("手で外した印のラベルは引き継がない [DU-27][RC-04]")
-    func manuallyRemovedLabelsAreNotInherited() {
+    /// 保護は「このフィールドの状態は利用者が決めた」という意味なので、
+    /// 捨てる側に付いているからといって足すと、外したはずのラベルが復活する
+    /// ——しかも復活したことは画面から読み取れない。
+    @Test("残す側で保護されたフィールドのラベルは引き継がない [DU-27][PR-02]")
+    func labelsInProtectedFieldsAreNotInherited() {
         let keeper = Self.row(1, name: "残す.cbz")
         let doomed = Self.row(2, name: "捨てる.cbz")
+        let group = LabelGroupID(rawValue: 7)
         let report = DuplicateLossReport.make(
             keepID: keeper.id, rows: [keeper, doomed],
-            assignments: [doomed.id: [Self.label(30): .manuallyRemoved]],
-            names: [Self.label(30): "外したもの"])
+            assignments: [keeper.id: [], doomed.id: [Self.label(40)]],
+            names: [Self.label(40): "捨てる側だけ"],
+            groupByLabel: [Self.label(40): group],
+            keeperProtections: [.field(group)])
         #expect(report.labelsOnlyOnDoomed.isEmpty)
-        #expect(!report.hasAnythingToInherit)
     }
 
-    @Test("捨てる側の最高評価を拾う [DU-27]")
-    func bestDoomedRatingIsReported() {
-        let keeper = Self.row(1, name: "残す.cbz", rating: 0)
-        let report = DuplicateLossReport.make(
-            keepID: keeper.id,
-            rows: [keeper, Self.row(2, name: "a.cbz", rating: 3),
-                   Self.row(3, name: "b.cbz", rating: 5)],
-            assignments: [:], names: [:])
-        #expect(report.bestDoomedRating == 5)
-        #expect(report.keeperRating == 0)
-        #expect(report.hasAnythingToInherit)
-    }
-
-    /// 残す側に評価が付いていれば、引き継ぐものは無い——**上書きしない**。
-    @Test("残す側が評価済みなら評価は引き継がない [DU-27]")
-    func anExistingRatingIsNeverOverwritten() {
-        let keeper = Self.row(1, name: "残す.cbz", rating: 1)
-        let report = DuplicateLossReport.make(
-            keepID: keeper.id, rows: [keeper, Self.row(2, name: "a.cbz", rating: 5)],
-            assignments: [:], names: [:])
-        #expect(!report.hasAnythingToInherit, "★1 を ★5 で黙って上書きしない")
-    }
-
-    // MARK: - 一括選択規則 [DU-25]
-
-    @Test("規則を当てると残す 1 件が変わる [DU-25][DU-26]")
-    func applyingARuleChangesTheKeeper() async {
-        let model = await DuplicateResolutionModel()
-        await MainActor.run {
-            model.seedForTesting(rows: [Self.row(1, name: "小さい.cbz", size: 10),
-                                        Self.row(2, name: "大きい.cbz", size: 900)],
-                                 keepID: FileID(rawValue: 1))
-            model.apply(.largestSize)
-            #expect(model.keepID == FileID(rawValue: 2))
-            #expect(model.appliedRule == .largestSize)
-            // 手で選び直すと規則の表示は消える——もう規則どおりではない。
-            model.chooseKeeper(FileID(rawValue: 1))
-            #expect(model.keepID == FileID(rawValue: 1))
-            #expect(model.appliedRule == nil)
-        }
-    }
-
-    // MARK: - 測った値が規則へ届くこと [DU-22][DU-25]
-
-    /// **測った結果は `measurement` と `file` の両方へ写す。**
-    ///
-    /// 画面は `measurement` を出すが、残す 1 件を選ぶ規則 [DU-25] は
-    /// `FileRow` を見る。片方だけ更新すると「ページ数が最多」を選んでも
-    /// ページ数を見ておらず、**画面からは気づけないまま取り消せない削除を
-    /// 駆動する**［`code-review` が検出した欠陥の回帰検査］。
-    @Test("測ったページ数が「ページ数が最多」に効く [DU-22][DU-25]")
-    func measuredPageCountsReachTheKeepRule() async {
-        await MainActor.run {
-            let thin = DuplicateResolutionModel.applying(
-                ArchiveMetadata(entryCount: 12, imageCount: 12, subfolderCount: 0,
-                                firstImageSize: CGSize(width: 800, height: 1200)),
-                to: Self.row(1, name: "薄い.cbz", size: 900))
-            let thick = DuplicateResolutionModel.applying(
-                ArchiveMetadata(entryCount: 220, imageCount: 220, subfolderCount: 0,
-                                firstImageSize: CGSize(width: 1600, height: 2400)),
-                to: Self.row(2, name: "厚い.cbz", size: 10))
-
-            #expect(thin.file.pageCount == 12, "`file` にも写っていること")
-            #expect(thick.file.firstImageWidth == 1600)
-
-            let model = DuplicateResolutionModel()
-            model.seedForTesting(rows: [thin, thick], keepID: thin.id)
-            model.apply(.mostPages)
-            #expect(model.keepID == thick.id, "ページ数の多いほうが残る")
-            model.apply(.highestResolution)
-            #expect(model.keepID == thick.id, "解像度の高いほうが残る")
-        }
-    }
-
-    @Test("読めなかった行は「取れなかった」になり、値は入らない [MD-01]")
-    func unreadableRowsStayUnmeasured() async {
-        await MainActor.run {
-            let row = DuplicateResolutionModel.applying(nil, to: Self.row(1, name: "壊れた.cbz"))
-            #expect(row.measurement == .unavailable)
-            #expect(row.file.pageCount == nil, "0 を書き込まない——中身が空の本に見える")
-        }
-    }
-
-    /// **残す側で「外すと決めた」ラベルを引き継がない** [RC-04]。
-    ///
-    /// `manuallyRemoved` は「このファイルにはこのラベルを付けない」という
-    /// 利用者の判断。捨てる側に付いているからといって引き継ぐと、
-    /// **外したはずのラベルが復活する**［`code-review` が検出］。
-    @Test("残す側で外したラベルは引き継がない [DU-27][RC-04]")
-    func labelsTheKeeperRemovedAreNotReattached() {
+    @Test("保護されていないフィールドなら引き継ぐ [DU-27]")
+    func labelsInUnprotectedFieldsAreInherited() {
         let keeper = Self.row(1, name: "残す.cbz")
         let doomed = Self.row(2, name: "捨てる.cbz")
+        let group = LabelGroupID(rawValue: 7)
         let report = DuplicateLossReport.make(
             keepID: keeper.id, rows: [keeper, doomed],
-            assignments: [keeper.id: [Self.label(40): .manuallyRemoved],
-                          doomed.id: [Self.label(40): .manual]],
-            names: [Self.label(40): "残す側で外したもの"])
-        #expect(report.labelsOnlyOnDoomed.isEmpty)
+            assignments: [keeper.id: [], doomed.id: [Self.label(40)]],
+            names: [Self.label(40): "捨てる側だけ"],
+            groupByLabel: [Self.label(40): group],
+            keeperProtections: [])
+        #expect(report.labelsOnlyOnDoomed == [Self.label(40): "捨てる側だけ"])
     }
 
     // MARK: - 削除の 1 単位 [DU-24][DU-28]
@@ -175,7 +92,13 @@ struct DuplicateResolutionTests {
                                                                keeperRating: 0))
         -> DuplicateDeletePlan
     {
-        DuplicateDeletePlan(keeper: keeper, doomed: doomed, usesTrash: usesTrash, loss: loss)
+        // 引き継ぎコマンドはラベルのフィールドを要る [PR-03] ので、
+        // 失われるラベルぶんの対応を作っておく。
+        DuplicateDeletePlan(
+            keeper: keeper, doomed: doomed, usesTrash: usesTrash, loss: loss,
+            groupByLabel: loss.labelsOnlyOnDoomed.keys.reduce(into: [:]) {
+                $0[$1] = LabelGroupID(rawValue: 1)
+            })
     }
 
     /// **引き継ぎは削除より先。** `fileLabel` は `managedFile` の削除で

@@ -23,8 +23,8 @@ struct DuplicateGroupingQueryTests {
         let id = try await f.files.upsert(f.snapshot(inode: inode, path: path, size: size))
         if let title {
             try await f.files.setFields(
-                FileFieldEdit(title: title, titleOrigin: .auto, seriesName: nil,
-                              volume: volume, authorName: nil), id: id)
+                FileFieldEdit(title: title, seriesName: nil,
+                              volume: volume, authorName: nil), id: id, protectedScopes: [])
         }
         if rating > 0 { try await f.files.setRating(rating, ids: [id]) }
         return id

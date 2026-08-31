@@ -102,7 +102,7 @@ struct SchemaTests {
                 """)
             try d.execute(sql: "INSERT INTO label (labelGroupId, name, normalizedName) VALUES (1, 'A', 'a')")
             try d.execute(sql: """
-                INSERT INTO fileLabel (managedFileId, labelId, origin, assignedAt) VALUES (1, 1, 'auto', 0)
+                INSERT INTO fileLabel (managedFileId, labelId, assignedAt) VALUES (1, 1, 0)
                 """)
             try d.execute(sql: "DELETE FROM library WHERE id = 1")
             let mfCount = try Int.fetchOne(d, sql: "SELECT COUNT(*) FROM managedFile"); #expect(mfCount == 0)

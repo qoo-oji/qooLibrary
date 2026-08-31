@@ -62,7 +62,7 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
                 SELECT label.*, COALESCE((
                     SELECT COUNT(*) FROM fileLabel fl
                     JOIN managedFile mf ON mf.id = fl.managedFileId
-                    WHERE fl.labelId = label.id AND fl.origin != 'manuallyRemoved'
+                    WHERE fl.labelId = label.id
                       AND mf.state = 'active'
                 ), 0) AS countWithArchived
                 FROM label WHERE labelGroupId = ?
@@ -106,37 +106,33 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
                      isPinned: r.isPinned, isArchived: r.isArchived, fileCount: r.fileCount)
     }
 
-    public func labelIDs(fileID: FileID) async throws -> [(labelID: LabelID, origin: LabelOrigin)] {
+    public func labelIDs(fileID: FileID) async throws -> [LabelID] {
         try await database.writer.read { db in
-            try Row.fetchAll(db, sql:
-                "SELECT labelId, origin FROM fileLabel WHERE managedFileId = ?",
-                arguments: [fileID.rawValue]
-            ).map { (LabelID(rawValue: $0["labelId"]),
-                     LabelOrigin(rawValue: $0["origin"]) ?? .auto) }
+            try Int64.fetchAll(db, sql:
+                "SELECT labelId FROM fileLabel WHERE managedFileId = ?",
+                arguments: [fileID.rawValue]).map { LabelID(rawValue: $0) }
         }
     }
 
     // MARK: - 書き込み
 
     /// 複数ファイルの紐づけを 1 度に読む [RL-04][RP-02]。
-    public func assignments(fileIDs: [FileID]) async throws -> [FileID: [LabelID: LabelOrigin]] {
+    public func assignments(fileIDs: [FileID]) async throws -> [FileID: Set<LabelID>] {
         guard !fileIDs.isEmpty else { return [:] }
         return try await database.writer.read { db in
-            var result: [FileID: [LabelID: LabelOrigin]] = [:]
+            var result: [FileID: Set<LabelID>] = [:]
             // ホスト変数の上限を避けて分ける（`setRating` と同じ事情。**外しても
             // 結果は正しく、壊れるのは速度のほう**なので変異検証では空振りする）。
             let step = SQLiteManagedFileRepository.maxBoundParameters
             for start in stride(from: 0, to: fileIDs.count, by: step) {
                 let chunk = Array(fileIDs[start..<min(start + step, fileIDs.count)])
                 let rows = try Row.fetchAll(db, sql: """
-                    SELECT managedFileId, labelId, origin FROM fileLabel
+                    SELECT managedFileId, labelId FROM fileLabel
                     WHERE managedFileId IN (\(SQLiteManagedFileRepository.placeholders(chunk.count)))
                     """, arguments: StatementArguments(chunk.map { Optional($0.rawValue) }))
                 for row in rows {
-                    let file = FileID(rawValue: row["managedFileId"])
-                    let label = LabelID(rawValue: row["labelId"])
-                    let origin = LabelOrigin(rawValue: row["origin"]) ?? .auto
-                    result[file, default: [:]][label] = origin
+                    result[FileID(rawValue: row["managedFileId"]), default: []]
+                        .insert(LabelID(rawValue: row["labelId"]))
                 }
             }
             return result
@@ -166,64 +162,34 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
         return LabelID(rawValue: record.id ?? 0)
     }
 
-    public func assign(fileID: FileID, labelID: LabelID, origin: LabelOrigin) async throws {
+    public func assign(fileID: FileID, labelID: LabelID) async throws {
         try await database.writer.write { db in
-            try Self.assign(db, fileID: fileID, labelID: labelID, origin: origin)
+            try Self.assign(db, fileID: fileID, labelID: labelID)
         }
     }
 
-    static func assign(_ db: Database, fileID: FileID, labelID: LabelID,
-                       origin: LabelOrigin) throws {
-        let existing = try String.fetchOne(db, sql:
-            "SELECT origin FROM fileLabel WHERE managedFileId = ? AND labelId = ?",
-            arguments: [fileID.rawValue, labelID.rawValue])
+    static func assign(_ db: Database, fileID: FileID, labelID: LabelID) throws {
         try db.execute(sql: """
-            INSERT INTO fileLabel (managedFileId, labelId, origin, assignedAt)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT (managedFileId, labelId) DO UPDATE SET origin = excluded.origin
-            """, arguments: [fileID.rawValue, labelID.rawValue, origin.rawValue,
+            INSERT INTO fileLabel (managedFileId, labelId, assignedAt)
+            VALUES (?, ?, ?)
+            ON CONFLICT (managedFileId, labelId) DO NOTHING
+            """, arguments: [fileID.rawValue, labelID.rawValue,
                              Date().timeIntervalSinceReferenceDate])
-        // [IX-03] 件数の増分更新。`manuallyRemoved` は「付いていない」扱い。
-        let wasCounted = existing.map { $0 != LabelOrigin.manuallyRemoved.rawValue } ?? false
-        let isCounted = origin != .manuallyRemoved
-        if isCounted && !wasCounted { try adjustCount(db, labelID: labelID, by: 1) }
-        if !isCounted && wasCounted { try adjustCount(db, labelID: labelID, by: -1) }
+        // [IX-03] 件数の増分更新。**実際に行ができたときだけ**——既に付いて
+        // いたものを付け直しても件数は動かない。
+        if db.changesCount > 0 { try adjustCount(db, labelID: labelID, by: 1) }
     }
 
-    /// `markManuallyRemoved` を立てると、再計算で復活させてはいけない印になる [RC-04]。
-    public func unassign(fileID: FileID, labelID: LabelID, markManuallyRemoved: Bool) async throws {
+    public func unassign(fileID: FileID, labelID: LabelID) async throws {
         try await database.writer.write { db in
-            try Self.unassign(db, fileID: fileID, labelID: labelID,
-                              markManuallyRemoved: markManuallyRemoved)
+            try Self.unassign(db, fileID: fileID, labelID: labelID)
         }
     }
 
-    static func unassign(_ db: Database, fileID: FileID, labelID: LabelID,
-                         markManuallyRemoved: Bool) throws {
-        let existing = try String.fetchOne(db, sql:
-            "SELECT origin FROM fileLabel WHERE managedFileId = ? AND labelId = ?",
-            arguments: [fileID.rawValue, labelID.rawValue])
-        guard let existing else {
-            if markManuallyRemoved {
-                try db.execute(sql: """
-                    INSERT INTO fileLabel (managedFileId, labelId, origin, assignedAt)
-                    VALUES (?, ?, 'manuallyRemoved', ?)
-                    """, arguments: [fileID.rawValue, labelID.rawValue,
-                                     Date().timeIntervalSinceReferenceDate])
-            }
-            return
-        }
-        let wasCounted = existing != LabelOrigin.manuallyRemoved.rawValue
-        if markManuallyRemoved {
-            try db.execute(sql: """
-                UPDATE fileLabel SET origin = 'manuallyRemoved'
-                WHERE managedFileId = ? AND labelId = ?
-                """, arguments: [fileID.rawValue, labelID.rawValue])
-        } else {
-            try db.execute(sql: "DELETE FROM fileLabel WHERE managedFileId = ? AND labelId = ?",
-                           arguments: [fileID.rawValue, labelID.rawValue])
-        }
-        if wasCounted { try adjustCount(db, labelID: labelID, by: -1) }
+    static func unassign(_ db: Database, fileID: FileID, labelID: LabelID) throws {
+        try db.execute(sql: "DELETE FROM fileLabel WHERE managedFileId = ? AND labelId = ?",
+                       arguments: [fileID.rawValue, labelID.rawValue])
+        if db.changesCount > 0 { try adjustCount(db, labelID: labelID, by: -1) }
     }
 
     /// 1 つのラベルの紐づけを、指定した状態へ揃える [RL-01][RL-07]。
@@ -236,26 +202,53 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
     /// に割っても、失敗を注入しない限り結果は同じになるため。壊れるのは
     /// 「途中で失敗したときに半端な状態が残らない」という性質のほうなので、
     /// 通ることを理由に割らないこと（`setRating` の 900 件分割と同じ事情）。
-    public func applyAssignments(labelID: LabelID,
-                                 _ changes: [LabelAssignmentChange]) async throws {
+    public func applyAssignments(labelID: LabelID, _ changes: [LabelAssignmentChange],
+                                 protectedScopes: [FileID: Set<ProtectionScope>]) async throws {
         guard !changes.isEmpty else { return }
         try await database.writer.write { db in
             for change in changes {
-                if let origin = change.origin {
-                    try Self.assign(db, fileID: change.fileID, labelID: labelID, origin: origin)
+                if change.isAssigned {
+                    try Self.assign(db, fileID: change.fileID, labelID: labelID)
                 } else {
-                    try Self.unassign(db, fileID: change.fileID, labelID: labelID,
-                                      markManuallyRemoved: false)
+                    try Self.unassign(db, fileID: change.fileID, labelID: labelID)
                 }
+            }
+            // **同じトランザクションで保護も書く** [PR-03]。テーブルは違うが
+            // 同じ DB なので、ここで書けば「ラベルは変わったが保護が付いて
+            // いない」状態が構造的に生まれない。
+            let stmt = try db.cachedStatement(sql:
+                "UPDATE managedFile SET protectedScopes = ? WHERE id = ?")
+            for (id, scopes) in protectedScopes {
+                try stmt.execute(arguments: [ProtectionScopeCoding.encode(scopes), id.rawValue])
             }
         }
     }
 
-    /// 1 ファイルの**自動**ラベルを丸ごと置き換える [RC-01][RC-04]。
+    /// 1 ファイルの紐づけを、指定した集合へちょうど揃える（保護は見ない）。
+    public func setLabels(fileID: FileID, labelIDs: Set<LabelID>) async throws {
+        try await database.writer.write { db in
+            let current = Set(try Int64.fetchAll(db, sql:
+                "SELECT labelId FROM fileLabel WHERE managedFileId = ?",
+                arguments: [fileID.rawValue]).map { LabelID(rawValue: $0) })
+            for id in current.subtracting(labelIDs) {
+                try Self.unassign(db, fileID: fileID, labelID: id)
+            }
+            for id in labelIDs.subtracting(current) {
+                try Self.assign(db, fileID: fileID, labelID: id)
+            }
+        }
+    }
+
+    /// 1 ファイルのラベルを、走査が導いた集合へ揃える [RC-01][PR-01]。
     ///
-    /// `manual` と `manuallyRemoved` には触れない。`manuallyRemoved` の印が付いた
-    /// ラベルは、再計算で当たっても付け直さない——「再計算で復活させてはいけない」
-    /// をこの 1 箇所で守る。
+    /// **保護されたフィールド [PR-02] には一切触れない。** 消さないだけでなく
+    /// **付け足しもしない**——保護は「このフィールドの状態は利用者が決めた」
+    /// という意味なので、走査が横から足すのも約束違反になる。
+    ///
+    /// **判定はこの関数の中で行う**（`managedFile.protectedScopes` と
+    /// `label.labelGroupId` を読む）。呼び出し側に渡させると、次に足す
+    /// 呼び出し元が忘れる——`embeddedMetadataCache` の区切りを呼び出し側に
+    /// 求めなかったのと同じ理由。
     public func replaceAutoLabels(fileID: FileID, labelIDs: Set<LabelID>) async throws {
         try await database.writer.write { db in
             try Self.replaceAutoLabels(db, fileID: fileID, labelIDs: labelIDs)
@@ -263,32 +256,47 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
     }
 
     static func replaceAutoLabels(_ db: Database, fileID: FileID, labelIDs: Set<LabelID>) throws {
-        let current = try Row.fetchAll(db, sql:
-            "SELECT labelId, origin FROM fileLabel WHERE managedFileId = ?",
-            arguments: [fileID.rawValue])
-        let manuallyRemoved = Set(current
-            .filter { ($0["origin"] as String) == LabelOrigin.manuallyRemoved.rawValue }
-            .map { LabelID(rawValue: $0["labelId"] as Int64) })
-        let currentAuto = Set(current
-            .filter { ($0["origin"] as String) == LabelOrigin.auto.rawValue }
-            .map { LabelID(rawValue: $0["labelId"] as Int64) })
-        let wanted = labelIDs.subtracting(manuallyRemoved)          // [RC-04]
+        let protectedFields = ProtectionScopeCoding.decode(try String.fetchOne(db, sql:
+            "SELECT protectedScopes FROM managedFile WHERE id = ?",
+            arguments: [fileID.rawValue])).protectedFields
 
-        for id in currentAuto.subtracting(wanted) {
+        // いま付いているものを、属するフィールドとともに読む。
+        let current = try Row.fetchAll(db, sql: """
+            SELECT fl.labelId AS labelId, l.labelGroupId AS groupId
+              FROM fileLabel fl JOIN label l ON l.id = fl.labelId
+             WHERE fl.managedFileId = ?
+            """, arguments: [fileID.rawValue])
+        // 保護されたフィールドのものは、消す候補からも外す。
+        let removable = Set(current
+            .filter { !protectedFields.contains(LabelGroupID(rawValue: $0["groupId"] as Int64)) }
+            .map { LabelID(rawValue: $0["labelId"] as Int64) })
+        let attached = Set(current.map { LabelID(rawValue: $0["labelId"] as Int64) })
+
+        // 付けたいもののうち、保護されたフィールドに属するものを外す。
+        // **1 ファイルのラベルは高々数十件**（フィールド数 × 値）なので
+        // ホスト変数の区切りは要らない。
+        var wanted = labelIDs
+        if !protectedFields.isEmpty, !wanted.isEmpty {
+            let ids = Array(wanted)
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT id, labelGroupId FROM label
+                 WHERE id IN (\(SQLiteManagedFileRepository.placeholders(ids.count)))
+                """, arguments: StatementArguments(ids.map { Optional($0.rawValue) }))
+            for row in rows
+            where protectedFields.contains(LabelGroupID(rawValue: row["labelGroupId"] as Int64)) {
+                wanted.remove(LabelID(rawValue: row["id"] as Int64))
+            }
+        }
+
+        for id in removable.subtracting(wanted) {
             try db.execute(sql: "DELETE FROM fileLabel WHERE managedFileId = ? AND labelId = ?",
                            arguments: [fileID.rawValue, id.rawValue])
             try adjustCount(db, labelID: id, by: -1)
         }
         let now = Date().timeIntervalSinceReferenceDate
-        for id in wanted.subtracting(currentAuto) {
-            // 手動で付いているものは origin を変えない（手動の意思を残す）。
-            let existing = try String.fetchOne(db, sql:
-                "SELECT origin FROM fileLabel WHERE managedFileId = ? AND labelId = ?",
-                arguments: [fileID.rawValue, id.rawValue])
-            guard existing == nil else { continue }
+        for id in wanted.subtracting(attached) {
             try db.execute(sql: """
-                INSERT INTO fileLabel (managedFileId, labelId, origin, assignedAt)
-                VALUES (?, ?, 'auto', ?)
+                INSERT INTO fileLabel (managedFileId, labelId, assignedAt) VALUES (?, ?, ?)
                 """, arguments: [fileID.rawValue, id.rawValue, now])
             try adjustCount(db, labelID: id, by: 1)
         }
@@ -314,25 +322,20 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
             // という別の操作になる。
             guard s.labelGroupId == t.labelGroupId else { throw LabelEditError.crossGroupMerge }
 
-            // ① 両方が付いているファイル: origin を突き合わせて移動先を書き換える。
-            let overlapping = try Row.fetchAll(db, sql: """
-                SELECT src.managedFileId AS fileId,
-                       src.origin AS srcOrigin, dst.origin AS dstOrigin,
-                       MIN(src.assignedAt, dst.assignedAt) AS assignedAt
-                FROM fileLabel src
-                JOIN fileLabel dst ON dst.managedFileId = src.managedFileId
-                WHERE src.labelId = ? AND dst.labelId = ?
-                """, arguments: [source.rawValue, target.rawValue])
-            for row in overlapping {
-                let srcOrigin = LabelOrigin(rawValue: row["srcOrigin"]) ?? .auto
-                let dstOrigin = LabelOrigin(rawValue: row["dstOrigin"]) ?? .auto
-                let winner = LabelOrigin.merging(srcOrigin, dstOrigin)
-                try db.execute(sql: """
-                    UPDATE fileLabel SET origin = ?, assignedAt = ?
-                    WHERE managedFileId = ? AND labelId = ?
-                    """, arguments: [winner.rawValue, row["assignedAt"] as Double,
-                                     row["fileId"] as Int64, target.rawValue])
-            }
+            // ① 両方が付いているファイル: 古いほうの付与日時に揃える。
+            //    **どちらを残すかの規則は要らなくなった**——紐づけは付いて
+            //    いる／いないの 2 値で、保護は紐づけではなくフィールドに
+            //    付く [PR-02]。
+            try db.execute(sql: """
+                UPDATE fileLabel SET assignedAt = MIN(assignedAt, (
+                    SELECT src.assignedAt FROM fileLabel src
+                     WHERE src.labelId = ? AND src.managedFileId = fileLabel.managedFileId
+                ))
+                 WHERE labelId = ? AND EXISTS (
+                    SELECT 1 FROM fileLabel src
+                     WHERE src.labelId = ? AND src.managedFileId = fileLabel.managedFileId
+                 )
+                """, arguments: [source.rawValue, target.rawValue, source.rawValue])
             // ② 重ならないものは移す。①で処理済みの行は主キーが衝突するので
             //    `OR IGNORE` で飛ばし、残骸は③の cascade が片付ける。
             try db.execute(sql: """
@@ -426,7 +429,7 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
                 // 戻せるはずの残りまで戻せなくなるほうが害が大きい。
                 guard let record = try LabelRecord.fetchOne(db, key: id.rawValue) else { continue }
                 let rows = try Row.fetchAll(db, sql: """
-                    SELECT managedFileId, origin, assignedAt FROM fileLabel WHERE labelId = ?
+                    SELECT managedFileId, assignedAt FROM fileLabel WHERE labelId = ?
                     """, arguments: [id.rawValue])
                 result.append(LabelSnapshot(
                     id: id, groupID: LabelGroupID(rawValue: record.labelGroupId),
@@ -436,7 +439,6 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
                     assignments: rows.map { row in
                         LabelSnapshot.Assignment(
                             fileID: FileID(rawValue: row["managedFileId"]),
-                            origin: LabelOrigin(rawValue: row["origin"]) ?? .auto,
                             assignedAt: Date(timeIntervalSinceReferenceDate: row["assignedAt"]))
                     }))
             }
@@ -487,10 +489,9 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
                     // は外部キー違反を無視しないので、`WHERE EXISTS` で自分で外す
                     // ——1 件の消失で Undo 全体が失敗するのを避ける。
                     try db.execute(sql: """
-                        INSERT INTO fileLabel (managedFileId, labelId, origin, assignedAt)
-                        SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM managedFile WHERE id = ?)
+                        INSERT INTO fileLabel (managedFileId, labelId, assignedAt)
+                        SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM managedFile WHERE id = ?)
                         """, arguments: [assignment.fileID.rawValue, snapshot.id.rawValue,
-                                         assignment.origin.rawValue,
                                          assignment.assignedAt.timeIntervalSinceReferenceDate,
                                          assignment.fileID.rawValue])
                 }
@@ -523,7 +524,7 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
                 UPDATE label SET fileCount = COALESCE((
                     SELECT COUNT(*) FROM fileLabel fl
                     JOIN managedFile mf ON mf.id = fl.managedFileId
-                    WHERE fl.labelId = label.id AND fl.origin != 'manuallyRemoved'
+                    WHERE fl.labelId = label.id
                       AND mf.state = 'active' AND mf.isArchived = 0
                 ), 0)
                 WHERE labelGroupId IN (SELECT id FROM labelGroup WHERE libraryId = ?)
@@ -545,7 +546,7 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
                 UPDATE label SET fileCount = COALESCE((
                     SELECT COUNT(*) FROM fileLabel fl
                     JOIN managedFile mf ON mf.id = fl.managedFileId
-                    WHERE fl.labelId = label.id AND fl.origin != 'manuallyRemoved'
+                    WHERE fl.labelId = label.id
                       AND mf.state = 'active' AND mf.isArchived = 0
                 ), 0) WHERE id = ?
                 """, arguments: [id.rawValue])

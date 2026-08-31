@@ -373,7 +373,7 @@ struct UnresolvedFileModelIntegrationTests {
         #expect(b.model.hiddenIgnoredCount == 0, "無視も解ける")
         let assignments = try await b.workspace.services
             .labelAssignments(fileIDs: [target.row.id])
-        #expect(assignments[target.row.id]?[label.id] == nil, "ラベルも外れる")
+        #expect(assignments[target.row.id]?.contains(label.id) != true, "ラベルも外れる")
     }
 
     /// **ラベルを外したときに一覧から消してはならない。**

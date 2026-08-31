@@ -26,17 +26,14 @@ extension SQLiteManagedFileRepository {
             guard !records.isEmpty else { return [] }
             let ids = records.compactMap(\.id)
 
-            // ラベル件数 [OR-04 の確認に使う]。**`manuallyRemoved` は数えない**
-            // ——利用者から見て「付いている」ラベルだけを数えなければ、
-            // 「N 件のラベルが外れます」の数字が右ペインの表示と食い違う [RC-04]。
+            // ラベル件数 [OR-04 の確認に使う]。行があること＝付いていること
+            // なので、素朴に数えればよい [PR-08]。
             var labelCounts: [Int64: Int] = [:]
-            var countArgs: [any DatabaseValueConvertible] = ids
-            countArgs.append(LabelOrigin.manuallyRemoved.rawValue)
             for row in try Row.fetchAll(db, sql: """
                 SELECT managedFileId, COUNT(*) AS n FROM fileLabel
-                WHERE managedFileId IN (\(Self.placeholders(ids.count))) AND origin <> ?
+                WHERE managedFileId IN (\(Self.placeholders(ids.count)))
                 GROUP BY managedFileId
-                """, arguments: StatementArguments(countArgs) ?? StatementArguments()) {
+                """, arguments: StatementArguments(ids) ?? StatementArguments()) {
                 labelCounts[row["managedFileId"]] = row["n"]
             }
 
@@ -90,12 +87,11 @@ extension SQLiteManagedFileRepository {
                     continue
                 }
                 let rows = try Row.fetchAll(db, sql: """
-                    SELECT labelId, origin, assignedAt FROM fileLabel WHERE managedFileId = ?
+                    SELECT labelId, assignedAt FROM fileLabel WHERE managedFileId = ?
                     """, arguments: [id.rawValue])
                 out.append(record.snapshotForUndo(labels: rows.map { row in
                     ManagedFileSnapshot.LabelAssignment(
                         labelID: LabelID(rawValue: row["labelId"]),
-                        origin: LabelOrigin(rawValue: row["origin"]) ?? .auto,
                         assignedAt: Date(timeIntervalSinceReferenceDate: row["assignedAt"]))
                 }))
             }
@@ -143,10 +139,9 @@ extension SQLiteManagedFileRepository {
                     // **相手のラベルが消えていたら飛ばす**（`LabelRepository.restore`
                     // と同じ）。1 件の消失で Undo 全体が失敗するのを避ける。
                     try db.execute(sql: """
-                        INSERT INTO fileLabel (managedFileId, labelId, origin, assignedAt)
-                        SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM label WHERE id = ?)
+                        INSERT INTO fileLabel (managedFileId, labelId, assignedAt)
+                        SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM label WHERE id = ?)
                         """, arguments: [snapshot.id.rawValue, label.labelID.rawValue,
-                                         label.origin.rawValue,
                                          label.assignedAt.timeIntervalSinceReferenceDate,
                                          label.labelID.rawValue])
                 }

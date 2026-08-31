@@ -78,8 +78,8 @@ struct LabelEditingTests {
 
         let assigned = m.displayGroups.flatMap { m.visibleLabels(in: $0) }.filter { m.isAssigned($0) }
         #expect(!assigned.isEmpty)
-        // [RL-06] 走査が付けたものは自動。
-        #expect(assigned.allSatisfy { m.assignment(of: $0).isAutomatic })
+        // 走査が付けただけのフィールドは保護されていない [PR-01]。
+        #expect(assigned.allSatisfy { !m.assignment(of: $0).isProtected })
         #expect(assigned.allSatisfy { m.assignment(of: $0).checkState == .all })
     }
 
@@ -100,33 +100,35 @@ struct LabelEditingTests {
 
     // MARK: - 付け外し
 
-    /// **RC-04 そのもの。** 印を立てないと、次の再スキャンで自動付与が復活する。
-    @Test("自動ラベルを外すと manuallyRemoved の印が残る [RC-04]")
+    /// **PR-03 そのもの。** 保護を立てないと、次の再スキャンで自動付与が復活する。
+    @Test("ラベルを外すとそのフィールドが保護される [PR-03]")
     @MainActor
-    func removingAnAutoLabelLeavesTheMark() async throws {
+    func removingALabelProtectsItsField() async throws {
         let (w, library, urls) = try await workspace(files: [Self.name(1)])
         let stack = CommandStack()
         let m = await model(w, library, urls, stack: stack)
         guard case .ready(let subject) = m.state else { Issue.record("読めていない"); return }
         let label = try #require(m.displayGroups.flatMap { m.visibleLabels(in: $0) }
-            .first { m.assignment(of: $0).isAutomatic })
+            .first { m.assignment(of: $0).assignedCount > 0 })
 
         try await m.toggle(label)
         let after = try await w.services.labelAssignments(fileIDs: subject.fileIDs)
-        #expect(after[subject.fileIDs[0]]?[label.id] == .manuallyRemoved)
+        #expect(after[subject.fileIDs[0]]?.contains(label.id) != true)
+        let scopes = try await w.services.protectedScopes(ids: subject.fileIDs)
+        #expect(scopes[subject.fileIDs[0]]?.contains(.field(label.groupID)) == true)
 
-        // 再スキャンしても復活しない [RC-04]。
+        // 再スキャンしても復活しない [PR-01]。
         _ = try await w.services.scan(libraryID: library.id, root: w.libraryRoot)
         let rescanned = try await w.services.labelAssignments(fileIDs: subject.fileIDs)
-        #expect(rescanned[subject.fileIDs[0]]?[label.id] == .manuallyRemoved,
-                "再計算で復活してはならない")
+        #expect(rescanned[subject.fileIDs[0]]?.contains(label.id) != true,
+                "保護されたフィールドへ走査が付け足してはならない")
     }
 
-    /// ［ユーザー判断］利用者から見れば origin の違いは小さな印だけで、
-    /// 「外したのに再スキャンで戻ってくる」の驚きは auto でも manual でも同じ。
-    @Test("手動ラベルを外したときも印を残す［ユーザー判断］")
+    /// 手で作って付けたラベルを外したときも同じ——保護は「そのフィールドを
+    /// 触った」ことに対して立つ [PR-03]。
+    @Test("手で付けたラベルを外したときも保護が立つ [PR-03]")
     @MainActor
-    func removingAManualLabelAlsoLeavesTheMark() async throws {
+    func removingAManuallyAddedLabelAlsoProtects() async throws {
         let (w, library, urls) = try await workspace(files: [Self.name(1)])
         let stack = CommandStack()
         let m = await model(w, library, urls, stack: stack)
@@ -136,44 +138,50 @@ struct LabelEditingTests {
         try await m.createAndAdd(groupID: group.id, name: "手で付けた値")
         await m.reload()
         let label = try #require(m.addableLabels(in: group).first { $0.name == "手で付けた値" })
-        #expect(m.assignment(of: label).isAutomatic == false, "[RL-06] 手動は自動の印を出さない")
+        #expect(m.assignment(of: label).isProtected, "付けた時点で保護されている [PR-03]")
 
         try await m.toggle(label)
         let after = try await w.services.labelAssignments(fileIDs: subject.fileIDs)
-        #expect(after[subject.fileIDs[0]]?[label.id] == .manuallyRemoved)
+        #expect(after[subject.fileIDs[0]]?.contains(label.id) != true)
+        let scopes = try await w.services.protectedScopes(ids: subject.fileIDs)
+        #expect(scopes[subject.fileIDs[0]]?.contains(.field(label.groupID)) == true)
     }
 
-    /// **これが崩れると ⌘Z が元の状態を壊す。** ファイルごとに `auto` /
-    /// `manual` / 行なし が混在しうるので、一律に消す実装だと「戻した」ように
+    /// **これが崩れると ⌘Z が元の状態を壊す。** ファイルごとに「付いていた／
+    /// いなかった」と保護の集合が違うので、一律に戻す実装だと「戻した」ように
     /// 見えて別の状態になる [RA-06 と同じ形]。
-    @Test("取り消しはファイルごとの元の origin へ戻す [RL-07][UD-01]")
+    @Test("取り消しはファイルごとの元の状態へ戻す [RL-07][UD-01]")
     @MainActor
-    func undoRestoresPerFileOrigins() async throws {
+    func undoRestoresPerFileState() async throws {
         let (w, library, urls) = try await workspace(files: [Self.name(1), Self.name(2)])
         let stack = CommandStack()
         let m = await model(w, library, urls, stack: stack)
         guard case .ready(let subject) = m.state else { Issue.record("読めていない"); return }
-        // ジャンル値1 は 2 件とも自動で付く。1 件目だけ手動へ変えておく。
+        // ジャンル値1 は 2 件とも自動で付く。1 件目だけ先に保護しておく。
         let group = try #require(m.allGroups.first { g in
             m.visibleLabels(in: g).contains { m.assignment(of: $0).checkState == .all }
         })
         let label = try #require(m.visibleLabels(in: group).first {
             m.assignment(of: $0).checkState == .all
         })
-        try await w.services.applyLabelAssignments(labelID: label.id, [
-            LabelAssignmentChange(fileID: subject.fileIDs[0], origin: .manual),
-        ])
+        try await w.services.setProtectedScopes(
+            [subject.fileIDs[0]: [.field(label.groupID)]])
         await m.reload()
 
         try await m.toggle(label)                       // 2 件とも外れる
         let removed = try await w.services.labelAssignments(fileIDs: subject.fileIDs)
-        #expect(removed[subject.fileIDs[0]]?[label.id] == .manuallyRemoved)
-        #expect(removed[subject.fileIDs[1]]?[label.id] == .manuallyRemoved)
+        #expect(removed[subject.fileIDs[0]]?.contains(label.id) != true)
+        #expect(removed[subject.fileIDs[1]]?.contains(label.id) != true)
 
         _ = await stack.undo()
         let restored = try await w.services.labelAssignments(fileIDs: subject.fileIDs)
-        #expect(restored[subject.fileIDs[0]]?[label.id] == .manual, "手動は手動へ戻る")
-        #expect(restored[subject.fileIDs[1]]?[label.id] == .auto, "自動は自動へ戻る")
+        #expect(restored[subject.fileIDs[0]]?.contains(label.id) == true, "2 件とも戻る")
+        #expect(restored[subject.fileIDs[1]]?.contains(label.id) == true)
+        // **保護はファイルごとに元へ戻る**——一律に落とすと、元から保護されて
+        // いた 1 件目まで守られなくなる。
+        let scopes = try await w.services.protectedScopes(ids: subject.fileIDs)
+        #expect(scopes[subject.fileIDs[0]]?.contains(.field(label.groupID)) == true)
+        #expect(scopes[subject.fileIDs[1]]?.contains(.field(label.groupID)) != true)
     }
 
     @Test("付けた直後の取り消しは、紐づけの行ごと消す [RL-07]")
@@ -190,12 +198,12 @@ struct LabelEditingTests {
 
         _ = await stack.undo()
         let after = try await w.services.labelAssignments(fileIDs: subject.fileIDs)
-        #expect(after[subject.fileIDs[0]]?[label.id] == nil,
+        #expect(after[subject.fileIDs[0]]?.contains(label.id) != true,
                 "行が無かったのだから、行ごと消えるのが元の状態")
 
         _ = await stack.redo()
         let redone = try await w.services.labelAssignments(fileIDs: subject.fileIDs)
-        #expect(redone[subject.fileIDs[0]]?[label.id] == .manual)
+        #expect(redone[subject.fileIDs[0]]?.contains(label.id) == true)
     }
 
     // MARK: - 複数選択 [RP-02]
@@ -240,20 +248,21 @@ struct LabelEditingTests {
     /// 再スキャンで消えるように読めてしまう。
     @Test("自動と手動が混ざったら自動の印を出さない [RL-06]")
     @MainActor
-    func mixedOriginsAreNotShownAsAutomatic() async throws {
+    func mixedProtectionIsNotShownAsProtected() async throws {
         let (w, library, urls) = try await workspace(files: [Self.name(1), Self.name(2)])
         let stack = CommandStack()
         let m = await model(w, library, urls, stack: stack)
         guard case .ready(let subject) = m.state else { Issue.record("読めていない"); return }
         let label = try #require(m.displayGroups.flatMap { m.visibleLabels(in: $0) }
             .first { m.assignment(of: $0).checkState == .all })
-        #expect(m.assignment(of: label).isAutomatic)
+        #expect(!m.assignment(of: label).isProtected, "走査が付けただけなら保護なし")
 
-        try await w.services.applyLabelAssignments(labelID: label.id, [
-            LabelAssignmentChange(fileID: subject.fileIDs[0], origin: .manual),
-        ])
+        // 片方だけ保護する。
+        try await w.services.setProtectedScopes(
+            [subject.fileIDs[0]: [.field(label.groupID)]])
         await m.reload()
-        #expect(m.assignment(of: label).isAutomatic == false)
+        #expect(!m.assignment(of: label).isProtected,
+                "混在で鍵を出すと、守られていないほうまで守られているように読める")
     }
 
     // MARK: - 出し分け
@@ -314,7 +323,8 @@ struct LabelEditingTests {
 
         _ = try await w.services.scan(libraryID: library.id, root: w.libraryRoot)
         let after = try await w.services.labelAssignments(fileIDs: subject.fileIDs)
-        #expect(after[subject.fileIDs[0]]?[label.id] == .manual)
+        #expect(after[subject.fileIDs[0]]?.contains(label.id) == true,
+                "保護されたフィールドは走査が動かさない [PR-01]")
     }
 
     // MARK: - コマンド
@@ -325,14 +335,17 @@ struct LabelEditingTests {
         let w = try ServicesWorkspace()
         let url = w.libraryRoot.appendingPathComponent(Self.name(1))
         let previous = [AssignLabelCommand.Previous(
-            fileID: FileID(rawValue: 1), url: url, origin: nil)]
-        let add = AssignLabelCommand(labelID: LabelID(rawValue: 1), labelName: "サークル値1",
+            fileID: FileID(rawValue: 1), url: url, wasAssigned: false, protectedScopes: [])]
+        let group = LabelGroupID(rawValue: 1)
+        let add = AssignLabelCommand(labelID: LabelID(rawValue: 1), groupID: group,
+                                     labelName: "サークル値1",
                                      previous: previous, assigning: true,
                                      subjectName: Self.name(1), services: w.services)
         #expect(add.displayName == "「\(Self.name(1))」のラベル「サークル値1」を付与")
         #expect(add.isUndoable)
 
-        let remove = AssignLabelCommand(labelID: LabelID(rawValue: 1), labelName: "サークル値1",
+        let remove = AssignLabelCommand(labelID: LabelID(rawValue: 1), groupID: group,
+                                        labelName: "サークル値1",
                                         previous: previous, assigning: false,
                                         subjectName: "3 項目", services: w.services)
         #expect(remove.displayName == "「3 項目」のラベル「サークル値1」を除去")
@@ -346,9 +359,10 @@ struct LabelEditingTests {
         let w = try ServicesWorkspace()
         let url = w.libraryRoot.appendingPathComponent(Self.name(1))
         let command = AssignLabelCommand(
-            labelID: LabelID(rawValue: 1), labelName: "サークル値1",
+            labelID: LabelID(rawValue: 1), groupID: LabelGroupID(rawValue: 1),
+            labelName: "サークル値1",
             previous: [AssignLabelCommand.Previous(fileID: FileID(rawValue: 1), url: url,
-                                                   origin: nil)],
+                                                   wasAssigned: false, protectedScopes: [])],
             assigning: true, subjectName: Self.name(1), services: w.services)
         let text = command.logDescription
         #expect(text.contains(url.path))

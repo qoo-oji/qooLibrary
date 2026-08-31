@@ -374,7 +374,7 @@ struct ScanIntegrationTests {
         // ラベルを手で付けておき、解除で失われないことを確かめる
         let group = try #require(try await w.labels.group(libraryID: w.libraryID, index: 2))
         let label = try await w.labels.ensureLabel(groupID: group.id, name: "手動ラベル")
-        try await w.labels.assign(fileID: book.id, labelID: label, origin: .manual)
+        try await w.labels.assign(fileID: book.id, labelID: label)
 
         try w.write("画像作品/追加/002.jpg")
         let summary = try await w.scanFull()
@@ -384,7 +384,7 @@ struct ScanIntegrationTests {
         let after = try #require(try await w.files.row(id: book.id))
         #expect(after.state == .active, "通常フォルダに戻すだけ [IF-05]")
         #expect(!after.isBookFolder)
-        #expect(try await w.labels.labelIDs(fileID: book.id).map(\.labelID).contains(label),
+        #expect(try await w.labels.labelIDs(fileID: book.id).contains(label),
                 "ラベル紐づけを維持すべき [IF-05]")
         // 中の `追加` は条件を満たすので新しい 1 冊として検出される
         #expect(summary.bookFoldersDetected == 1)

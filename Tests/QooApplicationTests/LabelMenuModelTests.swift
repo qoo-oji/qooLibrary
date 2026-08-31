@@ -120,7 +120,10 @@ struct LabelMenuModelTests {
         try await m.toggle(label, targets: [.init(id: id1, url: URL(fileURLWithPath: "/t"))])
         #expect(m.checkState(of: label, for: [id1]) == .none)
         let after = try await w.services.labelAssignments(fileIDs: [id1])
-        #expect(after[id1]?[label.id] == .manuallyRemoved)
+        #expect(after[id1]?.contains(label.id) != true, "行ごと消える [PR-08]")
+        // 外した操作はそのフィールドを保護する [PR-03]。
+        let scopes = try await w.services.protectedScopes(ids: [id1])
+        #expect(scopes[id1]?.contains(.field(label.groupID)) == true)
     }
 
     // MARK: - トグル [RL3-01][RL3-03]
@@ -142,18 +145,21 @@ struct LabelMenuModelTests {
         try await m.toggle(circle1, targets: targets)
         #expect(m.checkState(of: circle1, for: [id1, id2]) == .all)
         let after = try await w.services.labelAssignments(fileIDs: [id1, id2])
-        // どちらも manual になる——利用者が明示的に付けた扱いで、再スキャンから
-        // 守られる [RC-04]。インスペクタ（`LabelEditorModel`）と同じ挙動で、
-        // 元の origin は ⌘Z のために Previous が 1 件ずつ持つ（次のテスト）。
-        #expect(after[id1]?[circle1.id] == .manual)
-        #expect(after[id2]?[circle1.id] == .manual)
+        // どちらにも付き、そのフィールドが保護される [PR-03]。インスペクタ
+        // （`LabelEditorModel`）と同じ挙動で、変更前の状態は ⌘Z のために
+        // `Previous` が 1 件ずつ持つ（次のテスト）。
+        #expect(after[id1]?.contains(circle1.id) == true)
+        #expect(after[id2]?.contains(circle1.id) == true)
+        let scopes = try await w.services.protectedScopes(ids: [id1, id2])
+        #expect(scopes[id1]?.contains(.field(circle1.groupID)) == true)
+        #expect(scopes[id2]?.contains(.field(circle1.groupID)) == true)
     }
 
     /// **RL3-03 そのもの。** ⌘Z がファイルごとの変更前の状態へ戻す——
     /// `AssignLabelCommand.toggling` をインスペクタと共有していることの検証。
     @Test("⌘Z がファイルごとの元の状態へ戻す [RL3-03][RA-06 と同じ判断]")
     @MainActor
-    func undoRestoresPerFileOrigins() async throws {
+    func undoRestoresPerFileState() async throws {
         let (w, library, urls) = try await workspace(files: [Self.name(1), Self.name(2)])
         let stack = CommandStack()
         let m = await loadedModel(w, library, stack: stack)
@@ -167,8 +173,10 @@ struct LabelMenuModelTests {
         try await m.toggle(circle1, targets: targets)
         _ = try await stack.undo()
         let after = try await w.services.labelAssignments(fileIDs: [id1, id2])
-        #expect(after[id1]?[circle1.id] == .auto, "1 冊目は自動付与のまま")
-        #expect(after[id2]?[circle1.id] == nil, "2 冊目は行なしへ戻る（一律に戻さない）")
+        #expect(after[id1]?.contains(circle1.id) == true, "1 冊目は付いたまま")
+        #expect(after[id2]?.contains(circle1.id) != true, "2 冊目は行なしへ戻る")
+        let scopes = try await w.services.protectedScopes(ids: [id1, id2])
+        #expect(scopes[id1]?.contains(.field(circle1.groupID)) != true, "保護も戻る")
     }
 
     @Test("既にその状態なら Undo スタックを汚さない（factory が nil を返す）")
@@ -183,11 +191,12 @@ struct LabelMenuModelTests {
         // 全部に付いている → 外す → もう一度トグルで付け直す、は変化がある。
         // ここで試すのは factory の no-op 判定そのもの。
         let command = AssignLabelCommand.toggling(
-            labelID: label.id, labelName: label.name,
+            labelID: label.id, groupID: label.groupID, labelName: label.name,
             files: [(id: id1, url: urls[0])],
-            assignments: [id1: [label.id: .manual]],
+            assignments: [id1: [label.id]],
+            protectedScopes: [id1: [.field(label.groupID)]],
             assigning: true, subjectName: "x", services: w.services)
-        #expect(command == nil, "既に manual のものへ付け直しても書くことが無い")
+        #expect(command == nil, "付いていて保護もされていれば書くことが無い")
         #expect(stack.undoTitle == nil)
     }
 

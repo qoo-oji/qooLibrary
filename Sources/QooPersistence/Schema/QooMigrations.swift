@@ -16,7 +16,7 @@ public enum QooMigrations {
     public static let identifiers: [String] = [
         "v1_initial", "v2_regexPatterns", "v3_embeddedMetadata", "v4_fsEventsCheckpoint",
         "v5_identityRejection", "v6_duplicateTitleKey", "v7_identityPending",
-        "v8_stage1Removals", "v9_reservedWordCleanup",
+        "v8_stage1Removals", "v9_reservedWordCleanup", "v10_metadataProtection",
     ]
 
     public static var migrator: DatabaseMigrator {
@@ -31,6 +31,7 @@ public enum QooMigrations {
         m.registerMigration(identifiers[6], migrate: v7IdentityPending)
         m.registerMigration(identifiers[7], migrate: v8Stage1Removals)
         m.registerMigration(identifiers[8], migrate: v9ReservedWordCleanup)
+        m.registerMigration(identifiers[9], migrate: v10MetadataProtection)
         return m
     }
 
@@ -127,6 +128,60 @@ public enum QooMigrations {
     ///
     /// どの列も索引・トリガ・ビューから参照されていないので
     /// `ALTER TABLE … DROP COLUMN` で足りる（SQLite 3.35+、この環境は 3.51）。
+    // MARK: - v10
+
+    /// メタデータの保護 [PR-01〜PR-09]（概念モデル v3 ステージ 6）。
+    ///
+    /// `fileLabel.origin` の 3 状態 [RC-04] と `managedFile.titleOrigin` [RP-11]
+    /// という**2 つの暗黙の保護機構を、1 つの見える概念へ畳む** [PR-08]。
+    ///
+    /// | 変換前 | 変換後 |
+    /// |---|---|
+    /// | `titleOrigin = 'manual'` | 基本情報スコープ `basic` |
+    /// | `fileLabel.origin` が `manual` / `manuallyRemoved` | そのラベルが属する
+    ///   フィールドのスコープ `field:<labelGroupId>` |
+    ///
+    /// **`manuallyRemoved` も保護に変換する**のが要点。あれは「このラベルは
+    /// 付けないと決めた」という意思表示なので、行を消すだけでは次の走査で
+    /// 復活する——フィールドごと保護しておけば走査はそこに一切触れない。
+    ///
+    /// **変換は保護を広い側へ倒す。** タイトルだけを手で直した行は、
+    /// シリーズ名と巻数まで守られるようになる（基本情報は 1 かたまり
+    /// [PR-02]）。逆向き（守っていたものを守らなくなる）に倒すと、手で
+    /// 直した値が次の走査で黙って消えるので、こちらを選ぶ。
+    static func v10MetadataProtection(_ db: Database) throws {
+        try db.alter(table: "managedFile") { t in
+            t.add(column: "protectedScopes", .text).notNull().defaults(to: "[]")
+        }
+        // **綴りの昇順に揃える**——`ProtectionScopeCoding.encode` と同じ形に
+        // しておかないと、移行が書いた行と以後に書いた行で同じ集合が違う
+        // 文字列になり、JSON バックアップに意味の無い差分が出る。
+        try db.execute(sql: """
+            WITH scopes AS (
+                SELECT id AS fileId, 'basic' AS scope FROM managedFile
+                 WHERE titleOrigin = 'manual'
+                UNION
+                SELECT fl.managedFileId, 'field:' || l.labelGroupId
+                  FROM fileLabel fl JOIN label l ON l.id = fl.labelId
+                 WHERE fl.origin IN ('manual', 'manuallyRemoved')
+            )
+            UPDATE managedFile SET protectedScopes = (
+                SELECT json_group_array(scope)
+                  FROM (SELECT scope FROM scopes
+                         WHERE fileId = managedFile.id ORDER BY scope)
+            ) WHERE id IN (SELECT fileId FROM scopes)
+            """)
+        // 除去の印は保護へ移ったので、行そのものは要らない [PR-08]。
+        // **ラベル件数 [DB-02] は動かない**——`manuallyRemoved` は元から
+        // 「付いていない」として数えられていなかった。
+        try db.execute(sql: "DELETE FROM fileLabel WHERE origin = 'manuallyRemoved'")
+        try db.alter(table: "managedFile") { t in t.drop(column: "titleOrigin") }
+        // WITHOUT ROWID テーブルでも DROP COLUMN は通る［実測、SQLite 3.51］。
+        try db.alter(table: "fileLabel") { t in t.drop(column: "origin") }
+        try db.execute(sql: "UPDATE storeMetadata SET schemaVersion = ? WHERE id = 1",
+                       arguments: [identifiers[9]])
+    }
+
     // MARK: - v9
 
     /// 予約語の整理（v3 ステージ 5）[RWI-02]。

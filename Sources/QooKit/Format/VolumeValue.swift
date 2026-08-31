@@ -29,6 +29,21 @@ public struct VolumeValue: Sendable, Hashable, Codable {
         VolumeValue(kind: .numeric, number: n, raw: raw)
     }
 
+    /// 利用者が手で入力した巻数を読む [RP-14]。
+    ///
+    /// 空（空白のみを含む）は「巻数なし」＝ `.none`。**数値として読めない
+    /// 入力は `nil` を返して受け付けない**——`.none` に落とすと、打ち間違いが
+    /// 「巻数を消す操作」として黙って通ってしまう。
+    ///
+    /// 全角数字は `TextNormalizer` で畳んでから読む（`１２` を弾かない）。
+    /// `raw` には**畳む前の入力**を入れる——この型の規約どおり、表記を失わない。
+    public static func parsingUserInput(_ text: String) -> VolumeValue? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return VolumeValue.none }
+        guard let n = Double(TextNormalizer.normalize(trimmed)), n.isFinite else { return nil }
+        return .numeric(n, raw: trimmed)
+    }
+
     /// ソート用の単一キー。`numeric` < `none` の順で安定させる。
     public var sortKey: Double {
         switch kind {

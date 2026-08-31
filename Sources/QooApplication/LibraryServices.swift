@@ -779,9 +779,54 @@ public final class LibraryServices {
     ///
     /// **Undo は `SetFileFieldsCommand` が担う**ので、UI から直接ここを呼ばない
     /// こと（`setRating`/`applyLabelAssignments` と同じ約束）。
-    public func setFileFields(_ edit: FileFieldEdit, id: FileID) async throws {
+    public func setFileFields(_ edit: FileFieldEdit, id: FileID,
+                              protectedScopes: Set<ProtectionScope>) async throws {
         guard let repository = fileRepository else { throw ServiceError.notReady }
-        try await repository.setFields(edit, id: id)
+        try await repository.setFields(edit, id: id, protectedScopes: protectedScopes)
+    }
+
+    // MARK: - メタデータの保護 [PR-01〜PR-09]
+
+    /// 保護スコープを読む [PR-05]。
+    public func protectedScopes(ids: [FileID]) async throws
+        -> [FileID: Set<ProtectionScope>]
+    {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        return try await repository.protectedScopes(ids: ids)
+    }
+
+    /// 保護スコープを書く [PR-05]。**Undo は `SetProtectionCommand` が担う**ので、
+    /// UI から直接ここを呼ばないこと（`setRating` と同じ約束）。
+    public func setProtectedScopes(_ scopes: [FileID: Set<ProtectionScope>]) async throws {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        try await repository.setProtectedScopes(scopes)
+    }
+
+    /// 保護されていないスコープを自動値へ導き直す [PR-04]。
+    ///
+    /// **保護を外した直後に呼ぶ。** 解除しても次の走査まで手動値が残っていると、
+    /// 「解除したのに何も起きない」ように見える。
+    public func reapplyAutomaticMetadata(ids: [FileID], libraryID: LibraryID) async throws {
+        guard let engine = makeScanEngineIfNeeded() else { throw ServiceError.notReady }
+        try await engine.reapplyMetadata(fileIDs: ids, libraryID: libraryID)
+    }
+
+    /// 行 ID から直に引く [PR-04]。保護を外す前に「戻すための値」を控えるのに要る。
+    public func fileRow(id: FileID) async throws -> FileRow? {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        return try await repository.row(id: id)
+    }
+
+    /// 1 ファイルに付いているラベル [PR-04 の Undo]。
+    public func fileLabelIDs(fileID: FileID) async throws -> [LabelID] {
+        guard let repository = labelRepository else { throw ServiceError.notReady }
+        return try await repository.labelIDs(fileID: fileID)
+    }
+
+    /// 1 ファイルの紐づけをちょうど揃える（保護は見ない）[PR-04 の Undo]。
+    public func setFileLabels(fileID: FileID, labelIDs: Set<LabelID>) async throws {
+        guard let repository = labelRepository else { throw ServiceError.notReady }
+        try await repository.setLabels(fileID: fileID, labelIDs: labelIDs)
     }
 
     /// ファイル名（と、読み取り済みの埋め込みメタデータ）から導き直す [RP-12]。
@@ -797,7 +842,7 @@ public final class LibraryServices {
     /// ネットワーク越しでは数秒待たされるうえ、印が変わっていなければ走査も
     /// 開かない [SE3-25] ので、開いても同じ値しか得られない。
     ///
-    /// - Returns: 書き込むべき値一式。`titleOrigin` は `.auto` に戻る。
+    /// - Returns: 書き込むべき値一式（走査が付けるはずの値）。
     public func rederivedFields(for row: FileRow) async throws -> FileFieldEdit {
         guard let repository = fileRepository,
               let libraries = libraryRepository else { throw ServiceError.notReady }
@@ -813,9 +858,8 @@ public final class LibraryServices {
             endsWithBookFolder: row.isBookFolder)
         let embedded = try await repository.embeddedMetadataCache(ids: [row.id])[row.id]?.metadata
         let merged = EmbeddedMetadataMerge.apply(embedded, to: resolved, settings: settings)
-        return FileFieldEdit(title: merged.title, titleOrigin: .auto,
-                             seriesName: merged.seriesName, volume: merged.volume,
-                             authorName: merged.authorName)
+        return FileFieldEdit(title: merged.title, seriesName: merged.seriesName,
+                             volume: merged.volume, authorName: merged.authorName)
     }
 
     // MARK: - カバー画像 [CV-02〜CV-08]
@@ -895,7 +939,7 @@ public final class LibraryServices {
 
     /// 選択中のファイルに付いているラベルを読む [RL-01][RL-04][RL-06]。
     public func labelAssignments(fileIDs: [FileID]) async throws
-        -> [FileID: [LabelID: LabelOrigin]]
+        -> [FileID: Set<LabelID>]
     {
         guard let repository = labelRepository else { throw ServiceError.notReady }
         return try await repository.assignments(fileIDs: fileIDs)
@@ -911,10 +955,13 @@ public final class LibraryServices {
     ///
     /// **Undo は `AssignLabelCommand` が担う**ので、UI から直接ここを呼ばない
     /// こと（呼ぶと ⌘Z で戻せない操作ができる。`setRating` と同じ約束）。
-    public func applyLabelAssignments(labelID: LabelID,
-                                      _ changes: [LabelAssignmentChange]) async throws {
+    public func applyLabelAssignments(
+        labelID: LabelID, _ changes: [LabelAssignmentChange],
+        protectedScopes: [FileID: Set<ProtectionScope>]
+    ) async throws {
         guard let repository = labelRepository else { throw ServiceError.notReady }
-        try await repository.applyAssignments(labelID: labelID, changes)
+        try await repository.applyAssignments(labelID: labelID, changes,
+                                              protectedScopes: protectedScopes)
     }
 
     // MARK: - バックアップ [IE-01〜IE-14][BK-05]

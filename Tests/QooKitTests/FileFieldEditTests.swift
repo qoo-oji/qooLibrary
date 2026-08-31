@@ -9,12 +9,12 @@ import Testing
 @Suite("タイトル・カバーの編集値 [RP-10〜RP-12][CV-02〜CV-08]")
 struct FileFieldEditTests {
 
-    private func row(title: String? = nil, origin: ValueOrigin = .auto,
+    private func row(title: String? = nil, protected: Set<ProtectionScope> = [],
                      coverRef: String? = nil, coverSource: CoverSource = .auto) -> FileRow {
         FileRow(id: FileID(rawValue: 1), libraryID: LibraryID(rawValue: 1),
                 relativePath: "作品名A 第01巻.cbz", filename: "作品名A 第01巻.cbz",
                 fileSize: 1, createdAt: .distantPast, modifiedAt: .distantPast,
-                title: title, titleOrigin: origin, seriesName: "作品名A",
+                title: title, protectedScopes: protected, seriesName: "作品名A",
                 volume: .numeric(1, raw: "第01巻"), authorName: "著者値A", rating: 0,
                 coverImageRef: coverRef, coverImageSource: coverSource,
                 state: .active, isArchived: false, isBookFolder: false)
@@ -22,11 +22,23 @@ struct FileFieldEditTests {
 
     // MARK: - タイトル [RP-10][RP-11]
 
-    @Test("手動編集は origin を manual にする [RP-11]")
-    func manualEditMarksOrigin() {
-        let edit = FileFieldEdit(row(title: "自動値", origin: .auto)).settingTitle("手で付けた題")
+    /// **編集の印は値型が持たない** [PR-03]。保護を立てるのはコマンド
+    /// （`SetFileFieldsCommand`）の仕事で、この型は値だけを運ぶ。
+    @Test("タイトルの差し替えは値だけを変える [RP-10]")
+    func manualEditReplacesTitle() {
+        let edit = FileFieldEdit(row(title: "自動値")).settingTitle("手で付けた題")
         #expect(edit.title == "手で付けた題")
-        #expect(edit.titleOrigin == .manual)
+    }
+
+    @Test("シリーズ名・巻数も同じ形で差し替えられる [RP-13][RP-14]")
+    func editsSeriesAndVolume() {
+        let base = FileFieldEdit(row())
+        #expect(base.settingSeriesName("  別のシリーズ  ").seriesName == "別のシリーズ")
+        #expect(base.settingSeriesName("   ").seriesName == nil)
+        let volume = try? #require(VolumeValue.parsingUserInput("３"))
+        #expect(volume?.number == 3, "全角も読む")
+        #expect(VolumeValue.parsingUserInput("") == VolumeValue.none)
+        #expect(VolumeValue.parsingUserInput("巻数") == nil, "読めない入力は受け付けない")
     }
 
     /// **他の列を巻き添えにしない。** タイトルを直しただけでシリーズ名や著者が
@@ -45,20 +57,18 @@ struct FileFieldEditTests {
         #expect(FileFieldEdit(row()).settingTitle("  題  ").title == "題")
     }
 
-    /// 空欄にしたら「未設定」に戻すが、**`manual` の印は残す**——自動抽出値を
-    /// 使わないという意思表示そのものが RP-11 の対象。
-    @Test("空欄は未設定にするが manual の印は残す [RP-11]")
-    func blankClearsTitleButKeepsManual() {
-        let edit = FileFieldEdit(row(title: "自動値", origin: .auto)).settingTitle("   ")
-        #expect(edit.title == nil)
-        #expect(edit.titleOrigin == .manual)
+    /// 空欄にしたら「未設定」に戻す。**自動値へは戻らない**——保護が
+    /// 立っている限り走査は触れない [PR-01] ので、「自動抽出値を使わない」と
+    /// いう意思表示は保たれる。
+    @Test("空欄は未設定にする [RP-10]")
+    func blankClearsTitle() {
+        #expect(FileFieldEdit(row(title: "自動値")).settingTitle("   ").title == nil)
     }
 
     @Test("行から写した値は行と一致する")
     func copiesFromRow() {
-        let edit = FileFieldEdit(row(title: "題", origin: .manual))
+        let edit = FileFieldEdit(row(title: "題"))
         #expect(edit.title == "題")
-        #expect(edit.titleOrigin == .manual)
         #expect(edit.seriesName == "作品名A")
         #expect(edit.authorName == "著者値A")
     }
