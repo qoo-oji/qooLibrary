@@ -5,72 +5,71 @@ import QooApplication
 import QooKit
 import SwiftUI
 
-struct LibraryEmbeddedMetadataSettingsView: View {
+/// 埋め込みメタデータの設定 [EM-06][EM-30〜EM-35]。
+///
+/// **`Form` の中に置く節として切り出してある** [§19.7]——独立したセクション
+/// だったものを「基本」の中へ統合したため（`LibraryBasicsSettingsView` 参照）。
+/// 呼び出し側の `Form` に属することで、他の節と同じ地の色・余白で並ぶ。
+struct EmbeddedMetadataFormSections: View {
     @Binding var draft: LibrarySettingsDraft
+
+    var body: some View {
+        // **`Form` の中に `Divider()` を置かない。**`.formStyle(.grouped)` は
+        // 各要素を 1 行として描くので、区切り線が「中身の無い行」になって
+        // 空の枠が見える［実機で確認］。関心事の分割は `Section` で行う。
+        Section {
+            Toggle("librarySettings.embeddedMetadata.enabled",
+                   isOn: $draft.readsEmbeddedMetadata)
+        } header: {
+            Text("librarySettings.section.embeddedMetadata")
+        } footer: {
+            Text("librarySettings.embeddedMetadata.enabledHint")
+                .font(.system(size: Tokens.fontSize.caption))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        Section {
+            // 丸が右端へ飛ぶのを防ぐ [CP-07]。理由は
+            // `LibrarySettingsBasicViews` の同じ印のコメント。
+            // ここは見出しが既に説明を持つので、ラベルは空のまま包む。
+            LabeledContent {
+                Picker("", selection: $draft.comicInfoVolumeSource) {
+                    Text("librarySettings.embeddedMetadata.volumeSource.ask")
+                        .tag(ComicInfoVolumeSource.ask)
+                    Text("librarySettings.embeddedMetadata.volumeSource.number")
+                        .tag(ComicInfoVolumeSource.number)
+                    Text("librarySettings.embeddedMetadata.volumeSource.volume")
+                        .tag(ComicInfoVolumeSource.volume)
+                }
+                .labelsHidden()
+                .pickerStyle(.radioGroup)
+            } label: {
+                EmptyView()
+            }
+            .disabled(!draft.readsEmbeddedMetadata)
+        } header: {
+            Text("librarySettings.embeddedMetadata.volumeSource")
+        } footer: {
+            // **なぜ聞くのかを書く。**`Number` と `Volume` のどちらが
+            // 巻数かは実装によって真逆なので、選択肢の名前だけでは
+            // 何を選んでいるのか分からない。
+            Text("librarySettings.embeddedMetadata.volumeSourceHint")
+                .font(.system(size: Tokens.fontSize.caption))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+/// 判断待ちの件数と導線 [EM-35]。**0 件なら何も描かない**——見るものが無いのに
+/// 場所を取ると、本当に判断が要るときの 1 行が埋もれる。
+struct EmbeddedMetadataPendingCard: View {
     let pending: [VolumeDecisionCandidate]
     let onReview: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Tokens.spacing.l) {
-            SettingsSectionHeader(title: "librarySettings.section.embeddedMetadata",
-                                  explanation: "librarySettings.embeddedMetadata.explanation")
-            // **`Form` の中に `Divider()` を置かない。**`.formStyle(.grouped)` は
-            // 各要素を 1 行として描くので、区切り線が「中身の無い行」になって
-            // 空の枠が見える［実機で確認］。関心事の分割は `Section` で行う。
-            Form {
-                Section {
-                    Toggle("librarySettings.embeddedMetadata.enabled",
-                           isOn: $draft.readsEmbeddedMetadata)
-                } footer: {
-                    Text("librarySettings.embeddedMetadata.enabledHint")
-                        .font(.system(size: Tokens.fontSize.caption))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                Section {
-                    // 丸が右端へ飛ぶのを防ぐ [CP-07]。理由は
-                    // `LibrarySettingsBasicViews` の同じ印のコメント。
-                    // ここは見出しが既に説明を持つので、ラベルは空のまま包む。
-                    LabeledContent {
-                        Picker("", selection: $draft.comicInfoVolumeSource) {
-                            Text("librarySettings.embeddedMetadata.volumeSource.ask")
-                                .tag(ComicInfoVolumeSource.ask)
-                            Text("librarySettings.embeddedMetadata.volumeSource.number")
-                                .tag(ComicInfoVolumeSource.number)
-                            Text("librarySettings.embeddedMetadata.volumeSource.volume")
-                                .tag(ComicInfoVolumeSource.volume)
-                        }
-                        .labelsHidden()
-                        .pickerStyle(.radioGroup)
-                    } label: {
-                        EmptyView()
-                    }
-                    .disabled(!draft.readsEmbeddedMetadata)
-                } header: {
-                    Text("librarySettings.embeddedMetadata.volumeSource")
-                } footer: {
-                    // **なぜ聞くのかを書く。**`Number` と `Volume` のどちらが
-                    // 巻数かは実装によって真逆なので、選択肢の名前だけでは
-                    // 何を選んでいるのか分からない。
-                    Text("librarySettings.embeddedMetadata.volumeSourceHint")
-                        .font(.system(size: Tokens.fontSize.caption))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-            .formStyle(.grouped)
-
-            pendingSection
-            Spacer(minLength: 0)
-        }
-    }
-
-    /// 判断待ちの件数と導線 [EM-35]。**0 件なら出さない**——見るものが無いのに
-    /// 場所を取ると、本当に判断が要るときの 1 行が埋もれる。
-    @ViewBuilder
-    private var pendingSection: some View {
         if !pending.isEmpty {
             HStack(spacing: Tokens.spacing.m) {
                 Image(systemName: "exclamationmark.triangle.fill")

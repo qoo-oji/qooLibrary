@@ -9,43 +9,69 @@ import QooApplication
 import QooKit
 import SwiftUI
 
-/// 設定項目グループ（中央ペインの行）[15.1 節]。
+/// 設定項目グループ [15.1 節][§19.7]。
+///
+/// ## 通常と高度を分ける [§19.7][P3]
+/// 中央ペインに並ぶのは `standard` の 4 つだけで、残りは「高度な設定…」の
+/// ダイアログの中にしか現れない。**分ける基準は「めったに触らないか」であって
+/// 「難しいか」ではない**——ファイル名の解析はフォーマットを書く場所だが、
+/// ライブラリの中身を決める中核なので通常側に置く［ユーザー指示: ファイル名
+/// フォーマットは高度な機能ではない］。逆に巻数の正規表現や保護文字列は、
+/// 一度決めたら年単位で触らない。
 enum LibrarySettingsSection: String, CaseIterable, Identifiable, Hashable {
-    case basics, extensions, labelGroups, filenameFormats
-    case folderLevels, volumeFormats, delimiters, protectedTokens
-    case embeddedMetadata
+    case basics, labelGroups, folderLevels, filenameFormats
+    case extensions, volumeFormats, seriesTitle, delimiters, protectedTokens
+    case bookFolderOpening
+
+    /// 通常時に中央ペインへ並ぶ 4 つ [§19.7]。登録ウィザードのカスタマイズ
+    /// 画面と同じ順・同じ語にしてある——登録時に見たものを後から探せるように。
+    static let standard: [Self] = [.basics, .labelGroups, .folderLevels, .filenameFormats]
+
+    /// 「高度な設定…」の中にだけ現れる 6 つ [§19.7]。
+    static let advanced: [Self] = [.extensions, .volumeFormats, .seriesTitle,
+                                   .delimiters, .protectedTokens, .bookFolderOpening]
+
+    /// 不備バッジの集約先を決めるのに使う——高度側の不備は畳まれた先にあるので、
+    /// 「高度な設定…」ボタン自身にも印を出さないと気づけない。
+    var isAdvanced: Bool { Self.advanced.contains(self) }
 
     var id: String { rawValue }
 
     var titleKey: LocalizedStringKey {
         switch self {
         case .basics:          "librarySettings.section.basics"
-        case .extensions:      "librarySettings.section.extensions"
         case .labelGroups:     "librarySettings.section.labelGroups"
-        case .filenameFormats: "librarySettings.section.filenameFormats"
         case .folderLevels:    "librarySettings.section.folderLevels"
+        case .filenameFormats: "librarySettings.section.filenameFormats"
+        case .extensions:      "librarySettings.section.extensions"
         case .volumeFormats:   "librarySettings.section.volumeFormats"
+        case .seriesTitle:     "librarySettings.section.seriesTitle"
         case .delimiters:      "librarySettings.section.delimiters"
         case .protectedTokens: "librarySettings.section.protectedTokens"
-        case .embeddedMetadata: "librarySettings.section.embeddedMetadata"
+        case .bookFolderOpening: "librarySettings.section.bookFolderOpening"
         }
     }
 
     var systemImage: String {
         switch self {
         case .basics:          "gearshape"
-        case .extensions:      "doc.badge.gearshape"
         case .labelGroups:     "tag"
-        case .filenameFormats: "textformat.abc"
         case .folderLevels:    "folder.badge.gearshape"
+        case .filenameFormats: "textformat.abc"
+        case .extensions:      "doc.badge.gearshape"
         case .volumeFormats:   "number"
+        case .seriesTitle:     "books.vertical"
         case .delimiters:      "parentheses"
         case .protectedTokens: "shield"
-        case .embeddedMetadata: "doc.text.magnifyingglass"
+        case .bookFolderOpening: "arrow.up.forward.app"
         }
     }
 
     /// 検証の不備が指す設定項目へ移動できるようにする。
+    ///
+    /// **`LibrarySettingsIssue.Section` は QooKit 側の分類**で、こちらの
+    /// 通常／高度の分け方とは独立している（検証は「どの設定が不正か」しか
+    /// 知らない）。不備が高度側を指していたら、ダイアログを開かせる。
     init(_ issueSection: LibrarySettingsIssue.Section) {
         switch issueSection {
         case .basics:          self = .basics

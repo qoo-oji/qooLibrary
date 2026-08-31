@@ -175,6 +175,9 @@ struct LibraryEnableView: View {
         // **設定ウインドウとまったく同じエディタを使う。** 同じ編集 UI を
         // 2 つ持つと、片方だけ直したときに挙動が食い違う。
         switch model.section {
+        // 埋め込みメタデータの節は基本へ統合された [§19.7]。**判断待ちは
+        // 有効化前には存在しない**（まだ 1 度も走査していない）ので、
+        // 空のまま既定で渡る——空の一覧への導線を出しても押す先が無い。
         case .basics:          LibraryBasicsSettingsView(draft: $model.draft)
         case .extensions:      LibraryExtensionsSettingsView(draft: $model.draft)
         case .labelGroups:     LibraryLabelGroupsSettingsView(draft: $model.draft)
@@ -187,10 +190,9 @@ struct LibraryEnableView: View {
         case .volumeFormats:   LibraryVolumeFormatsSettingsView(draft: $model.draft)
         case .delimiters:      LibraryDelimitersSettingsView(draft: $model.draft)
         case .protectedTokens: LibraryProtectedTokensSettingsView(draft: $model.draft)
-        case .embeddedMetadata:
-            // **判断待ちは有効化前には存在しない**（まだ 1 度も走査していない）。
-            // 設定だけを見せる——空の一覧への導線を出しても押す先が無い。
-            LibraryEmbeddedMetadataSettingsView(draft: $model.draft, pending: [], onReview: {})
+        case .seriesTitle:     LibrarySeriesTitleSettingsView(draft: $model.draft)
+        case .bookFolderOpening:
+            LibraryBookFolderOpeningSettingsView(draft: $model.draft)
         }
     }
 

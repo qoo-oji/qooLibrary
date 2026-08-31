@@ -1,6 +1,7 @@
 //
 //  ライブラリ設定 — 基本・対象拡張子・区切り文字・保護文字列 [15.1 節]。
 //
+import QooApplication
 import QooKit
 import SwiftUI
 
@@ -27,8 +28,23 @@ struct SettingsSectionHeader: View {
 
 // MARK: - 基本設定
 
+/// 基本設定 [§19.7]。通常時に最初に見えるセクション。
+///
+/// ## 表示名の欄は無い [RG3-31]
+/// 「ライブラリの表示名」という概念自体を持たない——名前を変えたければ
+/// フォルダ自体をリネームする（ツリーも DB も自動で追随する）。ここに欄を
+/// 残すと、**フォルダ名と食い違った名前を作れてしまう**。
+///
+/// ## 埋め込みメタデータはここに統合されている [§19.7]
+/// 独立したセクションだったものを基本の中の節にした。単独で 1 セクションを
+/// 占めるほどの分量が無く、「このライブラリをどう読むか」という基本の性格と
+/// 揃っている。
 struct LibraryBasicsSettingsView: View {
     @Binding var draft: LibrarySettingsDraft
+    /// 巻数の判断待ち [EM-35]。埋め込みメタデータの節を取り込んだので、その
+    /// 導線もここへ移った。登録前（ウィザード）は判断待ちが存在しないので既定の空。
+    var pending: [VolumeDecisionCandidate] = []
+    var onReview: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.l) {
@@ -41,56 +57,34 @@ struct LibraryBasicsSettingsView: View {
             // 報告された。地の色が付いて初めて欄だと分かる（`EditableFieldChrome`
             // の型コメント参照）。
             Form {
-                LabeledContent {
-                    TextField("", text: $draft.displayName)
-                        .labelsHidden()
-                        .editableFieldChrome()
-                } label: {
-                    Text("librarySettings.basics.displayName")
-                }
-                LabeledContent {
-                    VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
-                        TextField("", text: $draft.libraryTypeName)
-                            .labelsHidden()
-                            .editableFieldChrome()
-                        // 実蔵書との突き合わせで、ここの食い違いが 146 件の未解決を
-                        // 生んだ実例がある（同人CG の印は `(同人CG集)` だった）。
-                        Text("librarySettings.basics.typeNameHint")
-                            .font(.system(size: Tokens.fontSize.caption))
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                Section {
+                    LabeledContent {
+                        VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
+                            TextField("", text: $draft.libraryTypeName)
+                                .labelsHidden()
+                                .editableFieldChrome()
+                            // 実蔵書との突き合わせで、ここの食い違いが 146 件の未解決を
+                            // 生んだ実例がある（同人CG の印は `(同人CG集)` だった）。
+                            Text("librarySettings.basics.typeNameHint")
+                                .font(.system(size: Tokens.fontSize.caption))
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    } label: {
+                        Text("librarySettings.basics.typeName")
                     }
-                } label: {
-                    Text("librarySettings.basics.typeName")
                 }
-                Toggle("librarySettings.basics.thumbnailsAlwaysHidden",
-                       isOn: $draft.thumbnailsAlwaysHidden)
-                // [IF-18][AS-06] ブックフォルダの「開く」の既定。**偽が既定**で
-                // フォルダを開く（配下の画像一覧を表示する）。ライブラリ単位に
-                // してあるのは、画像フォルダ中心のライブラリとアーカイブ中心の
-                // ライブラリで期待が違うため［ユーザー判断］。
-                VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
-                    Toggle("librarySettings.basics.opensBookFolderWithApp",
-                           isOn: $draft.opensBookFolderWithApp)
-                    Text("librarySettings.basics.opensBookFolderWithAppHint")
-                        .font(.system(size: Tokens.fontSize.caption))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                LabeledContent {
-                    TextField("", text: $draft.seriesTitleCompositionFormat)
-                        .labelsHidden()
-                        .font(.system(size: Tokens.fontSize.body, design: .monospaced))
-                        .editableFieldChrome()
-                } label: {
-                    Text("librarySettings.basics.seriesComposition")
-                }
-                // [DU-01][DU-02] 同じ作品のファイルを 1 行に畳むか。**既定は
-                // 無効**——畳むのは表示を減らす操作なので、頼まれていないのに
-                // 始めない。判定キーの違いは「同じタイトルの別の巻を同じ組と
-                // 見るかどうか」だけ。
-                VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
-                    // 丸が右端へ飛ぶのを防ぐ [CP-07]。理由は上の節のコメント。
+                Section {
+                    Toggle("librarySettings.basics.thumbnailsAlwaysHidden",
+                           isOn: $draft.thumbnailsAlwaysHidden)
+                    // [DU-01][DU-02] 同じ作品のファイルを 1 行に畳むか。**既定は
+                    // 無効**——畳むのは表示を減らす操作なので、頼まれていないのに
+                    // 始めない。判定キーの違いは「同じタイトルの別の巻を同じ組と
+                    // 見るかどうか」だけ。
+                    //
+                    // 丸が右端へ飛ぶのを防ぐ [CP-07]。`Form` は選択肢 1 行ずつを
+                    // 「ラベル＋操作」の行として扱うので、`LabeledContent` で
+                    // 包まないと丸だけが数百 pt 離れた右端へ行く［実測］。
                     LabeledContent {
                         Picker("", selection: $draft.duplicateGrouping) {
                             Text("librarySettings.basics.duplicateGrouping.off")
@@ -105,10 +99,82 @@ struct LibraryBasicsSettingsView: View {
                     } label: {
                         Text("librarySettings.basics.duplicateGrouping")
                     }
+                } footer: {
                     Text("librarySettings.basics.duplicateGroupingHint")
                         .font(.system(size: Tokens.fontSize.caption))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                EmbeddedMetadataFormSections(draft: $draft)
+            }
+            .formStyle(.grouped)
+            .frame(maxWidth: 560)
+            // 判断待ちのカードは `Form` の外に置く——中に入れると 1 行として
+            // 描かれ、枠と余白が二重になる（`Form` に `Divider()` を置けない
+            // のと同じ事情。`LibraryEmbeddedMetadataViews` のコメント参照）。
+            EmbeddedMetadataPendingCard(pending: pending, onReview: onReview)
+                .frame(maxWidth: 560)
+        }
+    }
+}
+
+// MARK: - シリーズ名の組み立て（高度）
+
+/// シリーズ名の組み立て [SE-33]。一覧やインスペクタに出す「シリーズ名 巻数」の
+/// 書式で、既定は `@series @volume`。
+///
+/// **高度な設定に置いてある** [§19.7 の判断、ユーザー判断]——予約語を並べる
+/// 記法を書く欄で、性質は巻数フォーマットと同類。全プリセットが既定値のまま
+/// 使っており、変える動機を持つ人は限られる。
+struct LibrarySeriesTitleSettingsView: View {
+    @Binding var draft: LibrarySettingsDraft
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Tokens.spacing.l) {
+            SettingsSectionHeader(title: "librarySettings.section.seriesTitle",
+                                  explanation: "librarySettings.seriesTitle.explanation")
+            Form {
+                LabeledContent {
+                    TextField("", text: $draft.seriesTitleCompositionFormat)
+                        .labelsHidden()
+                        .font(.system(size: Tokens.fontSize.body, design: .monospaced))
+                        .editableFieldChrome()
+                } label: {
+                    Text("librarySettings.basics.seriesComposition")
+                }
+            }
+            .formStyle(.grouped)
+            .frame(maxWidth: 560)
+        }
+    }
+}
+
+// MARK: - ブックフォルダの開き方（高度）
+
+/// ブックフォルダをダブルクリックしたときの動き [IF-18][AS-06]。
+///
+/// **偽が既定**でフォルダを開く（配下の画像一覧を表示する）。ライブラリ単位に
+/// してあるのは、画像フォルダ中心のライブラリとアーカイブ中心のライブラリで
+/// 期待が違うため［ユーザー判断］。**高度な設定へ移した** [§19.7]——一度
+/// 決めたら触らない類の設定で、日常的に切り替えるものではない。
+struct LibraryBookFolderOpeningSettingsView: View {
+    @Binding var draft: LibrarySettingsDraft
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Tokens.spacing.l) {
+            SettingsSectionHeader(title: "librarySettings.section.bookFolderOpening",
+                                  explanation: "librarySettings.bookFolderOpening.explanation")
+            Form {
+                Section {
+                    Toggle("librarySettings.basics.opensBookFolderWithApp",
+                           isOn: $draft.opensBookFolderWithApp)
+                } footer: {
+                    Text("librarySettings.basics.opensBookFolderWithAppHint")
+                        .font(.system(size: Tokens.fontSize.caption))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
             .formStyle(.grouped)

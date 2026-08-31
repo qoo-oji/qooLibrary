@@ -128,31 +128,79 @@ struct LibrarySettingsWindow: View {
 
     // MARK: - 中央: 設定項目グループ
 
+    /// 通常時に並ぶのは 4 セクションだけ [§19.7]。残りは「高度な設定…」の中。
     private var sectionList: some View {
-        List(selection: $model.section) {
-            ForEach(LibrarySettingsSection.allCases) { section in
-                Label {
-                    HStack(spacing: Tokens.spacing.xs) {
-                        Text(section.titleKey)
-                        Spacer(minLength: 0)
-                        issueBadge(for: section)
+        VStack(spacing: 0) {
+            List(selection: $model.section) {
+                ForEach(LibrarySettingsSection.standard) { section in
+                    Label {
+                        HStack(spacing: Tokens.spacing.xs) {
+                            Text(section.titleKey)
+                            Spacer(minLength: 0)
+                            issueBadge { $0 == section }
+                        }
+                    } icon: {
+                        Image(systemName: section.systemImage)
                     }
-                } icon: {
-                    Image(systemName: section.systemImage)
+                    .tag(section)
                 }
-                .tag(section)
             }
+            Divider()
+            advancedButton
         }
         .disabled(model.draft == nil)
     }
 
+    /// 「高度な設定…」[§19.7]。
+    ///
+    /// **畳んだ先の不備もここに出す**——中に不備があることに気づけないと、
+    /// 保存できない理由が分からないまま詰まる（下の不備一覧には出るが、
+    /// そちらは折りたたまれた場所を指すので、入口にも印が要る）。
+    private var advancedButton: some View {
+        Button {
+            presentAdvanced()
+        } label: {
+            HStack(spacing: Tokens.spacing.xs) {
+                Image(systemName: "slider.horizontal.3")
+                    .frame(width: 18)
+                Text("librarySettings.advanced")
+                Spacer(minLength: 0)
+                issueBadge { $0.isAdvanced }
+                Image(systemName: "chevron.right")
+                    .font(.system(size: Tokens.fontSize.caption))
+                    .foregroundStyle(.tertiary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, Tokens.spacing.m)
+        .padding(.vertical, Tokens.spacing.s)
+    }
+
+    /// 不備の印。**述語で受ける**——1 セクション分にも、高度側の全部にも
+    /// 同じ規則（エラーが 1 件でもあれば赤、警告だけなら橙）で出すため。
     @ViewBuilder
-    private func issueBadge(for section: LibrarySettingsSection) -> some View {
-        let matching = model.issues.filter { LibrarySettingsSection($0.section) == section }
+    private func issueBadge(matching predicate: (LibrarySettingsSection) -> Bool) -> some View {
+        let matching = model.issues.filter { predicate(LibrarySettingsSection($0.section)) }
         if matching.contains(where: { $0.severity == .error }) {
             Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
         } else if !matching.isEmpty {
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+        }
+    }
+
+    /// 高度な設定を開く [§19.7]。**草案を編集するだけ**で、確定は設定ウインドウの
+    /// 「保存」が担う（ダイアログを閉じても DB には何も書かない）。
+    private func presentAdvanced(initial: LibrarySettingsSection? = nil) {
+        guard model.draft != nil else { return }
+        DialogWindowPresenter.shared.present(
+            title: String(localized: "librarySettings.advanced.title", locale: locale)
+        ) { _ in
+            AdvancedSettingsDialog(
+                draft: Binding(
+                    get: { model.draft ?? LibrarySettingsDraft() },
+                    set: { model.draft = $0 }),
+                initialSection: initial)
         }
     }
 
@@ -200,23 +248,24 @@ struct LibrarySettingsWindow: View {
             set: { model.draft = $0 })
         switch model.section {
         case .basics:
-            LibraryBasicsSettingsView(draft: bound)
-        case .extensions:      LibraryExtensionsSettingsView(draft: bound)
+            // 埋め込みメタデータの節と、その判断待ちの導線もここに含まれる [§19.7]。
+            LibraryBasicsSettingsView(draft: bound,
+                                      pending: model.pendingVolumeDecisions,
+                                      onReview: presentVolumeDecision)
         case .labelGroups:     LibraryLabelGroupsSettingsView(draft: bound)
+        case .folderLevels:    LibraryFolderLevelsSettingsView(draft: bound)
         case .filenameFormats:
             LibraryFilenameFormatsSettingsView(
                 draft: bound,
                 selectedFormatID: $model.selectedFilenameFormatID,
                 sampleFilename: $model.sampleFilename)
-        case .folderLevels:    LibraryFolderLevelsSettingsView(draft: bound)
-        case .volumeFormats:   LibraryVolumeFormatsSettingsView(draft: bound)
-        case .delimiters:      LibraryDelimitersSettingsView(draft: bound)
-        case .protectedTokens: LibraryProtectedTokensSettingsView(draft: bound)
-        case .embeddedMetadata:
-            LibraryEmbeddedMetadataSettingsView(
-                draft: bound,
-                pending: model.pendingVolumeDecisions,
-                onReview: presentVolumeDecision)
+        // 高度なセクションは中央ペインに行が無いので、通常はここへ来ない
+        // （不備の行は `presentAdvanced(initial:)` でダイアログを開く）。
+        // それでも正しいエディタを出しておく——万一の経路で空白になるより、
+        // 同じものが見えるほうが害が小さい。
+        case .extensions, .volumeFormats, .seriesTitle, .delimiters,
+             .protectedTokens, .bookFolderOpening:
+            AdvancedSectionEditor(section: model.section, draft: bound)
         }
     }
 
@@ -251,7 +300,15 @@ struct LibrarySettingsWindow: View {
             // 試す往復になる。クリックでその設定項目へ移動できる。
             ForEach(model.issues) { issue in
                 Button {
-                    model.reveal(issue)
+                    // 高度側の不備は中央ペインに行が無いので、ダイアログを
+                    // その設定を開いた状態で出す——押しても何も起きないと
+                    // 「直せない不備」に見える。
+                    let target = LibrarySettingsSection(issue.section)
+                    if target.isAdvanced {
+                        presentAdvanced(initial: target)
+                    } else {
+                        model.reveal(issue)
+                    }
                 } label: {
                     HStack(alignment: .firstTextBaseline, spacing: Tokens.spacing.xs) {
                         Image(systemName: issue.severity == .error

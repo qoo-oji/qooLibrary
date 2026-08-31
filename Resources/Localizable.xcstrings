@@ -8447,19 +8447,53 @@
         }
       }
     },
-    "librarySettings.basics.displayName": {
+    "librarySettings.advanced": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Display name"
+            "value": "Advanced Settings…"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "表示名"
+            "value": "高度な設定…"
+          }
+        }
+      }
+    },
+    "librarySettings.advanced.done": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Done"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完了"
+          }
+        }
+      }
+    },
+    "librarySettings.advanced.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Advanced Settings"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "高度な設定"
           }
         }
       }
@@ -8664,6 +8698,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "@librarytype が照合する値です。ファイル名に現れる表記と正確に一致させる必要があります（例:「同人CG」ではなく「同人CG集」）。"
+          }
+        }
+      }
+    },
+    "librarySettings.bookFolderOpening.explanation": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "What happens when you double-click a folder that holds the images of a single book."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 冊分の画像が入ったフォルダをダブルクリックしたときの動きです。"
           }
         }
       }
@@ -9314,19 +9365,36 @@
         }
       }
     },
+    "librarySettings.folderLevels.empty": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No levels assigned — folder names are not used."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "割り当てがありません — フォルダ名は使いません。"
+          }
+        }
+      }
+    },
     "librarySettings.folderLevels.explanation": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "What the folder a file sits in means. Level 1 is directly under the library root."
+            "value": "Whether folder names become labels, and what each level means. Level 1 is directly under the library root; with no assignments, folder names are not used."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ファイルが入っているフォルダの意味を決めます。階層 1 がライブラリ直下です。"
+            "value": "フォルダ名からラベルを付けるかどうかと、階層ごとの意味を決めます。階層 1 がライブラリ直下です。割り当てが 1 つも無ければ、フォルダ名は使いません。"
           }
         }
       }
@@ -9926,6 +9994,23 @@
         }
       }
     },
+    "librarySettings.section.bookFolderOpening": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Book Folders"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ブックフォルダの開き方"
+          }
+        }
+      }
+    },
     "librarySettings.section.delimiters": {
       "extractionState": "manual",
       "localizations": {
@@ -9983,13 +10068,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Filename Formats"
+            "value": "Filenames"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ファイル名フォーマット"
+            "value": "ファイル名の解析"
           }
         }
       }
@@ -10000,13 +10085,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Folder Levels"
+            "value": "Folder Names"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "フォルダ階層割り当て"
+            "value": "フォルダ名の解析"
           }
         }
       }
@@ -10045,6 +10130,23 @@
         }
       }
     },
+    "librarySettings.section.seriesTitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Series Title"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "シリーズ名の組み立て"
+          }
+        }
+      }
+    },
     "librarySettings.section.volumeFormats": {
       "extractionState": "manual",
       "localizations": {
@@ -10075,6 +10177,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "ライブラリを選択してください"
+          }
+        }
+      }
+    },
+    "librarySettings.seriesTitle.explanation": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "How “series title + volume” is composed for lists and the inspector."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一覧やインスペクタに出す「シリーズ名 巻数」の書き方です。"
           }
         }
       }
@@ -10568,6 +10687,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "巻数"
+          }
+        }
+      }
+    },
+    "libraryWizard.customize.bookFolderApp": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open with the associated app"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "関連付けアプリで開く"
+          }
+        }
+      }
+    },
+    "libraryWizard.customize.bookFolderInline": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show the images inside"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "中の画像を一覧表示"
           }
         }
       }
@@ -16386,40 +16539,6 @@
         }
       }
     },
-    "libraryWizard.customize.metadataOn": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Read (metadata wins over names)"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "読み取る（名前より優先）"
-          }
-        }
-      }
-    },
-    "libraryWizard.customize.metadataOff": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Off"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "読み取らない"
-          }
-        }
-      }
-    },
     "libraryWizard.customize.filenameRules": {
       "extractionState": "manual",
       "localizations": {
@@ -16484,40 +16603,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "高度な設定をいま編集…"
-          }
-        }
-      }
-    },
-    "libraryWizard.advanced.title": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Advanced Settings"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "高度な設定"
-          }
-        }
-      }
-    },
-    "libraryWizard.advanced.done": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Done"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "完了"
           }
         }
       }

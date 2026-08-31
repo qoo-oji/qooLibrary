@@ -671,9 +671,22 @@ struct LibraryFolderLevelsSettingsView: View {
             SettingsSectionHeader(title: "librarySettings.section.folderLevels",
                                   explanation: "librarySettings.folderLevels.explanation")
             VStack(spacing: 0) {
-                ForEach($draft.folderLevels) { $level in
-                    row($level)
+                if draft.folderLevels.isEmpty {
+                    // **空は「フォルダ名からはラベルを付けない」という意味**。
+                    // 通常セクションへ昇格して最初に目へ入る場所になったので
+                    // [§19.7]、無言の空白ではなくそれと分かる 1 行を出す
+                    // ——登録ウィザードの「分類しない」を選んだ状態にあたる。
+                    Text("librarySettings.folderLevels.empty")
+                        .font(.system(size: Tokens.fontSize.caption))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, Tokens.spacing.s)
                     Divider()
+                } else {
+                    ForEach($draft.folderLevels) { $level in
+                        row($level)
+                        Divider()
+                    }
                 }
             }
             .frame(maxWidth: 620, alignment: .leading)

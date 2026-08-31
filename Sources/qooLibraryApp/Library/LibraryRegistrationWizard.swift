@@ -845,31 +845,42 @@ struct LibraryRegistrationWizardView: View {
     private func presentAdvanced() {
         guard let enable = model.enable else { return }
         DialogWindowPresenter.shared.present(
-            title: String(localized: "libraryWizard.advanced.title", locale: locale)
+            title: String(localized: "librarySettings.advanced.title", locale: locale)
         ) { _ in
             AdvancedDraftSettingsDialog(model: enable)
         }
     }
 
-    /// 高度な設定の一覧（設定ウインドウのセクション定義, 現在の中身の要約）。
+    /// 高度な設定の一覧（並べるセクションと、現在の中身の要約）。
     /// 題とアイコンは設定ウインドウと同じものを使う——登録後に開く画面と
-    /// 同じ語・同じ絵で予告する。ファイル名フォーマットは高度ではないので
-    /// ここには入れない（「ファイル名によるラベル分類」として上にある）。
+    /// 同じ語・同じ絵で予告する。ファイル名・フォルダ名によるラベル分類は
+    /// 高度ではないので入らない（どちらも上に独立した節がある）。
+    ///
+    /// **一覧そのものを `AdvancedSettingsEditor.wizardSections` から導く**
+    /// ——高度な設定を足したときに、予告だけが古いまま取り残されるのを防ぐ。
     private func advancedCatalog(draft: LibrarySettingsDraft)
         -> [(LibrarySettingsSection, String)] {
         func count(_ n: Int) -> String {
             String(format: String(localized: "libraryWizard.customize.countItems",
                                   locale: locale), n)
         }
-        return [
-            (.extensions, draft.targetExtensions.joined(separator: ", ")),
-            (.volumeFormats, count(draft.volumeFormats.count)),
-            (.delimiters, ""),
-            (.protectedTokens, count(draft.protectedTokens.count)),
-            (.embeddedMetadata, String(localized: draft.readsEmbeddedMetadata
-                ? "libraryWizard.customize.metadataOn"
-                : "libraryWizard.customize.metadataOff", locale: locale)),
-        ]
+        return AdvancedSettingsEditor.wizardSections.map { section in
+            let summary: String
+            switch section {
+            case .basics:            summary = draft.libraryTypeName
+            case .extensions:        summary = draft.targetExtensions.joined(separator: ", ")
+            case .volumeFormats:     summary = count(draft.volumeFormats.count)
+            case .seriesTitle:       summary = draft.seriesTitleCompositionFormat
+            case .delimiters:        summary = ""
+            case .protectedTokens:   summary = count(draft.protectedTokens.count)
+            case .bookFolderOpening:
+                summary = String(localized: draft.opensBookFolderWithApp
+                    ? "libraryWizard.customize.bookFolderApp"
+                    : "libraryWizard.customize.bookFolderInline", locale: locale)
+            case .labelGroups, .folderLevels, .filenameFormats: summary = ""
+            }
+            return (section, summary)
+        }
     }
 
     // MARK: ステップ 5: 確認 [RG3-25]
@@ -1113,73 +1124,33 @@ struct LibraryRegistrationWizardView: View {
 
 // MARK: - 高度な設定（登録前の草案に対して）
 
-/// 「高度な設定をいま編集…」[ユーザー要望]。設定ウインドウと同じセクション
-/// エディタを、まだ登録されていない草案に対して開く。プレビュー付きなので
-/// 編集の効果をその場で確かめられる [HP-05]。
+/// 「高度な設定をいま編集…」[ユーザー要望][§19.7]。
+///
+/// **中身は設定ウインドウとまったく同じ** `AdvancedSettingsEditor`——登録後に
+/// 開く画面と同じ語・同じ並びで、同じ編集ができる。こちらはプレビューを
+/// 添えるだけで、登録前なので編集の効果をその場で確かめられる [HP-05]。
 private struct AdvancedDraftSettingsDialog: View {
     @Environment(\.locale) private var locale
     @Environment(\.dialogDismiss) private var dismiss
 
     let model: LibraryEnableModel
-    @State private var section: LibrarySettingsSection = .extensions
 
     var body: some View {
         @Bindable var enableModel = model
         VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                List(selection: $section) {
-                    ForEach(LibrarySettingsSection.allCases) { section in
-                        Label {
-                            Text(section.titleKey)
-                        } icon: {
-                            Image(systemName: section.systemImage)
-                        }
-                        .tag(section)
-                    }
-                }
-                .frame(width: 200)
-                Divider()
-                ScrollView {
-                    editor(draft: $enableModel.draft, enable: enableModel)
-                        .padding(Tokens.spacing.l)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
+            AdvancedSettingsEditor(draft: $enableModel.draft,
+                                   sections: AdvancedSettingsEditor.wizardSections)
             Divider()
             LibraryEnablePreviewPane(model: model)
                 .frame(height: 210)
             Divider()
             QooDialogFooter(
                 confirm: DialogButton(
-                    title: String(localized: "libraryWizard.advanced.done", locale: locale)
+                    title: String(localized: "librarySettings.advanced.done", locale: locale)
                 ) { dismiss() },
                 cancel: nil)
                 .padding(Tokens.spacing.m)
         }
         .frame(width: 920, height: 680)
-    }
-
-    @ViewBuilder
-    private func editor(draft: Binding<LibrarySettingsDraft>,
-                        enable: LibraryEnableModel) -> some View {
-        @Bindable var enableModel = enable
-        // **設定ウインドウとまったく同じエディタを使う**（`LibraryEnableView`
-        // と同じ判断）。同じ編集 UI を 2 つ持たない。
-        switch section {
-        case .basics:          LibraryBasicsSettingsView(draft: draft)
-        case .extensions:      LibraryExtensionsSettingsView(draft: draft)
-        case .labelGroups:     LibraryLabelGroupsSettingsView(draft: draft)
-        case .filenameFormats:
-            LibraryFilenameFormatsSettingsView(
-                draft: draft,
-                selectedFormatID: $enableModel.selectedFormatID,
-                sampleFilename: $enableModel.sampleFilename)
-        case .folderLevels:    LibraryFolderLevelsSettingsView(draft: draft)
-        case .volumeFormats:   LibraryVolumeFormatsSettingsView(draft: draft)
-        case .delimiters:      LibraryDelimitersSettingsView(draft: draft)
-        case .protectedTokens: LibraryProtectedTokensSettingsView(draft: draft)
-        case .embeddedMetadata:
-            LibraryEmbeddedMetadataSettingsView(draft: draft, pending: [], onReview: {})
-        }
     }
 }

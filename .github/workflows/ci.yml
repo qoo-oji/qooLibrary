@@ -48,6 +48,8 @@ jobs:
         run: swift Scripts/check-cancellation-usage.swift
       - name: Expected change ledger is registered before the operation [FO-11]
         run: swift Scripts/check-change-ledger.swift
+      - name: Settings sections are classified as standard or advanced [§19.7]
+        run: swift Scripts/check-settings-sections.swift
 
   # QooKitTests。カバレッジ 80% 未満で失敗させる方針だが、テスト対象コードが
   # まだ存在しないフェーズ 0 の時点では実行のみ確認する [MT-01]。
