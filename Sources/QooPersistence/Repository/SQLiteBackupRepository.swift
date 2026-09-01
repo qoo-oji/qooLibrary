@@ -81,6 +81,7 @@ public struct SQLiteBackupRepository: BackupRepository, Sendable {
                 .order(sql: "id").fetchAll(db)
                 .map { ProtectedTokenBackup(pattern: $0.pattern, position: $0.position,
                                             isEnabled: $0.isEnabled) },
+            shelves: try exportShelves(db, libraryID: libraryID),
             files: try exportFiles(db, libraryID: libraryID))
     }
 
@@ -101,6 +102,40 @@ public struct SQLiteBackupRepository: BackupRepository, Sendable {
                 displayOrder: group.displayOrder,
                 assignsAutomatically: group.assignsAutomatically,
                 labels: labels)
+        }
+    }
+
+    /// 保存した絞り込み [SH-12][MG-22]。
+    ///
+    /// **ラベルは行 ID ではなく `groupIndex` + 名前へ翻訳して出す** [JS-04]。
+    /// DB の中では行 ID で持っている [SH-05] が、それは環境ごとに違う値なので
+    /// 別のマシンで取り込むと無関係なラベルを指す。翻訳できない ID
+    /// （既に消えたラベル）は落とす——文書には「いま存在する条件」だけが載る。
+    private static func exportShelves(_ db: Database, libraryID: Int64) throws -> [ShelfBackup] {
+        var refByLabelID: [Int64: ShelfLabelBackup] = [:]
+        for row in try Row.fetchAll(db, sql: """
+            SELECT label.id AS id, label.name AS labelName, labelGroup.groupIndex AS groupIndex
+            FROM label JOIN labelGroup ON labelGroup.id = label.labelGroupId
+            WHERE labelGroup.libraryId = ?
+            """, arguments: [libraryID]) {
+            refByLabelID[row["id"] as Int64] = ShelfLabelBackup(groupIndex: row["groupIndex"],
+                                                               labelName: row["labelName"])
+        }
+
+        return try Row.fetchAll(db, sql: """
+            SELECT * FROM shelf WHERE libraryId = ? ORDER BY displayOrder, id
+            """, arguments: [libraryID]).map { row in
+            let condition = SQLiteShelfRepository.decode(row["conditionJSON"])
+            return ShelfBackup(
+                name: row["name"],
+                displayOrder: row["displayOrder"],
+                labels: condition.labelIDs.compactMap { refByLabelID[$0.rawValue] },
+                ratingStars: condition.rating?.stars,
+                ratingMode: condition.rating?.mode.rawValue,
+                searchText: condition.searchText,
+                sortKey: condition.sort.key.rawValue,
+                sortAscending: condition.sort.ascending,
+                displayMode: condition.displayMode.rawValue)
         }
     }
 
@@ -405,6 +440,15 @@ extension SQLiteBackupRepository {
             }
         }
 
+        // --- シェルフ -----------------------------------------------------
+        // **名前で突き合わせて重ねる** [SH-12][JS-06]。取り込みは「消せない」
+        // 方針なので、文書に無いシェルフは残す——復旧のつもりの取り込みで
+        // 別の絞り込みを失う経路を作らない [JS-05 と同じ判断]。
+        if !dryRun {
+            try applyShelves(db, libraryID: libraryID, backup: backup,
+                             labelIDByKey: labelIDByKey)
+        }
+
         // --- ファイル -----------------------------------------------------
         // 行は作らない。**再スキャンが実体から作った行にだけ値を載せる**
         // ——実体を伴わないレコードを増やすと、次の走査でそれが孤立として
@@ -500,6 +544,67 @@ extension SQLiteBackupRepository {
             try db.execute(sql: """
                 UPDATE unresolvedFile SET isIgnored = 1 WHERE managedFileId = ?
                 """, arguments: [fileID])
+        }
+    }
+
+    /// 保存した絞り込みを取り込む [SH-12]。
+    ///
+    /// **ラベルは `groupIndex` + 正規化名で引き直す** [JS-04]。引けなかった参照
+    /// （この環境に無いラベル）は落とす——存在しない行 ID を条件に残すと、
+    /// 後から同じ ID が別のラベルへ割り当たる余地を作ることになる
+    /// （`label.id` は AUTOINCREMENT なので実際には起きないが、文書は別の
+    /// マシンから来るので保証が無い）。
+    ///
+    /// 読めない列挙の生値は既定へ落とす（`ShelfBackup` の型コメント参照）。
+    private static func applyShelves(_ db: Database, libraryID: Int64,
+                                     backup: LibraryBackup,
+                                     labelIDByKey: [LabelKey: Int64]) throws {
+        guard let shelves = backup.shelves, !shelves.isEmpty else { return }
+
+        // **同じ名前の行を 1 つずつ消費する**［code-review の指摘］。SH-03 は
+        // 同名を許すので、単に「その名前の最初の行」を毎回選ぶと、文書に
+        // 同名が 2 つある場合に 2 件目が 1 件目を上書きし、**条件が 1 つ静かに
+        // 失われる**（しかも復元の経路で起きる）。
+        var unclaimed: [String: [Int64]] = [:]
+        for row in try Row.fetchAll(db, sql: """
+            SELECT id, name FROM shelf WHERE libraryId = ? ORDER BY displayOrder, id
+            """, arguments: [libraryID]) {
+            unclaimed[row["name"] as String, default: []].append(row["id"] as Int64)
+        }
+
+        for shelf in shelves {
+            let labelIDs = shelf.labels.compactMap { ref -> LabelID? in
+                let key = LabelKey(groupIndex: ref.groupIndex,
+                                   normalized: TextNormalizer.normalize(ref.labelName))
+                return labelIDByKey[key].map { LabelID(rawValue: $0) }
+            }
+            let rating = shelf.ratingStars.map {
+                FileQuery.RatingFilter(
+                    stars: $0,
+                    mode: shelf.ratingMode.flatMap(FileQuery.RatingFilter.Mode.init) ?? .atLeast)
+            }
+            let condition = ShelfCondition(
+                labelIDs: labelIDs,
+                rating: rating,
+                searchText: shelf.searchText,
+                sort: FileQuery.SortSpec(
+                    key: FileQuery.SortKey(rawValue: shelf.sortKey) ?? .filename,
+                    ascending: shelf.sortAscending),
+                displayMode: FileQuery.DisplayMode(rawValue: shelf.displayMode) ?? .libraryFlat)
+            let json = try SQLiteShelfRepository.encode(condition)
+
+            if let existing = unclaimed[shelf.name]?.first {
+                unclaimed[shelf.name]?.removeFirst()
+                try db.execute(sql: """
+                    UPDATE shelf SET conditionJSON = ?, displayOrder = ? WHERE id = ?
+                    """, arguments: [json, shelf.displayOrder, existing])
+            } else {
+                try db.execute(sql: """
+                    INSERT INTO shelf (libraryId, name, displayOrder, conditionJSON, createdAt)
+                    VALUES (?, ?, ?, ?, ?)
+                    """, arguments: [libraryID, shelf.name, shelf.displayOrder, json,
+                                     Date().timeIntervalSince1970])
+            }
         }
     }
 

@@ -362,6 +362,27 @@ struct UnresolvedFileRecord: Codable, FetchableRecord, MutablePersistableRecord,
     mutating func didInsert(_ inserted: InsertionSuccess) { id = inserted.rowID }
 }
 
+// MARK: - シェルフ [SH-01〜SH-12]
+
+/// 保存した絞り込み [19章 §19.2]。
+///
+/// **条件は JSON 1 列で持つ** [SH-05]。`library.settingsJSON` と同じ判断で、
+/// 覚える項目（ラベル・評価・検索語・並び順・表示モード）が増減しても移行が
+/// 要らない。ラベルへの外部キーを張らないのは意図的で、**張ると連鎖削除が
+/// 条件を消してしまい、ラベル削除の ⌘Z（同じ行 ID で戻る）でシェルフが
+/// 生き返らなくなる**——解決できない ID は読み出し側が落とす。
+struct ShelfRecord: Codable, FetchableRecord, MutablePersistableRecord, Sendable {
+    static let databaseTableName = "shelf"
+    var id: Int64?
+    var libraryId: Int64
+    var name: String
+    var displayOrder: Int
+    /// `ShelfCondition` を符号化したもの。
+    var conditionJSON: String
+    var createdAt: Double
+    mutating func didInsert(_ inserted: InsertionSuccess) { id = inserted.rowID }
+}
+
 // MARK: - 通知履歴
 
 struct NotificationRecord: Codable, FetchableRecord, MutablePersistableRecord, Sendable {

@@ -144,6 +144,49 @@ public final class LabelFilterModel {
         bumpRevision()
     }
 
+    /// シェルフの条件を適用する [SH-06]。
+    ///
+    /// **解決できないラベルは黙って落ちる** [SH-05]——消えた・非表示になった
+    /// [LA3-05] ラベルは画面のチェックに現れないので、条件にだけ残すと
+    /// 「なぜこの件数なのか」を利用者が読み取れなくなる。
+    ///
+    /// 選択のあるフィールドは**開いた状態にする**——チェックが入ったのに
+    /// 畳まれたままだと、何が効いているのか確かめようがない。
+    public func apply(_ condition: ShelfCondition) {
+        selection = condition.groupedSelection { groupOf[$0] }
+        expandedGroups.formUnion(selection.keys)
+        ratingFilter = condition.rating          // didSet が revision を上げる
+        bumpRevision()
+    }
+
+    /// いま画面に出ているラベルの所属 [SH-05]。**解決の規則を 1 箇所に置く**
+    /// ——`apply` と一致判定 [SH-08] が別々に組み立てると、片方だけ直したときに
+    /// 「復元はできるのに一致しない」形でずれる。
+    public var groupOf: [LabelID: LabelGroupID] {
+        var result: [LabelID: LabelGroupID] = [:]
+        for (group, items) in labels {
+            for label in items { result[label.id] = group }
+        }
+        return result
+    }
+
+    /// いま解決できるラベルだけに畳んだ写し [SH-08]。一致判定に使う。
+    public func resolvable(_ condition: ShelfCondition) -> ShelfCondition {
+        let map = groupOf
+        return condition.keepingResolvableLabels { map[$0] }
+    }
+
+    /// いまの選択と評価から条件を作る（保存・上書き保存・照合に使う）[SH-01]。
+    ///
+    /// **並び順・検索語・表示モードは引数で受ける**——このモデルは持っておらず、
+    /// 写しを作ると正が 2 つになる（`ShelfModel` の型コメント参照）。
+    public func currentCondition(searchText: String?,
+                                 sort: FileQuery.SortSpec,
+                                 displayMode: FileQuery.DisplayMode) -> ShelfCondition {
+        ShelfCondition.from(selection: selection, rating: ratingFilter,
+                            searchText: searchText, sort: sort, displayMode: displayMode)
+    }
+
     /// ライブラリを切り替えたら選択をリセットする [ST-26]。
     private func resetSelection() {
         selection.removeAll()

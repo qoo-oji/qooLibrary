@@ -79,6 +79,15 @@ public struct LibraryBackup: Codable, Sendable, Equatable {
     public var volumeFormats: [VolumeFormatBackup]
     public var folderLevelMappings: [FolderLevelMappingBackup]
     public var protectedTokens: [ProtectedTokenBackup]
+    /// 保存した絞り込み [SH-12][MG-22]。**利用者が作ったもので走査からは
+    /// 作り直せない**ので、漏れなく出す。
+    ///
+    /// **`[ShelfBackup]?` なのは古い文書を読むため**（`isUnresolvedIgnored` と
+    /// 同じ事情——合成された `Decodable` はプロパティの既定値を使わないので、
+    /// 非 Optional にするとキーの無い版 1〜3 の文書が `keyNotFound` で全体
+    /// 失敗する [実測]）。`schemaVersion` は上げていない。キーが増えただけの
+    /// 追加は、読み込みが `<=` 判定である以上、古い実装からも読める。
+    public var shelves: [ShelfBackup]?
     public var files: [FileBackup]
 
     public init(uuid: UUID, displayName: String, rootPath: String, volumeUUID: String,
@@ -87,7 +96,8 @@ public struct LibraryBackup: Codable, Sendable, Equatable {
                 settings: String, labelGroups: [LabelGroupBackup],
                 filenameFormats: [FormatBackup], volumeFormats: [VolumeFormatBackup],
                 folderLevelMappings: [FolderLevelMappingBackup],
-                protectedTokens: [ProtectedTokenBackup], files: [FileBackup]) {
+                protectedTokens: [ProtectedTokenBackup],
+                shelves: [ShelfBackup]? = nil, files: [FileBackup]) {
         self.uuid = uuid
         self.displayName = displayName
         self.rootPath = rootPath
@@ -101,6 +111,7 @@ public struct LibraryBackup: Codable, Sendable, Equatable {
         self.volumeFormats = volumeFormats
         self.folderLevelMappings = folderLevelMappings
         self.protectedTokens = protectedTokens
+        self.shelves = shelves
         self.files = files
     }
 
@@ -172,6 +183,57 @@ public struct LabelBackup: Codable, Sendable, Equatable {
         self.colorHex = colorHex
         self.isPinned = isPinned
         self.isArchived = isArchived
+    }
+}
+
+// MARK: - シェルフ
+
+/// 保存した絞り込み 1 件 [SH-01][SH-12]。
+///
+/// **列挙は生の文字列で持つ** — `coverImageSource` / `VolumeFormatBackup.kind`
+/// と同じ扱い。型をそのまま埋めると、将来 case を増減したときに**未知の
+/// 生値で文書全体の取り込みが失敗する**（`Decodable` は不明な rawValue を
+/// エラーにする）。読めない値は取り込み側が既定へ落とす。
+public struct ShelfBackup: Codable, Sendable, Equatable {
+    public var name: String
+    public var displayOrder: Int
+    /// 選んでいたラベル。**行 ID ではなく `groupIndex` + ラベル名**で突き合わせる
+    /// [JS-04]——行 ID は環境依存で、別のマシンで取り込むと無関係なラベルを指す。
+    public var labels: [ShelfLabelBackup]
+    /// 0〜5。`nil` なら評価で絞らない [RT-01]。
+    public var ratingStars: Int?
+    /// `FileQuery.RatingFilter.Mode` の生値（`atLeast` / `exact`）[RT-03]。
+    public var ratingMode: String?
+    public var searchText: String?
+    /// `FileQuery.SortKey` の生値 [VM-15]。
+    public var sortKey: String
+    public var sortAscending: Bool
+    /// `FileQuery.DisplayMode` の生値 [VM-10]。
+    public var displayMode: String
+
+    public init(name: String, displayOrder: Int, labels: [ShelfLabelBackup],
+                ratingStars: Int?, ratingMode: String?, searchText: String?,
+                sortKey: String, sortAscending: Bool, displayMode: String) {
+        self.name = name
+        self.displayOrder = displayOrder
+        self.labels = labels
+        self.ratingStars = ratingStars
+        self.ratingMode = ratingMode
+        self.searchText = searchText
+        self.sortKey = sortKey
+        self.sortAscending = sortAscending
+        self.displayMode = displayMode
+    }
+}
+
+/// シェルフが参照するラベル [SH-12]。`FileLabelBackup` と同じ主キーの取り方。
+public struct ShelfLabelBackup: Codable, Sendable, Equatable {
+    public var groupIndex: Int
+    public var labelName: String
+
+    public init(groupIndex: Int, labelName: String) {
+        self.groupIndex = groupIndex
+        self.labelName = labelName
     }
 }
 

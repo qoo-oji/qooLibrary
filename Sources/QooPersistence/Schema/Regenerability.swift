@@ -93,6 +93,15 @@ extension LibraryRecord: RegenerabilityDeclaring {
     public static let internalColumns: Set<String> = ["id", "libraryTypeId", "bookmarkData"]
 }
 
+extension ShelfRecord: RegenerabilityDeclaring {
+    /// **1 列も再生成できない** [SH-12][MG-22]。名前も条件も並び順も利用者が
+    /// 作ったもので、走査からは作り直せない——だから JSON バックアップへ
+    /// 漏れなく出す必要がある。`createdAt` だけは内部の手がかりで、
+    /// 復元時は取り込んだ時刻で構わない。
+    public static let regenerableColumns: Set<String> = []
+    public static let internalColumns: Set<String> = ["id", "libraryId", "createdAt"]
+}
+
 /// 検証対象の型を 1 箇所に集める。**新しいレコード型を足したらここへ追加する。**
 public enum RegenerabilityRegistry {
     public static let declaringTypes: [any RegenerabilityDeclaring.Type] = [
@@ -102,6 +111,7 @@ public enum RegenerabilityRegistry {
         FileLabelRecord.self,
         LibraryRecord.self,
         UnresolvedFileRecord.self,
+        ShelfRecord.self,
     ]
 
     /// 実際のテーブルの列名を読む。宣言と食い違えばテストが落ちる。

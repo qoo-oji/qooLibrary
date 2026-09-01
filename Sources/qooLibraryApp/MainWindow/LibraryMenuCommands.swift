@@ -41,6 +41,14 @@ struct LibraryMenuCommands: View {
             LabelEditorNavigation.open(libraryID: library.id, openWindow: openWindow)
         }
         .disabled(actions?.currentLibrary == nil)
+        // いまの絞り込みをシェルフとして保存 [SH-01][§19.6: Stage 3 以降の
+        // 入口はここへ足す]。**一覧そのものはここへ並べない**——シェルフは
+        // ライブラリ表示モードでしか出さない [SH-09] ので、メニューから
+        // フォルダ表示のまま復元できてしまうと約束が破れる。
+        Button("library.saveShelfEllipsis", systemImage: "line.3.horizontal.decrease.circle") {
+            actions?.saveShelf()
+        }
+        .disabled(actions?.canSaveShelf != true)
         Divider()
         // 片付けごとの入口 [§19.6、ステージ 4]。**表示中のライブラリが無くても
         // 開ける**——メンテナンスは左ペインでライブラリを選べるので、ここで

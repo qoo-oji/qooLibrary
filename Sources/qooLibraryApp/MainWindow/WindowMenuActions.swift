@@ -19,6 +19,11 @@ struct WindowMenuActions {
     /// 「ライブラリ」メニュー [ユーザー指示] が有効/無効と対象の解決に使う。
     var currentLibrary: LibrarySummary? = nil
 
+    /// いまの絞り込みをシェルフとして保存できるか [SH-01][SH-07][SH-09]。
+    /// ライブラリ表示モードで、条件が 1 つ以上入っているときだけ。
+    var canSaveShelf = false
+    var saveShelf: () -> Void = {}
+
     var canGoBack = false
     var canGoForward = false
     var canGoToParent = false

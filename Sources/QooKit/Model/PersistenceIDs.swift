@@ -62,3 +62,8 @@ public struct NotificationID: Hashable, Sendable, Codable, PersistenceID {
     public let rawValue: Int64
     public init(rawValue: Int64) { self.rawValue = rawValue }
 }
+
+public struct ShelfID: Hashable, Sendable, Codable, PersistenceID {
+    public let rawValue: Int64
+    public init(rawValue: Int64) { self.rawValue = rawValue }
+}

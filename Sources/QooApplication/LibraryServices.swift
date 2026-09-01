@@ -88,6 +88,7 @@ public final class LibraryServices {
     private var fileRepository: (any ManagedFileRepository)?
     private var labelRepository: (any LabelRepository)?
     private var backupRepository: (any BackupRepository)?
+    private var shelfRepository: (any ShelfRepository)?
     /// 通知履歴 [NT-01][NW-01〜08]。**ライブラリと無関係な通知も入る**
     /// ——`notificationRecord` は `library` への外部キーを持たず、対象は
     /// `targetJSON` に非正規化して持つ [07章 §7.3]。
@@ -149,6 +150,7 @@ public final class LibraryServices {
             fileRepository = SQLiteManagedFileRepository(database: opened)
             labelRepository = SQLiteLabelRepository(database: opened)
             backupRepository = SQLiteBackupRepository(database: opened)
+            shelfRepository = SQLiteShelfRepository(database: opened)
             notificationHistory = SQLiteNotificationHistoryStore(database: opened)
             Log.app.info("ライブラリストアを開いた: \(Log.path(storeURL))")
             makeSyncCoordinator()
@@ -453,6 +455,55 @@ public final class LibraryServices {
     public func setLabelGroupOrder(_ orderedIDs: [LabelGroupID]) async throws {
         guard let repository = labelRepository else { throw ServiceError.notReady }
         try await repository.setGroupOrder(orderedIDs)
+    }
+
+    // MARK: - シェルフ [SH-01〜SH-12]
+    //
+    // **Undo は `ShelfCommands` のコマンドが担う**ので、UI から直接ここを
+    // 呼ばないこと（並び順 [SH-10] だけは例外で、フィールドの並び順
+    // [LF-03] と同じくコマンドにしない——`setLabelGroupOrder` と同じ扱い）。
+
+    public func shelves(libraryID: LibraryID) async throws -> [ShelfSummary] {
+        guard let repository = shelfRepository else { throw ServiceError.notReady }
+        return try await repository.shelves(libraryID: libraryID)
+    }
+
+    public func createShelf(libraryID: LibraryID, name: String,
+                            condition: ShelfCondition) async throws -> ShelfID {
+        guard let repository = shelfRepository else { throw ServiceError.notReady }
+        return try await repository.create(libraryID: libraryID, name: name, condition: condition)
+    }
+
+    public func updateShelfCondition(_ id: ShelfID, _ condition: ShelfCondition) async throws {
+        guard let repository = shelfRepository else { throw ServiceError.notReady }
+        try await repository.updateCondition(id, condition)
+    }
+
+    public func renameShelf(_ id: ShelfID, to name: String) async throws {
+        guard let repository = shelfRepository else { throw ServiceError.notReady }
+        try await repository.rename(id, to: name)
+    }
+
+    public func deleteShelves(_ ids: [ShelfID]) async throws {
+        guard let repository = shelfRepository else { throw ServiceError.notReady }
+        try await repository.delete(ids)
+    }
+
+    /// 並べ替え [SH-10]。**全ウインドウ共有** [ST-23]。
+    public func setShelfOrder(_ orderedIDs: [ShelfID]) async throws {
+        guard let repository = shelfRepository else { throw ServiceError.notReady }
+        try await repository.setOrder(orderedIDs)
+    }
+
+    public func shelfSnapshots(_ ids: [ShelfID]) async throws -> [ShelfSummary] {
+        guard let repository = shelfRepository else { throw ServiceError.notReady }
+        return try await repository.snapshot(ids: ids)
+    }
+
+    /// 写しを**同じ行 ID で**戻す [SH-11]。
+    public func restoreShelves(_ shelves: [ShelfSummary]) async throws {
+        guard let repository = shelfRepository else { throw ServiceError.notReady }
+        try await repository.restore(shelves)
     }
 
     // MARK: - ラベルの編集 [LE-07〜LE-11][LB-05〜LB-07][CO-06]

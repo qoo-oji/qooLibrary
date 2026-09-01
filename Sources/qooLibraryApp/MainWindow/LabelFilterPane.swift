@@ -18,6 +18,20 @@ struct LabelFilterPane: View {
     let isShowingUnresolved: Bool
     /// 未整理ビューの出入り。実体は `WindowState.toggleUnresolvedFiles()`。
     let onToggleUnresolved: () -> Void
+    /// 保存した絞り込み [SH-01]。読み込みの駆動は `MainWindowView` の
+    /// `.task(id:)`（`model` と同じ形）。
+    let shelves: ShelfModel
+    /// **シェルフはライブラリ表示モードでしか出さない** [SH-09]［ユーザー指定］
+    /// ——覚えている条件には並び順と表示モードも含まれ [SH-02]、フォルダ
+    /// 表示モードで押すと「実体の一覧」の見え方まで変わってしまう。
+    let isLibraryDisplayMode: Bool
+    /// いまの絞り込み [SH-01]。保存と、どのシェルフと同じかの照合 [SH-08] に使う。
+    /// **並び順と検索語はここでは作れない**ので、持ち主から受け取る
+    /// （`ShelfModel` の型コメント参照）。
+    let currentShelfCondition: ShelfCondition?
+    /// シェルフを復元する [SH-06]。表示モードと並び順まで動かすので、
+    /// `WindowState` を知っている側に任せる。
+    let onApplyShelf: (ShelfSummary) -> Void
 
     @Environment(\.locale) private var locale
 
@@ -112,22 +126,34 @@ struct LabelFilterPane: View {
             emptyState("labelFilter.noLibrary")
         } else if let failure = model.loadFailure {
             emptyState("labelFilter.loadFailed", detail: failure)
-        } else if model.groups.isEmpty {
-            // [LF-02] ラベルが 1 件も無いライブラリ（走査前・未解決ばかりの場合）。
-            emptyState("labelFilter.noLabels")
         } else {
             List {
-                ratingSection
-                ForEach(model.groups) { group in
-                    groupSection(group)
+                if model.groups.isEmpty {
+                    // [LF-02] ラベルが 1 件も無いライブラリ（走査前・未解決
+                    // ばかりの場合）。**`List` ごと差し替えない**［code-review
+                    // の指摘］——差し替えるとシェルフ節まで消え、検索語だけで
+                    // 保存したシェルフが**見えないうえ辿り着けなくなる**
+                    // （メニューバーからの保存は評価やラベルが無くても通る）。
+                    Text("labelFilter.noLabels")
+                        .font(.system(size: Tokens.fontSize.caption))
+                        .foregroundStyle(.secondary)
+                } else {
+                    ratingSection
+                    ForEach(model.groups) { group in
+                        groupSection(group)
+                    }
+                    // [LF-03] ドラッグで並べ替え。順序はライブラリ単位で
+                    // 永続化し、全ウインドウで共有する [LG-07][ST-23]。
+                    .onMove { indices, destination in
+                        var ordered = model.groups
+                        ordered.move(fromOffsets: indices, toOffset: destination)
+                        Task { await model.reorderGroups(ordered, services: services) }
+                    }
                 }
-                // [LF-03] ドラッグで並べ替え。順序はライブラリ単位で永続化し、
-                // 全ウインドウで共有する [LG-07][ST-23]。
-                .onMove { indices, destination in
-                    var ordered = model.groups
-                    ordered.move(fromOffsets: indices, toOffset: destination)
-                    Task { await model.reorderGroups(ordered, services: services) }
-                }
+                // **フィールドの下**［ユーザー指定］。絞り込みの仲間なので
+                // 同じ一覧に入れる——最下部の「未整理のファイル」だけは
+                // 絞り込みではなく別の一覧への切り替えなので、外に置いたまま。
+                shelfSection
             }
             .listStyle(.sidebar)
             Divider()
@@ -206,6 +232,123 @@ struct LabelFilterPane: View {
                 guard let current = model.ratingFilter else { return }
                 model.ratingFilter = .init(stars: current.stars, mode: mode)
             })
+    }
+
+    // MARK: - シェルフ [SH-01〜SH-12]
+
+    /// 保存した絞り込み。**ライブラリ表示モードのときだけ**出す [SH-09]。
+    ///
+    /// **0 件でも見出しは出す**——「まだ 1 つも保存していない」ことと
+    /// 「そんな機能は無い」を取り違えさせないため（「未整理のファイル」を
+    /// 0 件でも常設するのと同じ判断 [UR3-01]。先行実装〈Calibre の保存済み
+    /// 検索〉が、全部消すと区画ごと消えて再起動まで戻らないという形で
+    /// 実際に壊していた箇所でもある）。
+    @ViewBuilder
+    private var shelfSection: some View {
+        if isLibraryDisplayMode {
+            Section {
+                if shelves.shelves.isEmpty {
+                    Text("labelFilter.shelfEmpty")
+                        .font(.system(size: Tokens.fontSize.caption))
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(shelves.shelves) { shelf in
+                        shelfRow(shelf)
+                    }
+                    .onMove { indices, destination in
+                        var ordered = shelves.shelves
+                        ordered.move(fromOffsets: indices, toOffset: destination)
+                        Task { await shelves.reorder(ordered, services: services) }
+                    }
+                }
+                if let failure = shelves.loadFailure {
+                    Text(failure)
+                        .font(.system(size: Tokens.fontSize.caption))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(2)
+                }
+            } header: {
+                HStack(spacing: Tokens.spacing.xs) {
+                    Text("labelFilter.shelfTitle")
+                    Spacer()
+                    // [SH-01] いまの絞り込みを保存する。**条件が 1 つも
+                    // 入っていなければ押せない** [SH-07]——押しても何も
+                    // 絞られないシェルフを作らせない。
+                    Button {
+                        presentSaveShelfDialog()
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .disabled(currentShelfCondition?.isActive != true)
+                    .help(String(localized: "labelFilter.shelfSaveHint", locale: locale))
+                }
+            }
+        }
+    }
+
+    private func shelfRow(_ shelf: ShelfSummary) -> some View {
+        // [SH-08] いまの絞り込みと同じなら選択表示にする。復元した直後に
+        // それが分かり、条件を 1 つ変えれば外れることで「もうこのシェルフでは
+        // ない」ことも同時に伝わる。
+        let isCurrent = currentShelfCondition
+            .map { $0 == model.resolvable(shelf.condition) } ?? false
+        return Button {
+            onApplyShelf(shelf)
+        } label: {
+            HStack(spacing: Tokens.spacing.xs) {
+                Image(systemName: "line.3.horizontal.decrease.circle")
+                    .foregroundStyle(isCurrent ? Color.accentColor : .secondary)
+                Text(shelf.name)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 0)
+            }
+            .font(.system(size: Tokens.fontSize.caption))
+            // 行全体を当たり判定にする（`unresolvedSection` と同じ理由）。
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .fontWeight(isCurrent ? .semibold : .regular)
+        .contextMenu {
+            // [SH-04] 上書き保存。**いまの絞り込みが空なら出さない**
+            // ——空で上書きすると、押しても何も絞らないシェルフが残る。
+            if let condition = currentShelfCondition, condition.isActive, !isCurrent {
+                Button("labelFilter.shelfUpdate") {
+                    run(UpdateShelfCommand(shelfID: shelf.id, shelfName: shelf.name,
+                                           previousCondition: shelf.condition,
+                                           newCondition: condition,
+                                           services: services),
+                        "labelFilter.shelfUpdate")
+                }
+            }
+            Button("labelFilter.shelfRenameMenu") {
+                ShelfDialogs.presentRename(shelf, services: services, locale: locale)
+            }
+            Divider()
+            // 削除は ⌘Z で戻せる [SH-11] ので確認は挟まない
+            // （RA-05 と同じ判断——戻せる操作に毎回 1 枚挟むと、本当に
+            // 見てほしい 1 枚まで読み飛ばされる）。
+            Button("labelFilter.shelfDelete", role: .destructive) {
+                run(DeleteShelfCommand(shelfID: shelf.id, shelfName: shelf.name,
+                                       services: services),
+                    "labelFilter.shelfDelete")
+            }
+        }
+    }
+
+    /// [SH-01] 保存。実装は `ShelfDialogs`（メニューバーと共有）。
+    private func presentSaveShelfDialog() {
+        guard let library = model.library, let condition = currentShelfCondition else { return }
+        ShelfDialogs.presentSave(libraryID: library.id, condition: condition,
+                                 services: services, locale: locale)
+    }
+
+    /// 実行は `ShelfDialogs.run`（メニューバーと共有。失敗の提示もそこ）。
+    private func run(_ command: some Command, _ whatHappened: String.LocalizationValue) {
+        ShelfDialogs.run(command, whatHappened: String(localized: whatHappened, locale: locale))
     }
 
     // MARK: - グループ [LF-04][LF-05][PN-02〜PN-06]

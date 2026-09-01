@@ -55,6 +55,17 @@ struct BackupTests {
         // ラベルの色・ピン・アーカイブ [MG-22]
         try await f.labels.setPinned(manual, true)
 
+        // シェルフ [SH-12]。**Optional をすべて埋める**——`JSONEncoder` は nil の
+        // キーを省くので、埋めないと下の網羅性の検証が空振りする（ファイルの
+        // 標本と同じ事情）。
+        _ = try await SQLiteShelfRepository(database: f.database).create(
+            libraryID: f.libraryID, name: "標本のシェルフ",
+            condition: ShelfCondition(labelIDs: [manual],
+                                      rating: .init(stars: 3, mode: .exact),
+                                      searchText: "作品",
+                                      sort: .init(key: .title, ascending: false),
+                                      displayMode: .libraryFlat))
+
         // **Optional をすべて埋めた標本を 1 件置く。** `JSONEncoder` は nil の
         // キーを丸ごと省くので、これが無いと網羅性の検証（下記）が
         // 「そのキーは無い」と正しく判定できず空振りする。
@@ -97,13 +108,21 @@ struct BackupTests {
 
         // DTO のキー名が列名と違うものだけを対応づける。
         // **列を足したら、ここか DTO のどちらかを直さないと落ちる。**
-        let renamed: [String: [String: String]] = [
-            "library": ["resolvedPath": "rootPath", "settingsJSON": "settings",
-                        "libraryTypeVersion": "libraryType"],
+        //
+        // 値が配列なのは、**1 列が複数のキーへ分かれることがある**ため
+        // ——`shelf.conditionJSON` は DB では JSON 1 列だが、文書では
+        // ラベル・評価・検索語・並び順・表示モードへ展開して出す [SH-12]
+        // （行 ID を持ち出さないための翻訳を伴うので、生の JSON は出せない）。
+        let renamed: [String: [String: [String]]] = [
+            "library": ["resolvedPath": ["rootPath"], "settingsJSON": ["settings"],
+                        "libraryTypeVersion": ["libraryType"]],
             "managedFile": [:], "label": [:], "labelGroup": [:], "fileLabel": [:],
             // `unresolvedFile` は `managedFile` と 1:1 なので、ファイルの
             // 属性として畳んである [AL-33]。
-            "unresolvedFile": ["isIgnored": "isUnresolvedIgnored"],
+            "unresolvedFile": ["isIgnored": ["isUnresolvedIgnored"]],
+            "shelf": ["conditionJSON": ["labels", "ratingStars", "ratingMode",
+                                        "searchText", "sortKey", "sortAscending",
+                                        "displayMode"]],
         ]
         func unionKeys(_ objects: [[String: Any]]) -> Set<String> {
             objects.reduce(into: Set<String>()) { $0.formUnion($1.keys) }
@@ -117,6 +136,7 @@ struct BackupTests {
             "managedFile": unionKeys(files),
             "fileLabel": unionKeys(files.flatMap { ($0["labels"] as? [[String: Any]]) ?? [] }),
             "unresolvedFile": unionKeys(files),
+            "shelf": unionKeys((library["shelves"] as? [[String: Any]]) ?? []),
         ]
 
         try await f.database.writer.read { db in
@@ -128,7 +148,9 @@ struct BackupTests {
                     .subtracting(type.internalColumns)
                 let present = try #require(keysByTable[table], "\(table) の DTO キーが取れない")
                 let map = renamed[table] ?? [:]
-                let missing = mustExport.filter { !present.contains(map[$0] ?? $0) }
+                let missing = mustExport.filter { column in
+                    !(map[column] ?? [column]).allSatisfy(present.contains)
+                }
                 #expect(missing.isEmpty,
                         "\(table): 再生成不可能な列が JSON に無い \(missing.sorted())")
             }

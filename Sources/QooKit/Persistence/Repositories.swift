@@ -651,3 +651,28 @@ public protocol LabelRepository: Sendable {
     /// 増分更新の破綻に備えた再集計 [IX-03][IX-04]。実測 844 ms / 10,530 ラベル。
     func recountAll(libraryID: LibraryID) async throws
 }
+
+// MARK: - シェルフ [SH-01〜SH-12]
+
+/// 保存した絞り込み [19章 §19.2]。**ライブラリ単位の永続設定で全ウインドウ共有**
+/// [ST-23]——ピン留め [PN-04] やフィールドの並び順 [LG-07] と同じ扱い。
+public protocol ShelfRepository: Sendable {
+    /// 並び順で返す [SH-10]。
+    func shelves(libraryID: LibraryID) async throws -> [ShelfSummary]
+    /// 末尾へ足す [SH-01]。**名前の一意性は要求しない** [SH-03]——同名を
+    /// 拒むと「自分自身と衝突する」判定を書くことになり、そこは先行実装
+    /// （Calibre の保存済み検索）が実際に壊した箇所である。並びで区別できる。
+    func create(libraryID: LibraryID, name: String,
+                condition: ShelfCondition) async throws -> ShelfID
+    /// 上書き保存 [SH-04]。条件だけを差し替える（名前と並びは動かさない）。
+    func updateCondition(_ id: ShelfID, _ condition: ShelfCondition) async throws
+    func rename(_ id: ShelfID, to name: String) async throws                  // [SH-03]
+    func delete(_ ids: [ShelfID]) async throws                                // [SH-02]
+    /// 渡された順に 0 から振り直す [SH-10]。一覧に無い行には触れない。
+    func setOrder(_ orderedIDs: [ShelfID]) async throws
+    /// 削除の Undo 用。**行 ID ごと控える** [SH-11]。
+    func snapshot(ids: [ShelfID]) async throws -> [ShelfSummary]
+    /// 写しを**同じ行 ID で**作り直す [SH-11]。`shelf.id` は AUTOINCREMENT で
+    /// 再利用されないので成り立つ（`LabelSnapshot` の復元と同じ）。
+    func restore(_ shelves: [ShelfSummary]) async throws
+}

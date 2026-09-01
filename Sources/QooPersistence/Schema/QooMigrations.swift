@@ -17,7 +17,7 @@ public enum QooMigrations {
         "v1_initial", "v2_regexPatterns", "v3_embeddedMetadata", "v4_fsEventsCheckpoint",
         "v5_identityRejection", "v6_duplicateTitleKey", "v7_identityPending",
         "v8_stage1Removals", "v9_reservedWordCleanup", "v10_metadataProtection",
-        "v11_orphanedProtectedTokens",
+        "v11_orphanedProtectedTokens", "v12_shelf",
     ]
 
     public static var migrator: DatabaseMigrator {
@@ -34,6 +34,7 @@ public enum QooMigrations {
         m.registerMigration(identifiers[8], migrate: v9ReservedWordCleanup)
         m.registerMigration(identifiers[9], migrate: v10MetadataProtection)
         m.registerMigration(identifiers[10], migrate: v11OrphanedProtectedTokens)
+        m.registerMigration(identifiers[11], migrate: v12Shelf)
         return m
     }
 
@@ -159,6 +160,31 @@ public enum QooMigrations {
             """)
         try db.execute(sql: "UPDATE storeMetadata SET schemaVersion = ? WHERE id = 1",
                        arguments: [identifiers[10]])
+    }
+
+    // MARK: - v12
+
+    /// シェルフ（保存した絞り込み）を足す [SH-01][19章 §19.9]。
+    ///
+    /// **条件は JSON 1 列**（`ShelfRecord` の注記）。`libraryId` は単一参照なので
+    /// 外部キーを張れる——`protectedToken` が多相参照ゆえに連鎖削除できず、
+    /// 登録解除のたびに孤児を積み上げていた轍を踏まない [PT-08]。
+    ///
+    /// `AUTOINCREMENT` にするのは、削除の ⌘Z が**同じ行 ID で**戻すため
+    /// [SH-11]（`label` と同じ理由 [07章 §7.3]）。
+    static func v12Shelf(_ db: Database) throws {
+        try db.create(table: "shelf") { t in
+            t.autoIncrementedPrimaryKey("id")
+            t.belongsTo("library", onDelete: .cascade).notNull()
+            t.column("name", .text).notNull()
+            t.column("displayOrder", .integer).notNull()   // [SH-10][ST-23]
+            t.column("conditionJSON", .text).notNull()
+            t.column("createdAt", .double).notNull()
+        }
+        try db.create(index: "shelf_lib_order", on: "shelf",
+                      columns: ["libraryId", "displayOrder"])
+        try db.execute(sql: "UPDATE storeMetadata SET schemaVersion = ? WHERE id = 1",
+                       arguments: [identifiers[11]])
     }
 
     // MARK: - v10

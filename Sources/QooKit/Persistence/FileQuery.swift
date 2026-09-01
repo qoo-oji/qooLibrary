@@ -14,13 +14,13 @@ public struct FileQuery: Sendable, Hashable {
     }
 
     /// フォルダ表示モード / ライブラリ表示モード [VM-01]。
-    public enum DisplayMode: String, Sendable, Hashable { case folder, libraryFlat }
+    public enum DisplayMode: String, Sendable, Hashable, Codable { case folder, libraryFlat }
 
-    public enum SortKey: String, Sendable, Hashable, CaseIterable {
+    public enum SortKey: String, Sendable, Hashable, CaseIterable, Codable {
         case filename, title, series, volume, fileSize, createdAt, modifiedAt, rating
     }
 
-    public struct SortSpec: Sendable, Hashable {
+    public struct SortSpec: Sendable, Hashable, Codable {
         public let key: SortKey
         public let ascending: Bool
         public init(key: SortKey, ascending: Bool = true) {
@@ -36,8 +36,8 @@ public struct FileQuery: Sendable, Hashable {
     /// 以前は `minimum` と `unratedOnly` の 2 つで表していたが、その形では
     /// 「星 3 ちょうど」を書けない——`unratedOnly` は `.exact` の星 0 として
     /// 吸収した（`rating` 列は未評価を 0 で持つ）。
-    public struct RatingFilter: Sendable, Hashable {
-        public enum Mode: String, Sendable, Hashable, CaseIterable {
+    public struct RatingFilter: Sendable, Hashable, Codable {
+        public enum Mode: String, Sendable, Hashable, CaseIterable, Codable {
             case atLeast
             case exact
         }
@@ -55,6 +55,17 @@ public struct FileQuery: Sendable, Hashable {
 
         /// 未評価だけを見る。
         public static let unrated = RatingFilter(stars: 0, mode: .exact)
+
+        /// **合成された `init(from:)` を使わない** [SH-06]。あちらは `let` へ
+        /// 直に代入するので、上の `init` が持つ丸めを素通りする——シェルフの
+        /// 条件は DB と JSON バックアップの両方を往復するため、壊れた文書や
+        /// 手で編集された JSON から `stars = 9` のような決して一致しない
+        /// 条件が入り込む余地を残さない。
+        public init(from decoder: any Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            self.init(stars: try c.decode(Int.self, forKey: .stars),
+                      mode: try c.decode(Mode.self, forKey: .mode))
+        }
     }
 
     /// 未整理のファイルだけに絞る [UR3-01][UR3-05]。

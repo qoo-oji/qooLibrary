@@ -185,6 +185,9 @@ struct MainWindowView: View {
     private var currentWindowMenuActions: WindowMenuActions {
         WindowMenuActions(
             currentLibrary: windowState.currentLibrary,
+            canSaveShelf: windowState.displayMode == .library
+                && windowState.currentShelfCondition?.isActive == true,
+            saveShelf: { presentSaveShelfDialog() },
             canGoBack: windowState.canGoBack,
             canGoForward: windowState.canGoForward,
             canGoToParent: windowState.canGoToParent,
@@ -256,6 +259,15 @@ struct MainWindowView: View {
             },
             ejectAll: { Task { await VolumeEjectAction.ejectAll() } }
         )
+    }
+
+    /// メニューバーからのシェルフ保存 [SH-01]。実装は左ペインの「＋」と共有
+    /// （`ShelfDialogs`）。
+    private func presentSaveShelfDialog() {
+        guard let library = windowState.currentLibrary,
+              let condition = windowState.currentShelfCondition else { return }
+        ShelfDialogs.presentSave(libraryID: library.id, condition: condition,
+                                 services: LibraryServices.shared, locale: locale)
     }
 
     /// File メニューの「取り出す」に必要な判定の控え。
@@ -563,7 +575,9 @@ struct MainWindowView: View {
                                     ratingFilter: windowState.labelFilter.ratingFilter,
                                     searchText: windowState.searchText,
                                     services: LibraryServices.shared)
-                            }
+                            },
+                            onLibrarySortChanged: { windowState.currentLibrarySort = $0 },
+                            pendingLibrarySort: $windowState.pendingLibrarySort
                         )
                 }
                 .inspector(isPresented: Binding(
@@ -742,7 +756,11 @@ struct MainWindowView: View {
                     LabelFilterPane(model: windowState.labelFilter,
                                     services: LibraryServices.shared,
                                     isShowingUnresolved: windowState.showsUnresolvedFiles,
-                                    onToggleUnresolved: { windowState.toggleUnresolvedFiles() })
+                                    onToggleUnresolved: { windowState.toggleUnresolvedFiles() },
+                                    shelves: windowState.shelves,
+                                    isLibraryDisplayMode: windowState.displayMode == .library,
+                                    currentShelfCondition: windowState.currentShelfCondition,
+                                    onApplyShelf: { windowState.applyShelf($0) })
                         .frame(minHeight: 80)
                 }
                 }
@@ -795,6 +813,13 @@ struct MainWindowView: View {
             await windowState.labelFilter.load(
                 registrationUUID: windowState.navigationRoot.registrationUUID,
                 services: LibraryServices.shared)
+        }
+        // 保存した絞り込みを読む [SH-01]。**ラベルフィルタと同じ鍵で駆動する**
+        // ——どちらも「表示中のライブラリについて左ペインが出すもの」で、
+        // `operationHistory.count` を含んでいるので ⌘Z にも追随する。
+        .task(id: labelFilterLoadKey) {
+            await windowState.shelves.load(library: windowState.currentLibrary,
+                                           services: LibraryServices.shared)
         }
         // 件数と、中央ペインが残す子の名前を数え直す [LF-11][VM-02]。
         .task(id: labelFilterResultKey) {

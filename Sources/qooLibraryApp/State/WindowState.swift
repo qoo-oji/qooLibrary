@@ -191,6 +191,22 @@ public final class WindowState {
     /// ——選択は DB に保存せず、同じライブラリを 2 枚開けば別々に絞れる。
     /// ピン留めとグループの並び順だけは全ウインドウ共有 [ST-23]。
     public let labelFilter = LabelFilterModel()
+    /// 保存した絞り込み [SH-01]。`labelFilter` と同じく、読み込みを駆動するのは
+    /// `MainWindowView` の `.task(id:)`。
+    public let shelves = ShelfModel()
+
+    /// いま中央ペインが使っている並び順 [VM-15]。**持ち主は
+    /// `FolderContentView`**（`Table` の `sortOrder`）で、ここにあるのはその
+    /// 写し——シェルフの保存・照合が並び順を要るのに、左ペインからは
+    /// 中央ペインの `@State` を読めないため。書き込むのは持ち主だけ。
+    public var currentLibrarySort: FileQuery.SortSpec = .byFilename
+
+    /// シェルフの復元が中央ペインへ並び順を届ける合図 [SH-06]。
+    ///
+    /// **真偽値の上げ下げにしない**——「まだ下げていない」状態で次が来ると
+    /// 落ちる（`newFolderRequests` と同じ理由で、値そのものを渡して
+    /// 受け取り側が `nil` へ戻す）。
+    public var pendingLibrarySort: FileQuery.SortSpec?
     public var iconSize: Double // [IV-04]
 
     public init(target: TabTarget = .home) {
@@ -465,6 +481,36 @@ public final class WindowState {
         if folder?.standardizedFileURL != root { navigate(to: root) }
         if displayMode != .library { setDisplayMode(.library) }
         libraryContent.setUnresolvedFilter(.pending)
+    }
+
+    // MARK: - シェルフ [SH-01〜SH-12]
+
+    /// いまの絞り込みをシェルフの語彙で表す [SH-01]。保存と照合 [SH-08] に使う。
+    ///
+    /// **並び順はこのウインドウが持つ写しから読む**（`currentLibrarySort`）
+    /// ——持ち主は中央ペインで、左ペインからは届かない。
+    public var currentShelfCondition: ShelfCondition? {
+        guard currentLibrary != nil else { return nil }
+        return labelFilter.currentCondition(
+            searchText: searchText,
+            sort: currentLibrarySort,
+            displayMode: displayMode == .library ? .libraryFlat : .folder)
+    }
+
+    /// シェルフを復元する [SH-06]。
+    ///
+    /// **未整理ビューからは抜ける**——あちらは絞り込みではなく別の一覧で、
+    /// シェルフの条件と AND になると「シェルフを押したのに件数が合わない」
+    /// 理由を読み取れない。
+    public func applyShelf(_ shelf: ShelfSummary) {
+        if libraryContent.showsUnresolvedOnly { toggleUnresolvedFiles() }
+        if shelf.condition.displayMode == .libraryFlat, displayMode != .library {
+            setDisplayMode(.library)
+        }
+        labelFilter.apply(shelf.condition)
+        searchText = shelf.condition.searchText ?? ""
+        // 並び順は中央ペインが持っているので合図で届ける。
+        pendingLibrarySort = shelf.condition.sort
     }
 
     /// 指定したライブラリの未整理ビューへ入る [UR3-01][UR2-02]。

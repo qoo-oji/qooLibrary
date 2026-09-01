@@ -159,6 +159,12 @@ struct FolderContentView: View {
     /// `MainWindowView` へ「この順で読んでほしい」と渡す形にした。フォルダ
     /// 表示モードのときは呼ばれても一覧を空にするだけ。
     let loadLibraryRows: (FileQuery.SortSpec) async -> Void
+    /// いまの並び順を持ち主の外へ知らせる [SH-01]。シェルフの保存・照合が
+    /// 並び順を要るのに、左ペインからは中央ペインの `@State` を読めないため。
+    let onLibrarySortChanged: (FileQuery.SortSpec) -> Void
+    /// シェルフの復元が届ける並び順 [SH-06]。受け取ったら `nil` へ戻す
+    /// （`newFolderRequests` と同じ「値を渡して受け側が消す」形）。
+    @Binding var pendingLibrarySort: FileQuery.SortSpec?
 
     @State private var entries: [FolderEntry] = []
     /// 再帰検索の結果 [ユーザー要望: サブフォルダも再帰的に検索する]。
@@ -749,6 +755,21 @@ struct FolderContentView: View {
         .onChange(of: sortOrder) { _, newValue in
             publishQuickLookOrder()
             FolderSortComparator.persist(newValue)
+            onLibrarySortChanged(newValue.first?.librarySortSpec ?? .byFilename)
+        }
+        // 初期値も知らせる——ウインドウを開いた直後にシェルフを保存しても、
+        // 「並び順を触っていないから既定のはず」と決め打ちしない。
+        .onAppear {
+            onLibrarySortChanged(sortOrder.first?.librarySortSpec ?? .byFilename)
+        }
+        // シェルフの復元 [SH-06]。**列が出ていないキーでも受け取る**
+        // ——`librarySortSpec` が既に「使えないキーは名前へ落とす」ので、
+        // ここへ来るのはライブラリ表示モードで意味を持つキーだけ。
+        .onChange(of: pendingLibrarySort) { _, newValue in
+            guard let newValue else { return }
+            sortOrder = [FolderSortComparator(key: .init(librarySortKey: newValue.key),
+                                              order: newValue.ascending ? .forward : .reverse)]
+            pendingLibrarySort = nil
         }
         .onChange(of: groupFoldersAtTop) { _, _ in publishQuickLookOrder() }
         // ツールバーのボタンからの合図でダイアログを出す
@@ -3207,6 +3228,27 @@ extension FolderSortComparator {
         case .kind, .addedDate: .filename
         }
         return FileQuery.SortSpec(key: mapped, ascending: order == .forward)
+    }
+}
+
+extension FolderSortComparator.Key {
+    /// `librarySortSpec` の逆写像 [SH-06]。シェルフが覚えた並び順を
+    /// `Table` の語彙へ戻す。
+    ///
+    /// **`kind` / `addedDate` はここへ来ない**——`librarySortSpec` が
+    /// それらを `.filename` へ落としてから保存されるため、往復は
+    /// 「ライブラリ表示モードで意味を持つキー」の中で閉じている。
+    init(librarySortKey: FileQuery.SortKey) {
+        self = switch librarySortKey {
+        case .filename: .name
+        case .title: .title
+        case .series: .series
+        case .volume: .volume
+        case .rating: .rating
+        case .fileSize: .size
+        case .createdAt: .creationDate
+        case .modifiedAt: .modificationDate
+        }
     }
 }
 
