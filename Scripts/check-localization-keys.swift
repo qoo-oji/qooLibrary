@@ -102,8 +102,62 @@ while let relative = enumerator?.nextObject() as? String {
     }
 }
 
+// MARK: - カタログの「値」に残った、存在しない予約語を検査する
+//
+// **なぜ要るのか**［ステージ 7 の実機検証で発見］: ステージ 5 で
+// `@librarytype` を `@booktype` へ改名したのに、ブックタイプ名の説明文
+// （`librarySettings.basics.typeNameHint`）だけが旧綴りのまま残っていた。
+// **画面には出ているのにコードには現れない**ので、鍵の使用状況を見る上の
+// 検査でも `grep` でも捕まらない——この検査は**値の中**を見る。
+//
+// どんな実条件で落ちるか: 予約語を改名・撤去したのに、それを例示している
+// 説明文が追随していないとき。
+
+let reservedSource = "Sources/QooKit/Format/FieldRef.swift"
+var reservedIssues: [(word: String, key: String, lang: String)] = []
+if let text = try? String(contentsOfFile: reservedSource, encoding: .utf8) {
+    // 予約語の綴りは `SemanticKeyword` の rawValue と `ReservedWordTable.entries`
+    // のリテラルにしかない。どちらも `"@…"` の形なので、まとめて拾う。
+    let wordPattern = try! NSRegularExpression(pattern: "\"(@[a-z][a-z0-9]*)\"")
+    var reserved = Set<String>()
+    for m in wordPattern.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+        if let r = Range(m.range(at: 1), in: text) { reserved.insert(String(text[r])) }
+    }
+    if reserved.isEmpty {
+        print("==> FAIL: \(reservedSource) から予約語を 1 つも読めなかった（検査が空振りしている）")
+        exit(1)
+    }
+    let tokenPattern = try! NSRegularExpression(pattern: "@[A-Za-z][A-Za-z0-9]*")
+    for (key, entry) in strings {
+        guard let e = entry as? [String: Any],
+              let locs = e["localizations"] as? [String: Any] else { continue }
+        for (lang, lv) in locs {
+            guard let unit = (lv as? [String: Any])?["stringUnit"] as? [String: Any],
+                  let value = unit["value"] as? String else { continue }
+            for m in tokenPattern.matches(in: value, range: NSRange(value.startIndex..., in: value)) {
+                guard let r = Range(m.range, in: value) else { continue }
+                let word = String(value[r])
+                if !reserved.contains(word.lowercased()) {
+                    reservedIssues.append((word, key, lang))
+                }
+            }
+        }
+    }
+} else {
+    print("==> FAIL: \(reservedSource) を読めない")
+    exit(1)
+}
+
+if !reservedIssues.isEmpty {
+    print("==> FAIL: カタログの文言に、存在しない予約語が \(reservedIssues.count) 件あります")
+    for i in reservedIssues.sorted(by: { $0.key < $1.key }) {
+        print("  \(i.word)  — \(i.key) [\(i.lang)]")
+    }
+    exit(1)
+}
+
 if missing.isEmpty {
-    print("==> OK: すべての文字列カタログの鍵が定義されている")
+    print("==> OK: すべての文字列カタログの鍵が定義されている（文言中の予約語も実在する）")
     exit(0)
 }
 print("==> FAIL: 定義されていない鍵が \(missing.count) 件あります（そのまま画面に出ます）")

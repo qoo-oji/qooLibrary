@@ -14,47 +14,6 @@ import SwiftUI
 @MainActor
 enum LibraryEnableAction {
 
-    /// 設定を確認・調整させてから有効化し、続けて初回スキャンを走らせる
-    /// [LT-01〜LT-03][LS-01][HP-05]。
-    ///
-    /// **テンプレートを選ぶだけの画面ではない**［ユーザー指摘: 「その選択肢で
-    /// 何がどう変化するのかわからない」］。中身を見て、その場で直して、
-    /// 実ファイル名に当てた結果まで確かめてから決められる。
-    /// - Parameter openWindow: 走査結果のシートから未解決ファイルの整理
-    ///   ウインドウを開くために持ち回る [UR2-02]。**`@Environment(\.openWindow)`
-    ///   は View からしか取れない**ので、呼び出し側（View）から渡してもらう
-    ///   ——受け皿へ預ける形にすると、預ける前に走査が終わった場合に黙って
-    ///   開かなくなる。
-    static func begin(folder: RegisteredFolder, url: URL, locale: Locale,
-                      openWindow: OpenWindowAction) {
-        let services = LibraryServices.shared
-        guard services.isReady else {
-            presentUnavailable(services.startupFailure)
-            return
-        }
-        let templates = services.presetTemplates
-        guard let volumeSets = services.volumeSetDefinition else { return }
-
-        let model = LibraryEnableModel(
-            folderName: folder.displayName, folderURL: url,
-            templates: templates, volumeSets: volumeSets,
-            // 型付き照合 [TY-01] の候補は他ライブラリの型名も含む。渡さないと
-            // プレビューの結果が実際の走査とずれる。
-            otherTypeNames: services.libraries.map(\.libraryTypeName))
-
-        DialogWindowPresenter.shared.present(
-            title: String(localized: "library.enable.title", locale: locale)
-        ) { _ in
-            LibraryEnableView(model: model) { draft, template in
-                Task {
-                    await enable(folder: folder, url: url, draft: draft,
-                                 template: template, locale: locale,
-                                 openWindow: openWindow)
-                }
-            }
-        }
-    }
-
     /// 有効化済みのライブラリを走査し直す [SY-05]。
     static func rescan(folder: RegisteredFolder, url: URL, locale: Locale,
                        openWindow: OpenWindowAction) {

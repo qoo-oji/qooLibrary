@@ -57,7 +57,17 @@ enum LibraryRegistrationWizard {
                        openWindow: OpenWindowAction,
                        onFinished: (@MainActor () -> Void)? = nil) {
         let services = LibraryServices.shared
-        guard services.isReady, let volumeSets = services.volumeSetDefinition else { return }
+        // **開けなかった理由は必ず言う** [ER-01][ER-03]。旧「有効化ウインドウ」を
+        // 廃止して以降、ここは起動時の自動導線だけでなく**利用者が明示的に押した
+        // メニュー項目**からも来る（フォルダツリーの「ライブラリとして有効に
+        // する…」）。黙って返ると「押しても何も起きない」になる。
+        // `LibrarySetupPrompt` は先に準備完了を待ってから呼ぶので、起動直後に
+        // このダイアログが出ることはない。
+        guard services.isReady else {
+            LibraryEnableAction.presentUnavailable(services.startupFailure)
+            return
+        }
+        guard let volumeSets = services.volumeSetDefinition else { return }
         let model = LibraryRegistrationWizardModel(
             templates: services.presetTemplates,
             volumeSets: volumeSets,

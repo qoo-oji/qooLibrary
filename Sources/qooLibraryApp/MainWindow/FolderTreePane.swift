@@ -646,8 +646,13 @@ struct FolderTreePane: View {
             // 呼ぶため（同じに見える操作に独立した経路を作ると、片方だけ直して
             // 取り残す。1-12 のアプリ関連付けで実際に踏んだ形）。
             isLibraryEnabled: { LibraryServices.shared.isEnabled(registrationUUID: $0.id) },
-            enableLibrary: { LibraryEnableAction.begin(folder: $0, url: $1, locale: locale,
-                                                      openWindow: openWindow) },
+            // **旧「有効化ウインドウ」は廃止した** [§19.8]。登録済みだが未有効の
+            // 登録は、起動時の `LibrarySetupPrompt` と同じ経路——登録ウィザードを
+            // ステップ 3 から再開する——で拾う。同じ操作に画面を 2 つ持つと、
+            // 片方だけ直して取り残す。
+            enableLibrary: { LibraryRegistrationWizard.resume(folder: $0, url: $1,
+                                                             locale: locale,
+                                                             openWindow: openWindow) },
             openLibrarySettings: { openLibrarySettings($0) },
             // [FDA-03] ライブラリ配下のフォルダを丸ごと保管庫へ。
             libraryForRow: { context in

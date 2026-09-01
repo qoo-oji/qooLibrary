@@ -7600,23 +7600,6 @@
         }
       }
     },
-    "library.enable.confirm": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Enable"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "有効にする"
-          }
-        }
-      }
-    },
     "library.enable.failed": {
       "extractionState": "manual",
       "localizations": {
@@ -7647,23 +7630,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "ライブラリとして有効にする…"
-          }
-        }
-      }
-    },
-    "library.enable.title": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Enable as Library"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ライブラリとして有効にする"
           }
         }
       }
@@ -8226,40 +8192,6 @@
         }
       }
     },
-    "libraryEnable.headerExplanation": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pick a starting point, adjust anything you like, and check the preview before enabling. You can change all of this later in Library Settings."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "起点を選び、必要なら設定を調整し、プレビューで結果を確かめてから有効にしてください。以下の設定はあとからライブラリの設定でも変更できます。"
-          }
-        }
-      }
-    },
-    "libraryEnable.headerTitle": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Enable “%@” as a library"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "「%@」をライブラリとして有効にする"
-          }
-        }
-      }
-    },
     "libraryEnable.preview.excluded": {
       "extractionState": "manual",
       "localizations": {
@@ -8392,40 +8324,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "どのファイル名フォーマットにも一致しません。ラベルが付かないまま取り込まれます。"
-          }
-        }
-      }
-    },
-    "libraryEnable.templateSummary": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%d fields · %d filename formats"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "フィールド %d 件 · ファイル名フォーマット %d 本"
-          }
-        }
-      }
-    },
-    "libraryEnable.templatesHeader": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Start From"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "起点"
           }
         }
       }
@@ -8691,13 +8589,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The value matched by @librarytype. It must be written exactly as it appears in your filenames — for example “(Doujin CG Collection)” rather than “Doujin CG”."
+            "value": "The value matched by @booktype. It must be written exactly as it appears in your filenames — for example “(Doujin CG Collection)” rather than “Doujin CG”."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "@librarytype が照合する値です。ファイル名に現れる表記と正確に一致させる必要があります（例:「同人CG」ではなく「同人CG集」）。"
+            "value": "@booktype が照合する値です。ファイル名に現れる表記と正確に一致させる必要があります（例:「同人CG」ではなく「同人CG集」）。"
           }
         }
       }
