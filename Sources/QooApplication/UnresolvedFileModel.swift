@@ -256,6 +256,12 @@ public final class UnresolvedFileModel {
     /// が、「なぜ当たらないか」の手がかりとしては強いので行に印として出す。
     public private(set) var typeMismatchFileIDs: Set<FileID> = []
 
+    /// 「最も近いフォーマット」のヒント [UR2-05][UR3-04]。行の印のツールチップに使う。
+    ///
+    /// **`ignoredFileIDs` と同じく索引として持つ**——中央ペインは可視行ごとに
+    /// 引くので、`files` から都度組み立てると 1 回の描画で数十万回の走査になる。
+    public private(set) var nearestFormatByFileID: [FileID: String] = [:]
+
     /// 片付ける対象の件数（無視したものを除く）[UR3-05]。
     ///
     /// **`files.count` を使ってはならない**［code-review の指摘］——索引として
@@ -269,6 +275,9 @@ public final class UnresolvedFileModel {
     private func rebuildIndexes() {
         ignoredFileIDs = Set(files.lazy.filter(\.isIgnored).map(\.row.id))
         typeMismatchFileIDs = Set(files.lazy.filter(\.libraryTypeMismatch).map(\.row.id))
+        nearestFormatByFileID = files.reduce(into: [:]) { out, file in
+            if let source = file.nearestFormatSource { out[file.row.id] = source }
+        }
     }
 
     /// 中央ペインの未整理ビューが使う索引として読む [UR3-03]。

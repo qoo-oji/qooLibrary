@@ -574,6 +574,12 @@ public final class LibraryServices {
                                                     includeIgnored: includeIgnored)
     }
 
+    /// 1 件だけの未解決の記録 [UR3-04]。右ペインが選択のたびに引く。
+    public func unresolvedHint(id: FileID) async throws -> UnresolvedHint? {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        return try await repository.unresolvedHint(id: id)
+    }
+
     public func unresolvedFileCounts() async throws -> [LibraryID: UnresolvedCounts] {
         guard let repository = fileRepository else { throw ServiceError.notReady }
         return try await repository.unresolvedFileCounts()

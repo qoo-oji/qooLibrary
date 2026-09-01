@@ -23,12 +23,10 @@ struct InspectorRatingSection: View {
             section { ProgressView().controlSize(.small) }
         case .notInLibrary:
             section {
-                // 無効の星 ＋ 理由［ユーザー判断］。黙って消すと「星を付けられ
-                // ない」のか「壊れている」のか区別が付かない。
+                // **無効の星だけを出す**。黙って枠ごと消すと「星を付けられない」
+                // のか「壊れている」のか区別が付かない［ユーザー判断］が、
+                // 理由の文は置かない［ユーザー指摘、2026-09-02］。
                 RatingStars(filled: 0, tint: .secondary, isEnabled: false) { _ in }
-                Text("inspector.rating.notInLibrary")
-                    .font(.system(size: Tokens.fontSize.caption))
-                    .foregroundStyle(.secondary)
             }
         case .failed(let reason):
             section {
@@ -50,16 +48,16 @@ struct InspectorRatingSection: View {
 
     // MARK: - 部品
 
+    /// **見出しは置かない**［ユーザー指摘、2026-09-02］——星が並んでいれば
+    /// 評価だと分かる。区切りは `Divider` だけで足りる。
     @ViewBuilder
     private func section(@ViewBuilder _ content: () -> some View) -> some View {
         Divider()
         VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
-            Text("inspector.rating")
-                .font(.system(size: Tokens.fontSize.caption))
-                .foregroundStyle(.secondary)
             content()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .font(.system(size: Tokens.fontSize.caption))
     }
 
     /// 「このシリーズ全巻に適用」[RA-04][RA-05][RA-07]。
@@ -85,14 +83,10 @@ struct InspectorRatingSection: View {
                     .font(.system(size: Tokens.fontSize.caption))
             }
             .buttonStyle(.link)
-        } else if subject.seriesCount == nil {
-            // [RA-07] シリーズ名が無い。**押せないボタンを置くのではなく理由を
-            // 書く**——押せない何かが常駐しているより、なぜ出ないのかが
-            // 読めるほうがよい。
-            Text("inspector.rating.noSeries")
-                .font(.system(size: Tokens.fontSize.caption))
-                .foregroundStyle(.secondary)
         }
+        // [RA-07] シリーズ名が無いときは**何も出さない**［ユーザー指摘、
+        // 2026-09-02］——星の下に「シリーズ名がありません」と書くと、
+        // 評価とシリーズ名に何の関係があるのか読み取れない。
     }
 
     // MARK: - 操作

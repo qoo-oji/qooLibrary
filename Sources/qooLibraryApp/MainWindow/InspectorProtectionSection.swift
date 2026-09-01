@@ -34,37 +34,30 @@ struct InspectorProtectionSection: View {
         }
     }
 
+    /// **見出しは置かない**［ユーザー指摘、2026-09-02］——チェックボックスの
+    /// 名前（「すべてのメタデータを保護」）が既に何の操作かを言っている。
     private func section(@ViewBuilder _ content: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
             Divider()
-            Text("inspector.protection.header")
-                .font(.system(size: Tokens.fontSize.caption))
-                .foregroundStyle(.secondary)
             content()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .font(.system(size: Tokens.fontSize.caption))
     }
 
+    /// **説明文は置かない**［ユーザー指摘、2026-09-02］。右ペインは短い値の
+    /// 並びで、そこに散文を混ぜると読む場所が変わってしまう——「何をする
+    /// 操作か」はチェックボックスの名前が言えばよい。
     private func row(_ subject: ProtectionEditorModel.Subject) -> some View {
-        VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
-            HStack(spacing: Tokens.spacing.xs) {
-                // **三状態が要る**（複数選択で一部だけ保護されている）ので
-                // `Toggle` ではなく AppKit のチェックボックスを使う [RP-02 と同じ]。
-                MixedStateCheckbox(state: Self.checkboxState(subject.checkState)) {
-                    Task { await toggle() }
-                }
-                Text("inspector.protection.all")
-                    .font(.system(size: Tokens.fontSize.caption))
-                Spacer(minLength: 0)
+        HStack(spacing: Tokens.spacing.xs) {
+            // **三状態が要る**（複数選択で一部だけ保護されている）ので
+            // `Toggle` ではなく AppKit のチェックボックスを使う [RP-02 と同じ]。
+            MixedStateCheckbox(state: Self.checkboxState(subject.checkState)) {
+                Task { await toggle() }
             }
-            // **解除が何をするかを先に言う** [PR-04]。確認は出さない
-            //［ユーザー判断］ので、押す前に読める場所に置いておく。
-            Text(subject.isFullyProtected
-                 ? "inspector.protection.explainProtected"
-                 : "inspector.protection.explainUnprotected")
+            Text("inspector.protection.all")
                 .font(.system(size: Tokens.fontSize.caption))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
         }
     }
 

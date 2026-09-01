@@ -31,12 +31,12 @@ struct InspectorVaultSection: View {
         case .ready(let subject):
             section {
                 if subject.isArchived {
-                    // [DT-11] 保管庫にあることと、元の場所を出す [FA-04]。
-                    Text("inspector.vault.inVault")
-                        .font(.system(size: Tokens.fontSize.caption))
-                        .foregroundStyle(.secondary)
+                    // [DT-11][FA-04] **元の場所だけを出す**——「保管庫に
+                    // あります」という文は置かない［ユーザー指摘、2026-09-02］。
+                    // 節が出ていて「保管庫から戻す」が並んでいれば、いま
+                    // 保管庫にあることは読み取れる。
                     if let from = subject.archivedFromPath {
-                        LabeledContent("inspector.vault.originalLocation") {
+                        InspectorRow("inspector.vault.originalLocation") {
                             Text(from)
                                 .font(.system(size: Tokens.fontSize.caption, design: .monospaced))
                                 .textSelection(.enabled)
@@ -51,12 +51,10 @@ struct InspectorVaultSection: View {
                 .buttonStyle(.link)
                 // **オフラインでは押せない。** 実ファイルを `.qooarchive` へ
                 // 動かす操作なので、ボリュームが要る。
+                // **オフラインでは押せない。** 理由の文は置かない
+                //［ユーザー指摘、2026-09-02］——ボタンが無効であること自体が
+                // 答えで、ボリュームが外れていることは左ペインが示している。
                 .disabled(!subject.isOnline)
-                if !subject.isOnline {
-                    Text("inspector.vault.offline")
-                        .font(.system(size: Tokens.fontSize.caption))
-                        .foregroundStyle(.secondary)
-                }
             }
         }
     }
@@ -81,15 +79,15 @@ struct InspectorVaultSection: View {
         }
     }
 
+    /// **見出しは置かない**［ユーザー指摘、2026-09-02］——「保管庫に移動」
+    /// というボタンが並んでいれば、それが何の節かは読める。
     @ViewBuilder
     private func section(@ViewBuilder _ content: () -> some View) -> some View {
         Divider()
         VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
-            Text("inspector.vault")
-                .font(.system(size: Tokens.fontSize.caption))
-                .foregroundStyle(.secondary)
             content()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .font(.system(size: Tokens.fontSize.caption))
     }
 }

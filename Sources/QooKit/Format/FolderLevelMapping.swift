@@ -95,8 +95,8 @@ public enum FolderLabelResolver {
                                endsWithBookFolder: Bool = false) -> ResolvedLabels {
         let folderLabels = labelsFromPath(relativePath, settings: settings,
                                           endsWithBookFolder: endsWithBookFolder)   // [AL-20]
-        let fileResult = parser.parse(nameWithoutExtension, settings: settings, purpose: purpose)
-        let parsed = fileResult.map { FieldPostProcessor.postProcess($0, settings: settings) }
+        let attempt = parser.attempt(nameWithoutExtension, settings: settings, purpose: purpose)
+        let parsed = attempt.result.map { FieldPostProcessor.postProcess($0, settings: settings) }
 
         var final = folderLabels
         for (group, values) in parsed?.labelValues ?? [:] where final[group] == nil {
@@ -109,6 +109,7 @@ public enum FolderLabelResolver {
                               volume: parsed?.volume ?? .none,
                               authorName: parsed?.authorName,
                               matchedFormatID: parsed?.matchedFormatID,
+                              nearestFormat: attempt.nearest,
                               libraryTypeMismatch: parsed?.libraryTypeMismatch ?? false,
                               folderProvidedGroups: Set(folderLabels.keys))
     }
@@ -121,6 +122,11 @@ public enum FolderLabelResolver {
         public let authorName: String?
         /// `nil` = どのフォーマットにも一致しなかった [AL-31]。
         public let matchedFormatID: UUID?
+        /// 一致しなかったときの「最も近いフォーマット」[UR2-05]。
+        ///
+        /// **ファイル名フォーマットについての推定**で、フォルダ名側は見ない
+        /// ——未解決の判定 [AL-31] がファイル名フォーマットの一致で決まるため。
+        public let nearestFormat: NearestFormat?
         public let libraryTypeMismatch: Bool
         /// フォルダ名から得たラベルグループ（ファイル名側を捨てた対象）。
         public let folderProvidedGroups: Set<Int>

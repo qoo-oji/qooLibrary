@@ -260,6 +260,28 @@ struct UnresolvedFileModelIntegrationTests {
         #expect(b.model.ignoredFileIDs == [target])
     }
 
+    /// 中央ペインは**可視行ごとに**引くので、`files` から都度組み立てると
+    /// 1 回の描画で数十万回の走査になる（`ignoredFileIDs` と同じ理由）。
+    @Test("`nearestFormatByFileID` がヒントの索引になる [UR2-05][UR3-04]")
+    @MainActor
+    func nearestFormatIndex() async throws {
+        let b = try await bench()
+        // 先頭の `(同人誌)` までは当たるが、その先が続かない名前を足す。
+        try b.workspace.write("(同人誌) 続きが合わない名前.cbz")
+        _ = try await b.workspace.services.scan(libraryID: b.libraryID,
+                                                root: b.workspace.libraryRoot)
+        await b.model.reload()
+
+        let hinted = b.model.files.filter { b.model.nearestFormatByFileID[$0.row.id] != nil }
+        // **1 要素も満たさないファイルは索引に載らない** [UR2-05]——
+        // 「先頭のリテラルすら合わなかった」ものを「最も近い」と名指しするのは
+        // 案内ではなく雑音になる。
+        #expect(hinted.map(\.row.filename) == ["(同人誌) 続きが合わない名前.cbz"])
+        for file in b.model.files {
+            #expect(b.model.nearestFormatByFileID[file.row.id] == file.nearestFormatSource)
+        }
+    }
+
     @Test("無視すると一覧からも件数からも消え、⌘Z で戻る [AL-33][UR-05]")
     @MainActor
     func ignoreHidesAndUndoRestores() async throws {

@@ -44,6 +44,113 @@ struct NearestFormatTests {
         let s = try settings(formats: [])
         #expect(parser.nearestFormat("何か", settings: s) == nil)
     }
+
+    /// **入力位置だけでは決められない**（実測、2026-09-01）。自由文字列
+    /// フィールドに入った時点で走査位置が末尾へ届くので、両方とも「16/16 まで
+    /// 到達」で同点になる——要素数を第一キーにして初めて構造の近いほうを選べる。
+    @Test("要素数が第一キー: 自由文字列で始まるフォーマットに引きずられない [UR2-05]")
+    func satisfiedNodesBeatSaturatedReach() throws {
+        let s = try settings(formats: ["@title (@genre)",              // 先頭が自由文字列
+                                       "[@circle] @title (@genre)"])  // 構造が深く進む
+        // 閉じ括弧が欠けた名前（実コーパスに実在する形）。どちらも最後で落ちる。
+        let input = "[サークル] 作品名 (ジャンル"
+        // 前提: どちらも一致しない。
+        #expect(parser.parse(input, settings: s, purpose: .libraryScan) == nil)
+        // 前提: 入力位置だけでは同点になる（この検査が意味を持つ条件）。
+        let masked = ProtectedTokenMasker.mask(input, tokens: s.protectedTokens)
+        let reaches = s.filenameFormats.map {
+            FormatMatcher.match($0, input: masked, volumePatterns: s.volumeFormats).furthestIndex
+        }
+        #expect(reaches[0] == reaches[1])
+
+        let near = try #require(parser.nearestFormat(input, settings: s))
+        #expect(near.formatID == s.filenameFormats[1].id)
+    }
+
+    @Test("1 要素も満たさないフォーマットは候補にしない [UR2-05]")
+    func formatsThatMatchNothingAreNotCandidates() throws {
+        let s = try settings(formats: ["(@booktype) @title", "[@circle] @title"])
+        // どちらも先頭の括弧すら合わない。**登録順の先頭を無条件に選ばない。**
+        #expect(parser.nearestFormat("作品名だけ", settings: s) == nil)
+    }
+
+    /// 入れ子の添字を最上位の添字と混ぜると、深い括弧を持つフォーマットが
+    /// 不当に有利になる（要素数が実際より多く数えられる）。
+    @Test("括弧の中は数えない（グループ全体で 1 要素）[UR2-05]")
+    func nestedNodesDoNotInflateTheCount() throws {
+        // 括弧の**中**のほうが要素数が多い形にする——数えてしまえば 3 を超える。
+        let s = try settings(formats: ["[@circle (@author) @keyword] @title"])
+        let format = s.filenameFormats[0]
+        #expect(format.nodes.count == 3)          // group / 空白 / @title
+        let outcome = FormatMatcher.match(
+            format,
+            input: ProtectedTokenMasker.mask("[サークル (著者) キーワード] 作品名",
+                                             tokens: []),
+            volumePatterns: [])
+        #expect(outcome.matched)
+        #expect(outcome.satisfiedNodes == 3)
+    }
+
+    /// **先に候補を拾ってから一致した場合**でも `nil` にする。1 本目が
+    /// 「惜しかった」フォーマットで 2 本目が当たる、という順序でないと、
+    /// この検査は空振りする（変異検証で判明）。
+    @Test("一致したときは推定しない")
+    func noNearestWhenMatched() throws {
+        let s = try settings(formats: ["[@circle] @title (@genre)",  // 惜しいが落ちる
+                                       "[@circle] @title"])          // 当たる
+        // 前提: 1 本目は候補として拾われる形である。
+        #expect(parser.nearestFormat("[サークル]", settings: s) != nil)
+
+        let attempt = parser.attempt("[サークル] 作品名", settings: s, purpose: .libraryScan)
+        #expect(attempt.result != nil)
+        #expect(attempt.nearest == nil)
+    }
+
+    /// 空マッチしうる先頭ノード（弾力的空白 [WS-01]。0 個以上に一致する）は、
+    /// 入力を 1 文字も消費しないまま要素数を 1 進める——要素数だけで判定すると、
+    /// そういうフォーマットが 1 本あるだけで全部の「最も近い」になる
+    /// ［code-review の指摘、実測で確認］。
+    @Test("1 文字も進んでいないものは候補にしない [UR2-05]")
+    func zeroWidthProgressIsNotACandidate() throws {
+        let s = try settings(formats: [" [@circle] @title"])   // 先頭が弾力的空白
+        let format = s.filenameFormats[0]
+        let outcome = FormatMatcher.match(
+            format, input: ProtectedTokenMasker.mask("zzz", tokens: []),
+            volumePatterns: [])
+        // 前提: 要素数だけは進む（この検査が意味を持つ条件）。
+        #expect(outcome.satisfiedNodes > 0)
+        #expect(outcome.furthestIndex == 0)
+
+        #expect(parser.nearestFormat("zzz", settings: s) == nil)
+    }
+
+    /// 途中で止めた走査の到達点は「どこまで筋が通ったか」を表さない [MT2-02]。
+    @Test("探索を打ち切ったフォーマットは候補にしない [UR2-05][MT2-02]")
+    func abandonedSearchIsNotACandidate() throws {
+        let s = try settings(formats: ["[@circle] @title"])
+        let format = s.filenameFormats[0]
+        let input = ProtectedTokenMasker.mask("[サークル] 作品名", tokens: [])
+        let abandoned = MatchOutcome(result: nil, furthestIndex: 9, satisfiedNodes: 3,
+                                     exceededStepLimit: true, steps: 1)
+        #expect(parser.closer(nil, than: abandoned, of: format, input: input) == nil)
+        // 打ち切っていなければ候補になる（この検査が空振りしていないことの対照）。
+        let finished = MatchOutcome(result: nil, furthestIndex: 9, satisfiedNodes: 3,
+                                    exceededStepLimit: false, steps: 1)
+        #expect(parser.closer(nil, than: finished, of: format, input: input) != nil)
+    }
+
+    /// 保存先（`unresolvedFile.nearestFormatReach`）と表示側がマスクを知らずに
+    /// 使えるように、**原文へ写してから返す** [PT-03]。
+    @Test("到達位置は原文の添字で返る（保護文字列でマスクしても）[UR2-05][PT-03]")
+    func reachIsInOriginalCoordinates() throws {
+        let token = ProtectedToken(pattern: #"\(完全版\)"#)
+        let s = try settings(formats: ["[@circle] @title (@genre)"],
+                             protectedTokens: [token])
+        // `(完全版)` は 5 文字だがマスク後は 1 文字。原文で数えれば 15 文字目まで進む。
+        let near = try #require(parser.nearestFormat("[サークル] 作品名(完全版)",
+                                                     settings: s))
+        #expect(near.reachedIndex == 15)
+    }
 }
 
 @Suite("ParseResult / FieldRef の補助")

@@ -290,6 +290,13 @@ public protocol ManagedFileRepository: Sendable {
     /// 「すべて一致しています」と言ってしまう）。0 件のライブラリは現れない。
     func unresolvedFileCounts() async throws -> [LibraryID: UnresolvedCounts]
 
+    /// 1 件だけの未解決の記録 [UR3-04]。`nil` = そのファイルは未解決ではない。
+    ///
+    /// **一覧（`unresolvedFiles`）を引いて絞らない。** 右ペインは選択が
+    /// 変わるたびにこれを引くので、ライブラリ全体の未解決を毎回読むと
+    /// 5,000 件の未整理を抱えたライブラリで選択のたびにその全件が流れる。
+    func unresolvedHint(id: FileID) async throws -> UnresolvedHint?
+
     /// 「以後無視する」の切り替え [AL-33][UR-05]。
     func setUnresolvedIgnored(_ ids: [FileID], _ ignored: Bool) async throws
 

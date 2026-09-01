@@ -572,16 +572,16 @@ public actor ScanEngine {
                                      total: progressTotal,
                                      currentName: snapshot.filename))
             let embedded = metadata[id]?.metadata
-            let isUnresolved = try await applyResolution(
+            let resolution = try await applyResolution(
                 relativePath: snapshot.relativePath,
                 nameWithoutExtension: snapshot.nameWithoutExtension,
                 isBookFolder: snapshot.isBookFolder,
                 embedded: embedded, to: id, settings: settings)
 
-            if isUnresolved {
+            if resolution.isUnresolved {
                 outcome.unresolvedNames += 1                     // [AL-31]
-                unresolved.append(UnresolvedObservation(fileID: id,
-                                                        filename: snapshot.filename))
+                unresolved.append(resolution.observation(fileID: id,
+                                                         filename: snapshot.filename))
             } else {
                 resolvedIDs.append(id)
             }
@@ -638,7 +638,8 @@ public actor ScanEngine {
     /// 埋め込みメタデータの有無まで見る [EM-03] ので、片方だけ直すと簡単にずれる。
     func applyResolution(relativePath: String, nameWithoutExtension: String,
                          isBookFolder: Bool, embedded: EmbeddedMetadata?,
-                         to id: FileID, settings: LibrarySettingsSnapshot) async throws -> Bool
+                         to id: FileID,
+                         settings: LibrarySettingsSnapshot) async throws -> Resolution
     {
         let parsed = FolderLabelResolver.resolve(
             relativePath: relativePath,
@@ -658,7 +659,38 @@ public actor ScanEngine {
                 spans: []),
             to: id)
         try await applyLabels(resolved.labels, to: id, settings: settings)
-        return EmbeddedMetadataMerge.isUnresolved(parsed, metadata: embedded)
+        return Resolution(
+            isUnresolved: EmbeddedMetadataMerge.isUnresolved(parsed, metadata: embedded),
+            nearest: parsed.nearestFormat,
+            settings: settings)
+    }
+
+    /// パースの結果のうち、**未整理の記録に要るぶん**だけ [AL-31][UR2-05]。
+    ///
+    /// フォーマットの本文をここで引き当てるのは、`LibrarySettingsSnapshot` を
+    /// 持っているのが走査側だから——リポジトリへ UUID を渡すと、表示する
+    /// たびに設定を引き直すことになる（しかもそのフォーマットは既に
+    /// 消えているかもしれない）。
+    struct Resolution: Sendable {
+        let isUnresolved: Bool
+        let nearestFormatSource: String?
+        let nearestFormatReach: Int?
+
+        init(isUnresolved: Bool, nearest: NearestFormat?,
+             settings: LibrarySettingsSnapshot) {
+            self.isUnresolved = isUnresolved
+            let format = nearest.flatMap { near in
+                settings.filenameFormats.first { $0.id == near.formatID }
+            }
+            self.nearestFormatSource = format?.source
+            self.nearestFormatReach = format == nil ? nil : nearest?.reachedIndex
+        }
+
+        func observation(fileID: FileID, filename: String) -> UnresolvedObservation {
+            UnresolvedObservation(fileID: fileID, filename: filename,
+                                  nearestFormatSource: nearestFormatSource,
+                                  nearestFormatReach: nearestFormatReach)
+        }
     }
 
     // MARK: - 再マッチング [AL-34]
@@ -697,14 +729,14 @@ public actor ScanEngine {
 
         for file in files {
             if Task.isCancelled { cancelled = true; break }
-            let isUnresolved = try await applyResolution(
+            let resolution = try await applyResolution(
                 relativePath: file.row.relativePath,
                 nameWithoutExtension: file.row.nameWithoutExtension,
                 isBookFolder: file.row.isBookFolder,
                 embedded: cache[file.id]?.metadata, to: file.id, settings: settings)
-            if isUnresolved {
-                stillUnresolved.append(UnresolvedObservation(fileID: file.id,
-                                                             filename: file.row.filename))
+            if resolution.isUnresolved {
+                stillUnresolved.append(resolution.observation(fileID: file.id,
+                                                              filename: file.row.filename))
             } else {
                 resolvedIDs.append(file.id)
             }

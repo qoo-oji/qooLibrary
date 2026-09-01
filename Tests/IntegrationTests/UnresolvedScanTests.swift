@@ -34,6 +34,54 @@ struct UnresolvedScanTests {
         #expect(rows[0].isIgnored == false)
     }
 
+    /// **走査が書く。** 列は v1 からあるが、ステージ 9 まで誰も書いていなかった。
+    @Test("走査が「最も近いフォーマット」を記録する [UR2-05][UR3-04]")
+    func scanRecordsTheNearestFormat() async throws {
+        let w = try await ScanWorkspace()
+        // 先頭の `(同人誌)` までは合うが、その後が続かない名前。
+        try w.write("(同人誌) 続きが合わない名前.cbz")
+        _ = try await w.scanFull()
+
+        let row = try #require(try await unresolved(w).first)
+        let source = try #require(row.nearestFormatSource)
+        // 記録するのは**本文**（UUID ではない）——設定にあるフォーマットのどれか。
+        let draft = try #require(try await w.libraries.settingsDraft(libraryID: w.libraryID))
+        #expect(draft.filenameFormats.map(\.source).contains(source))
+        // 1 件だけの読み出し口も同じ答えを返す [UR3-04]。
+        let hint = try #require(try await w.files.unresolvedHint(id: row.row.id))
+        #expect(hint.nearestFormatSource == source)
+        #expect(hint.isIgnored == false)
+    }
+
+    @Test("解決したファイルには記録が無い（＝右ペインに枠を出さない）[UR3-04]")
+    func resolvedFilesHaveNoHint() async throws {
+        let w = try await ScanWorkspace()
+        try w.write("(同人誌) [サークルA (作家A)] 作品1 (オリジナル).cbz")
+        _ = try await w.scanFull()
+        let id = try #require(try await w.rows().first?.id)
+        #expect(try await w.files.unresolvedHint(id: id) == nil)
+    }
+
+    /// **据え置くと、既に消したフォーマットを勧め続けることになる。**
+    @Test("フォーマットを足すとヒントも書き直される [UR2-05]")
+    func hintIsRewrittenWhenFormatsChange() async throws {
+        let w = try await ScanWorkspace()
+        try w.write("独自形式＿サークルZ＿作品Z.cbz")
+        _ = try await w.scanFull()
+        let before = try #require(try await unresolved(w).first)
+
+        // 先頭が合って途中で落ちる、より近いフォーマットを足す。
+        var draft = try #require(try await w.libraries.settingsDraft(libraryID: w.libraryID))
+        draft.filenameFormats.append(
+            FilenameFormatDraft(source: "独自形式＿@circle＿@title（@keyword）"))
+        try await w.libraries.updateSettings(draft, libraryID: w.libraryID)
+        _ = try await w.engine.rematchUnresolved(libraryID: w.libraryID)
+
+        let after = try #require(try await unresolved(w).first)
+        #expect(after.nearestFormatSource == "独自形式＿@circle＿@title（@keyword）")
+        #expect(after.nearestFormatSource != before.nearestFormatSource)
+    }
+
     @Test("解決したファイルは記録されない（数えるだけの実装との違い）")
     func resolvedFilesAreNotRecorded() async throws {
         let w = try await ScanWorkspace()

@@ -22,10 +22,12 @@ public enum FormatMatcher {
         let ok = matchAll(format.nodes, 0, input.count, ctx)
         guard ok, !ctx.exceededStepLimit else {
             return MatchOutcome(result: nil, furthestIndex: ctx.furthest,
+                                satisfiedNodes: ctx.furthestNode,
                                 exceededStepLimit: ctx.exceededStepLimit, steps: ctx.steps)
         }
         return MatchOutcome(result: assemble(format, ctx),
                             furthestIndex: ctx.furthest,
+                            satisfiedNodes: ctx.furthestNode,
                             exceededStepLimit: false, steps: ctx.steps)
     }
 
@@ -39,6 +41,10 @@ public enum FormatMatcher {
         var steps = 0
         var exceededStepLimit = false
         var furthest = 0
+        /// 最上位のノード列で満たした要素の数 [UR2-05]。
+        var furthestNode = 0
+        /// 括弧の入れ子の深さ。`furthestNode` は最上位でしか進めない。
+        var depth = 0
         /// フィールド → マスク後の範囲。出現順を保つため配列で持つ。
         var bindings: [(field: FieldRef, range: Range<Int>, volume: VolumeValue?)] = []
 
@@ -66,6 +72,8 @@ public enum FormatMatcher {
         ctx.steps += 1
         if ctx.steps > ctx.stepLimit { ctx.exceededStepLimit = true; return false }
         if ii > ctx.furthest { ctx.furthest = ii }
+        // 括弧の中は数えない（グループ全体で 1 要素）[UR2-05]。
+        if ctx.depth == 0, ni > ctx.furthestNode { ctx.furthestNode = ni }
 
         if ni == nodes.count { return ii == hi }
 
@@ -101,7 +109,10 @@ public enum FormatMatcher {
             if ii < hi, ctx.masked(ii) == pair.open,
                let closeIdx = findMatchingClose(pair, from: ii, hi, ctx) {
                 let saved = ctx.bindings.count
-                if matchAll(children, ii + 1, closeIdx, ctx),
+                ctx.depth += 1
+                let childrenMatched = matchAll(children, ii + 1, closeIdx, ctx)
+                ctx.depth -= 1
+                if childrenMatched,
                    matchSeq(nodes, ni + 1, closeIdx + 1, hi, &memo, ctx) { return true }
                 ctx.bindings.removeLast(ctx.bindings.count - saved)
             }

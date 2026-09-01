@@ -29,11 +29,10 @@ struct InspectorLabelSection: View {
         case .loading:
             section { ProgressView().controlSize(.small) }
         case .notInLibrary:
-            section {
-                Text("inspector.labels.notInLibrary")
-                    .font(.system(size: Tokens.fontSize.caption))
-                    .foregroundStyle(.secondary)
-            }
+            // DB に行が無い。**枠ごと出さない**——理由の文は置かない
+            //［ユーザー指摘、2026-09-02］ので、空の枠だけが残るのは意味が無い
+            //（`InspectorVaultSection` / `InspectorProtectionSection` と同じ）。
+            EmptyView()
         case .failed(let reason):
             section {
                 Text(reason)
@@ -43,11 +42,6 @@ struct InspectorLabelSection: View {
             }
         case .ready(let subject):
             section {
-                if model.displayGroups.isEmpty {
-                    Text("inspector.labels.none")
-                        .font(.system(size: Tokens.fontSize.caption))
-                        .foregroundStyle(.secondary)
-                }
                 ForEach(model.displayGroups) { group in
                     groupSection(group)
                 }
@@ -84,16 +78,16 @@ struct InspectorLabelSection: View {
 
     // MARK: - 部品
 
+    /// **見出しは置かない**［ユーザー指摘、2026-09-02］——ラベルのチップが
+    /// 並んでいれば、何の節かは読める。
     @ViewBuilder
     private func section(@ViewBuilder _ content: () -> some View) -> some View {
         Divider()
         VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
-            Text("inspector.labels")
-                .font(.system(size: Tokens.fontSize.caption))
-                .foregroundStyle(.secondary)
             content()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .font(.system(size: Tokens.fontSize.caption))
     }
 
     @ViewBuilder

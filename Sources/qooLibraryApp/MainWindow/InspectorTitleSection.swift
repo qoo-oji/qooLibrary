@@ -30,11 +30,9 @@ struct InspectorTitleSection: View {
         case .loading:
             section { ProgressView().controlSize(.small) }
         case .notInLibrary:
-            section {
-                Text("inspector.title.notInLibrary")
-                    .font(.system(size: Tokens.fontSize.caption))
-                    .foregroundStyle(.secondary)
-            }
+            // DB に行が無い。**枠ごと出さない**——理由の文は置かない
+            //［ユーザー指摘、2026-09-02］。
+            EmptyView()
         case .failed(let reason):
             section {
                 Text(reason)
@@ -50,46 +48,51 @@ struct InspectorTitleSection: View {
                 .onChange(of: subject, initial: true) { _, newValue in
                     syncDraft(newValue)
                 }
-            metadataRows(subject)
         }
     }
 
     // MARK: - 部品
 
+    /// **見出しは置かない**［ユーザー指摘、2026-09-02］——「タイトル」
+    /// 「シリーズ」「巻数」というラベルが並んでいれば、何の節かは読める。
     private func section(@ViewBuilder _ content: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
             Divider()
-            Text("inspector.title.header")
-                .font(.system(size: Tokens.fontSize.caption))
-                .foregroundStyle(.secondary)
             content()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .font(.system(size: Tokens.fontSize.caption))
     }
 
     @ViewBuilder
     private func editor(_ subject: TitleEditorModel.Subject) -> some View {
+        // **ラベルはすべて左に置く**［ユーザー指摘、2026-09-02］。以前は
+        // タイトルだけが見出しの下の全幅の欄で、シリーズと巻数だけが
+        // 左ラベルだった——同じ「基本情報の編集」なのに 2 通りの形が並ぶ。
+        //
         // **未設定のときファイル名を欄へ入れない** [設計判断、モデル側の
         // `editableText` 参照]。プレースホルダとして見せるだけにすると、
         // 「何も打たずに確定しただけで手動編集になる」ことが起きない。
-        TextField("", text: $draft, prompt: Text(subject.fallbackTitle))
-            .editableFieldChrome()
-            .focused($isEditing)
-            .onSubmit { commit() }
-            // フォーカスを失ったときにも確定する（Finder のインライン編集と
-            // 同じ）。`isEditing` が落ちる瞬間に確定しないと、打ったのに
-            // 反映されないまま別の項目へ移ってしまう。
-            .onChange(of: isEditing) { wasEditing, nowEditing in
-                if wasEditing && !nowEditing { commit() }
-            }
+        InspectorRow("inspector.titleField") {
+            TextField("", text: $draft, prompt: Text(subject.fallbackTitle))
+                .editableFieldChrome()
+                .focused($isEditing)
+                .onSubmit { commit() }
+                // フォーカスを失ったときにも確定する（Finder のインライン編集と
+                // 同じ）。`isEditing` が落ちる瞬間に確定しないと、打ったのに
+                // 反映されないまま別の項目へ移ってしまう。
+                .onChange(of: isEditing) { wasEditing, nowEditing in
+                    if wasEditing && !nowEditing { commit() }
+                }
+        }
         // **シリーズ名と巻数も編集できる** [RP-13][RP-14]。基本情報は 1
         // かたまり [PR-02] なので、どれを直しても同じスコープが保護される。
-        LabeledContent("inspector.seriesName") {
+        InspectorRow("inspector.seriesName") {
             EditableMetadataField(
                 value: subject.seriesName ?? "", identity: subject.url,
                 commit: { text in Task { await commitSeries(text) } })
         }
-        LabeledContent("inspector.volume") {
+        InspectorRow("inspector.volume") {
             EditableMetadataField(
                 value: subject.volumeDisplay ?? "", identity: subject.url,
                 commit: { text in Task { await commitVolume(text) } })
@@ -98,6 +101,8 @@ struct InspectorTitleSection: View {
         // そのことが読み取れないと「なぜ更新されないのか」が分からない。
         if subject.isBasicProtected {
             HStack(spacing: Tokens.spacing.xs) {
+                // **短い語だけ**［ユーザー指摘、2026-09-02］。以前は
+                // 「自動更新から保護されています」という文だった。
                 Label("inspector.basic.protected", systemImage: "lock.fill")
                     .font(.system(size: Tokens.fontSize.caption))
                     .foregroundStyle(.secondary)
@@ -112,12 +117,6 @@ struct InspectorTitleSection: View {
                 .font(.system(size: Tokens.fontSize.caption))
             }
         }
-    }
-
-    /// 空の `metadataRows` は残さない（呼び出し側の構造を変えないため）。
-    @ViewBuilder
-    private func metadataRows(_ subject: TitleEditorModel.Subject) -> some View {
-        EmptyView()
     }
 
     // MARK: - 操作

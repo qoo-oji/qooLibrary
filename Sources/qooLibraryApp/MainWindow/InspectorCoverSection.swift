@@ -48,57 +48,60 @@ struct InspectorCoverSection: View {
                 } isTargeted: { targeted in
                     isDropTargeted = targeted && subject != nil
                 }
-            if let subject {
-                controls(subject)
-            }
+                // **差し替えの操作はカバーの右クリックに置く**
+                // ［ユーザー指摘、2026-09-02］。以前は右ペインの上に
+                // 「変更…」「ページから選ぶ…」というリンクを並べていたが、
+                // **何に対する操作なのかが読み取れなかった**——右ペインの
+                // 上端はファイル名より上で、下に続く欄との関係も無い。
+                // カバーそのものに付ければ対象が自明になる。
+                .contextMenu { if let subject { coverMenu(subject) } }
+                .help(subject == nil ? "" : String(localized: "inspector.cover.hint",
+                                                   locale: locale))
+            if let subject { sourceCaption(subject) }
         }
     }
 
     // MARK: - 部品
 
+    /// いま何が出ているか [IV-03]。**自動のときは黙る**——既定の状態に
+    /// 説明が常駐すると、特別なことが起きているように見える。
     @ViewBuilder
-    private func controls(_ subject: CoverEditorModel.Subject) -> some View {
-        // いま何が出ているか [IV-03]。**自動のときは黙る**——既定の状態に
-        // 説明が常駐すると、特別なことが起きているように見える。
+    private func sourceCaption(_ subject: CoverEditorModel.Subject) -> some View {
         switch subject.resolvedSource {
-        case .userSpecified:
-            caption("inspector.cover.sourceUser")
-        case .sidecar:
-            caption("inspector.cover.sourceSidecar")
-        case .auto:
-            EmptyView()
+        case .userSpecified: caption("inspector.cover.sourceUser")
+        case .sidecar: caption("inspector.cover.sourceSidecar")
+        case .auto: EmptyView()
         }
-        HStack(spacing: Tokens.spacing.m) {
-            Button("inspector.cover.chooseFile") {
-                Task { await chooseFile() }
-            }
-            .buttonStyle(.link)
-            if subject.canPickFromArchive {
-                Button("inspector.cover.choosePage") {
-                    // [CV-05] 独立したモーダルウインドウで出す（右ペインは
-                    // 幅が狭く、ページの一覧を縦に積むと必ず隠れる。
-                    // `AddLabelDialog` と同じ約束）。
-                    DialogWindowPresenter.shared.present(
-                        title: String(localized: "inspector.cover.choosePageTitle",
-                                      locale: locale)
-                    ) { _ in
-                        ArchiveCoverPickerDialog(url: subject.url) { data in
-                            Task { await replace(withData: data) }
-                        }
+    }
+
+    /// カバーの右クリック [CV-04][CV-05][CV-07]。
+    @ViewBuilder
+    private func coverMenu(_ subject: CoverEditorModel.Subject) -> some View {
+        Button("inspector.cover.chooseFile", systemImage: "photo") {
+            Task { await chooseFile() }
+        }
+        if subject.canPickFromArchive {
+            Button("inspector.cover.choosePage", systemImage: "doc.text.image") {
+                // [CV-05] 独立したモーダルウインドウで出す（右ペインは
+                // 幅が狭く、ページの一覧を縦に積むと必ず隠れる。
+                // `AddLabelDialog` と同じ約束）。
+                DialogWindowPresenter.shared.present(
+                    title: String(localized: "inspector.cover.choosePageTitle", locale: locale)
+                ) { _ in
+                    ArchiveCoverPickerDialog(url: subject.url) { data in
+                        Task { await replace(withData: data) }
                     }
                 }
-                .buttonStyle(.link)
-            }
-            if subject.canRevert {
-                // [CV-07] **ユーザー指定のときだけ出す**——自動のまま
-                // 「既定に戻す」が常駐しても何も起きない。
-                Button("inspector.cover.revert") {
-                    Task { await revert() }
-                }
-                .buttonStyle(.link)
             }
         }
-        .font(.system(size: Tokens.fontSize.caption))
+        if subject.canRevert {
+            // [CV-07] **ユーザー指定のときだけ出す**——自動のまま
+            // 「既定に戻す」が常駐しても何も起きない。
+            Divider()
+            Button("inspector.cover.revert", systemImage: "arrow.uturn.backward") {
+                Task { await revert() }
+            }
+        }
     }
 
     private func caption(_ key: LocalizedStringKey) -> some View {

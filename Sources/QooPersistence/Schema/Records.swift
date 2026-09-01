@@ -353,10 +353,15 @@ struct UnresolvedFileRecord: Codable, FetchableRecord, MutablePersistableRecord,
     var filename: String
     var isIgnored: Bool
     var detectedAt: Double
-    /// 最も近いフォーマットの推定 [UR2-05]。**まだ誰も書かない**——
-    /// パーサに「照合が最も進んだ入力位置」を保持させる必要があり、
-    /// ゴールデンテストで固めてある中核を触ることになるため今回は見送った
-    /// ［ユーザー判断、2026-08］。列は既に v1 にある。
+    /// 最も近いフォーマットの推定 [UR2-05]。**走査と再マッチングが毎回
+    /// 書き直す**（2026-09-01、ステージ 9）——フォーマットを足したり直したり
+    /// すれば「最も近い」は変わるので、据え置くと既に消したフォーマットを
+    /// 勧め続けることになる。列は v1 からあり、移行は要らなかった。
+    ///
+    /// `nearestFormatSource` は**フォーマットの本文**（UUID ではない）。
+    /// フォーマットは編集も削除もされるので、ID を覚えても後から引けるとは
+    /// 限らない。`nearestFormatReach` は原文のどこまで進んだか——画面には
+    /// 出さず [UR3-04]、リネーム候補提示 [PW-02] のために記録だけしておく。
     var nearestFormatSource: String?
     var nearestFormatReach: Int?
     mutating func didInsert(_ inserted: InsertionSuccess) { id = inserted.rowID }

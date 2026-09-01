@@ -75,6 +75,8 @@ private struct SingleItemInspector: View {
     @State private var protection = ProtectionEditorModel()
     /// 保管庫 [FA-01][FA-07][DT-11]。
     @State private var vault = VaultEditorModel()
+    /// 未整理 [UR3-04][UR2-05]。同上。
+    @State private var unresolved = UnresolvedHintModel()
     /// 書き込みのあと一覧と件数を読み直すための合図。**`.task(id:)` の鍵に
     /// 入れる**——`operationHistory` の増分でも読み直せるが、ダイアログから
     /// 作った新しいラベルは一覧に無いので、書いた側から明示的に促す。
@@ -112,56 +114,65 @@ private struct SingleItemInspector: View {
                 Text(url.lastPathComponent)
                     .font(.system(size: Tokens.fontSize.title2, weight: .semibold))
                     .lineLimit(3)
-                InspectorTitleSection(model: title) // [RP-10〜RP-12][DT-08][DT-09]
 
+                // **並びは「普通のフォルダと共通の情報 → ライブラリ固有の情報」**
+                // ［ユーザー指定、2026-09-02］。上半分はどのファイルにもある
+                // もの（種類・大きさ・日付・場所）、下半分は蔵書としての情報
+                // （評価・基本情報・ラベル・保護・保管庫・未整理）。
                 if let info {
                     Divider()
-                    LabeledContent("column.kind", value: info.kindDescription) // [DT-04]
+                    InspectorRow("column.kind", value: info.kindDescription) // [DT-04]
                     // **実体がファイルのときだけ出す。** ディレクトリの
                     // `fileSize` は `nil` なので、パッケージをファイル扱いに
                     // すると「0 KB」と表示されてしまう [実機検証で発見]。
                     if !info.isDirectory {
-                        LabeledContent("column.size", value: Self.sizeFormatter.string(fromByteCount: info.size ?? 0)) // [DT-03]
+                        InspectorRow("column.size", value: Self.sizeFormatter.string(fromByteCount: info.size ?? 0)) // [DT-03]
                     }
-                    LabeledContent("column.creationDate", value: info.creationDate.map { Self.dateFormatter.string(from: $0) } ?? "—") // [DT-01]
-                    LabeledContent("column.modificationDate", value: info.modificationDate.map { Self.dateFormatter.string(from: $0) } ?? "—") // [DT-02]
+                    InspectorRow("column.creationDate", value: info.creationDate.map { Self.dateFormatter.string(from: $0) } ?? "—") // [DT-01]
+                    InspectorRow("column.modificationDate", value: info.modificationDate.map { Self.dateFormatter.string(from: $0) } ?? "—") // [DT-02]
 
                     if info.isNavigableFolder || info.isArchive {
                         Divider()
                         if containedCountsUnreadable {
                             // **回り続けるスピナーを見せない** [ER-01 の精神]。
                             // 「数えられなかった」は結果であって、進行中ではない。
-                            LabeledContent("inspector.containedFileCount",
-                                           value: String(localized: "inspector.containedUnreadable",
-                                                         locale: locale))
+                            InspectorRow("inspector.containedFileCount",
+                                         value: String(localized: "inspector.containedUnreadable",
+                                                       locale: locale))
                         } else if let containedCounts {
-                            LabeledContent("inspector.containedFileCount", value: "\(containedCounts.fileCount)") // [DT-05]
-                            LabeledContent("inspector.containedFolderCount", value: "\(containedCounts.folderCount)") // [DT-06]
+                            InspectorRow("inspector.containedFileCount", value: "\(containedCounts.fileCount)") // [DT-05]
+                            InspectorRow("inspector.containedFolderCount", value: "\(containedCounts.folderCount)") // [DT-06]
                             if info.isNavigableFolder {
-                                LabeledContent("inspector.totalContentSize", value: Self.sizeFormatter.string(fromByteCount: containedCounts.totalSize))
+                                InspectorRow("inspector.totalContentSize", value: Self.sizeFormatter.string(fromByteCount: containedCounts.totalSize))
                             }
                         } else {
                             ProgressView().controlSize(.small)
                         }
                     }
 
-                    InspectorRatingSection(model: rating) // [RA-01〜RA-08]
-                    InspectorLabelSection(model: labels) { labelRevision &+= 1 } // [RL-01〜RL-07]
-                    InspectorProtectionSection(model: protection)   // [PR-05]
-                    InspectorVaultSection(model: vault) // [FA-01][FA-07][DT-11]
-
                     Divider()
-                    LabeledContent("inspector.location") {
+                    InspectorRow("inspector.location") {
                         Text(url.deletingLastPathComponent().path)
                             .font(.system(size: Tokens.fontSize.caption, design: .monospaced))
                             .textSelection(.enabled)
                     }
-                    LabeledContent("inspector.fullPath") { // [DT-10]
+                    InspectorRow("inspector.fullPath") { // [DT-10]
                         Text(url.path)
                             .font(.system(size: Tokens.fontSize.caption, design: .monospaced))
                             .textSelection(.enabled)
                             .lineLimit(6)
                     }
+
+                    // ここから下はライブラリの中でだけ意味を持つ情報。
+                    // **並びは 基本情報 → ラベル → 評価 → 保護**［ユーザー指定、
+                    // 2026-09-02］——名前を決めるもの、分類するもの、主観の
+                    // 評価、そして全部まとめて守る操作、という順。
+                    InspectorTitleSection(model: title) // [RP-10〜RP-12][DT-08][DT-09]
+                    InspectorLabelSection(model: labels) { labelRevision &+= 1 } // [RL-01〜RL-07]
+                    InspectorRatingSection(model: rating) // [RA-01〜RA-08]
+                    InspectorProtectionSection(model: protection)   // [PR-05]
+                    InspectorVaultSection(model: vault) // [FA-01][FA-07][DT-11]
+                    InspectorUnresolvedSection(model: unresolved) // [UR3-04][UR2-05]
                 } else {
                     ProgressView().controlSize(.small)
                 }
@@ -232,6 +243,18 @@ private struct SingleItemInspector: View {
         .task(id: RowLoadKey(url: url, libraryID: library?.id,
                                 commandRevision: CommandStack.shared.operationHistory.count)) {
             await vault.load(url: url, library: library, services: LibraryServices.shared)
+        }
+        // 未整理のヒントを読む [UR3-04]。**鍵には 2 つの合図がどちらも要る**
+        // ［code-review の指摘］——ヒントを変えるのは走査と再マッチング
+        // （`contentRevision`）だが、この節が出す「以後無視する」[AL-33] を
+        // 変えるのは `SetUnresolvedIgnoredCommand`（`operationHistory`）で、
+        // 片方だけだと ⌘Z の結果か、足したフォーマットの結果のどちらかが届かない。
+        // どちらも単調に増えるので、和にしても後戻りしない
+        // （`parentWatch.generation &+ subtreeWatch.generation` と同じ）。
+        .task(id: RowLoadKey(url: url, libraryID: library?.id,
+                                commandRevision: LibraryServices.shared.contentRevision
+                                    &+ CommandStack.shared.operationHistory.count)) {
+            await unresolved.load(url: url, library: library, services: LibraryServices.shared)
         }
         .onChange(of: url, initial: true) { _, newValue in
             parentWatch.watch(newValue.deletingLastPathComponent(), scope: .shallow)

@@ -17,6 +17,7 @@ import Testing
             volume: .numeric(9, raw: "第09巻"),
             authorName: "ファイル名の著者",
             matchedFormatID: UUID(),
+            nearestFormat: nil,
             libraryTypeMismatch: false,
             folderProvidedGroups: [])
     }
@@ -144,7 +145,8 @@ import Testing
     @Test func aFileWithMetadataIsNotUnresolved() {
         let unmatched = FolderLabelResolver.ResolvedLabels(
             labels: [:], title: nil, seriesName: nil, volume: .none, authorName: nil,
-            matchedFormatID: nil, libraryTypeMismatch: false, folderProvidedGroups: [])
+            matchedFormatID: nil, nearestFormat: nil, libraryTypeMismatch: false,
+            folderProvidedGroups: [])
         // メタデータから題が取れているなら「埋もれる」状態ではない。
         #expect(!EmbeddedMetadataMerge.isUnresolved(
             unmatched, metadata: EmbeddedMetadata(source: .comicInfo, title: "作品名A")))

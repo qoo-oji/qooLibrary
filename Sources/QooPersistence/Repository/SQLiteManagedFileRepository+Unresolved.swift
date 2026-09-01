@@ -36,24 +36,32 @@ extension SQLiteManagedFileRepository {
             let step = Self.unresolvedUpsertRowsPerStatement
             for start in stride(from: 0, to: unresolved.count, by: step) {
                 let chunk = Array(unresolved[start..<min(start + step, unresolved.count)])
-                let tuples = Array(repeating: "(?, ?, ?, 0, ?)", count: chunk.count)
+                let tuples = Array(repeating: "(?, ?, ?, 0, ?, ?, ?)", count: chunk.count)
                     .joined(separator: ", ")
-                var args: [any DatabaseValueConvertible] = []
+                var args: [(any DatabaseValueConvertible)?] = []
                 for item in chunk {
                     args.append(libraryID.rawValue)
                     args.append(item.fileID.rawValue)
                     args.append(item.filename)
                     args.append(stamp)
+                    args.append(item.nearestFormatSource)
+                    args.append(item.nearestFormatReach)
                 }
+                // **ヒント [UR2-05] は毎回書き直す。** フォーマットを足したり
+                // 直したりすれば「最も近い」は変わるので、記録を据え置くと
+                // 既に消したフォーマットを勧め続けることになる。
                 try db.execute(sql: """
                     INSERT INTO unresolvedFile
-                        (libraryId, managedFileId, filename, isIgnored, detectedAt)
+                        (libraryId, managedFileId, filename, isIgnored, detectedAt,
+                         nearestFormatSource, nearestFormatReach)
                     VALUES \(tuples)
                     ON CONFLICT(managedFileId) DO UPDATE SET
                         isIgnored = CASE WHEN unresolvedFile.filename <> excluded.filename
                                          THEN 0 ELSE unresolvedFile.isIgnored END,
-                        filename = excluded.filename
-                    """, arguments: StatementArguments(args) ?? StatementArguments())
+                        filename = excluded.filename,
+                        nearestFormatSource = excluded.nearestFormatSource,
+                        nearestFormatReach = excluded.nearestFormatReach
+                    """, arguments: StatementArguments(args))
             }
 
             for start in stride(from: 0, to: resolved.count, by: Self.maxBoundParameters) {
@@ -82,12 +90,13 @@ extension SQLiteManagedFileRepository {
             // 印（無視・検出時刻）を先に引く。**JOIN の結果を 1 本で読まない**
             // ——`SELECT mf.*, uf.…` にすると素の `Row` から `ManagedFileRecord` を
             // 組み立て直すことになり、列を足したときに黙って落ちる経路が増える。
-            var flags: [Int64: (ignored: Bool, detectedAt: Double)] = [:]
+            var flags: [Int64: (ignored: Bool, detectedAt: Double, nearest: String?)] = [:]
             for row in try Row.fetchAll(db, sql: """
-                SELECT managedFileId, isIgnored, detectedAt FROM unresolvedFile
-                WHERE libraryId = ?
+                SELECT managedFileId, isIgnored, detectedAt, nearestFormatSource
+                FROM unresolvedFile WHERE libraryId = ?
                 """, arguments: [libraryID.rawValue]) {
-                flags[row["managedFileId"]] = (row["isIgnored"], row["detectedAt"])
+                flags[row["managedFileId"]] = (row["isIgnored"], row["detectedAt"],
+                                               row["nearestFormatSource"])
             }
             guard !flags.isEmpty else { return [] }
 
@@ -108,7 +117,8 @@ extension SQLiteManagedFileRepository {
                         row: record.fileRow,
                         isIgnored: flag.ignored,
                         detectedAt: Date(timeIntervalSinceReferenceDate: flag.detectedAt),
-                        libraryTypeMismatch: record.libraryTypeMismatch)
+                        libraryTypeMismatch: record.libraryTypeMismatch,
+                        nearestFormatSource: flag.nearest)
                 }
         }
     }
@@ -136,6 +146,18 @@ extension SQLiteManagedFileRepository {
         }
     }
 
+    /// 1 件だけの記録 [UR3-04]。右ペインが選択のたびに引く。
+    public func unresolvedHint(id: FileID) async throws -> UnresolvedHint? {
+        try await database.writer.read { db in
+            try Row.fetchOne(db, sql: """
+                SELECT isIgnored, nearestFormatSource FROM unresolvedFile
+                WHERE managedFileId = ?
+                """, arguments: [id.rawValue])
+                .map { UnresolvedHint(isIgnored: $0["isIgnored"],
+                                      nearestFormatSource: $0["nearestFormatSource"]) }
+        }
+    }
+
     // MARK: - 無視フラグ [AL-33][UR-05]
 
     public func setUnresolvedIgnored(_ ids: [FileID], _ ignored: Bool) async throws {
@@ -153,7 +175,13 @@ extension SQLiteManagedFileRepository {
         }
     }
 
-    /// 1 文で扱う行数。1 行あたり 4 つの束縛変数を使うので、
-    /// `maxBoundParameters`（900）を超えない値にする。
-    static let unresolvedUpsertRowsPerStatement = 200
+    /// 1 文で扱う行数。**1 行あたり 6 つの束縛変数を使う**ので、
+    /// `maxBoundParameters`（900）を超えない値にする [UR2-05 でヒント 2 列を
+    /// 足したときに 200 → 150 へ下げた]。
+    ///
+    /// **この値を戻しても、この環境のテストは通る**（変異検証で確認、2026-09-01）
+    /// ——`SQLITE_MAX_VARIABLE_NUMBER` がこのビルドでは 32,766 あるため。
+    /// 壊れるのは上限の低いビルドだけなので、**通ることを理由に上げないこと**
+    /// （`setRating` の 900 件分割・`matchingRelativePaths` と同じ事情）。
+    static let unresolvedUpsertRowsPerStatement = 150
 }

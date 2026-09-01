@@ -859,6 +859,16 @@ struct FolderContentView: View {
                     .foregroundStyle(.secondary)
                     .help(String(localized: "unresolvedFiles.typeMismatch", locale: locale))
             }
+            // 「最も近いフォーマット」[UR2-05][UR3-04]。**行には印だけ**で、
+            // 本文はツールチップと右ペイン（`InspectorUnresolvedSection`）に出す
+            // ［ユーザー判断］——フォーマットの本文は長く、一覧の幅を食う。
+            if let source = unresolvedRescue.nearestFormatByFileID[id] {
+                Image(systemName: "lightbulb")
+                    .font(.system(size: Tokens.fontSize.caption))
+                    .foregroundStyle(.secondary)
+                    .help(String(format: String(localized: "unresolvedFiles.nearestBadge",
+                                                locale: locale), source))
+            }
         }
     }
 

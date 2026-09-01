@@ -52,6 +52,18 @@ public struct MatchOutcome: Sendable {
     public let result: ParseResult?
     /// 照合が最も進んだ入力位置。「最も近いフォーマット」の推定に使う [UR2-05]。
     public let furthestIndex: Int
+    /// **満たしたフォーマット要素の数**（最上位のノード列における添字の最大値）。
+    ///
+    /// 「最も近いフォーマット」の第一キー [UR2-05]。入力位置だけでは**飽和する**
+    /// ——自由文字列フィールド（`@title` 等）に入った時点で走査位置が入力の末尾へ
+    /// 届くので、`@title (@genre)` と `[@circle] @title @volume` がどちらも
+    /// 「末尾まで到達」で同点になる（実測、2026-09-01）。要素数なら
+    /// 「このフォーマットのどこまで筋が通ったか」を表せる。
+    ///
+    /// **括弧の中は数えない**（グループ全体で 1 要素）——入れ子の添字を最上位の
+    /// 添字と混ぜると、深い括弧を持つフォーマットが不当に有利になる。
+    /// `nodes.count` と等しければ「全要素を満たしたが入力が余った」を意味する。
+    public let satisfiedNodes: Int
     /// 探索ノード数の上限を超えて打ち切ったか [MT2-02]。
     public let exceededStepLimit: Bool
     public let steps: Int

@@ -249,6 +249,36 @@ enum LibraryEnableAction {
         return nil
     }
 
+
+    /// 走査結果の題 [ID-06][AL-31][IF-05][EM-30]。**何が見つかったかで出し分ける**
+    /// ［ユーザー指摘、2026-09-02］——1 種類しか無いときは名指しし、2 種類以上の
+    /// ときだけ中立にする。判断は `ScanReviewTitle`（`QooApplication`）が持つ。
+    private static func reviewTitle(_ summary: ScanSummary, displayName: String,
+                                    locale: Locale) -> String {
+        let subject = ScanReviewTitle.subject(
+            orphaned: summary.orphaned,
+            unresolved: summary.unresolvedNames,
+            bookFoldersReleased: summary.bookFoldersReleased.count,
+            volumeConflicts: summary.volumeConflicts)
+        // **鍵は分岐の中に literal で書く**——変数に畳むと
+        // `check-localization-keys` が鍵として認識できず、綴りを間違えても
+        // 生の鍵が画面に出るまで気づけない。
+        let template: String
+        switch subject {
+        case .unresolved:
+            template = String(localized: "library.scan.reviewTitleUnresolved", locale: locale)
+        case .orphaned:
+            template = String(localized: "library.scan.reviewTitleOrphaned", locale: locale)
+        case .bookFoldersReleased:
+            template = String(localized: "library.scan.reviewTitleBookFolders", locale: locale)
+        case .volumeConflicts:
+            template = String(localized: "library.scan.reviewTitleVolumes", locale: locale)
+        case .mixed, nil:
+            template = String(localized: "library.scan.reviewTitle", locale: locale)
+        }
+        return String(format: template, displayName)
+    }
+
     private static func notifyIfNoteworthy(_ summary: ScanSummary,
                                            displayName: String,
                                            libraryID: LibraryID?,
@@ -297,8 +327,7 @@ enum LibraryEnableAction {
             // 通知履歴には全強度が残る [NT-01 の改訂] ので、後から読み返せる。
             severity: .sheet,
             target: target(for: libraryID, displayName: displayName),
-            title: String(format: String(localized: "library.scan.reviewTitle", locale: locale),
-                          displayName),
+            title: reviewTitle(summary, displayName: displayName, locale: locale),
             body: lines.joined(separator: "\n"),
             actions: actions))
 
@@ -404,8 +433,7 @@ enum LibraryEnableAction {
             // 強度 4＝一時通知。**提示はされず履歴とバッジにだけ残る** [NT-02]。
             severity: .transient,
             target: target,
-            title: String(format: String(localized: "library.scan.reviewTitle", locale: locale),
-                          displayName),
+            title: reviewTitle(summary, displayName: displayName, locale: locale),
             body: lines.joined(separator: "\n"),
             actions: actions)
         Task { await NotificationRouter.shared.present(item) }

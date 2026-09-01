@@ -22,10 +22,23 @@ import Foundation
 public struct UnresolvedObservation: Sendable, Hashable {
     public let fileID: FileID
     public let filename: String
+    /// 「最も近いフォーマット」のソース文字列 [UR2-05]。**UUID ではなく本文**を
+    /// 持つ——フォーマットは編集も削除もされるので、ID を覚えても後から
+    /// 引けるとは限らない。表示側はこの 1 列だけで用が足りる。
+    public let nearestFormatSource: String?
+    /// そのフォーマットが**原文の**どこまで進んだか [UR2-05]。
+    ///
+    /// 画面には出さない［ユーザー判断、2026-09-01］——指標は飽和しうるので
+    /// 「ここまで一致しました」と見せると嘘になる場面がある。将来の
+    /// リネーム候補提示 [PW-02] のために記録だけしておく。
+    public let nearestFormatReach: Int?
 
-    public init(fileID: FileID, filename: String) {
+    public init(fileID: FileID, filename: String,
+                nearestFormatSource: String? = nil, nearestFormatReach: Int? = nil) {
         self.fileID = fileID
         self.filename = filename
+        self.nearestFormatSource = nearestFormatSource
+        self.nearestFormatReach = nearestFormatReach
     }
 }
 
@@ -44,15 +57,36 @@ public struct UnresolvedFile: Sendable, Hashable, Identifiable {
     /// フォーマットに一致すれば解決する）。一覧に印として出すだけ——
     /// 「なぜ当たらないか」の手がかりとしては強い。
     public let libraryTypeMismatch: Bool
+    /// 「最も近いフォーマット」のヒント [UR2-05][UR3-04]。`nil` = 1 要素も
+    /// 満たしたフォーマットが無い（＝出す手がかりが無い）。
+    public let nearestFormatSource: String?
 
     public var id: FileID { row.id }
 
     public init(row: FileRow, isIgnored: Bool, detectedAt: Date,
-                libraryTypeMismatch: Bool) {
+                libraryTypeMismatch: Bool, nearestFormatSource: String? = nil) {
         self.row = row
         self.isIgnored = isIgnored
         self.detectedAt = detectedAt
         self.libraryTypeMismatch = libraryTypeMismatch
+        self.nearestFormatSource = nearestFormatSource
+    }
+}
+
+/// 1 件のファイルについての未解決の記録 [UR3-04]。右ペインが引く。
+///
+/// **一覧の `UnresolvedFile` とは別の型にしてある。** あちらは `FileRow` を
+/// 抱えていて、右ペインは既に同じ行を別経路で持っている——同じものを 2 度
+/// 読ませないため、ここが答えるのは「未解決かどうか」と「ヒント」だけ。
+public struct UnresolvedHint: Sendable, Hashable {
+    public let isIgnored: Bool
+    /// 「最も近いフォーマット」のソース文字列 [UR2-05]。`nil` = 手がかりが無い
+    /// （1 要素も満たしたフォーマットが無い）。
+    public let nearestFormatSource: String?
+
+    public init(isIgnored: Bool, nearestFormatSource: String?) {
+        self.isIgnored = isIgnored
+        self.nearestFormatSource = nearestFormatSource
     }
 }
 
