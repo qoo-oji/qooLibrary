@@ -24,9 +24,32 @@ struct MaintenanceTabTests {
                        settingsRevision: 0)
     }
 
-    @Test("タブの並びは片付ける頻度の順（見つからない → 保管庫）")
+    @Test("タブの並びは片付ける頻度の順（見つからない → 保管庫 → シリーズの提案）")
     func orderIsStable() {
-        #expect(MaintenanceTab.allCases == [.orphans, .vault])
+        #expect(MaintenanceTab.allCases == [.orphans, .vault, .seriesSuggestions])
+    }
+
+    /// **キーが無いことが「0 件」ではなく「数えていない」を意味する**
+    /// [SS-05、ステージ 10]。提案は保存された行が無く、数えるには検出を
+    /// 走らせるしかないので、左ペインは選択中のライブラリしか数えない。
+    @Test("シリーズの提案は、数えていないライブラリの件数を出さない")
+    func seriesSuggestionsOnlyShowsCountedLibraries() {
+        let counted = library(1, online: true)
+        let uncounted = library(2, online: true)
+        let counts: [LibraryID: Int] = [counted.id: 3]
+
+        let a = MaintenanceTab.seriesSuggestions.status(for: counted, counts: counts)
+        #expect(a.showsCount)
+        #expect(a.count == 3)
+        #expect(!a.isDimmed)
+
+        let b = MaintenanceTab.seriesSuggestions.status(for: uncounted, counts: counts)
+        #expect(!b.showsCount)
+        #expect(b.isDimmed)
+        // **オフラインの印は出さない**——提案は DB だけで作れるので、
+        // ボリュームの有無と関係が無い。
+        #expect(!b.showsOfflineNote)
+        #expect(b.iconName == MaintenanceTab.seriesSuggestions.systemImage)
     }
 
     @Test("題は旧ウインドウの語をそのまま使う（語彙を割らない）")

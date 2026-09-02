@@ -14841,6 +14841,261 @@
         }
       }
     },
+    "seriesSuggestions.apply" : {
+      "extractionState" : "manual",
+      "localizations" : {
+      "en" : {
+        "stringUnit" : {
+          "state" : "translated",
+          "value" : "Set Series"
+        }
+      },
+      "ja" : {
+        "stringUnit" : {
+          "state" : "translated",
+          "value" : "シリーズを設定"
+        }
+      }
+      }
+    },
+    "seriesSuggestions.bookCount" : {
+      "extractionState" : "manual",
+      "localizations" : {
+      "en" : {
+        "stringUnit" : {
+          "state" : "translated",
+          "value" : "%d books"
+        }
+      },
+      "ja" : {
+        "stringUnit" : {
+          "state" : "translated",
+          "value" : "%d 冊"
+        }
+      }
+      }
+    },
+    "seriesSuggestions.count" : {
+      "extractionState" : "manual",
+      "localizations" : {
+      "en" : {
+        "stringUnit" : {
+          "state" : "translated",
+          "value" : "%d suggestions"
+        }
+      },
+      "ja" : {
+        "stringUnit" : {
+          "state" : "translated",
+          "value" : "%d 件の提案"
+        }
+      }
+      }
+    },
+    "seriesSuggestions.empty" : {
+      "extractionState" : "manual",
+      "localizations" : {
+      "en" : {
+        "stringUnit" : {
+          "state" : "translated",
+          "value" : "No suggestions"
+        }
+      },
+      "ja" : {
+        "stringUnit" : {
+          "state" : "translated",
+          "value" : "提案はありません"
+        }
+      }
+      }
+    },
+    "seriesSuggestions.emptyHint" : {
+      "extractionState" : "manual",
+      "localizations" : {
+      "en" : {
+        "stringUnit" : {
+          "state" : "translated",
+          "value" : "qooLibrary suggests a series when several books by the same creator in the same folder share the beginning of their titles."
+        }
+      },
+      "ja" : {
+        "stringUnit" : {
+          "state" : "translated",
+          "value" : "同じフォルダにある同じ著者・サークルの本で、タイトルの先頭が揃っているものを見つけたときに提案します。"
+        }
+      }
+      }
+    },
+    "seriesSuggestions.hiddenIgnored" : {
+      "extractionState" : "manual",
+      "localizations" : {
+      "en" : {
+        "stringUnit" : {
+          "state" : "translated",
+          "value" : "%d dismissed suggestions are hidden. Turn on “Show dismissed” to bring them back."
+        }
+      },
+      "ja" : {
+        "stringUnit" : {
+          "state" : "translated",
+          "value" : "無視した %d 件を隠しています。「無視したものも表示」で戻せます。"
+        }
+      }
+      }
+    },
+    "seriesSuggestions.ignore" : {
+      "extractionState" : "manual",
+      "localizations" : {
+      "en" : {
+        "stringUnit" : {
+          "state" : "translated",
+          "value" : "Dismiss"
+        }
+      },
+      "ja" : {
+        "stringUnit" : {
+          "state" : "translated",
+          "value" : "以後出さない"
+        }
+      }
+      }
+    },
+    "seriesSuggestions.ignoredBadge" : {
+      "extractionState" : "manual",
+      "localizations" : {
+      "en" : {
+        "stringUnit" : {
+          "state" : "translated",
+          "value" : "Dismissed"
+        }
+      },
+      "ja" : {
+        "stringUnit" : {
+          "state" : "translated",
+          "value" : "無視中"
+        }
+      }
+      }
+    },
+    "seriesSuggestions.noMatches" : {
+      "extractionState" : "manual",
+      "localizations" : {
+      "en" : {
+        "stringUnit" : {
+          "state" : "translated",
+          "value" : "No matching suggestions"
+        }
+      },
+      "ja" : {
+        "stringUnit" : {
+          "state" : "translated",
+          "value" : "一致する提案がありません"
+        }
+      }
+      }
+    },
+    "seriesSuggestions.noVolume" : {
+      "extractionState" : "manual",
+      "localizations" : {
+      "en" : {
+        "stringUnit" : {
+          "state" : "translated",
+          "value" : "No volume"
+        }
+      },
+      "ja" : {
+        "stringUnit" : {
+          "state" : "translated",
+          "value" : "巻なし"
+        }
+      }
+      }
+    },
+    "seriesSuggestions.searchPlaceholder" : {
+      "extractionState" : "manual",
+      "localizations" : {
+      "en" : {
+        "stringUnit" : {
+          "state" : "translated",
+          "value" : "Search suggestions"
+        }
+      },
+      "ja" : {
+        "stringUnit" : {
+          "state" : "translated",
+          "value" : "提案を検索"
+        }
+      }
+      }
+    },
+    "seriesSuggestions.showIgnored" : {
+      "extractionState" : "manual",
+      "localizations" : {
+      "en" : {
+        "stringUnit" : {
+          "state" : "translated",
+          "value" : "Show dismissed"
+        }
+      },
+      "ja" : {
+        "stringUnit" : {
+          "state" : "translated",
+          "value" : "無視したものも表示"
+        }
+      }
+      }
+    },
+    "seriesSuggestions.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+      "en" : {
+        "stringUnit" : {
+          "state" : "translated",
+          "value" : "Series Suggestions"
+        }
+      },
+      "ja" : {
+        "stringUnit" : {
+          "state" : "translated",
+          "value" : "シリーズの提案"
+        }
+      }
+      }
+    },
+    "seriesSuggestions.unignore" : {
+      "extractionState" : "manual",
+      "localizations" : {
+      "en" : {
+        "stringUnit" : {
+          "state" : "translated",
+          "value" : "Undismiss"
+        }
+      },
+      "ja" : {
+        "stringUnit" : {
+          "state" : "translated",
+          "value" : "無視を解除"
+        }
+      }
+      }
+    },
+    "seriesSuggestions.volume" : {
+      "extractionState" : "manual",
+      "localizations" : {
+      "en" : {
+        "stringUnit" : {
+          "state" : "translated",
+          "value" : "Vol. %@"
+        }
+      },
+      "ja" : {
+        "stringUnit" : {
+          "state" : "translated",
+          "value" : "%@ 巻"
+        }
+      }
+      }
+    },
     "sort.ascending": {
       "localizations": {
         "en": {

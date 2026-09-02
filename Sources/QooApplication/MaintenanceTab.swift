@@ -16,9 +16,10 @@
 //  中央ペインの「重複のみを表示」[DU-11] が同じ一覧を出し、そちらはリネーム・
 //  保管庫送りもできる。**同じものを 2 か所で見せない。**
 //
-//  ## シリーズの提案タブは Stage 10 で足す［ユーザー判断、2026-08-29］
-//  検出器（§19.5）が無いうちに枠だけ置くと、空のタブは壊れているようにしか
-//  見えない。
+//  ## シリーズの提案タブ（Stage 10 で追加）
+//  §19.5 の提案一覧。**このタブだけ左ペインの件数が選択中のライブラリぶんしか
+//  出ない**——提案は保存された行が無く、数えるには検出を走らせるしかない
+//  （`SeriesSuggestionModel` の型注記に実測値がある）。
 //
 import Foundation
 import QooKit
@@ -33,6 +34,8 @@ public enum MaintenanceTab: String, CaseIterable, Sendable, Identifiable {
     case orphans
     /// ファイルの保管庫 [FAW-01〜05][15章 §15.4]。
     case vault
+    /// シリーズの提案 [SS-01〜08][19章 §19.5]。
+    case seriesSuggestions
 
     public var id: String { rawValue }
 
@@ -43,6 +46,7 @@ public enum MaintenanceTab: String, CaseIterable, Sendable, Identifiable {
         switch self {
         case .orphans: "orphanCleanup.windowTitle"
         case .vault: "fileVault.windowTitle"
+        case .seriesSuggestions: "seriesSuggestions.title"
         }
     }
 
@@ -50,6 +54,7 @@ public enum MaintenanceTab: String, CaseIterable, Sendable, Identifiable {
         switch self {
         case .orphans: "questionmark.folder"
         case .vault: "archivebox"
+        case .seriesSuggestions: "books.vertical"
         }
     }
 
@@ -73,18 +78,26 @@ public enum MaintenanceTab: String, CaseIterable, Sendable, Identifiable {
         public let showsOfflineNote: Bool
         /// 行を淡く描くか（＝片付けるものが無い、または見られない）。
         public let isDimmed: Bool
+        /// 行のアイコン。**タブごとに決める**——「件数が出せない」の理由が
+        /// タブによって違う（孤立はオフライン、提案は数えていないだけ）ので、
+        /// 同じ見た目にすると別のことを同じ絵で伝えることになる。
+        public let iconName: String
 
-        public init(count: Int, showsCount: Bool, showsOfflineNote: Bool, isDimmed: Bool) {
+        public init(count: Int, showsCount: Bool, showsOfflineNote: Bool, isDimmed: Bool,
+                    iconName: String) {
             self.count = count
             self.showsCount = showsCount
             self.showsOfflineNote = showsOfflineNote
             self.isDimmed = isDimmed
+            self.iconName = iconName
         }
     }
 
     /// - Parameters:
     ///   - counts: このタブの件数表（`orphanedFileCounts()` /
     ///     `archivedFileCounts()` の結果）。0 件はキーごと現れない。
+    ///     **シリーズの提案だけは選択中のライブラリぶんしか入らない**ので、
+    ///     キーが無いことが「0 件」ではなく「数えていない」を意味する。
     public func status(for library: LibrarySummary, counts: [LibraryID: Int]) -> LibraryStatus {
         let count = counts[library.id] ?? 0
         switch self {
@@ -95,12 +108,25 @@ public enum MaintenanceTab: String, CaseIterable, Sendable, Identifiable {
             return LibraryStatus(count: count,
                                  showsCount: listable,
                                  showsOfflineNote: !listable,
-                                 isDimmed: !listable || count == 0)
+                                 isDimmed: !listable || count == 0,
+                                 iconName: listable && count > 0
+                                     ? systemImage : "externaldrive.badge.xmark")
         case .vault:
             return LibraryStatus(count: count,
                                  showsCount: true,
                                  showsOfflineNote: !library.isOnline,
-                                 isDimmed: count == 0)
+                                 isDimmed: count == 0,
+                                 iconName: count > 0 ? systemImage
+                                                     : "externaldrive.badge.xmark")
+        case .seriesSuggestions:
+            // **キーが無い＝数えていない。** オフラインの印は出さない
+            // ——提案は DB だけで作れるので、ボリュームの有無と関係が無い。
+            let counted = counts[library.id] != nil
+            return LibraryStatus(count: count,
+                                 showsCount: counted,
+                                 showsOfflineNote: false,
+                                 isDimmed: !counted || count == 0,
+                                 iconName: systemImage)
         }
     }
 }

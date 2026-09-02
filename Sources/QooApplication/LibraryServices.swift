@@ -609,6 +609,60 @@ public final class LibraryServices {
         return try await repository.orphanedFileCounts()
     }
 
+    // MARK: - シリーズの提案 [SS-01〜SS-08、19章 §19.5]
+    //
+    // **Undo は `ApplySeriesSuggestionCommand` /
+    // `SetSeriesSuggestionIgnoredCommand` が担う**ので、UI から直接
+    // `updateSeriesSuggestionIgnored` を呼ばないこと（`setRating` と同じ約束）。
+
+    /// 1 ライブラリぶんの提案を作る [SS-01〜SS-08]。
+    ///
+    /// **候補の集め方（DB）と判定（純粋関数）を分けてある。** ここは前者と
+    /// 後者を繋ぐだけで、規則そのものは `SeriesSuggestionDetector` にある
+    /// ——合成名のゴールデンで固定できる形を保つため。
+    ///
+    /// 費用は候補の件数に比例する。**プリセットはどれもファイル名フォーマット
+    /// で `@series` を取らない**ので、候補は事実上ライブラリ全件になる
+    /// ［実測: 実コーパスを 5 万件へ増やして 403 ms、うち畳み込みが 70 ms］。
+    /// **左ペインの件数を全ライブラリぶん出さない**のはこのため（§15.15）。
+    public func seriesSuggestions(libraryID: LibraryID) async throws
+        -> SeriesSuggestionReport
+    {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        let candidates = try await repository.seriesSuggestionCandidates(
+            libraryID: libraryID, circleFieldID: try await circleFieldID(libraryID: libraryID))
+        let ignored = Set(candidates.filter(\.isIgnored).map(\.id))
+        // メインアクタを塞がない——数百 ms かかりうる純粋な計算である。
+        let suggestions = await Task.detached(priority: .userInitiated) {
+            SeriesSuggestionDetector.detect(candidates)
+        }.value
+        return SeriesSuggestionReport(suggestions: suggestions, ignoredFileIDs: ignored)
+    }
+
+    /// `@circle` を束縛しているフィールド [SS-02][RWI-02]。
+    ///
+    /// サークルは `authorName` のような専用列を持たずラベルとして入るので、
+    /// 「どのフィールドがサークルか」は設定からしか分からない。束縛が無ければ
+    /// `nil`（著者名だけで揃える）。
+    public func circleFieldID(libraryID: LibraryID) async throws -> LabelGroupID? {
+        guard let repository = libraryRepository else { throw ServiceError.notReady }
+        guard let snapshot = try await repository.settingsSnapshot(libraryID: libraryID),
+              let index = snapshot.semanticBindings[.circle]
+        else { return nil }
+        return try await labelGroups(libraryID: libraryID).first { $0.index == index }?.id
+    }
+
+    public func updateSeriesSuggestionIgnored(set marks: [FileID: String],
+                                              clear ids: [FileID]) async throws {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        try await repository.updateSeriesSuggestionIgnored(set: marks, clear: ids)
+    }
+
+    public func seriesSuggestionIgnoredTitles(ids: [FileID]) async throws -> [FileID: String] {
+        guard let repository = fileRepository else { throw ServiceError.notReady }
+        return try await repository.seriesSuggestionIgnoredTitles(ids: ids)
+    }
+
     // MARK: - ファイル保管庫 [FA-01〜FA-17][FAW-01〜FAW-05]
 
     public func archivedFiles(libraryID: LibraryID) async throws -> [ArchivedFile] {

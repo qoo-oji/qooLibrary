@@ -75,6 +75,8 @@ public struct ManagedFileSnapshot: Sendable, Hashable {
     public let metadataSource: String?
     public let metadataJSON: String?
     public let hasVolumeConflict: Bool         // [EM-26][EM-31]
+    /// シリーズの提案を「以後出さない」と決めた時点のタイトル [SS-05]。
+    public let seriesSuggestionIgnoredTitle: String?
     public let labels: [LabelAssignment]
 
     public init(id: FileID, libraryID: LibraryID, identity: FileIdentity,
@@ -92,7 +94,9 @@ public struct ManagedFileSnapshot: Sendable, Hashable {
                 trashedAt: Date?, state: FileState,
                 lastParsedFormatID: String?, libraryTypeMismatch: Bool,
                 metadataStamp: String?, metadataSource: String?, metadataJSON: String?,
-                hasVolumeConflict: Bool, labels: [LabelAssignment]) {
+                hasVolumeConflict: Bool,
+                seriesSuggestionIgnoredTitle: String? = nil,
+                labels: [LabelAssignment]) {
         self.id = id
         self.libraryID = libraryID
         self.identity = identity
@@ -129,6 +133,7 @@ public struct ManagedFileSnapshot: Sendable, Hashable {
         self.metadataSource = metadataSource
         self.metadataJSON = metadataJSON
         self.hasVolumeConflict = hasVolumeConflict
+        self.seriesSuggestionIgnoredTitle = seriesSuggestionIgnoredTitle
         self.labels = labels
     }
 }

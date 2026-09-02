@@ -417,6 +417,13 @@ public struct FileBackup: Codable, Sendable, Equatable {
     /// `schemaVersion` は上げていない——読み込みが `<=` 判定なので、キーが
     /// 増えただけの追加は古い実装からも読める。
     public var isUnresolvedIgnored: Bool?
+    /// シリーズの提案を「以後出さない」と決めた時点のタイトル [SS-05][MG-22]。
+    ///
+    /// **利用者の判断なので走査からは作り直せない**（`isUnresolvedIgnored` と
+    /// 同じ性質）。真偽値ではなくタイトルを持つのは、名前が変われば無視が
+    /// 解けるという性質をこの 1 列だけで表すため。`Optional` なのも同じ事情
+    /// ——このキーを持たない古い文書がある。
+    public var seriesSuggestionIgnoredTitle: String?
     public var labels: [FileLabelBackup]
 
     public init(relativePath: String, filename: String, rating: Int,
@@ -428,7 +435,9 @@ public struct FileBackup: Codable, Sendable, Equatable {
                 coverImageSource: String, coverImageRef: String?,
                 isArchived: Bool, archivedFromPath: String?, archivedAt: Date?,
                 state: String, trashedAt: Date?,
-                isUnresolvedIgnored: Bool? = nil, labels: [FileLabelBackup]) {
+                isUnresolvedIgnored: Bool? = nil,
+                seriesSuggestionIgnoredTitle: String? = nil,
+                labels: [FileLabelBackup]) {
         self.relativePath = relativePath
         self.filename = filename
         self.rating = rating
@@ -448,6 +457,7 @@ public struct FileBackup: Codable, Sendable, Equatable {
         self.state = state
         self.trashedAt = trashedAt
         self.isUnresolvedIgnored = isUnresolvedIgnored
+        self.seriesSuggestionIgnoredTitle = seriesSuggestionIgnoredTitle
         self.labels = labels
     }
 

@@ -300,6 +300,38 @@ public protocol ManagedFileRepository: Sendable {
     /// 「以後無視する」の切り替え [AL-33][UR-05]。
     func setUnresolvedIgnored(_ ids: [FileID], _ ignored: Bool) async throws
 
+    // MARK: - シリーズの提案 [SS-01〜SS-08、19章 §19.5]
+
+    /// 提案の候補になる本 [SS-08]。
+    ///
+    /// 除くのは **シリーズ設定済み・基本情報を保護済み・保管庫内・ゴミ箱**
+    /// [SS-08]。加えて `state != .active` のものも出さない——実体が見つからない
+    /// ものは「見つからないファイル」[OR-01] の担当で、そこに出るものを
+    /// こちらにも出すと同じ 1 件が 2 つの画面に別の意味で並ぶ
+    /// （`unresolvedFiles` と同じ判断）。
+    ///
+    /// - Parameter circleFieldID: `@circle` を束縛しているフィールド [SS-02]。
+    ///   サークルは `authorName` のような専用列を持たずラベルとして入るので、
+    ///   **どのフィールドを見るかは呼び出し側が設定から解決する**。`nil` なら
+    ///   著者名だけを鍵にする。
+    func seriesSuggestionCandidates(libraryID: LibraryID,
+                                    circleFieldID: LabelGroupID?) async throws
+        -> [SeriesSuggestionCandidate]
+
+    /// 「以後この提案を出さない」の付け外し [SS-05]。
+    ///
+    /// **付けるものと外すものを 1 度に渡す。** ⌘Z は「変更前の状態を 1 件ずつ
+    /// 書き戻す」ので、1 回の取り消しで付ける側と外す側が混ざる——別々の
+    /// 呼び出しにすると、その途中で片方だけ反映された状態があり得る。
+    ///
+    /// 値は**印を立てた時点のタイトル**。現在のタイトルと食い違えば読み出し側が
+    /// 「無視していない」と扱うので、名前が変われば自動的に解ける。
+    func updateSeriesSuggestionIgnored(set marks: [FileID: String],
+                                       clear ids: [FileID]) async throws
+
+    /// いま立っている無視印 [SS-05]。⌘Z が変更前の値を控えるのに使う。
+    func seriesSuggestionIgnoredTitles(ids: [FileID]) async throws -> [FileID: String]
+
     // MARK: - 埋め込みメタデータ [EM-07]
 
     /// 読み取り済みのメタデータ（と、読んだ時点の印）を引く。

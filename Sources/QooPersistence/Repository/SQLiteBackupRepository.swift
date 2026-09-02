@@ -220,6 +220,10 @@ public struct SQLiteBackupRepository: BackupRepository, Sendable {
                     // 立っているときだけ出す。`title` を自動なら出さないのと同じ
                     // 考え方で、10 万件ぶんの `false` を書いても意味が無い。
                     isUnresolvedIgnored: ignored.contains(id) ? true : nil,
+                    // シリーズの提案の無視印 [SS-05]。**タイトルをそのまま出す**
+                    // ——名前が変われば無視が解ける、という性質はこの値が
+                    // 現在のタイトルと一致するかどうかで表される。
+                    seriesSuggestionIgnoredTitle: record.seriesSuggestionIgnoredTitle,
                     labels: labels)
                 // **再生成できる情報しか持たない行は出さない。** 再スキャンが
                 // 実体から作り直すので、書き出しても取り込みが何もしない
@@ -297,6 +301,8 @@ extension FileBackup {
         if trashedAt != nil { return true }
         // 「以後無視する」[AL-33] も人の判断。これだけを持つ行も残す。
         if isUnresolvedIgnored == true { return true }
+        // シリーズの提案の無視 [SS-05] も同じく人の判断。
+        if seriesSuggestionIgnoredTitle != nil { return true }
         // ここへ来る `labels` は保護されたフィールドのものだけに絞ってある
         // ——保護されていなければ再スキャンが付け直す [PR-01]。
         return !labels.isEmpty
@@ -530,6 +536,10 @@ extension SQLiteBackupRepository {
         record.archivedFromPath = file.archivedFromPath
         record.archivedAt = file.archivedAt?.timeIntervalSinceReferenceDate
         record.trashedAt = file.trashedAt?.timeIntervalSinceReferenceDate
+        // シリーズの提案の無視印 [SS-05]。**取り込んだ値が現在のタイトルと
+        // 食い違っていても書き戻してよい**——判定は読み出し側が行うので、
+        // 一致しなければ自然に「無視していない」になる。
+        record.seriesSuggestionIgnoredTitle = file.seriesSuggestionIgnoredTitle
         // **`state` は書き戻さない。** 走査が実体を見て決めた現在の状態
         // （`active` / `orphaned`）のほうが常に新しい [ID-06]。ゴミ箱に入れた
         // 記録だけは人の操作なので `trashedAt` として上で復元している。

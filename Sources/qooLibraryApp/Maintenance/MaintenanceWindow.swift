@@ -31,6 +31,7 @@ struct MaintenanceWindow: View {
     @Environment(\.locale) private var locale
     @State private var orphans = OrphanCleanupModel()
     @State private var vault = FileVaultModel()
+    @State private var series = SeriesSuggestionModel()
     @State private var tab: MaintenanceTab = .orphans
 
     var body: some View {
@@ -63,16 +64,23 @@ struct MaintenanceWindow: View {
         // 孤立タブは一覧そのものを伏せる必要があり、保管庫タブは操作の可否
         // （`canModify`）が変わる。どちらも `reload()` でしか更新されない。
         .onChange(of: LibraryServices.shared.libraries) { _, _ in
-            Task { await reloadBoth() }
+            Task { await reloadAll() }
         }
         // ⌘Z / ⇧⌘Z は View を通らずに DB を変える。
         .onChange(of: CommandStack.shared.operationHistory.count) { _, _ in
-            Task { await reloadBoth() }
+            Task { await reloadAll() }
         }
         // 走査が保管庫の中身を変えることがある（外部で `.qooarchive` へ
         // 出し入れされた場合 [SY-10]）。孤立も走査で増減する。
         .onChange(of: LibraryServices.shared.contentRevision) { _, _ in
-            Task { await reloadBoth() }
+            Task { await reloadAll() }
+        }
+        // **シリーズの提案は、そのタブを見ているときだけ検出する**
+        // ——候補は事実上ライブラリ全件で、5 万件なら 400 ms かかる
+        // （`SeriesSuggestionModel` の型注記に実測がある）。
+        .onChange(of: tab) { _, newTab in
+            guard newTab == .seriesSuggestions else { return }
+            Task { await reloadSeries() }
         }
     }
 
@@ -103,12 +111,34 @@ struct MaintenanceWindow: View {
         await vault.prepare(services: LibraryServices.shared,
                             preferring: orphans.selectedLibraryID ?? requested)
         await alignVaultSelection()
+        series.selectedLibraryID = orphans.selectedLibraryID
+        if tab == .seriesSuggestions {
+            await series.prepare(services: LibraryServices.shared,
+                                 preferring: orphans.selectedLibraryID ?? requested)
+        }
     }
 
-    private func reloadBoth() async {
+    private func reloadAll() async {
         await orphans.reload()
         await vault.reload()
         await alignVaultSelection()
+        await reloadSeries()
+    }
+
+    /// **見えているときだけ走らせる**（上記の実測）。
+    ///
+    /// **2 度目からは `reload()` を使う**［code-review の指摘］——`prepare()` は
+    /// 無条件に `.loading` へ落とすので、⌘Z や走査のたびに一覧がスピナーへ
+    /// 戻る（他のタブも `reload()` を呼んでいる）。
+    private func reloadSeries() async {
+        guard tab == .seriesSuggestions else { return }
+        series.selectedLibraryID = orphans.selectedLibraryID
+        if series.state == .notReady {
+            await series.prepare(services: LibraryServices.shared,
+                                 preferring: orphans.selectedLibraryID)
+        } else {
+            await series.reload()
+        }
     }
 
     private func alignVaultSelection() async {
@@ -126,7 +156,7 @@ struct MaintenanceWindow: View {
         } set: { newValue in
             orphans.selectedLibraryID = newValue
             vault.selectedLibraryID = newValue
-            Task { await reloadBoth() }
+            Task { await reloadAll() }
         }
     }
 
@@ -141,6 +171,7 @@ struct MaintenanceWindow: View {
         switch tab {
         case .orphans: orphans.orphanCounts
         case .vault: vault.archivedCounts
+        case .seriesSuggestions: series.suggestionCounts
         }
     }
 
@@ -167,8 +198,7 @@ struct MaintenanceWindow: View {
                             }
                         }
                     } icon: {
-                        Image(systemName: status.showsCount && status.count > 0
-                              ? tab.systemImage : "externaldrive.badge.xmark")
+                        Image(systemName: status.iconName)
                             .foregroundStyle(status.isDimmed ? .secondary : Color.accentColor)
                     }
                     .opacity(status.isDimmed ? 0.5 : 1)
@@ -191,6 +221,7 @@ struct MaintenanceWindow: View {
         switch tab {
         case .orphans: "orphanCleanup.count"
         case .vault: "fileVault.archivedCount"
+        case .seriesSuggestions: "seriesSuggestions.count"
         }
     }
 
@@ -203,6 +234,7 @@ struct MaintenanceWindow: View {
             switch tab {
             case .orphans: OrphanCleanupPane(model: orphans)
             case .vault: FileVaultPane(model: vault)
+            case .seriesSuggestions: SeriesSuggestionPane(model: series)
             }
         }
     }

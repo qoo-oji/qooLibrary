@@ -135,6 +135,10 @@ struct ManagedFileRecord: Codable, FetchableRecord, MutablePersistableRecord, Se
     var metadataSource: String?
     var metadataJSON: String?
     var hasVolumeConflict: Bool
+    /// シリーズの提案を「以後出さない」と決めた時点のタイトル [SS-05]。
+    /// `nil` = 無視していない。**現在の `title` と一致するときだけ無視**——
+    /// 名前が変われば判断の前提が消える。
+    var seriesSuggestionIgnoredTitle: String?
 
     mutating func didInsert(_ inserted: InsertionSuccess) { id = inserted.rowID }
 }
@@ -256,6 +260,7 @@ extension ManagedFileRecord {
             metadataSource: metadataSource,
             metadataJSON: metadataJSON,
             hasVolumeConflict: hasVolumeConflict,
+            seriesSuggestionIgnoredTitle: seriesSuggestionIgnoredTitle,
             labels: labels)
     }
 
@@ -301,7 +306,8 @@ extension ManagedFileRecord {
             metadataStamp: s.metadataStamp,
             metadataSource: s.metadataSource,
             metadataJSON: s.metadataJSON,
-            hasVolumeConflict: s.hasVolumeConflict)
+            hasVolumeConflict: s.hasVolumeConflict,
+            seriesSuggestionIgnoredTitle: s.seriesSuggestionIgnoredTitle)
     }
 }
 

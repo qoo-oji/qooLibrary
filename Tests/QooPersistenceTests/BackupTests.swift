@@ -92,6 +92,11 @@ struct BackupTests {
             unresolved: [UnresolvedObservation(fileID: a, filename: "作品1.cbz")],
             resolved: [], libraryID: f.libraryID, now: Date())
         try await f.files.setUnresolvedIgnored([a], true)
+
+        // シリーズの提案の「以後出さない」[SS-05]。これも**再生成不可能な列を
+        // 持つ唯一の経路**なので、立てておかないと網羅性の検証が空振りする
+        // （立っているときだけ書き出すため）。
+        try await f.files.updateSeriesSuggestionIgnored(set: [a: "作品1"], clear: [])
         return (f, backup)
     }
 

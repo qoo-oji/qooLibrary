@@ -17,7 +17,7 @@ public enum QooMigrations {
         "v1_initial", "v2_regexPatterns", "v3_embeddedMetadata", "v4_fsEventsCheckpoint",
         "v5_identityRejection", "v6_duplicateTitleKey", "v7_identityPending",
         "v8_stage1Removals", "v9_reservedWordCleanup", "v10_metadataProtection",
-        "v11_orphanedProtectedTokens", "v12_shelf",
+        "v11_orphanedProtectedTokens", "v12_shelf", "v13_seriesSuggestionIgnore",
     ]
 
     public static var migrator: DatabaseMigrator {
@@ -35,6 +35,7 @@ public enum QooMigrations {
         m.registerMigration(identifiers[9], migrate: v10MetadataProtection)
         m.registerMigration(identifiers[10], migrate: v11OrphanedProtectedTokens)
         m.registerMigration(identifiers[11], migrate: v12Shelf)
+        m.registerMigration(identifiers[12], migrate: v13SeriesSuggestionIgnore)
         return m
     }
 
@@ -185,6 +186,26 @@ public enum QooMigrations {
                       columns: ["libraryId", "displayOrder"])
         try db.execute(sql: "UPDATE storeMetadata SET schemaVersion = ? WHERE id = 1",
                        arguments: [identifiers[11]])
+    }
+
+    // MARK: - v13
+
+    /// シリーズの提案の「以後この提案を出さない」印 [SS-05]（ステージ 10）。
+    ///
+    /// **真偽値ではなく、無視した時点のタイトルを持つ。** 要件は「無視は
+    /// 記憶され…名前が変われば解除」と定める [SS-05]——真偽値だと、名前が
+    /// 変わったことを誰かが見張って印を落とさなければならない。判定の側で
+    /// 「今のタイトルと一致するときだけ無視」と読めば、見張りも行の掃除も
+    /// 要らない（`unresolvedFile.filename` の考え方をより単純にした形で、
+    /// あちらは走査が突き合わせているが、この提案は走査の外にある）。
+    ///
+    /// `NULL` = 無視していない。
+    static func v13SeriesSuggestionIgnore(_ db: Database) throws {
+        try db.alter(table: "managedFile") { t in
+            t.add(column: "seriesSuggestionIgnoredTitle", .text)   // [SS-05]
+        }
+        try db.execute(sql: "UPDATE storeMetadata SET schemaVersion = ? WHERE id = 1",
+                       arguments: [identifiers[12]])
     }
 
     // MARK: - v10
