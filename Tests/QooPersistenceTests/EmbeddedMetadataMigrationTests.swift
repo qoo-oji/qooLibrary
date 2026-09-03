@@ -93,7 +93,7 @@ struct EmbeddedMetadataMigrationTests {
         let legacy = """
         {"targetExtensions":["cbz"],"imageExtensions":["jpg"],\
         "delimiters":{"pairs":[],"separators":[]},"semanticBindings":{"@author":3},\
-        "seriesTitleCompositionFormat":"@series @volume","labelGroupOrder":[1,2,3]}
+        "seriesTitleCompositionFormat":"@series @volume","fieldOrder":[1,2,3]}
         """
         let payload = try JSONDecoder().decode(LibrarySettingsPayload.self,
                                                from: Data(legacy.utf8))

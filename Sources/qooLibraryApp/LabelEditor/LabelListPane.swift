@@ -1,7 +1,7 @@
 //
-//  ラベルグループ編集ウインドウの右ペイン [LE-03〜LE-12][LB-04〜LB-07][LA-01][LA-08]。
+//  ラベルフィールド編集ウインドウの右ペイン [LE-03〜LE-12][LB-04〜LB-07][LA-01][LA-08]。
 //
-//  判定（並べ替え・検索・0 件・保管庫・統合先）は `LabelGroupEditorModel` が
+//  判定（並べ替え・検索・0 件・保管庫・統合先）は `FieldEditorModel` が
 //  持ち、ここは描くだけ。**この分担を崩さないこと**——View に判定を書くと
 //  `swift test` から触れなくなる。
 //
@@ -10,7 +10,7 @@ import QooKit
 import SwiftUI
 
 struct LabelListPane: View {
-    @Bindable var model: LabelGroupEditorModel
+    @Bindable var model: FieldEditorModel
     @Environment(\.locale) private var locale
     @Environment(\.colorScheme) private var colorScheme
 
@@ -35,8 +35,8 @@ struct LabelListPane: View {
     private var toolbar: some View {
         HStack(spacing: Tokens.spacing.m) {
             Picker("", selection: $model.sortOrder) {
-                Text("labelEditor.sort.name").tag(LabelGroupEditorModel.SortOrder.name)
-                Text("labelEditor.sort.count").tag(LabelGroupEditorModel.SortOrder.fileCount)
+                Text("labelEditor.sort.name").tag(FieldEditorModel.SortOrder.name)
+                Text("labelEditor.sort.count").tag(FieldEditorModel.SortOrder.fileCount)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
@@ -77,7 +77,7 @@ struct LabelListPane: View {
     private var list: some View {
         List(selection: $model.selection) {
             ForEach(model.rows) { row in
-                LabelRowView(row: row, groupColor: currentGroupColor)
+                LabelRowView(row: row, fieldColor: currentFieldColor)
                     .tag(row.id)
                     .contextMenu { rowMenu(row) }
             }
@@ -93,13 +93,13 @@ struct LabelListPane: View {
         }
     }
 
-    /// 選択中のグループの色。ラベル固有色が無ければこれを継承する [CO-06]。
-    private var currentGroupColor: LabelColor {
-        guard let id = model.selectedGroupID,
-              let group = model.groups.first(where: { $0.id == id }) else {
+    /// 選択中のフィールドの色。ラベル固有色が無ければこれを継承する [CO-06]。
+    private var currentFieldColor: LabelColor {
+        guard let id = model.selectedFieldID,
+              let field = model.fields.first(where: { $0.id == id }) else {
             return LabelColor(hexLight: "#DDDDDD", hexDark: "#555555")
         }
-        return LabelColor(hexLight: group.colorHexLight, hexDark: group.colorHexDark)
+        return LabelColor(hexLight: field.colorHexLight, hexDark: field.colorHexDark)
     }
 
     // MARK: - 下部: 操作
@@ -131,7 +131,7 @@ struct LabelListPane: View {
         .layoutPriority(1)
     }
 
-    /// 追加 [LE-07]。グループが未保存（DB に行が無い）なら押せない。
+    /// 追加 [LE-07]。フィールドが未保存（DB に行が無い）なら押せない。
     private var addRow: some View {
         HStack(spacing: Tokens.spacing.s) {
             TextField("labelEditor.newLabelPlaceholder", text: $newLabelName)
@@ -142,7 +142,7 @@ struct LabelListPane: View {
                 perform { try await model.createLabel(named: newLabelName); newLabelName = "" }
             }
             .disabled(newLabelName.trimmingCharacters(in: .whitespaces).isEmpty
-                      || model.selectedGroupID == nil)
+                      || model.selectedFieldID == nil)
         }
     }
 
@@ -158,7 +158,7 @@ struct LabelListPane: View {
                     .textFieldStyle(.roundedBorder)
                     .onSubmit { perform { try await model.rename(label, to: draftName) } }
                 LabelColorWell(color: colorBinding(for: label), shape: .single,
-                               defaultColor: currentGroupColor, previewName: label.name)
+                               defaultColor: currentFieldColor, previewName: label.name)
                 Button {
                     perform { try await model.setPinned(label, !label.isPinned) }
                 } label: {
@@ -167,7 +167,7 @@ struct LabelListPane: View {
                 .buttonStyle(.borderless)
                 .help("labelEditor.togglePin")
                 Menu("labelEditor.merge") {
-                    ForEach(LabelGroupEditorModel.mergeTargets(
+                    ForEach(FieldEditorModel.mergeTargets(
                         from: model.allLabels, excluding: label.id), id: \.id) { target in
                         Button(target.name) { confirmMerge(label, into: target) }
                     }
@@ -199,7 +199,7 @@ struct LabelListPane: View {
     }
 
     @ViewBuilder
-    private func rowMenu(_ row: LabelGroupEditorModel.Row) -> some View {
+    private func rowMenu(_ row: FieldEditorModel.Row) -> some View {
         Button(row.isPinned ? "labelEditor.unpin" : "labelEditor.pin", systemImage: "pin") {
             perform { try await model.setPinned(row.label, !row.isPinned) }
         }
@@ -224,12 +224,12 @@ struct LabelListPane: View {
     private func colorBinding(for label: LabelSummary) -> Binding<LabelColor> {
         Binding(
             get: {
-                guard let hex = label.colorHex else { return currentGroupColor }
+                guard let hex = label.colorHex else { return currentFieldColor }
                 return LabelColor(hexLight: hex, hexDark: hex)
             },
             set: { picked in
-                // 継承へ戻す（グループ色と同じ値を選んだ）なら nil を書く [CO-06]
-                let hex: String? = picked == currentGroupColor ? nil : picked.hexLight
+                // 継承へ戻す（フィールド色と同じ値を選んだ）なら nil を書く [CO-06]
+                let hex: String? = picked == currentFieldColor ? nil : picked.hexLight
                 perform { try await model.setColor(label, hex: hex) }
             })
     }
@@ -284,8 +284,8 @@ struct LabelListPane: View {
         case .nameAlreadyExists(_, let name):
             return String(format: String(localized: "labelEditor.error.nameExists",
                                          locale: locale), name)
-        case .crossGroupMerge:
-            return String(localized: "labelEditor.error.crossGroupMerge", locale: locale)
+        case .crossFieldMerge:
+            return String(localized: "labelEditor.error.crossFieldMerge", locale: locale)
         case .labelNotFound:
             return String(localized: "labelEditor.error.notFound", locale: locale)
         }
@@ -296,8 +296,8 @@ struct LabelListPane: View {
 
 /// 一覧の 1 行 [LE-03][LA3-03]。
 struct LabelRowView: View {
-    let row: LabelGroupEditorModel.Row
-    let groupColor: LabelColor
+    let row: FieldEditorModel.Row
+    let fieldColor: LabelColor
 
     var body: some View {
         HStack(spacing: Tokens.spacing.s) {
@@ -329,9 +329,9 @@ struct LabelRowView: View {
         .padding(.vertical, 1)
     }
 
-    /// ラベル固有色が無ければグループ色を継承 [CO-06]。
+    /// ラベル固有色が無ければフィールド色を継承 [CO-06]。
     private var color: LabelColor {
-        guard let hex = row.colorHex else { return groupColor }
+        guard let hex = row.colorHex else { return fieldColor }
         return LabelColor(hexLight: hex, hexDark: hex)
     }
 }

@@ -24,7 +24,7 @@ struct DefaultFieldTests {
             for keyword in SemanticKeyword.defaultFields {
                 let index = try #require(bindings[keyword],
                                          "\(preset.key): \(keyword.rawValue) の束縛が無い")
-                #expect(preset.labelGroups.contains { $0.index == index },
+                #expect(preset.fields.contains { $0.index == index },
                         "\(preset.key): \(keyword.rawValue) の束縛先 \(index) が実在しない")
             }
             // 既定 5 種は 1〜5 に固定する（追加フィールドは 6 以降）。
@@ -73,7 +73,7 @@ struct DefaultFieldTests {
         let draft = TemplateInstantiation.blankDraft(
             volumeSets: sets, displayName: "白紙",
             defaultFieldNames: ["著者", "サークル", "ジャンル", "イベント", "キーワード"])
-        #expect(draft.labelGroups.map(\.name)
+        #expect(draft.fields.map(\.name)
                 == ["著者", "サークル", "ジャンル", "イベント", "キーワード"])
         for (offset, keyword) in SemanticKeyword.defaultFields.enumerated() {
             #expect(draft.semanticBindings[keyword] == offset + 1)
@@ -81,8 +81,8 @@ struct DefaultFieldTests {
         // 訳語が足りなくても壊れない——予約語の綴りで埋める。
         let sparse = TemplateInstantiation.blankDraft(
             volumeSets: sets, displayName: "白紙", defaultFieldNames: ["著者"])
-        #expect(sparse.labelGroups.count == 5)
-        #expect(sparse.labelGroups[1].name == "circle")
+        #expect(sparse.fields.count == 5)
+        #expect(sparse.fields[1].name == "circle")
     }
 
     /// 予約語の綴りが全フィールドで引けること。
@@ -117,7 +117,7 @@ struct DefaultFieldTests {
 
         // キーワードのフィールドを消す＝束縛が外れる。
         let keywordIndex = try #require(draft.semanticBindings[.keyword])
-        draft.labelGroups.removeAll { $0.index == keywordIndex }
+        draft.fields.removeAll { $0.index == keywordIndex }
         draft.semanticBindings[.keyword] = nil
         draft.filenameFormats = [FilenameFormatDraft(source: "[@circle] @title [@keyword]")]
         #expect(!draft.validationErrors.isEmpty)

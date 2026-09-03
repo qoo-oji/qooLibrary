@@ -305,18 +305,18 @@ final class Evicted: @unchecked Sendable {
 
         let circle = try #require(try await w.field(.circle))
         let author = try #require(try await w.field(.author))
-        let authorNames = Set(try await w.labels.labels(groupID: author.id)
+        let authorNames = Set(try await w.labels.labels(fieldID: author.id)
             .map(\.name))
         #expect(authorNames.contains("メタの著者A"))
         #expect(authorNames.contains("メタの著者B"))
         // グループごと置き換えるので、ファイル名由来の著者はこのファイルには付かない。
         let file = try #require(await row(w, "(同人誌) [サークル値A (ファイル名の著者)] 作品名A"))
         let assigned = try await w.labels.labelIDs(fileID: file.id)
-        let assignedNames = Set(try await w.labels.labels(groupID: author.id)
+        let assignedNames = Set(try await w.labels.labels(fieldID: author.id)
             .filter { assigned.contains($0.id) }.map(\.name))
         #expect(assignedNames == ["メタの著者A", "メタの著者B"])
         // 他のグループは触らない。
-        #expect(try await w.labels.labels(groupID: circle.id)
+        #expect(try await w.labels.labels(fieldID: circle.id)
             .map(\.name) == ["サークル値A"])
     }
 }

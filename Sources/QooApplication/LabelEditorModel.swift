@@ -82,24 +82,24 @@ public final class LabelEditorModel {
 
     public private(set) var state: State = .notApplicable
 
-    /// 追加ダイアログでグループを選ばせるための全グループ [RL-02]。
-    /// **ラベル 0 件のグループも含める**——新しいラベルを作る先として要る
-    /// （常設の一覧に出すかどうかは `displayGroups` が別に決める）。
-    public private(set) var allGroups: [LabelGroupSummary] = []
+    /// 追加ダイアログでフィールドを選ばせるための全フィールド [RL-02]。
+    /// **ラベル 0 件のフィールドも含める**——新しいラベルを作る先として要る
+    /// （常設の一覧に出すかどうかは `displayFields` が別に決める）。
+    public private(set) var allFields: [FieldSummary] = []
 
-    /// 常設の一覧に並べるグループ [RL-04]。
-    public private(set) var displayGroups: [LabelGroupSummary] = []
+    /// 常設の一覧に並べるフィールド [RL-04]。
+    public private(set) var displayFields: [FieldSummary] = []
 
-    /// グループごとのラベル。**アーカイブ済みも読む**——付与済みなら出す
+    /// フィールドごとのラベル。**アーカイブ済みも読む**——付与済みなら出す
     /// 必要がある [RL-05] ので、読んでから出し分ける。
-    public private(set) var labels: [LabelGroupID: [LabelSummary]] = [:]
+    public private(set) var labels: [FieldID: [LabelSummary]] = [:]
 
-    /// 展開しているグループ。
-    public var expandedGroups: Set<LabelGroupID> = []
-    /// 「もっと見る」で全ラベルを出しているグループ [PN-02][PN-05]。
-    public var revealedGroups: Set<LabelGroupID> = []
+    /// 展開しているフィールド。
+    public var expandedFields: Set<FieldID> = []
+    /// 「もっと見る」で全ラベルを出しているフィールド [PN-02][PN-05]。
+    public var revealedFields: Set<FieldID> = []
     /// 「もっと見る」の中のインクリメンタル検索 [PN-05]。
-    public var searchText: [LabelGroupID: String] = [:]
+    public var searchText: [FieldID: String] = [:]
 
     /// ラベルを**付けた**ときに、同じ Undo 単位で一緒に走らせる操作 [UD-04]。
     ///
@@ -144,7 +144,7 @@ public final class LabelEditorModel {
         var allProtected = !subject.fileIDs.isEmpty
         for id in subject.fileIDs {
             if assignmentsByFile[id]?.contains(label.id) == true { assigned += 1 }
-            if protectedByFile[id]?.contains(.field(label.groupID)) != true { allProtected = false }
+            if protectedByFile[id]?.contains(.field(label.fieldID)) != true { allProtected = false }
         }
         return Assignment(assignedCount: assigned, targetCount: subject.targetCount,
                           isProtected: allProtected)
@@ -152,10 +152,10 @@ public final class LabelEditorModel {
 
     /// そのフィールドが**対象すべてで**保護されているか [PR-02][PR-03]。
     /// 見出しの鍵の出どころ。
-    public func isFieldProtected(_ group: LabelGroupSummary) -> Bool {
+    public func isFieldProtected(_ field: FieldSummary) -> Bool {
         guard case .ready(let subject) = state, !subject.fileIDs.isEmpty else { return false }
         return subject.fileIDs.allSatisfy {
-            protectedByFile[$0]?.contains(.field(group.id)) == true
+            protectedByFile[$0]?.contains(.field(field.id)) == true
         }
     }
 
@@ -164,7 +164,7 @@ public final class LabelEditorModel {
         assignment(of: label).assignedCount > 0
     }
 
-    /// そのグループで実際に並べるラベル [RL-04][RL-05][LA-03]。
+    /// そのフィールドで実際に並べるラベル [RL-04][RL-05][LA-03]。
     ///
     /// 並べ方は `PinnedLabelListing`——**ラベルフィルタと同じ規則**で並べる
     /// ことを RL-04 が名指しで要求している。ここが渡すのは「付与済みは必ず
@@ -172,30 +172,30 @@ public final class LabelEditorModel {
     ///
     /// **アーカイブ済みは候補に出さないが、付与済みなら出す** [LA-03][RL-05]。
     /// 出さないと「画面に無いのに付いている」ラベルができ、外す手段が消える。
-    public func visibleLabels(in group: LabelGroupSummary) -> [LabelSummary] {
+    public func visibleLabels(in field: FieldSummary) -> [LabelSummary] {
         PinnedLabelListing.visible(
-            candidates(in: group),
+            candidates(in: field),
             collapsedLimit: AppLimits.LabelFilter.collapsedLabelCount,
-            isRevealed: revealedGroups.contains(group.id),
-            searchText: searchText[group.id] ?? "",
+            isRevealed: revealedFields.contains(field.id),
+            searchText: searchText[field.id] ?? "",
             mustInclude: { self.isAssigned($0) })
     }
 
-    public func hasMoreLabels(in group: LabelGroupSummary) -> Bool {
+    public func hasMoreLabels(in field: FieldSummary) -> Bool {
         PinnedLabelListing.hasMore(
-            candidates(in: group),
+            candidates(in: field),
             collapsedLimit: AppLimits.LabelFilter.collapsedLabelCount,
-            isRevealed: revealedGroups.contains(group.id),
+            isRevealed: revealedFields.contains(field.id),
             mustInclude: { self.isAssigned($0) })
     }
 
     /// 追加ダイアログで既存ラベルとして選べるもの [RL-02][LA-03]。
-    public func addableLabels(in group: LabelGroupSummary) -> [LabelSummary] {
-        Self.addable(from: labels[group.id] ?? [])
+    public func addableLabels(in field: FieldSummary) -> [LabelSummary] {
+        Self.addable(from: labels[field.id] ?? [])
     }
 
-    private func candidates(in group: LabelGroupSummary) -> [LabelSummary] {
-        Self.candidates(from: labels[group.id] ?? [], isAssigned: { self.isAssigned($0) })
+    private func candidates(in field: FieldSummary) -> [LabelSummary] {
+        Self.candidates(from: labels[field.id] ?? [], isAssigned: { self.isAssigned($0) })
     }
 
     /// 常設の一覧に出す候補 [LA-03][RL-05][LA3-02]。
@@ -312,19 +312,19 @@ public final class LabelEditorModel {
         // のと同じ理由で、鍵の表示も DB から取る。
         protectedByFile = try await services.protectedScopes(ids: fileIDs)
 
-        let groups = try await services.labelGroups(libraryID: library.id)
-        var loaded: [LabelGroupID: [LabelSummary]] = [:]
-        for group in groups {
-            loaded[group.id] = try await services.labels(groupID: group.id)
+        let fields = try await services.fields(libraryID: library.id)
+        var loaded: [FieldID: [LabelSummary]] = [:]
+        for field in fields {
+            loaded[field.id] = try await services.labels(fieldID: field.id)
         }
-        allGroups = groups
+        allFields = fields
         labels = loaded
         state = .ready(Subject(
             fileIDs: fileIDs, urls: ordered.map(\.0), selectedCount: selectedCount,
             displayName: Self.displayName(for: ordered.map(\.0))))
         // 判定に `state` を使うので、`state` を入れてから絞る。
-        displayGroups = groups.filter { group in
-            !candidates(in: group).isEmpty
+        displayFields = fields.filter { field in
+            !candidates(in: field).isEmpty
         }
     }
 
@@ -370,23 +370,23 @@ public final class LabelEditorModel {
     ///
     /// 同じ正規化名のラベルが既にあればそれを使う [LB-01][N-03]——`ensureLabel`
     /// がその判断を持つので、ここで重複を調べない。
-    public func createAndAdd(groupID: LabelGroupID, name: String) async throws {
+    public func createAndAdd(fieldID: FieldID, name: String) async throws {
         guard case .ready = state, let services else { return }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        let id = try await services.ensureLabel(groupID: groupID, name: trimmed)
-        try await applyID(id, groupID: groupID, name: trimmed, assigning: true)
+        let id = try await services.ensureLabel(fieldID: fieldID, name: trimmed)
+        try await applyID(id, fieldID: fieldID, name: trimmed, assigning: true)
     }
 
     private func apply(_ label: LabelSummary, assigning: Bool) async throws {
-        try await applyID(label.id, groupID: label.groupID, name: label.name,
+        try await applyID(label.id, fieldID: label.fieldID, name: label.name,
                           assigning: assigning)
     }
 
     /// **フィールドは引数で受け取る**——読み込み済みの一覧から引くと、
     /// 作ったばかりのラベル（`createAndAdd`）はまだ載っておらず、黙って
     /// 何もしないコマンドになる。
-    private func applyID(_ labelID: LabelID, groupID group: LabelGroupID,
+    private func applyID(_ labelID: LabelID, fieldID field: FieldID,
                          name: String, assigning: Bool) async throws {
         guard case .ready(let subject) = state, let services else { return }
         // 変更前の拾い方と no-op の判定は `AssignLabelCommand.toggling` に
@@ -396,7 +396,7 @@ public final class LabelEditorModel {
             (id: id, url: urlByFile[id] ?? subject.urls.first ?? URL(fileURLWithPath: "/"))
         }
         guard let assign = AssignLabelCommand.toggling(
-            labelID: labelID, groupID: group, labelName: name, files: files,
+            labelID: labelID, fieldID: field, labelName: name, files: files,
             assignments: assignmentsByFile, protectedScopes: protectedByFile,
             assigning: assigning,
             subjectName: subject.displayName, services: services) else { return }
@@ -416,7 +416,7 @@ public final class LabelEditorModel {
             } else {
                 assignmentsByFile[id]?.remove(labelID)
             }
-            protectedByFile[id, default: []].insert(.field(group))
+            protectedByFile[id, default: []].insert(.field(field))
         }
     }
 

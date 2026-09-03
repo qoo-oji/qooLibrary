@@ -353,9 +353,9 @@ struct UnresolvedFileModelIntegrationTests {
         b.model.selection = [target.row.id]
         await labels.load(rows: [target.row], library: b.model.selectedLibrary,
                           services: b.workspace.services)
-        let groups = try await b.workspace.services.labelGroups(libraryID: b.libraryID)
-        let circle = try #require(groups.first { $0.name == "サークル" })
-        let all = try await b.workspace.services.labels(groupID: circle.id)
+        let fields = try await b.workspace.services.fields(libraryID: b.libraryID)
+        let circle = try #require(fields.first { $0.name == "サークル" })
+        let all = try await b.workspace.services.labels(fieldID: circle.id)
         return (labels, try #require(all.first))
     }
 
@@ -434,10 +434,10 @@ struct UnresolvedFileModelIntegrationTests {
         let target = try #require(b.model.files.first)
         await labels.load(rows: [target.row], library: b.model.selectedLibrary,
                           services: b.workspace.services)
-        let groups = try await b.workspace.services.labelGroups(libraryID: b.libraryID)
-        let circle = try #require(groups.first { $0.name == "サークル" })
+        let fields = try await b.workspace.services.fields(libraryID: b.libraryID)
+        let circle = try #require(fields.first { $0.name == "サークル" })
         let label = try #require(try await b.workspace.services
-            .labels(groupID: circle.id).first)
+            .labels(fieldID: circle.id).first)
 
         try await labels.add(label)
         await b.model.reload()

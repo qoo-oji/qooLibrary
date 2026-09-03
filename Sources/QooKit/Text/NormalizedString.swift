@@ -7,7 +7,7 @@ import Foundation
 ///
 /// 等価判定とハッシュは**正規化済みの `key` だけ**を見る。`raw`（表示用の原文）が
 /// 違っても、照合上は同じものとして扱われる [N-03]。ラベルの一意性判定は
-/// `(labelGroupID, key)` の組で行い、表示名は最初に登録された原文を使う [NM-06]。
+/// `(fieldID, key)` の組で行い、表示名は最初に登録された原文を使う [NM-06]。
 public struct NormalizedString: Sendable, Hashable, Codable, CustomStringConvertible {
     /// 原文（表示用）[N-03]。
     public let raw: String

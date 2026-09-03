@@ -32,19 +32,19 @@ public struct ImportPlan: Sendable, Equatable {
         public var filesMissing: Int
         /// 値を書き戻すファイル。
         public var filesUpdated: Int
-        public var labelGroupsAdded: Int
+        public var fieldsAdded: Int
         public var labelsAdded: Int
         public var fileLabelsAdded: Int
 
         public init(identityKey: String, displayName: String, kind: Kind,
                     filesMissing: Int, filesUpdated: Int,
-                    labelGroupsAdded: Int, labelsAdded: Int, fileLabelsAdded: Int) {
+                    fieldsAdded: Int, labelsAdded: Int, fileLabelsAdded: Int) {
             self.identityKey = identityKey
             self.displayName = displayName
             self.kind = kind
             self.filesMissing = filesMissing
             self.filesUpdated = filesUpdated
-            self.labelGroupsAdded = labelGroupsAdded
+            self.fieldsAdded = fieldsAdded
             self.labelsAdded = labelsAdded
             self.fileLabelsAdded = fileLabelsAdded
         }

@@ -26,9 +26,9 @@ import Foundation
 ///
 /// **中身は `FileQuery` の語彙で持つ**——中央ペインへ渡すときに変換を挟まない。
 public struct ShelfCondition: Codable, Sendable, Hashable {
-    /// 選んでいたラベル [LF-08〜LF-10]。**グループごとの入れ子にせず平らに持つ**
-    /// ——ラベルはグループをまたいで移動しない [LB-07] ので、読み込み時に
-    /// 実際の所属から組み直せる。入れ子で持つと、グループの行 ID という
+    /// 選んでいたラベル [LF-08〜LF-10]。**フィールドごとの入れ子にせず平らに持つ**
+    /// ——ラベルはフィールドをまたいで移動しない [LB-07] ので、読み込み時に
+    /// 実際の所属から組み直せる。入れ子で持つと、フィールドの行 ID という
     /// 2 つ目のぶら下がり得る参照を抱えることになる。
     public var labelIDs: [LabelID]
     public var rating: FileQuery.RatingFilter?
@@ -77,19 +77,19 @@ public struct ShelfCondition: Codable, Sendable, Hashable {
         !labelIDs.isEmpty || rating != nil || searchText != nil
     }
 
-    /// 平らな ID を、実際の所属でグループごとに組み直す [LF-08]。
+    /// 平らな ID を、実際の所属でフィールドごとに組み直す [LF-08]。
     ///
-    /// - Parameter groupOf: いま画面に出ているラベルの所属。**ここに無い ID は
+    /// - Parameter fieldOf: いま画面に出ているラベルの所属。**ここに無い ID は
     ///   落とす**——消えたラベル・非表示のラベル [LA3-05] を条件に残すと、
     ///   画面のチェックに現れない絞り込みが効いてしまい、件数が合わない理由を
     ///   利用者が読み取れない。
-    public func groupedSelection(
-        groupOf: (LabelID) -> LabelGroupID?
-    ) -> [LabelGroupID: Set<LabelID>] {
-        var result: [LabelGroupID: Set<LabelID>] = [:]
+    public func selectionByField(
+        fieldOf: (LabelID) -> FieldID?
+    ) -> [FieldID: Set<LabelID>] {
+        var result: [FieldID: Set<LabelID>] = [:]
         for id in labelIDs {
-            guard let group = groupOf(id) else { continue }
-            result[group, default: []].insert(id)
+            guard let field = fieldOf(id) else { continue }
+            result[field, default: []].insert(id)
         }
         return result
     }
@@ -103,14 +103,14 @@ public struct ShelfCondition: Codable, Sendable, Hashable {
     ///
     /// **記録そのものは畳まない**（`labelIDs` は保持したまま）。畳んで保存し
     /// 直すと、ラベル削除の ⌘Z で生き返る性質 [SH-05] を失う。
-    public func keepingResolvableLabels(groupOf: (LabelID) -> LabelGroupID?) -> ShelfCondition {
-        ShelfCondition(labelIDs: labelIDs.filter { groupOf($0) != nil },
+    public func keepingResolvableLabels(fieldOf: (LabelID) -> FieldID?) -> ShelfCondition {
+        ShelfCondition(labelIDs: labelIDs.filter { fieldOf($0) != nil },
                        rating: rating, searchText: searchText,
                        sort: sort, displayMode: displayMode)
     }
 
-    /// グループごとの選択から作る（保存時）。
-    public static func from(selection: [LabelGroupID: Set<LabelID>],
+    /// フィールドごとの選択から作る（保存時）。
+    public static func from(selection: [FieldID: Set<LabelID>],
                             rating: FileQuery.RatingFilter?,
                             searchText: String?,
                             sort: FileQuery.SortSpec,

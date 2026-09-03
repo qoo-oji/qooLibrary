@@ -18,15 +18,15 @@ struct OrphanRepositoryTests {
     struct Setup {
         let f: Fixture
         let orphan: FileID
-        let group: LabelGroupSummary
+        let field: FieldSummary
 
         static func make(orphanSize: Int64 = 1000) async throws -> Setup {
             let f = try await Fixture.make()
-            let group = try #require(try await f.labels.group(libraryID: f.libraryID, index: 2))
+            let field = try #require(try await f.labels.field(libraryID: f.libraryID, index: 2))
             let orphan = try await f.files.upsert(
                 f.snapshot(inode: 1, path: "旧/作品名A 第01巻.cbz", size: orphanSize))
             try await f.files.setState(.orphaned, ids: [orphan])
-            return Setup(f: f, orphan: orphan, group: group)
+            return Setup(f: f, orphan: orphan, field: field)
         }
 
         /// 生きているレコードを 1 件足す（走査が新規として作ったものに相当）。
@@ -51,8 +51,8 @@ struct OrphanRepositoryTests {
     @Test("ラベル件数は manuallyRemoved を数えない [RC-04]")
     func labelCountExcludesManuallyRemoved() async throws {
         let s = try await Setup.make()
-        let kept = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "サークル値A")
-        let removed = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "サークル値B")
+        let kept = try await s.f.labels.ensureLabel(fieldID: s.field.id, name: "サークル値A")
+        let removed = try await s.f.labels.ensureLabel(fieldID: s.field.id, name: "サークル値B")
         try await s.f.labels.assign(fileID: s.orphan, labelID: kept)
         try await s.f.labels.assign(fileID: s.orphan, labelID: removed)
 
@@ -75,7 +75,7 @@ struct OrphanRepositoryTests {
     @Test("削除すると紐づけも消える [OR-04]")
     func deleteRemovesAssignments() async throws {
         let s = try await Setup.make()
-        let label = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "サークル値A")
+        let label = try await s.f.labels.ensureLabel(fieldID: s.field.id, name: "サークル値A")
         try await s.f.labels.assign(fileID: s.orphan, labelID: label)
 
         try await s.f.files.deleteFiles([s.orphan])
@@ -105,7 +105,7 @@ struct OrphanRepositoryTests {
     func everyColumnSurvivesADeleteAndRestore() async throws {
         let s = try await Setup.make()
         try await s.f.fillEveryOptionalColumn(of: s.orphan)
-        let label = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "サークル値A")
+        let label = try await s.f.labels.ensureLabel(fieldID: s.field.id, name: "サークル値A")
         try await s.f.labels.assign(fileID: s.orphan, labelID: label)
         let before = try await s.f.recordJSON(id: s.orphan)
         #expect(before.count >= 38, "標本が全列を埋めていない（Optional が nil のまま）")
@@ -136,21 +136,21 @@ struct OrphanRepositoryTests {
     @Test("復元でラベルの件数が直る [DB-02]")
     func restoreRecountsLabels() async throws {
         let s = try await Setup.make()
-        let label = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "サークル値A")
+        let label = try await s.f.labels.ensureLabel(fieldID: s.field.id, name: "サークル値A")
         let live = try await s.addLiveFile(inode: 5, path: "生きている.cbz", size: 10)
         try await s.f.labels.assign(fileID: live, labelID: label)
         try await s.f.files.setState(.active, ids: [s.orphan])
         try await s.f.labels.assign(fileID: s.orphan, labelID: label)
-        #expect(try await s.f.labels.labels(groupID: s.group.id)
+        #expect(try await s.f.labels.labels(fieldID: s.field.id)
             .first { $0.id == label }?.fileCount == 2)
 
         let snapshots = try await s.f.files.fileSnapshots(ids: [s.orphan])
         try await s.f.files.deleteFiles([s.orphan])
-        #expect(try await s.f.labels.labels(groupID: s.group.id)
+        #expect(try await s.f.labels.labels(fieldID: s.field.id)
             .first { $0.id == label }?.fileCount == 1)
 
         try await s.f.files.restoreFiles(snapshots)
-        #expect(try await s.f.labels.labels(groupID: s.group.id)
+        #expect(try await s.f.labels.labels(fieldID: s.field.id)
             .first { $0.id == label }?.fileCount == 2)
     }
 
@@ -163,12 +163,12 @@ struct OrphanRepositoryTests {
     @Test("孤立にすると件数から外れ、戻すと数え直される [DB-02]")
     func changingStateUpdatesLabelCounts() async throws {
         let s = try await Setup.make()
-        let label = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "サークル値A")
+        let label = try await s.f.labels.ensureLabel(fieldID: s.field.id, name: "サークル値A")
         let live = try await s.addLiveFile(inode: 5, path: "生きている.cbz", size: 10)
         try await s.f.labels.assign(fileID: live, labelID: label)
 
         func count() async throws -> Int? {
-            try await s.f.labels.labels(groupID: s.group.id)
+            try await s.f.labels.labels(fieldID: s.field.id)
                 .first { $0.id == label }?.fileCount
         }
         #expect(try await count() == 1)

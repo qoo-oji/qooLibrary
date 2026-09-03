@@ -58,7 +58,7 @@ public struct SQLiteBackupRepository: BackupRepository, Sendable {
             duplicateGrouping: record.duplicateGrouping,
             thumbnailsAlwaysHidden: record.thumbnailsAlwaysHidden,
             settings: record.settingsJSON,
-            labelGroups: try exportLabelGroups(db, libraryID: libraryID),
+            labelGroups: try exportFields(db, libraryID: libraryID),
             filenameFormats: try FilenameFormatRecord
                 .filter(sql: "libraryId = ?", arguments: [libraryID])
                 .order(sql: "priority").fetchAll(db)
@@ -85,22 +85,22 @@ public struct SQLiteBackupRepository: BackupRepository, Sendable {
             files: try exportFiles(db, libraryID: libraryID))
     }
 
-    private static func exportLabelGroups(_ db: Database,
-                                          libraryID: Int64) throws -> [LabelGroupBackup] {
-        let groups = try LabelGroupRecord
+    private static func exportFields(_ db: Database,
+                                          libraryID: Int64) throws -> [FieldBackup] {
+        let fields = try FieldRecord
             .filter(sql: "libraryId = ?", arguments: [libraryID])
             .order(sql: "groupIndex").fetchAll(db)
-        return try groups.map { group in
+        return try fields.map { field in
             let labels = try LabelRecord
-                .filter(sql: "labelGroupId = ?", arguments: [group.id ?? 0])
+                .filter(sql: "labelGroupId = ?", arguments: [field.id ?? 0])
                 .order(sql: "name").fetchAll(db)
                 .map { LabelBackup(name: $0.name, colorHex: $0.colorHex,
                                    isPinned: $0.isPinned, isHidden: $0.isHidden) }
-            return LabelGroupBackup(
-                groupIndex: group.groupIndex, name: group.name,
-                colorHexLight: group.colorHexLight, colorHexDark: group.colorHexDark,
-                displayOrder: group.displayOrder,
-                assignsAutomatically: group.assignsAutomatically,
+            return FieldBackup(
+                groupIndex: field.groupIndex, name: field.name,
+                colorHexLight: field.colorHexLight, colorHexDark: field.colorHexDark,
+                displayOrder: field.displayOrder,
+                assignsAutomatically: field.assignsAutomatically,
                 labels: labels)
         }
     }
@@ -170,7 +170,7 @@ public struct SQLiteBackupRepository: BackupRepository, Sendable {
             """, arguments: [libraryID, ProtectionScopeCoding.empty])
         for row in rows {
             let scopes = ProtectionScopeCoding.decode(row["scopes"])
-            guard scopes.contains(.field(LabelGroupID(rawValue: row["groupId"] as Int64)))
+            guard scopes.contains(.field(FieldID(rawValue: row["groupId"] as Int64)))
             else { continue }
             let fileID: Int64 = row["fileId"]
             labelsByFile[fileID, default: []].append(FileLabelBackup(
@@ -270,7 +270,7 @@ extension SQLiteBackupRepository {
                 if key == ProtectionScope.basicKey { result.insert(.basic); continue }
                 guard let index = ProtectionScope.portableFieldIndex(from: key),
                       let id = groupIDByIndex[index] else { continue }
-                result.insert(.field(LabelGroupID(rawValue: id)))
+                result.insert(.field(FieldID(rawValue: id)))
             }
             return result
         }
@@ -280,7 +280,7 @@ extension SQLiteBackupRepository {
         for link in file.labels
         where LegacyMetadataProtection.fieldIsProtected(labelOrigin: link.origin) {
             guard let id = groupIDByIndex[link.groupIndex] else { continue }
-            result.insert(.field(LabelGroupID(rawValue: id)))
+            result.insert(.field(FieldID(rawValue: id)))
         }
         return result
     }
@@ -356,7 +356,7 @@ extension SQLiteBackupRepository {
             return ImportPlan.LibraryChange(
                 identityKey: backup.identityKey, displayName: backup.displayName,
                 kind: .missing, filesMissing: backup.files.count, filesUpdated: 0,
-                labelGroupsAdded: 0, labelsAdded: 0, fileLabelsAdded: 0)
+                fieldsAdded: 0, labelsAdded: 0, fileLabelsAdded: 0)
         }
 
         var groupsAdded = 0
@@ -371,56 +371,56 @@ extension SQLiteBackupRepository {
             try replaceSettings(db, libraryID: libraryID, backup: backup)
         }
 
-        // --- ラベルグループとラベル ---------------------------------------
-        // **グループは作り直さない。** ラベルが `labelGroup` へ連鎖削除で
+        // --- ラベルフィールドとラベル ---------------------------------------
+        // **フィールドは作り直さない。** ラベルが `labelGroup` へ連鎖削除で
         // 紐づいているので、消して入れ直すと蓄積したラベルと紐づけが全部
         // 消える（`updateSettings` が守っているのと同じ不変条件）。
         var groupIDByIndex: [Int: Int64] = [:]
-        for group in backup.labelGroups {
-            let existing = try LabelGroupRecord
+        for field in backup.labelGroups {
+            let existing = try FieldRecord
                 .filter(sql: "libraryId = ? AND groupIndex = ?",
-                        arguments: [libraryID, group.groupIndex])
+                        arguments: [libraryID, field.groupIndex])
                 .fetchOne(db)
             if let existing, let id = existing.id {
-                groupIDByIndex[group.groupIndex] = id
+                groupIDByIndex[field.groupIndex] = id
                 if !dryRun {
                     var updated = existing
-                    updated.name = group.name
-                    updated.colorHexLight = group.colorHexLight
-                    updated.colorHexDark = group.colorHexDark
-                    updated.displayOrder = group.displayOrder
-                    updated.assignsAutomatically = group.assignsAutomatically
+                    updated.name = field.name
+                    updated.colorHexLight = field.colorHexLight
+                    updated.colorHexDark = field.colorHexDark
+                    updated.displayOrder = field.displayOrder
+                    updated.assignsAutomatically = field.assignsAutomatically
                     try updated.update(db)
                 }
             } else {
                 groupsAdded += 1
                 guard !dryRun else { continue }
-                var created = LabelGroupRecord(
-                    id: nil, libraryId: libraryID, groupIndex: group.groupIndex,
-                    name: group.name, colorHexLight: group.colorHexLight,
-                    colorHexDark: group.colorHexDark, displayOrder: group.displayOrder,
-                    assignsAutomatically: group.assignsAutomatically)
+                var created = FieldRecord(
+                    id: nil, libraryId: libraryID, groupIndex: field.groupIndex,
+                    name: field.name, colorHexLight: field.colorHexLight,
+                    colorHexDark: field.colorHexDark, displayOrder: field.displayOrder,
+                    assignsAutomatically: field.assignsAutomatically)
                 try created.insert(db)
-                groupIDByIndex[group.groupIndex] = created.id
+                groupIDByIndex[field.groupIndex] = created.id
             }
         }
 
-        // ラベル。一意性は `(グループ, 正規化名)` [LB-01][N-03]。
+        // ラベル。一意性は `(フィールド, 正規化名)` [LB-01][N-03]。
         var labelIDByKey: [LabelKey: Int64] = [:]
-        for group in backup.labelGroups {
-            guard let groupID = groupIDByIndex[group.groupIndex] else {
-                // dryRun でグループがまだ無い場合。ラベルは全件が新規になる。
-                labelsAdded += group.labels.count
+        for field in backup.labelGroups {
+            guard let fieldID = groupIDByIndex[field.groupIndex] else {
+                // dryRun でフィールドがまだ無い場合。ラベルは全件が新規になる。
+                labelsAdded += field.labels.count
                 continue
             }
-            for label in group.labels {
+            for label in field.labels {
                 let normalized = TextNormalizer.normalize(label.name)
                 let existing = try LabelRecord
                     .filter(sql: "labelGroupId = ? AND normalizedName = ?",
-                            arguments: [groupID, normalized])
+                            arguments: [fieldID, normalized])
                     .fetchOne(db)
                 if let existing, let id = existing.id {
-                    labelIDByKey[LabelKey(groupIndex: group.groupIndex, normalized: normalized)] = id
+                    labelIDByKey[LabelKey(groupIndex: field.groupIndex, normalized: normalized)] = id
                     if !dryRun {
                         var updated = existing
                         // 原文・色・ピン・非表示はユーザーの設定 [MG-22]。
@@ -435,11 +435,11 @@ extension SQLiteBackupRepository {
                     labelsAdded += 1
                     guard !dryRun else { continue }
                     var created = LabelRecord(
-                        id: nil, labelGroupId: groupID, name: label.name,
+                        id: nil, labelGroupId: fieldID, name: label.name,
                         normalizedName: normalized, colorHex: label.colorHex,
                         isPinned: label.isPinned, isHidden: label.isHidden)
                     try created.insert(db)
-                    labelIDByKey[LabelKey(groupIndex: group.groupIndex,
+                    labelIDByKey[LabelKey(groupIndex: field.groupIndex,
                                           normalized: normalized)] = created.id
                 }
             }
@@ -500,7 +500,7 @@ extension SQLiteBackupRepository {
         return ImportPlan.LibraryChange(
             identityKey: backup.identityKey, displayName: backup.displayName,
             kind: .update, filesMissing: filesMissing, filesUpdated: filesUpdated,
-            labelGroupsAdded: groupsAdded, labelsAdded: labelsAdded,
+            fieldsAdded: groupsAdded, labelsAdded: labelsAdded,
             fileLabelsAdded: fileLabelsAdded)
     }
 

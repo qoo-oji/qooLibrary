@@ -35,7 +35,7 @@ public struct LibrarySettingsSnapshot: Sendable {
     public let semanticBindings: [SemanticKeyword: Int]
     /// 既定 `"@series @volume"` [SE-33]。
     public let seriesTitleCompositionFormat: String
-    public let maxLabelGroups: Int
+    public let maxFields: Int
 
     /// ファイル自身が持つメタデータを読むか [EM-06]。
     public let readsEmbeddedMetadata: Bool
@@ -58,7 +58,7 @@ public struct LibrarySettingsSnapshot: Sendable {
                 volumeFormats: [CompiledVolumePattern] = [],
                 semanticBindings: [SemanticKeyword: Int] = [:],
                 seriesTitleCompositionFormat: String = "@series @volume",
-                maxLabelGroups: Int = AppLimits.Format.maxLabelGroups,
+                maxFields: Int = AppLimits.Format.maxFields,
                 readsEmbeddedMetadata: Bool = true,
                 comicInfoVolumeSource: ComicInfoVolumeSource = .ask,
                 opensBookFolderWithApp: Bool = false) {
@@ -76,7 +76,7 @@ public struct LibrarySettingsSnapshot: Sendable {
         self.volumeFormats = volumeFormats
         self.semanticBindings = semanticBindings
         self.seriesTitleCompositionFormat = seriesTitleCompositionFormat
-        self.maxLabelGroups = maxLabelGroups
+        self.maxFields = maxFields
         self.readsEmbeddedMetadata = readsEmbeddedMetadata
         self.comicInfoVolumeSource = comicInfoVolumeSource
         self.opensBookFolderWithApp = opensBookFolderWithApp
@@ -85,7 +85,7 @@ public struct LibrarySettingsSnapshot: Sendable {
     /// フォーマットのコンパイルに渡す文脈を組み立てる。
     public var compilationContext: FormatCompilationContext {
         FormatCompilationContext(delimiters: delimiters,
-                                 maxLabelGroups: maxLabelGroups,
+                                 maxFields: maxFields,
                                  allLibraryTypeNames: allLibraryTypeNames,
                                  semanticBindings: semanticBindings)
     }

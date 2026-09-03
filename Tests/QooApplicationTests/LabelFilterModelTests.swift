@@ -6,7 +6,7 @@ import Testing
 //
 //  ラベルフィルタの状態 [LF-01〜LF-14][PN-01〜PN-06][RT-01〜RT-03][ST-26]。
 //
-//  **実際に走査してラベルを作ってから確かめる**——グループやラベルを手で
+//  **実際に走査してラベルを作ってから確かめる**——フィールドやラベルを手で
 //  差し込む補助コードを置くと、テンプレート由来の並びや意味束縛が落ちた状態を
 //  「正しい入力」として固定してしまう（`ScanWorkspace` で実際に踏んだ形）。
 //
@@ -46,19 +46,19 @@ struct LabelFilterModelTests {
         // 実フォルダは同じでも、**入口がボリュームならライブラリとして扱わない**。
         await model.load(registrationUUID: nil, services: w.services)
         #expect(model.library == nil)
-        #expect(model.groups.isEmpty)
+        #expect(model.fields.isEmpty)
     }
 
-    @Test("ラベルが 1 件も無いグループは出さない [LF-02][LG-05]")
+    @Test("ラベルが 1 件も無いフィールドは出さない [LF-02][LG-05]")
     @MainActor
     func emptyGroupsAreHidden() async throws {
         let (w, model) = try await Self.prepared([Self.doujin(0)])
         _ = w
-        #expect(!model.groups.isEmpty)
-        #expect(model.groups.allSatisfy { $0.labelCount > 0 })
-        // 出しているグループには必ずラベルが読み込まれている。
-        for group in model.groups {
-            #expect(!(model.labels[group.id] ?? []).isEmpty)
+        #expect(!model.fields.isEmpty)
+        #expect(model.fields.allSatisfy { $0.labelCount > 0 })
+        // 出しているフィールドには必ずラベルが読み込まれている。
+        for field in model.fields {
+            #expect(!(model.labels[field.id] ?? []).isEmpty)
         }
     }
 
@@ -71,7 +71,7 @@ struct LabelFilterModelTests {
     @MainActor
     func manuallyHiddenLabelsAreOmitted() async throws {
         let (w, model) = try await Self.prepared([Self.doujin(0), Self.doujin(1)])
-        let circle = try #require(model.groups.first { $0.name == "サークル" })
+        let circle = try #require(model.fields.first { $0.name == "サークル" })
         let before = try #require(model.labels[circle.id])
         #expect(before.count == 2)
 
@@ -88,7 +88,7 @@ struct LabelFilterModelTests {
     @MainActor
     func labelsWithoutLiveFilesDisappearAndComeBack() async throws {
         let (w, model) = try await Self.prepared([Self.doujin(0), Self.doujin(1)])
-        let circle = try #require(model.groups.first { $0.name == "サークル" })
+        let circle = try #require(model.fields.first { $0.name == "サークル" })
         let before = try #require(model.labels[circle.id])
         #expect(before.count == 2)
 
@@ -122,11 +122,11 @@ struct LabelFilterModelTests {
     @MainActor
     func fieldsWithNoVisibleLabelsAreOmitted() async throws {
         let (w, model) = try await Self.prepared([Self.doujin(0)])
-        let circle = try #require(model.groups.first { $0.name == "サークル" })
+        let circle = try #require(model.fields.first { $0.name == "サークル" })
         let labels = try #require(model.labels[circle.id])
         try await w.services.setLabelHidden(labels.map(\.id), true)
         await model.load(registrationUUID: w.registrationUUID, services: w.services)
-        #expect(!model.groups.contains { $0.id == circle.id })
+        #expect(!model.fields.contains { $0.id == circle.id })
     }
 
     /// **ピンを切り替えただけで非表示のラベルが並ばない**［code-review の指摘］。
@@ -135,7 +135,7 @@ struct LabelFilterModelTests {
     @MainActor
     func pinningDoesNotBringBackHiddenLabels() async throws {
         let (w, model) = try await Self.prepared([Self.doujin(0), Self.doujin(1)])
-        let circle = try #require(model.groups.first { $0.name == "サークル" })
+        let circle = try #require(model.fields.first { $0.name == "サークル" })
         let before = try #require(model.labels[circle.id])
         try await w.services.setLabelHidden([before[0].id], true)
         await model.load(registrationUUID: w.registrationUUID, services: w.services)
@@ -153,7 +153,7 @@ struct LabelFilterModelTests {
     @MainActor
     func selectionDropsLabelsThatDisappear() async throws {
         let (w, model) = try await Self.prepared([Self.doujin(0), Self.doujin(1)])
-        let circle = try #require(model.groups.first { $0.name == "サークル" })
+        let circle = try #require(model.fields.first { $0.name == "サークル" })
         let before = try #require(model.labels[circle.id])
         model.toggle(before[0])
         model.toggle(before[1])
@@ -168,7 +168,7 @@ struct LabelFilterModelTests {
 
     // MARK: - 絞り込み [LF-08〜LF-11]
 
-    @Test("グループ内 OR × グループ間 AND [LF-08〜LF-10]、件数は常時出る [LF-11]")
+    @Test("フィールド内 OR × フィールド間 AND [LF-08〜LF-10]、件数は常時出る [LF-11]")
     @MainActor
     func orWithinGroupAndAcrossGroups() async throws {
         // サークル値0 を 2 件（著者違い）、サークル値1 を 1 件。
@@ -177,7 +177,7 @@ struct LabelFilterModelTests {
         ])
         #expect(model.totalCount == 3)
 
-        let circle = try #require(model.groups.first { !(model.labels[$0.id] ?? []).isEmpty
+        let circle = try #require(model.fields.first { !(model.labels[$0.id] ?? []).isEmpty
             && (model.labels[$0.id] ?? []).contains { $0.name.hasPrefix("サークル値") } })
         let circleLabels = try #require(model.labels[circle.id])
         let circle0 = try #require(circleLabels.first { $0.name == "サークル値0" })
@@ -185,15 +185,15 @@ struct LabelFilterModelTests {
 
         model.toggle(circle0)
         await model.refreshResults(folderRelativePath: "", services: w.services)
-        #expect(model.matchedCount == 2)                      // グループ内 OR の片側
+        #expect(model.matchedCount == 2)                      // フィールド内 OR の片側
 
         model.toggle(circle2)
         await model.refreshResults(folderRelativePath: "", services: w.services)
         #expect(model.matchedCount == 3)                      // [LF-08] OR
 
         // 著者で AND を掛けると、片方だけに絞られる [LF-09][LF-10]。
-        let author = try #require(model.groups.first { group in
-            (model.labels[group.id] ?? []).contains { $0.name.hasPrefix("著者値") }
+        let author = try #require(model.fields.first { field in
+            (model.labels[field.id] ?? []).contains { $0.name.hasPrefix("著者値") }
         })
         let author0 = try #require(model.labels[author.id]?.first { $0.name == "著者値0" })
         model.toggle(author0)
@@ -208,8 +208,8 @@ struct LabelFilterModelTests {
             "上位/" + Self.doujin(0),
             "別の場所/" + Self.doujin(1),
         ])
-        let circle = try #require(model.groups.first { group in
-            (model.labels[group.id] ?? []).contains { $0.name == "サークル値0" }
+        let circle = try #require(model.fields.first { field in
+            (model.labels[field.id] ?? []).contains { $0.name == "サークル値0" }
         })
         let target = try #require(model.labels[circle.id]?.first { $0.name == "サークル値0" })
         model.toggle(target)
@@ -240,13 +240,13 @@ struct LabelFilterModelTests {
     func collapsedShowsTopTen() async throws {
         let (w, model) = try await Self.prepared((0..<12).map { Self.doujin($0, circle: $0) })
         _ = w
-        let circle = try #require(model.groups.first { group in
-            (model.labels[group.id] ?? []).count >= 12
+        let circle = try #require(model.fields.first { field in
+            (model.labels[field.id] ?? []).count >= 12
         })
         #expect(model.visibleLabels(in: circle).count == AppLimits.LabelFilter.collapsedLabelCount)
         #expect(model.hasMoreLabels(in: circle))
         // 「もっと見る」で全件 [PN-05]。
-        model.revealedGroups.insert(circle.id)
+        model.revealedFields.insert(circle.id)
         #expect(model.visibleLabels(in: circle).count == 12)
         #expect(!model.hasMoreLabels(in: circle))
     }
@@ -258,7 +258,7 @@ struct LabelFilterModelTests {
         // **件数で引かない。** 12 サークル × 12 著者を作るので件数が同じ
         // フィールドが複数あり、既定フィールドの並び [§19.2] が変わると
         // 別のフィールドを掴む（実際、著者を掴んで落ちた）。
-        let circle = try #require(model.groups.first { $0.name == "サークル" })
+        let circle = try #require(model.fields.first { $0.name == "サークル" })
         let pinned = try #require(model.labels[circle.id]?.first)
         await model.setPinned(pinned, true, services: w.services)
         #expect(model.visibleLabels(in: circle).map(\.name) == [pinned.name])
@@ -271,7 +271,7 @@ struct LabelFilterModelTests {
         // **件数で引かない。** 12 サークル × 12 著者を作るので件数が同じ
         // フィールドが複数あり、既定フィールドの並び [§19.2] が変わると
         // 別のフィールドを掴む（実際、著者を掴んで落ちた）。
-        let circle = try #require(model.groups.first { $0.name == "サークル" })
+        let circle = try #require(model.fields.first { $0.name == "サークル" })
         let all = try #require(model.labels[circle.id])
         let hidden = try #require(all.last)                   // 上位 10 件の外
         #expect(!model.visibleLabels(in: circle).contains { $0.id == hidden.id })
@@ -288,8 +288,8 @@ struct LabelFilterModelTests {
         // **件数で引かない。** 12 サークル × 12 著者を作るので件数が同じ
         // フィールドが複数あり、既定フィールドの並び [§19.2] が変わると
         // 別のフィールドを掴む（実際、著者を掴んで落ちた）。
-        let circle = try #require(model.groups.first { $0.name == "サークル" })
-        model.revealedGroups.insert(circle.id)
+        let circle = try #require(model.fields.first { $0.name == "サークル" })
+        model.revealedFields.insert(circle.id)
         model.searchText[circle.id] = "値11"
         #expect(model.visibleLabels(in: circle).map(\.name) == ["サークル値11"])
     }
@@ -301,8 +301,8 @@ struct LabelFilterModelTests {
     func clearAllDropsRatingToo() async throws {
         let (w, model) = try await Self.prepared([Self.doujin(0)])
         _ = w
-        let group = try #require(model.groups.first)
-        let label = try #require(model.labels[group.id]?.first)
+        let field = try #require(model.fields.first)
+        let label = try #require(model.labels[field.id]?.first)
         model.toggle(label)
         model.ratingFilter = .init(stars: 3)
         #expect(model.isActive)
@@ -316,8 +316,8 @@ struct LabelFilterModelTests {
     @MainActor
     func switchingLibraryResetsSelection() async throws {
         let (w, model) = try await Self.prepared([Self.doujin(0)])
-        let group = try #require(model.groups.first)
-        let label = try #require(model.labels[group.id]?.first)
+        let field = try #require(model.fields.first)
+        let label = try #require(model.labels[field.id]?.first)
         model.toggle(label)
         #expect(model.isActive)
         await model.load(registrationUUID: nil, services: w.services)
@@ -330,8 +330,8 @@ struct LabelFilterModelTests {
     func revisionAdvancesOnChange() async throws {
         let (w, model) = try await Self.prepared([Self.doujin(0)])
         _ = w
-        let group = try #require(model.groups.first)
-        let label = try #require(model.labels[group.id]?.first)
+        let field = try #require(model.fields.first)
+        let label = try #require(model.labels[field.id]?.first)
         let before = model.revision
         model.toggle(label)
         #expect(model.revision > before)

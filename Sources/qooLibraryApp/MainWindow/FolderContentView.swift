@@ -2341,7 +2341,7 @@ struct FolderContentView: View {
 
     @ViewBuilder
     private func labelSubmenu(for targetEntries: [FolderEntry]) -> some View {
-        if library != nil, !labelMenu.groups.isEmpty {
+        if library != nil, !labelMenu.fields.isEmpty {
             let targets = labelTargets(for: targetEntries)
             if !targets.isEmpty {
                 let ids = targets.map(\.id)
@@ -2354,10 +2354,10 @@ struct FolderContentView: View {
                                     targetEntries.count, targets.count))
                         Divider()
                     }
-                    ForEach(labelMenu.groups) { group in
-                        let labels = labelMenu.menuLabels(in: group, for: ids)
+                    ForEach(labelMenu.fields) { field in
+                        let labels = labelMenu.menuLabels(in: field, for: ids)
                         if !labels.isEmpty {
-                            Menu(group.name) {
+                            Menu(field.name) {
                                 ForEach(labels) { label in
                                     labelMenuItem(label, targets: targets, ids: ids)
                                 }
@@ -2373,7 +2373,7 @@ struct FolderContentView: View {
     /// （DB に行のあるものだけ）で、混在の注記もそちらが出す。
     @ViewBuilder
     private func protectionMenuItem(for targetEntries: [FolderEntry]) -> some View {
-        if let library, !labelMenu.groups.isEmpty {
+        if let library, !labelMenu.fields.isEmpty {
             let targets = labelTargets(for: targetEntries)
             if !targets.isEmpty {
                 let state = labelMenu.protectionState(for: targets.map(\.id))

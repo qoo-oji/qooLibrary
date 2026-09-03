@@ -10,7 +10,7 @@ import Foundation
 /// 要るもの」だけを置く。
 public struct FormatCompilationContext: Sendable {
     public var delimiters: DelimiterSet
-    public var maxLabelGroups: Int
+    public var maxFields: Int
     /// `@booktype` の照合候補 [TY-01][9.2.2]。
     public var allLibraryTypeNames: [String]
     /// セマンティック予約語 → フィールド番号 [RW-13]。
@@ -21,11 +21,11 @@ public struct FormatCompilationContext: Sendable {
     public var semanticBindings: [SemanticKeyword: Int]
 
     public init(delimiters: DelimiterSet = .default,
-                maxLabelGroups: Int = AppLimits.Format.maxLabelGroups,
+                maxFields: Int = AppLimits.Format.maxFields,
                 allLibraryTypeNames: [String] = [],
                 semanticBindings: [SemanticKeyword: Int] = [:]) {
         self.delimiters = delimiters
-        self.maxLabelGroups = maxLabelGroups
+        self.maxFields = maxFields
         self.allLibraryTypeNames = allLibraryTypeNames
         self.semanticBindings = semanticBindings
     }

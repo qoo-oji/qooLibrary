@@ -71,7 +71,7 @@ public final class ShelfModel {
         } catch {
             // **`loadFailure` に書いても直後の読み直しが消す**［code-review の
             // 指摘］。並べ替えの失敗は次の読み直しで元の順序に戻る形で目に
-            // 見えるので、ここはログに残す（`LabelFilterModel.reorderGroups`
+            // 見えるので、ここはログに残す（`LabelFilterModel.reorderFields`
             // と同じ扱い）。
             Log.ui.warning("シェルフの並び順を保存できない: \(String(describing: error))")
         }

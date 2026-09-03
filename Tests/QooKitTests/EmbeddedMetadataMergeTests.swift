@@ -113,7 +113,7 @@ import Testing
         #expect(out.labels[3] == ["メタの著者"])
     }
 
-    @Test func leavesOtherLabelGroupsAlone() {
+    @Test func leavesOtherFieldsAlone() {
         let base = baseline(labels: [1: ["ジャンル値A"], 3: ["ファイル名の著者"]])
         let out = EmbeddedMetadataMerge.apply(
             EmbeddedMetadata(source: .comicInfo, authors: ["メタの著者"]),

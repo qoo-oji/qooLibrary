@@ -402,12 +402,12 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                 ORDER BY libraryType.libraryTypeName
                 """, arguments: [library.libraryTypeId])
 
-            let groups = try LabelGroupRecord
+            let fields = try FieldRecord
                 .filter(sql: "libraryId = ?", arguments: [libraryID.rawValue])
                 .order(sql: "displayOrder, groupIndex")
                 .fetchAll(db)
                 .map { record in
-                    LabelGroupDraft(persistentID: record.id, index: record.groupIndex,
+                    FieldDraft(persistentID: record.id, index: record.groupIndex,
                                     name: record.name,
                                     colorHexLight: record.colorHexLight,
                                     colorHexDark: record.colorHexDark,
@@ -468,7 +468,7 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                 imageExtensions: payload.imageExtensions.sorted(),
                 delimiters: payload.delimiters,
                 protectedTokens: tokens,
-                labelGroups: groups,
+                fields: fields,
                 semanticBindings: semantic,
                 filenameFormats: formats,
                 volumeFormats: volumes,
@@ -489,7 +489,7 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
     /// 2. **`settingsRevision` を必ず上げる** [VT-02]。パーサはこの値で
     ///    コンパイル結果をキャッシュするので、上げ忘れると設定変更が効かない。
     ///    呼び出し側に任せず、この 1 箇所で必ず行う。
-    /// 3. **ラベルグループは作り直さない。** ラベルは `labelGroup` へ連鎖削除で
+    /// 3. **ラベルフィールドは作り直さない。** ラベルは `labelGroup` へ連鎖削除で
     ///    紐づいているため、消して入れ直すと蓄積したラベルと紐づけが全部消える。
     ///    行 ID で同定して更新し、草案から消えたものだけを削除する。
     ///    （フォーマット・階層割り当て・保護文字列は付随データを持たないので
@@ -532,7 +532,7 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
             delimiters: draft.delimiters,
             semanticBindings: draft.semanticBindings.reduce(into: [:]) { $0[$1.key.rawValue] = $1.value },
             seriesTitleCompositionFormat: draft.seriesTitleCompositionFormat,
-            labelGroupOrder: draft.labelGroups.map(\.index),
+            labelGroupOrder: draft.fields.map(\.index),
             readsEmbeddedMetadata: draft.readsEmbeddedMetadata,
             comicInfoVolumeSource: draft.comicInfoVolumeSource,
             opensBookFolderWithApp: draft.opensBookFolderWithApp)         // [IF-18]
@@ -541,13 +541,13 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
 
     /// 草案の内容を付随テーブルへ書く。**登録と更新で共有する。**
     ///
-    /// ラベルグループだけは作り直さず差分適用する（`writeLabelGroups`）
+    /// ラベルフィールドだけは作り直さず差分適用する（`writeFields`）
     /// ——ラベルが `labelGroup` へ連鎖削除で紐づくため、消して入れ直すと
     /// 蓄積したラベルと紐づけが全部消える。フォーマット・階層・保護文字列は
     /// 付随データを持たないのでまとめて入れ替えてよい。
     static func writeSettingsTables(_ db: Database, _ draft: LibrarySettingsDraft,
                                     libraryID: Int64) throws {
-        try writeLabelGroups(db, draft.labelGroups, libraryID: libraryID)
+        try writeFields(db, draft.fields, libraryID: libraryID)
 
         try db.execute(sql: "DELETE FROM filenameFormat WHERE libraryId = ?", arguments: [libraryID])
         for (priority, format) in draft.filenameFormats.enumerated() {
@@ -626,32 +626,32 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
         return library.libraryTypeId
     }
 
-    /// ラベルグループの差分適用。**ラベルを巻き添えにしないための経路** [LB-05]。
-    private static func writeLabelGroups(_ db: Database, _ groups: [LabelGroupDraft],
+    /// ラベルフィールドの差分適用。**ラベルを巻き添えにしないための経路** [LB-05]。
+    private static func writeFields(_ db: Database, _ fields: [FieldDraft],
                                          libraryID: Int64) throws {
-        let existing = try LabelGroupRecord
+        let existing = try FieldRecord
             .filter(sql: "libraryId = ?", arguments: [libraryID]).fetchAll(db)
-        let keptIDs = Set(groups.compactMap(\.persistentID))
+        let keptIDs = Set(fields.compactMap(\.persistentID))
         for record in existing where !keptIDs.contains(record.id ?? -1) {
-            // 連鎖でこのグループのラベルと紐づけも消える。**呼び出し側が
+            // 連鎖でこのフィールドのラベルと紐づけも消える。**呼び出し側が
             // 確認を取ってから来ること**（UI 側で警告している）。
             try db.execute(sql: "DELETE FROM labelGroup WHERE id = ?", arguments: [record.id])
         }
-        for (order, group) in groups.enumerated() {
-            if let id = group.persistentID,
+        for (order, field) in fields.enumerated() {
+            if let id = field.persistentID,
                var record = existing.first(where: { $0.id == id }) {
-                record.groupIndex = group.index
-                record.name = group.name
-                record.colorHexLight = group.colorHexLight
-                record.colorHexDark = group.colorHexDark
+                record.groupIndex = field.index
+                record.name = field.name
+                record.colorHexLight = field.colorHexLight
+                record.colorHexDark = field.colorHexDark
                 record.displayOrder = order
-                record.assignsAutomatically = group.assignsAutomatically
+                record.assignsAutomatically = field.assignsAutomatically
                 try record.update(db)
             } else {
-                var record = LabelGroupRecord(
-                    id: nil, libraryId: libraryID, groupIndex: group.index, name: group.name,
-                    colorHexLight: group.colorHexLight, colorHexDark: group.colorHexDark,
-                    displayOrder: order, assignsAutomatically: group.assignsAutomatically)
+                var record = FieldRecord(
+                    id: nil, libraryId: libraryID, groupIndex: field.index, name: field.name,
+                    colorHexLight: field.colorHexLight, colorHexDark: field.colorHexDark,
+                    displayOrder: order, assignsAutomatically: field.assignsAutomatically)
                 try record.insert(db)
             }
         }

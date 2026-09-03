@@ -42,14 +42,14 @@ struct BackupTests {
         }
 
         // 保護されたフィールドのラベル [PR-02]（＝書き出しの対象）
-        let groups = try await f.labels.groups(libraryID: f.libraryID)
-        let circle = try #require(groups.first { $0.name == "サークル" })
-        let manual = try await f.labels.ensureLabel(groupID: circle.id, name: "サークル値A")
+        let fields = try await f.labels.fields(libraryID: f.libraryID)
+        let circle = try #require(fields.first { $0.name == "サークル" })
+        let manual = try await f.labels.ensureLabel(fieldID: circle.id, name: "サークル値A")
         try await f.labels.assign(fileID: a, labelID: manual)
         try await f.files.setProtectedScopes([a: [.field(circle.id)]])
         // 保護されていないフィールドのラベルは再スキャンが付け直すので、
         // 書き出しの対象外になるはず
-        let auto = try await f.labels.ensureLabel(groupID: circle.id, name: "サークル値C")
+        let auto = try await f.labels.ensureLabel(fieldID: circle.id, name: "サークル値C")
         try await f.labels.assign(fileID: b, labelID: auto)
 
         // ラベルの色・ピン・アーカイブ [MG-22]
@@ -132,12 +132,12 @@ struct BackupTests {
         func unionKeys(_ objects: [[String: Any]]) -> Set<String> {
             objects.reduce(into: Set<String>()) { $0.formUnion($1.keys) }
         }
-        let groups = (library["labelGroups"] as? [[String: Any]]) ?? []
+        let fields = (library["labelGroups"] as? [[String: Any]]) ?? []
         let files = (library["files"] as? [[String: Any]]) ?? []
         let keysByTable: [String: Set<String>] = [
             "library": Set(library.keys),
-            "labelGroup": unionKeys(groups),
-            "label": unionKeys(groups.flatMap { ($0["labels"] as? [[String: Any]]) ?? [] }),
+            "labelGroup": unionKeys(fields),
+            "label": unionKeys(fields.flatMap { ($0["labels"] as? [[String: Any]]) ?? [] }),
             "managedFile": unionKeys(files),
             "fileLabel": unionKeys(files.flatMap { ($0["labels"] as? [[String: Any]]) ?? [] }),
             "unresolvedFile": unionKeys(files),
@@ -250,9 +250,9 @@ struct BackupTests {
         var libraries = try #require(json["libraries"] as? [[String: Any]])
         var library = libraries[0]
         library["labelGroups"] = (library["labelGroups"] as? [[String: Any]] ?? [])
-            .map { group -> [String: Any] in
-                var copy = group
-                copy["labels"] = (group["labels"] as? [[String: Any]] ?? []).map { label -> [String: Any] in
+            .map { field -> [String: Any] in
+                var copy = field
+                copy["labels"] = (field["labels"] as? [[String: Any]] ?? []).map { label -> [String: Any] in
                     var l = label
                     l["isArchived"] = l.removeValue(forKey: "isHidden") ?? false
                     return l

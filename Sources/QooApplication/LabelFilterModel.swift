@@ -2,7 +2,7 @@
 //  ラベルフィルタの状態 [LF-01〜LF-14][PN-01〜PN-06][RT-01〜RT-03]。
 //
 //  **選択はウインドウ固有状態** [ST-20][ST-21][LF-06]——DB に保存せず、ウインドウ
-//  ごとに独立する。一方で**ピン留めとグループの並び順はライブラリ単位の永続設定**
+//  ごとに独立する。一方で**ピン留めとフィールドの並び順はライブラリ単位の永続設定**
 //  で全ウインドウ共有 [ST-23][PN-04][LG-07]。同じ 1 つの画面に「ウインドウごと」と
 //  「全ウインドウ共有」が同居するので、どちらなのかを取り違えないこと。
 //
@@ -26,32 +26,32 @@ public final class LabelFilterModel {
     /// 表示中のライブラリ。`nil` ならフィルタは出さない [LF-01]。
     public private(set) var library: LibrarySummary?
 
-    /// 並べる順に整えたグループ [LF-01][LF-03]。**見えるラベルが 1 件も無い
-    /// グループは含まない** [LF-02][LG-05][LA3-05]。
-    public private(set) var groups: [LabelGroupSummary] = []
+    /// 並べる順に整えたフィールド [LF-01][LF-03]。**見えるラベルが 1 件も無い
+    /// フィールドは含まない** [LF-02][LG-05][LA3-05]。
+    public private(set) var fields: [FieldSummary] = []
 
-    /// グループごとのラベル [LF-04]。**非表示のものは含まない** [LA3-05]
+    /// フィールドごとのラベル [LF-04]。**非表示のものは含まない** [LA3-05]
     /// ——手動で隠したもの [LA3-02] と、生きている実体が 1 件も無いもの [LA3-01]。
-    public private(set) var labels: [LabelGroupID: [LabelSummary]] = [:]
+    public private(set) var labels: [FieldID: [LabelSummary]] = [:]
 
     // MARK: - 選択（ウインドウ固有）
 
-    /// グループ内 OR × グループ間 AND [LF-08〜LF-10]。初期状態は全 OFF [LF-06]。
-    public private(set) var selection: [LabelGroupID: Set<LabelID>] = [:]
+    /// フィールド内 OR × フィールド間 AND [LF-08〜LF-10]。初期状態は全 OFF [LF-06]。
+    public private(set) var selection: [FieldID: Set<LabelID>] = [:]
 
     /// 評価フィルタ [RT-01〜RT-03]。ラベルフィルタと AND [RT-02]。
     public var ratingFilter: FileQuery.RatingFilter? {
         didSet { if ratingFilter != oldValue { bumpRevision() } }
     }
 
-    /// 展開しているグループ [LF-04]。
-    public var expandedGroups: Set<LabelGroupID> = []
+    /// 展開しているフィールド [LF-04]。
+    public var expandedFields: Set<FieldID> = []
 
-    /// 「もっと見る」で全ラベルを出しているグループ [PN-02][PN-05]。
-    public var revealedGroups: Set<LabelGroupID> = []
+    /// 「もっと見る」で全ラベルを出しているフィールド [PN-02][PN-05]。
+    public var revealedFields: Set<FieldID> = []
 
     /// 「もっと見る」の中のインクリメンタル検索 [PN-05]。
-    public var searchText: [LabelGroupID: String] = [:]
+    public var searchText: [FieldID: String] = [:]
 
     // MARK: - 結果
 
@@ -96,7 +96,7 @@ public final class LabelFilterModel {
     }
 
     public func isSelected(_ label: LabelSummary) -> Bool {
-        selection[label.groupID]?.contains(label.id) == true
+        selection[label.fieldID]?.contains(label.id) == true
     }
 
     /// 選んだラベルの総数。見出しのバッジに出す。
@@ -104,35 +104,35 @@ public final class LabelFilterModel {
         selection.values.reduce(0) { $0 + $1.count }
     }
 
-    /// そのグループで実際に並べるラベル [PN-02][PN-03][PN-06]。
+    /// そのフィールドで実際に並べるラベル [PN-02][PN-03][PN-06]。
     ///
     /// 並べ方そのものは `PinnedLabelListing` が持つ——右ペインのラベル設定
     /// [RL-04] が「ラベルフィルタと同様に」同じ一覧を出すので、規則を 2 箇所に
     /// 置かない。ここが渡すのは「チェック中のものは必ず含める」[PN-06] だけ。
-    public func visibleLabels(in group: LabelGroupSummary) -> [LabelSummary] {
+    public func visibleLabels(in field: FieldSummary) -> [LabelSummary] {
         PinnedLabelListing.visible(
-            labels[group.id] ?? [],
+            labels[field.id] ?? [],
             collapsedLimit: AppLimits.LabelFilter.collapsedLabelCount,
-            isRevealed: revealedGroups.contains(group.id),
-            searchText: searchText[group.id] ?? "",
+            isRevealed: revealedFields.contains(field.id),
+            searchText: searchText[field.id] ?? "",
             mustInclude: { self.isSelected($0) })
     }
 
     /// 「もっと見る」を出すべきか [PN-02][PN-03]。
-    public func hasMoreLabels(in group: LabelGroupSummary) -> Bool {
+    public func hasMoreLabels(in field: FieldSummary) -> Bool {
         PinnedLabelListing.hasMore(
-            labels[group.id] ?? [],
+            labels[field.id] ?? [],
             collapsedLimit: AppLimits.LabelFilter.collapsedLabelCount,
-            isRevealed: revealedGroups.contains(group.id),
+            isRevealed: revealedFields.contains(field.id),
             mustInclude: { self.isSelected($0) })
     }
 
     // MARK: - 操作
 
     public func toggle(_ label: LabelSummary) {
-        var set = selection[label.groupID] ?? []
+        var set = selection[label.fieldID] ?? []
         if set.contains(label.id) { set.remove(label.id) } else { set.insert(label.id) }
-        if set.isEmpty { selection[label.groupID] = nil } else { selection[label.groupID] = set }
+        if set.isEmpty { selection[label.fieldID] = nil } else { selection[label.fieldID] = set }
         bumpRevision()
     }
 
@@ -154,8 +154,8 @@ public final class LabelFilterModel {
     /// 選択のあるフィールドは**開いた状態にする**——チェックが入ったのに
     /// 畳まれたままだと、何が効いているのか確かめようがない。
     public func apply(_ condition: ShelfCondition) {
-        selection = condition.groupedSelection { groupOf[$0] }
-        expandedGroups.formUnion(selection.keys)
+        selection = condition.selectionByField { fieldOf[$0] }
+        expandedFields.formUnion(selection.keys)
         ratingFilter = condition.rating          // didSet が revision を上げる
         bumpRevision()
     }
@@ -163,17 +163,17 @@ public final class LabelFilterModel {
     /// いま画面に出ているラベルの所属 [SH-05]。**解決の規則を 1 箇所に置く**
     /// ——`apply` と一致判定 [SH-08] が別々に組み立てると、片方だけ直したときに
     /// 「復元はできるのに一致しない」形でずれる。
-    public var groupOf: [LabelID: LabelGroupID] {
-        var result: [LabelID: LabelGroupID] = [:]
-        for (group, items) in labels {
-            for label in items { result[label.id] = group }
+    public var fieldOf: [LabelID: FieldID] {
+        var result: [LabelID: FieldID] = [:]
+        for (field, items) in labels {
+            for label in items { result[label.id] = field }
         }
         return result
     }
 
     /// いま解決できるラベルだけに畳んだ写し [SH-08]。一致判定に使う。
     public func resolvable(_ condition: ShelfCondition) -> ShelfCondition {
-        let map = groupOf
+        let map = fieldOf
         return condition.keepingResolvableLabels { map[$0] }
     }
 
@@ -191,8 +191,8 @@ public final class LabelFilterModel {
     /// ライブラリを切り替えたら選択をリセットする [ST-26]。
     private func resetSelection() {
         selection.removeAll()
-        expandedGroups.removeAll()
-        revealedGroups.removeAll()
+        expandedFields.removeAll()
+        revealedFields.removeAll()
         searchText.removeAll()
         if ratingFilter != nil { ratingFilter = nil }
         allowedChildNames = nil
@@ -202,7 +202,7 @@ public final class LabelFilterModel {
 
     // MARK: - 読み込み
 
-    /// 表示中のフォルダに対応するライブラリを解決し、グループとラベルを読む
+    /// 表示中のフォルダに対応するライブラリを解決し、フィールドとラベルを読む
     /// [LF-01][LF-02]。
     ///
     /// - Parameter registrationUUID: 現在のタブが**登録フォルダ経由**で開かれて
@@ -215,7 +215,7 @@ public final class LabelFilterModel {
         if resolved?.id != library?.id { resetSelection() }
         library = resolved
         guard let library = resolved else {
-            groups = []
+            fields = []
             labels = [:]
             totalCount = nil
             unresolvedCounts = nil
@@ -223,27 +223,27 @@ public final class LabelFilterModel {
             return
         }
         do {
-            let all = try await services.labelGroups(libraryID: library.id)
+            let all = try await services.fields(libraryID: library.id)
             // **フィルタに出すのは「見えるラベル」だけ** [LA3-05]——手動で
             // 隠したもの [LA3-02] と、生きている実体が 1 件も無いもの [LA3-01]。
             // 後者は導出なので、実体が戻れば次の読み直しで自然に復帰する。
             //
-            // **グループの出し分けを `labelCount` で先に決めない**——あの値は
+            // **フィールドの出し分けを `labelCount` で先に決めない**——あの値は
             // 非表示のラベルも数える（フィールド編集ウインドウのため）。
-            // 読んでから絞り、空になったグループを落とす [LF-02][LG-05]。
-            var loaded: [LabelGroupID: [LabelSummary]] = [:]
-            for group in all where group.labelCount > 0 {
-                let visible = try await Self.visibleLabels(in: group.id, services: services)
-                if !visible.isEmpty { loaded[group.id] = visible }
+            // 読んでから絞り、空になったフィールドを落とす [LF-02][LG-05]。
+            var loaded: [FieldID: [LabelSummary]] = [:]
+            for field in all where field.labelCount > 0 {
+                let visible = try await Self.visibleLabels(in: field.id, services: services)
+                if !visible.isEmpty { loaded[field.id] = visible }
             }
-            groups = all.filter { loaded[$0.id] != nil }
+            fields = all.filter { loaded[$0.id] != nil }
             labels = loaded
             pruneSelectionToVisibleLabels()
             totalCount = try await services.fileCount(FileQuery(libraryID: library.id))
             unresolvedCounts = try await services.unresolvedFileCounts()[library.id]
             loadFailure = nil
         } catch {
-            groups = []
+            fields = []
             labels = [:]
             unresolvedCounts = nil
             loadFailure = String(describing: error)
@@ -323,7 +323,7 @@ public final class LabelFilterModel {
                           services: LibraryServices) async {
         do {
             try await services.setLabelPinned(label.id, pinned)
-            labels[label.groupID] = try await Self.visibleLabels(in: label.groupID,
+            labels[label.fieldID] = try await Self.visibleLabels(in: label.fieldID,
                                                                 services: services)
             pruneSelectionToVisibleLabels()
         } catch {
@@ -336,9 +336,9 @@ public final class LabelFilterModel {
     /// リポジトリは非表示のものも返す [LA3-03]——出し分けは呼び出し側の都合
     /// なので、その判断をこの型の中で 2 度書かない（読み直す経路が
     /// `load` と `setPinned` の 2 つあり、片方だけ絞る形を実際に作った）。
-    private static func visibleLabels(in groupID: LabelGroupID,
+    private static func visibleLabels(in fieldID: FieldID,
                                       services: LibraryServices) async throws -> [LabelSummary] {
-        try await services.labels(groupID: groupID).filter(\.isVisible)
+        try await services.labels(fieldID: fieldID).filter(\.isVisible)
     }
 
     /// 一覧から消えたラベルのチェックを落とす [LA3-01][LF-05]。
@@ -356,26 +356,26 @@ public final class LabelFilterModel {
     /// 返さない条件なので、緩むほうが利用者に説明できる。
     private func pruneSelectionToVisibleLabels() {
         var changed = false
-        for (groupID, selected) in selection {
-            let visible = Set((labels[groupID] ?? []).map(\.id))
+        for (fieldID, selected) in selection {
+            let visible = Set((labels[fieldID] ?? []).map(\.id))
             let kept = selected.intersection(visible)
             if kept.count != selected.count {
                 changed = true
-                if kept.isEmpty { selection.removeValue(forKey: groupID) }
-                else { selection[groupID] = kept }
+                if kept.isEmpty { selection.removeValue(forKey: fieldID) }
+                else { selection[fieldID] = kept }
             }
         }
         if changed { bumpRevision() }
     }
 
-    /// グループの並べ替え [LF-03][LG-07]。
-    public func reorderGroups(_ ordered: [LabelGroupSummary],
+    /// フィールドの並べ替え [LF-03][LG-07]。
+    public func reorderFields(_ ordered: [FieldSummary],
                               services: LibraryServices) async {
-        groups = ordered
+        fields = ordered
         do {
-            try await services.setLabelGroupOrder(ordered.map(\.id))
+            try await services.setFieldOrder(ordered.map(\.id))
         } catch {
-            Log.ui.warning("グループの並び順を保存できない: \(String(describing: error))")
+            Log.ui.warning("フィールドの並び順を保存できない: \(String(describing: error))")
         }
     }
 }

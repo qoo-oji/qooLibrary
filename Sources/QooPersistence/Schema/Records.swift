@@ -51,7 +51,7 @@ struct LibraryRecord: Codable, FetchableRecord, MutablePersistableRecord, Sendab
 
 // MARK: - ラベル
 
-struct LabelGroupRecord: Codable, FetchableRecord, MutablePersistableRecord, Sendable {
+struct FieldRecord: Codable, FetchableRecord, MutablePersistableRecord, Sendable {
     static let databaseTableName = "labelGroup"
     var id: Int64?
     var libraryId: Int64
@@ -451,6 +451,9 @@ struct LibrarySettingsPayload: Codable, Sendable {
     var delimiters: DelimiterSet = .default     // [9.3]
     var semanticBindings: [String: Int] = [:]   // [RW-13]
     var seriesTitleCompositionFormat: String = "@series @volume"   // [SE-33]
+    /// **鍵は `labelGroupOrder` のまま**——合成 CodingKeys なので
+    /// プロパティ名がそのまま `settingsJSON` の鍵になる。改名すると
+    /// 既存ストアの並び順が黙って失われる。
     var labelGroupOrder: [Int] = []             // [LG-07][ST-23]
     /// ファイル自身が持つメタデータを読むか [EM-06]。
     var readsEmbeddedMetadata: Bool = true

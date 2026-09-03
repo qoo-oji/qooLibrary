@@ -26,11 +26,11 @@ public final class ProtectionEditorModel {
         public let urls: [URL]
         public let displayName: String
         /// そのライブラリのフィールド [PR-02]。「全体」はこれが揃った状態。
-        public let fields: [LabelGroupID]
+        public let fields: [FieldID]
         public let scopes: [FileID: Set<ProtectionScope>]
 
         public init(fileIDs: [FileID], urls: [URL], displayName: String,
-                    fields: [LabelGroupID], scopes: [FileID: Set<ProtectionScope>]) {
+                    fields: [FieldID], scopes: [FileID: Set<ProtectionScope>]) {
             self.fileIDs = fileIDs
             self.urls = urls
             self.displayName = displayName
@@ -86,7 +86,7 @@ public final class ProtectionEditorModel {
             // **行から読まない。** 渡された行は読み込み時点の写しで、⌘Z や
             // 走査で保護が変わっていても古いまま。
             let scopes = try await services.protectedScopes(ids: ids)
-            let fields = try await services.labelGroups(libraryID: library.id).map(\.id)
+            let fields = try await services.fields(libraryID: library.id).map(\.id)
             state = .ready(Subject(
                 fileIDs: ids, urls: rows.map(\.url),
                 displayName: LabelEditorModel.displayName(for: rows.map(\.url)),

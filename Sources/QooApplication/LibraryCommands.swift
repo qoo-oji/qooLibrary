@@ -145,7 +145,7 @@ public final class AssignLabelCommand: Command {
 
     private let labelID: LabelID
     /// そのラベルが属するフィールド [PR-02]。保護の単位。
-    private let groupID: LabelGroupID
+    private let fieldID: FieldID
     private let previous: [Previous]
     private let assigning: Bool
     private let labelName: String
@@ -155,11 +155,11 @@ public final class AssignLabelCommand: Command {
     /// - Parameters:
     ///   - assigning: 付けるなら `true`、外すなら `false`。
     ///   - subjectName: 表示に使う対象の呼び名（単一ならファイル名、複数なら「N 項目」）。
-    public init(labelID: LabelID, groupID: LabelGroupID, labelName: String,
+    public init(labelID: LabelID, fieldID: FieldID, labelName: String,
                 previous: [Previous], assigning: Bool, subjectName: String,
                 services: LibraryServices) {
         self.labelID = labelID
-        self.groupID = groupID
+        self.fieldID = fieldID
         self.labelName = labelName
         self.previous = previous
         self.assigning = assigning
@@ -182,7 +182,7 @@ public final class AssignLabelCommand: Command {
         guard !previous.isEmpty else { return .success }
         var scopes: [FileID: Set<ProtectionScope>] = [:]
         for item in previous {
-            scopes[item.fileID] = item.protectedScopes.union([.field(groupID)])
+            scopes[item.fileID] = item.protectedScopes.union([.field(fieldID)])
         }
         try await services.applyLabelAssignments(
             labelID: labelID,
@@ -222,7 +222,7 @@ public final class AssignLabelCommand: Command {
     ///
     /// - Returns: 何も変わらないなら `nil`（Undo スタックを汚さない）。
     public static func toggling(
-        labelID: LabelID, groupID: LabelGroupID, labelName: String,
+        labelID: LabelID, fieldID: FieldID, labelName: String,
         files: [(id: FileID, url: URL)],
         assignments: [FileID: Set<LabelID>],
         protectedScopes: [FileID: Set<ProtectionScope>],
@@ -234,9 +234,9 @@ public final class AssignLabelCommand: Command {
                      protectedScopes: protectedScopes[file.id] ?? [])
         }
         guard previous.contains(where: {
-            $0.wasAssigned != assigning || !$0.protectedScopes.contains(.field(groupID))
+            $0.wasAssigned != assigning || !$0.protectedScopes.contains(.field(fieldID))
         }) else { return nil }
-        return AssignLabelCommand(labelID: labelID, groupID: groupID, labelName: labelName,
+        return AssignLabelCommand(labelID: labelID, fieldID: fieldID, labelName: labelName,
                                   previous: previous, assigning: assigning,
                                   subjectName: subjectName, services: services)
     }

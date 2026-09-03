@@ -37,23 +37,23 @@ struct ShelfConditionTests {
     @Test("解決できないラベルは落ちる [SH-05]——画面のチェックに現れない条件を効かせない")
     func groupedSelectionDropsUnknownLabels() {
         let condition = ShelfCondition(labelIDs: [label(1), label(2), label(3)])
-        let groups: [LabelID: LabelGroupID] = [
-            label(1): LabelGroupID(rawValue: 10),
-            label(3): LabelGroupID(rawValue: 20),
+        let fields: [LabelID: FieldID] = [
+            label(1): FieldID(rawValue: 10),
+            label(3): FieldID(rawValue: 20),
         ]
-        let selection = condition.groupedSelection { groups[$0] }
-        #expect(selection == [LabelGroupID(rawValue: 10): [label(1)],
-                              LabelGroupID(rawValue: 20): [label(3)]])
+        let selection = condition.selectionByField { fields[$0] }
+        #expect(selection == [FieldID(rawValue: 10): [label(1)],
+                              FieldID(rawValue: 20): [label(3)]])
         // 記録そのものは残す——ラベル削除を ⌘Z で戻すと同じ ID で復活するので、
         // 落とすのは「いま解決できない」ぶんだけ。
         #expect(condition.labelIDs.count == 3)
     }
 
-    @Test("グループごとの選択から作れる")
+    @Test("フィールドごとの選択から作れる")
     func buildsFromGroupedSelection() {
         let c = ShelfCondition.from(
-            selection: [LabelGroupID(rawValue: 1): [label(7), label(2)],
-                        LabelGroupID(rawValue: 2): [label(5)]],
+            selection: [FieldID(rawValue: 1): [label(7), label(2)],
+                        FieldID(rawValue: 2): [label(5)]],
             rating: .init(stars: 4, mode: .exact), searchText: "x",
             sort: .init(key: .rating, ascending: false), displayMode: .libraryFlat)
         #expect(c.labelIDs == [label(2), label(5), label(7)])

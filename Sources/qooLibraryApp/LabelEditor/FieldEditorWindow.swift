@@ -1,16 +1,16 @@
 //
-//  ラベルグループの編集ウインドウ [LE-01〜LE-12][15.2 節]。
+//  ラベルフィールドの編集ウインドウ [LE-01〜LE-12][15.2 節]。
 //
-//  3 ペイン: 左＝ライブラリ一覧／中央＝ラベルグループ一覧／右＝ラベル一覧。
+//  3 ペイン: 左＝ライブラリ一覧／中央＝ラベルフィールド一覧／右＝ラベル一覧。
 //  `LibrarySettingsWindow` と同じ `NavigationSplitView` で見た目を揃える [CP-01]。
 //
 //  ## 中央ペインは設定ウインドウと同じ実装［ユーザー判断］
-//  グループの改名・予約語紐づけ [LE-01][LE-02] は `LibraryLabelGroupsSettingsView`
+//  フィールドの改名・予約語紐づけ [LE-01][LE-02] は `LibraryFieldsSettingsView`
 //  が持っており、ここはそれに選択を足して埋め込むだけ。**同じ編集を 2 箇所に
 //  書かない**——このリポジトリはそれで 3 度取り残しを作っている。
 //
 //  ## 保存の意味が 2 通りある（承知のうえ）
-//  中央（グループ）は**草案を編集して保存**する形（保存で `settingsRevision` が
+//  中央（フィールド）は**草案を編集して保存**する形（保存で `settingsRevision` が
 //  上がり、再スキャンを促す）。右（ラベル）は**即座に DB へ書いて ⌘Z で戻す**形。
 //  混ざると分かりにくいので、中央には保存ボタンと未保存の印を必ず出す。
 //
@@ -18,13 +18,13 @@ import QooApplication
 import QooKit
 import SwiftUI
 
-struct LabelGroupEditorWindow: View {
+struct FieldEditorWindow: View {
     @Environment(\.locale) private var locale
     @Environment(\.openWindow) private var openWindow
-    @State private var model = LabelGroupEditorModel()
+    @State private var model = FieldEditorModel()
     @State private var settings = LibrarySettingsModel()
-    /// 中央ペインで選んでいるグループ（草案側の識別子）。
-    @State private var selectedGroupDraftID: UUID?
+    /// 中央ペインで選んでいるフィールド（草案側の識別子）。
+    @State private var selectedFieldDraftID: UUID?
 
     var body: some View {
         NavigationSplitView(columnVisibility: .constant(.all)) {
@@ -32,7 +32,7 @@ struct LabelGroupEditorWindow: View {
                 .navigationSplitViewColumnWidth(min: 150, ideal: 180, max: 260)
         } content: {
             groupPane
-                // **中央は共有した `LibraryLabelGroupsSettingsView` が入る。**
+                // **中央は共有した `LibraryFieldsSettingsView` が入る。**
                 // あの表は 参照名 90 ＋ 名前 120 ＋ 色 24 ＋ 予約語 130 ＋
                 // 自動付与 60 ＋ − 22 と間隔で 500pt 強を要る[実測]ので、
                 // 設定ウインドウの詳細ペイン（min 420）並みの幅を確保する
@@ -49,7 +49,7 @@ struct LabelGroupEditorWindow: View {
         // 見に行く必要が無い。
         .frame(minWidth: 1040, minHeight: 540)
         // **読んだら消費する（`nil` に戻す）。** 残したままだと、次に同じ
-        // ライブラリで開く要求が来ても `.onChange` が変化を見ず、グループの
+        // ライブラリで開く要求が来ても `.onChange` が変化を見ず、フィールドの
         // 選択 [RL3-04] が適用されない。
         .task {
             let pending = LabelEditorNavigation.shared.pendingLibraryID
@@ -70,8 +70,8 @@ struct LabelGroupEditorWindow: View {
         .onChange(of: model.selectedLibraryID) { _, _ in
             Task { await reloadBoth() }
         }
-        .onChange(of: selectedGroupDraftID) { _, _ in
-            model.selectedGroupID = persistentGroupID(for: selectedGroupDraftID)
+        .onChange(of: selectedFieldDraftID) { _, _ in
+            model.selectedFieldID = persistentFieldID(for: selectedFieldDraftID)
             Task { await model.reload() }
         }
         // ⌘Z / ⇧⌘Z は View を通らずに DB を変える。含めないと取り消した結果が
@@ -89,9 +89,9 @@ struct LabelGroupEditorWindow: View {
     private func reloadBoth() async {
         settings.selectedLibraryID = model.selectedLibraryID
         await settings.prepare(preferring: model.selectedLibraryID)
-        syncGroupSelection()
-        consumePendingGroupSelection()
-        model.selectedGroupID = persistentGroupID(for: selectedGroupDraftID)
+        syncFieldSelection()
+        consumePendingFieldSelection()
+        model.selectedFieldID = persistentFieldID(for: selectedFieldDraftID)
         await model.reload()
     }
 
@@ -99,40 +99,40 @@ struct LabelGroupEditorWindow: View {
     ///
     /// 草案が読み込まれた後（`reloadBoth` の中）でしか対応付けられないので、
     /// ここで消費する。見つからなければ（保存前に消えた等）既定の選択のまま。
-    private func consumePendingGroupSelection() {
-        guard let pending = LabelEditorNavigation.shared.pendingGroupID else { return }
-        LabelEditorNavigation.shared.pendingGroupID = nil
-        guard let draft = draftGroups.first(where: { $0.persistentID == pending.rawValue })
+    private func consumePendingFieldSelection() {
+        guard let pending = LabelEditorNavigation.shared.pendingFieldID else { return }
+        LabelEditorNavigation.shared.pendingFieldID = nil
+        guard let draft = draftFields.first(where: { $0.persistentID == pending.rawValue })
         else { return }
-        selectedGroupDraftID = draft.id
+        selectedFieldDraftID = draft.id
     }
 
     /// 中央ペインの選択が消えていたら選び直す。
     ///
-    /// **ラベルを持つ最初のグループを選ぶ**［設計判断］。素直に先頭を選ぶと、
-    /// ラベルが 1 つも無いグループ（`LG-04` の無効状態で、ラベルフィルタにも
+    /// **ラベルを持つ最初のフィールドを選ぶ**［設計判断］。素直に先頭を選ぶと、
+    /// ラベルが 1 つも無いフィールド（`LG-04` の無効状態で、ラベルフィルタにも
     /// 出ない）に着地して右ペインが空になる——「ラベルを編集」で開いた直後に
     /// 見せる画面としては行き止まりで、必ずもう 1 クリック要る。
-    /// どのグループにもラベルが無ければ先頭へ落とす。
-    private func syncGroupSelection() {
-        let ids = draftGroups.map(\.id)
-        if let current = selectedGroupDraftID, ids.contains(current) { return }
-        let populated = draftGroups.first { draft in
+    /// どのフィールドにもラベルが無ければ先頭へ落とす。
+    private func syncFieldSelection() {
+        let ids = draftFields.map(\.id)
+        if let current = selectedFieldDraftID, ids.contains(current) { return }
+        let populated = draftFields.first { draft in
             guard let persistent = draft.persistentID else { return false }
-            return model.groups.first { $0.id.rawValue == persistent }?.labelCount ?? 0 > 0
+            return model.fields.first { $0.id.rawValue == persistent }?.labelCount ?? 0 > 0
         }
-        selectedGroupDraftID = populated?.id ?? ids.first
+        selectedFieldDraftID = populated?.id ?? ids.first
     }
 
     /// 草案側の識別子から DB の行 ID を引く。
     ///
-    /// **新しく足したグループはまだ行を持たない**（`persistentID == nil`）ので
+    /// **新しく足したフィールドはまだ行を持たない**（`persistentID == nil`）ので
     /// `nil` を返す——右ペインは「保存すると編集できます」を出す。
-    private func persistentGroupID(for draftID: UUID?) -> LabelGroupID? {
+    private func persistentFieldID(for draftID: UUID?) -> FieldID? {
         guard let draftID,
-              let draft = draftGroups.first(where: { $0.id == draftID }),
+              let draft = draftFields.first(where: { $0.id == draftID }),
               let persistent = draft.persistentID else { return nil }
-        return LabelGroupID(rawValue: persistent)
+        return FieldID(rawValue: persistent)
     }
 
     /// 草案は Optional なので、共有するエディタには非 Optional の束縛だけを見せる
@@ -142,7 +142,7 @@ struct LabelGroupEditorWindow: View {
                 set: { settings.draft = $0 })
     }
 
-    private var draftGroups: [LabelGroupDraft] { settings.draft?.labelGroups ?? [] }
+    private var draftFields: [FieldDraft] { settings.draft?.fields ?? [] }
 
     // MARK: - 左: ライブラリ一覧
 
@@ -214,14 +214,14 @@ struct LabelGroupEditorWindow: View {
         }
     }
 
-    // MARK: - 中央: ラベルグループ
+    // MARK: - 中央: ラベルフィールド
 
     private var groupPane: some View {
         VStack(alignment: .leading, spacing: 0) {
             ScrollView {
-                LibraryLabelGroupsSettingsView(
+                LibraryFieldsSettingsView(
                     draft: boundDraft,
-                    selection: $selectedGroupDraftID,
+                    selection: $selectedFieldDraftID,
                     showsHeader: false)
                     .padding(Tokens.spacing.l)
             }
@@ -230,7 +230,7 @@ struct LabelGroupEditorWindow: View {
         }
     }
 
-    /// **保存ボタンは必ず出す。** グループの編集は草案なので、押すまで DB には
+    /// **保存ボタンは必ず出す。** フィールドの編集は草案なので、押すまで DB には
     /// 入らない——右ペインが即座に反映されるのと意味が違うことを画面に出す。
     private var groupFooter: some View {
         HStack(spacing: Tokens.spacing.m) {
@@ -267,7 +267,7 @@ final class LabelEditorNavigation {
     var pendingLibraryID: LibraryID?
     /// 開いたときに選ぶフィールド [RL3-04]。ライブラリと組でしか意味を
     /// 持たないので、`open` だけが設定する。
-    var pendingGroupID: LabelGroupID?
+    var pendingFieldID: FieldID?
     private init() {}
 
     /// 開く経路はここ 1 つ [CP-02]。**フォルダツリー・ラベルフィルタ・右ペイン・
@@ -275,11 +275,11 @@ final class LabelEditorNavigation {
     /// 書き直さない——「同じに見える操作に独立した経路を作って片方だけ直す」を
     /// 避ける。
     @MainActor
-    static func open(libraryID: LibraryID, groupID: LabelGroupID? = nil,
+    static func open(libraryID: LibraryID, fieldID: FieldID? = nil,
                      openWindow: OpenWindowAction) {
-        // グループを先に置く——ウインドウ側は `pendingLibraryID` の変化で
-        // 動くので、逆順だとグループの無いまま読み込みが始まりうる。
-        shared.pendingGroupID = groupID
+        // フィールドを先に置く——ウインドウ側は `pendingLibraryID` の変化で
+        // 動くので、逆順だとフィールドの無いまま読み込みが始まりうる。
+        shared.pendingFieldID = fieldID
         shared.pendingLibraryID = libraryID
         openWindow(id: "labelEditor")
     }

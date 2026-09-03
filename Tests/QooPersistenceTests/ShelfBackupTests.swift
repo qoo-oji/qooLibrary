@@ -16,20 +16,20 @@ struct ShelfBackupTests {
         let f: Fixture
         let backup: SQLiteBackupRepository
         let shelves: SQLiteShelfRepository
-        let circleGroup: LabelGroupSummary
+        let circleGroup: FieldSummary
         let labelA: LabelID
         let labelB: LabelID
 
         static func make() async throws -> Setup {
             let f = try await Fixture.make(preset: "builtin.doujinshi-a")
-            let groups = try await f.labels.groups(libraryID: f.libraryID)
-            let circle = try #require(groups.first { $0.name == "サークル" })
+            let fields = try await f.labels.fields(libraryID: f.libraryID)
+            let circle = try #require(fields.first { $0.name == "サークル" })
             return Setup(f: f,
                          backup: SQLiteBackupRepository(database: f.database),
                          shelves: SQLiteShelfRepository(database: f.database),
                          circleGroup: circle,
-                         labelA: try await f.labels.ensureLabel(groupID: circle.id, name: "サークル値A"),
-                         labelB: try await f.labels.ensureLabel(groupID: circle.id, name: "サークル値B"))
+                         labelA: try await f.labels.ensureLabel(fieldID: circle.id, name: "サークル値A"),
+                         labelB: try await f.labels.ensureLabel(fieldID: circle.id, name: "サークル値B"))
         }
     }
 
@@ -117,8 +117,8 @@ struct ShelfBackupTests {
         document.libraries[0].shelves?[0].labels
             .append(ShelfLabelBackup(groupIndex: s.circleGroup.index, labelName: "この環境に無い値"))
         // 参照だけ足し、ラベルそのものは文書から消しておく。
-        document.libraries[0].labelGroups = document.libraries[0].labelGroups.map { group in
-            var copy = group
+        document.libraries[0].labelGroups = document.libraries[0].labelGroups.map { field in
+            var copy = field
             copy.labels.removeAll { $0.name == "この環境に無い値" }
             return copy
         }

@@ -7,22 +7,22 @@ import QooKit
 @Suite("ラベルフィルタと問い合わせ [7.4][LF-08〜LF-10][FI-01〜FI-05]")
 struct QueryTests {
 
-    /// 3 グループ × ラベルを付けたファイルを用意する。
+    /// 3 フィールド × ラベルを付けたファイルを用意する。
     struct Setup {
         let f: Fixture
-        /// (グループ番号, ラベル名) → LabelID
+        /// (フィールド番号, ラベル名) → LabelID
         var labelID: [String: LabelID] = [:]
         var fileID: [String: FileID] = [:]
 
         static func make() async throws -> Setup {
             let f = try await Fixture.make(preset: "builtin.doujinshi-a")
             var s = Setup(f: f)
-            let circle = try #require(try await f.labels.group(libraryID: f.libraryID, index: 2))
-            let author = try #require(try await f.labels.group(libraryID: f.libraryID, index: 3))
-            let genre = try #require(try await f.labels.group(libraryID: f.libraryID, index: 4))
-            for (group, names) in [(circle, ["C1", "C2"]), (author, ["A1", "A2"]), (genre, ["G1"])] {
+            let circle = try #require(try await f.labels.field(libraryID: f.libraryID, index: 2))
+            let author = try #require(try await f.labels.field(libraryID: f.libraryID, index: 3))
+            let genre = try #require(try await f.labels.field(libraryID: f.libraryID, index: 4))
+            for (field, names) in [(circle, ["C1", "C2"]), (author, ["A1", "A2"]), (genre, ["G1"])] {
                 for name in names {
-                    s.labelID[name] = try await f.labels.ensureLabel(groupID: group.id, name: name)
+                    s.labelID[name] = try await f.labels.ensureLabel(fieldID: field.id, name: name)
                 }
             }
             // file1: C1 A1 G1 / file2: C1 A2 / file3: C2 A1 / file4: ラベルなし
@@ -45,8 +45,8 @@ struct QueryTests {
         func query(_ selection: [Int: [String]] = [:]) async throws -> FileQuery {
             var q = FileQuery(libraryID: f.libraryID)
             for (index, names) in selection {
-                let group = try #require(try await f.labels.group(libraryID: f.libraryID, index: index))
-                q.labelSelection[group.id] = Set(names.map { labelID[$0]! })
+                let field = try #require(try await f.labels.field(libraryID: f.libraryID, index: index))
+                q.labelSelection[field.id] = Set(names.map { labelID[$0]! })
             }
             return q
         }
@@ -91,7 +91,7 @@ struct QueryTests {
         #expect(unseen.map(\.filename) == ["消える.cbz"], "孫を巻き添えにしない")
     }
 
-    @Test("グループ内は OR [LF-08]")
+    @Test("フィールド内は OR [LF-08]")
     func orWithinGroup() async throws {
         let s = try await Setup.make()
         let page = try await s.f.files.query(try await s.query([2: ["C1", "C2"]]))
@@ -99,14 +99,14 @@ struct QueryTests {
         #expect(page.totalCount == 3)
     }
 
-    @Test("グループ間は AND [LF-09][LF-10]")
+    @Test("フィールド間は AND [LF-09][LF-10]")
     func andAcrossGroups() async throws {
         let s = try await Setup.make()
         let page = try await s.f.files.query(try await s.query([2: ["C1"], 3: ["A1"]]))
         #expect(page.rows.map(\.filename) == ["file1.cbz"])
     }
 
-    @Test("3 グループの AND")
+    @Test("3 フィールドの AND")
     func threeGroups() async throws {
         let s = try await Setup.make()
         #expect(try await s.f.files.query(try await s.query([2: ["C1"], 3: ["A1"], 4: ["G1"]]))
@@ -342,37 +342,37 @@ struct QueryTests {
 
 @Suite("SQLiteLabelRepository [LB-01〜LB-07][PR-01][DB-02][IX-03][IX-04]")
 struct LabelRepositoryTests {
-    @Test("一意性は (グループ, 正規化名)。表示名は最初の原文 [LB-01][N-03][NM-06]")
+    @Test("一意性は (フィールド, 正規化名)。表示名は最初の原文 [LB-01][N-03][NM-06]")
     func ensureLabelDeduplicates() async throws {
         let f = try await Fixture.make()
-        let group = try #require(try await f.labels.group(libraryID: f.libraryID, index: 2))
-        let a = try await f.labels.ensureLabel(groupID: group.id, name: "ＡＢＣ")
-        let b = try await f.labels.ensureLabel(groupID: group.id, name: "abc")
-        let c = try await f.labels.ensureLabel(groupID: group.id, name: " a b c ")
+        let field = try #require(try await f.labels.field(libraryID: f.libraryID, index: 2))
+        let a = try await f.labels.ensureLabel(fieldID: field.id, name: "ＡＢＣ")
+        let b = try await f.labels.ensureLabel(fieldID: field.id, name: "abc")
+        let c = try await f.labels.ensureLabel(fieldID: field.id, name: " a b c ")
         #expect(a == b, "全角と半角が別ラベルになった")
         #expect(a != c)
-        let labels = try await f.labels.labels(groupID: group.id)
+        let labels = try await f.labels.labels(fieldID: field.id)
         #expect(labels.first { $0.id == a }?.name == "ＡＢＣ", "表示名は最初の原文であるべき")
     }
 
     @Test("NFD と NFC は同じラベルになる [R-03]")
     func nfdAndNFCUnify() async throws {
         let f = try await Fixture.make()
-        let group = try #require(try await f.labels.group(libraryID: f.libraryID, index: 2))
+        let field = try #require(try await f.labels.field(libraryID: f.libraryID, index: 2))
         let a = try await f.labels.ensureLabel(
-            groupID: group.id, name: "パピプペポ".decomposedStringWithCanonicalMapping)
+            fieldID: field.id, name: "パピプペポ".decomposedStringWithCanonicalMapping)
         let b = try await f.labels.ensureLabel(
-            groupID: group.id, name: "パピプペポ".precomposedStringWithCanonicalMapping)
+            fieldID: field.id, name: "パピプペポ".precomposedStringWithCanonicalMapping)
         #expect(a == b)
     }
 
     @Test("件数は増分更新される [DB-02][IX-03]")
     func fileCountIsIncremental() async throws {
         let f = try await Fixture.make()
-        let group = try #require(try await f.labels.group(libraryID: f.libraryID, index: 2))
-        let label = try await f.labels.ensureLabel(groupID: group.id, name: "C1")
+        let field = try #require(try await f.labels.field(libraryID: f.libraryID, index: 2))
+        let label = try await f.labels.ensureLabel(fieldID: field.id, name: "C1")
         func count() async throws -> Int {
-            try await f.labels.labels(groupID: group.id)
+            try await f.labels.labels(fieldID: field.id)
                 .first { $0.id == label }?.fileCount ?? -1
         }
         #expect(try await count() == 0)
@@ -404,12 +404,12 @@ struct LabelRepositoryTests {
     @Test("ゴミ箱・保管庫のファイルは件数に数えない [TR-02][LF-13][FA-05]")
     func countExcludesTrashed() async throws {
         let f = try await Fixture.make()
-        let group = try #require(try await f.labels.group(libraryID: f.libraryID, index: 2))
-        let label = try await f.labels.ensureLabel(groupID: group.id, name: "C1")
+        let field = try #require(try await f.labels.field(libraryID: f.libraryID, index: 2))
+        let label = try await f.labels.ensureLabel(fieldID: field.id, name: "C1")
         let file = try await f.files.upsert(f.snapshot(inode: 1, path: "1.cbz"))
         try await f.labels.assign(fileID: file, labelID: label)
         try await f.files.markTrashed([file], at: Date())
-        #expect(try await f.labels.labels(groupID: group.id)
+        #expect(try await f.labels.labels(fieldID: field.id)
             .first { $0.id == label }?.fileCount == 0)
     }
 
@@ -417,16 +417,16 @@ struct LabelRepositoryTests {
     @Test("保護されたフィールドは走査が動かさない [PR-01][PR-02]")
     func manuallyRemovedIsNotRevived() async throws {
         let f = try await Fixture.make()
-        let group = try #require(try await f.labels.group(libraryID: f.libraryID, index: 2))
-        let keep = try await f.labels.ensureLabel(groupID: group.id, name: "残す")
-        let removed = try await f.labels.ensureLabel(groupID: group.id, name: "外した")
+        let field = try #require(try await f.labels.field(libraryID: f.libraryID, index: 2))
+        let keep = try await f.labels.ensureLabel(fieldID: field.id, name: "残す")
+        let removed = try await f.labels.ensureLabel(fieldID: field.id, name: "外した")
         let file = try await f.files.upsert(f.snapshot(inode: 1, path: "1.cbz"))
 
         try await f.labels.replaceAutoLabels(fileID: file, labelIDs: [keep, removed])
         try await f.labels.unassign(fileID: file, labelID: removed)
         // 外したフィールドは保護される [PR-03]（製品では `AssignLabelCommand` が
         // 同じトランザクションで立てる）。
-        try await f.files.setProtectedScopes([file: [.field(group.id)]])
+        try await f.files.setProtectedScopes([file: [.field(field.id)]])
 
         // 再計算で両方が当たっても、保護されたフィールドには触れない
         try await f.labels.replaceAutoLabels(fileID: file, labelIDs: [keep, removed])
@@ -437,12 +437,12 @@ struct LabelRepositoryTests {
     @Test("保護されたフィールドのラベルは走査で消えない [PR-01]")
     func manualIsNotRemovedByRecalculation() async throws {
         let f = try await Fixture.make()
-        let group = try #require(try await f.labels.group(libraryID: f.libraryID, index: 2))
-        let manual = try await f.labels.ensureLabel(groupID: group.id, name: "手動")
-        let auto = try await f.labels.ensureLabel(groupID: group.id, name: "自動")
+        let field = try #require(try await f.labels.field(libraryID: f.libraryID, index: 2))
+        let manual = try await f.labels.ensureLabel(fieldID: field.id, name: "手動")
+        let auto = try await f.labels.ensureLabel(fieldID: field.id, name: "自動")
         let file = try await f.files.upsert(f.snapshot(inode: 1, path: "1.cbz"))
         try await f.labels.assign(fileID: file, labelID: manual)
-        try await f.files.setProtectedScopes([file: [.field(group.id)]])   // [PR-03]
+        try await f.files.setProtectedScopes([file: [.field(field.id)]])   // [PR-03]
         try await f.labels.replaceAutoLabels(fileID: file, labelIDs: [auto])
         // 保護されたフィールドは丸ごと据え置き——`auto` も足されない [PR-01]。
         #expect(Set(try await f.labels.labelIDs(fileID: file)) == [manual])
@@ -451,9 +451,9 @@ struct LabelRepositoryTests {
     @Test("自動ラベルの入れ替えで不要になったものは外れる [RC-01]")
     func autoLabelsAreReplaced() async throws {
         let f = try await Fixture.make()
-        let group = try #require(try await f.labels.group(libraryID: f.libraryID, index: 2))
-        let old = try await f.labels.ensureLabel(groupID: group.id, name: "旧")
-        let new = try await f.labels.ensureLabel(groupID: group.id, name: "新")
+        let field = try #require(try await f.labels.field(libraryID: f.libraryID, index: 2))
+        let old = try await f.labels.ensureLabel(fieldID: field.id, name: "旧")
+        let new = try await f.labels.ensureLabel(fieldID: field.id, name: "新")
         let file = try await f.files.upsert(f.snapshot(inode: 1, path: "1.cbz"))
         try await f.labels.replaceAutoLabels(fileID: file, labelIDs: [old])
         try await f.labels.replaceAutoLabels(fileID: file, labelIDs: [new])
@@ -463,9 +463,9 @@ struct LabelRepositoryTests {
     @Test("ラベルの統合 [LB-07]")
     func mergeLabels() async throws {
         let f = try await Fixture.make()
-        let group = try #require(try await f.labels.group(libraryID: f.libraryID, index: 2))
-        let a = try await f.labels.ensureLabel(groupID: group.id, name: "表記ゆれA")
-        let b = try await f.labels.ensureLabel(groupID: group.id, name: "表記ゆれB")
+        let field = try #require(try await f.labels.field(libraryID: f.libraryID, index: 2))
+        let a = try await f.labels.ensureLabel(fieldID: field.id, name: "表記ゆれA")
+        let b = try await f.labels.ensureLabel(fieldID: field.id, name: "表記ゆれB")
         let f1 = try await f.files.upsert(f.snapshot(inode: 1, path: "1.cbz"))
         let f2 = try await f.files.upsert(f.snapshot(inode: 2, path: "2.cbz"))
         try await f.labels.assign(fileID: f1, labelID: a)
@@ -473,23 +473,23 @@ struct LabelRepositoryTests {
         try await f.labels.assign(fileID: f1, labelID: b)   // 両方持つ
 
         try await f.labels.merge(a, into: b)
-        #expect(try await f.labels.labels(groupID: group.id).map(\.id) == [b])
+        #expect(try await f.labels.labels(fieldID: field.id).map(\.id) == [b])
         #expect(try await f.labels.labelIDs(fileID: f1) == [b])
-        #expect(try await f.labels.labels(groupID: group.id)
+        #expect(try await f.labels.labels(fieldID: field.id)
             .first?.fileCount == 2)
     }
 
     @Test("改名と正規化名の追従 [LB-06]")
     func renameUpdatesNormalizedName() async throws {
         let f = try await Fixture.make()
-        let group = try #require(try await f.labels.group(libraryID: f.libraryID, index: 2))
-        let id = try await f.labels.ensureLabel(groupID: group.id, name: "旧名")
+        let field = try #require(try await f.labels.field(libraryID: f.libraryID, index: 2))
+        let id = try await f.labels.ensureLabel(fieldID: field.id, name: "旧名")
         try await f.labels.rename(id, to: "ＮＥＷ")
-        let label = try #require(try await f.labels.labels(groupID: group.id).first)
+        let label = try #require(try await f.labels.labels(fieldID: field.id).first)
         #expect(label.name == "ＮＥＷ")
         #expect(label.normalizedName == "new")
         // 正規化名が追従しているので、同じ値で ensure すると同じ ID になる
-        #expect(try await f.labels.ensureLabel(groupID: group.id, name: "new") == id)
+        #expect(try await f.labels.ensureLabel(fieldID: field.id, name: "new") == id)
     }
 
     /// **フィールドのラベル数は非表示のものも数える** [LA3-03]。
@@ -503,15 +503,15 @@ struct LabelRepositoryTests {
     @Test("フィールドのラベル数は非表示のものも数える [LA3-03]")
     func groupLabelCountIncludesHiddenLabels() async throws {
         let f = try await Fixture.make()
-        let group = try #require(try await f.labels.group(libraryID: f.libraryID, index: 2))
-        let id = try await f.labels.ensureLabel(groupID: group.id, name: "L")
-        #expect(try await f.labels.group(libraryID: f.libraryID, index: 2)?.labelCount == 1)
+        let field = try #require(try await f.labels.field(libraryID: f.libraryID, index: 2))
+        let id = try await f.labels.ensureLabel(fieldID: field.id, name: "L")
+        #expect(try await f.labels.field(libraryID: f.libraryID, index: 2)?.labelCount == 1)
 
         try await f.labels.setHidden([id], true)
-        #expect(try await f.labels.group(libraryID: f.libraryID, index: 2)?.labelCount == 1,
+        #expect(try await f.labels.field(libraryID: f.libraryID, index: 2)?.labelCount == 1,
                 "隠しても数える——このフィールドを触れなくしてはならない")
-        #expect(try await f.labels.groups(libraryID: f.libraryID)
-            .first { $0.id == group.id }?.labelCount == 1)
+        #expect(try await f.labels.fields(libraryID: f.libraryID)
+            .first { $0.id == field.id }?.labelCount == 1)
     }
 
     /// **リポジトリは非表示のものも返す** [LA3-03]——出し分けは呼び出し側の
@@ -520,29 +520,29 @@ struct LabelRepositoryTests {
     @Test("手動での非表示とピン留め [LA3-02][LB-03]")
     func hideAndPin() async throws {
         let f = try await Fixture.make()
-        let group = try #require(try await f.labels.group(libraryID: f.libraryID, index: 2))
-        let id = try await f.labels.ensureLabel(groupID: group.id, name: "L")
+        let field = try #require(try await f.labels.field(libraryID: f.libraryID, index: 2))
+        let id = try await f.labels.ensureLabel(fieldID: field.id, name: "L")
         try await f.labels.setHidden([id], true)
-        let hidden = try await f.labels.labels(groupID: group.id)
+        let hidden = try await f.labels.labels(fieldID: field.id)
         #expect(hidden.count == 1, "一覧からは消えない——出し分けは呼び出し側 [LA3-03]")
         #expect(hidden.first?.isHidden == true)
         #expect(hidden.first?.isVisible == false)
         try await f.labels.setHidden([id], false)
         try await f.labels.setPinned(id, true)
-        #expect(try await f.labels.labels(groupID: group.id).first?.isPinned == true)
+        #expect(try await f.labels.labels(fieldID: field.id).first?.isPinned == true)
     }
 
     /// ラベルフィルタでの並べ替え [LF-03][LG-07][ST-23]。
-    @Test("グループの表示順を保存できる [LF-03][LG-07]")
+    @Test("フィールドの表示順を保存できる [LF-03][LG-07]")
     func groupOrdering() async throws {
         let f = try await Fixture.make()
-        let groups = try await f.labels.groups(libraryID: f.libraryID)
-        #expect(groups.count >= 3)
-        let reversed = groups.reversed().map(\.id)
-        try await f.labels.setGroupOrder(reversed)
-        let after = try await f.labels.groups(libraryID: f.libraryID)
+        let fields = try await f.labels.fields(libraryID: f.libraryID)
+        #expect(fields.count >= 3)
+        let reversed = fields.reversed().map(\.id)
+        try await f.labels.setFieldOrder(reversed)
+        let after = try await f.labels.fields(libraryID: f.libraryID)
         #expect(after.map(\.id) == reversed)
-        // **同点を作らない**——`groups()` は `displayOrder, groupIndex` の順なので、
+        // **同点を作らない**——`fields()` は `displayOrder, groupIndex` の順なので、
         // 重複が残ると利用者の並べ替えが黙って `groupIndex` 順へ戻る。
         #expect(Set(after.map(\.displayOrder)).count == after.count)
     }

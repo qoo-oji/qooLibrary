@@ -128,7 +128,7 @@ struct LabelFilterPane: View {
             emptyState("labelFilter.loadFailed", detail: failure)
         } else {
             List {
-                if model.groups.isEmpty {
+                if model.fields.isEmpty {
                     // [LF-02] ラベルが 1 件も無いライブラリ（走査前・未解決
                     // ばかりの場合）。**`List` ごと差し替えない**［code-review
                     // の指摘］——差し替えるとシェルフ節まで消え、検索語だけで
@@ -139,15 +139,15 @@ struct LabelFilterPane: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ratingSection
-                    ForEach(model.groups) { group in
-                        groupSection(group)
+                    ForEach(model.fields) { field in
+                        fieldSection(field)
                     }
                     // [LF-03] ドラッグで並べ替え。順序はライブラリ単位で
                     // 永続化し、全ウインドウで共有する [LG-07][ST-23]。
                     .onMove { indices, destination in
-                        var ordered = model.groups
+                        var ordered = model.fields
                         ordered.move(fromOffsets: indices, toOffset: destination)
-                        Task { await model.reorderGroups(ordered, services: services) }
+                        Task { await model.reorderFields(ordered, services: services) }
                     }
                 }
                 // **フィールドの下**［ユーザー指定］。絞り込みの仲間なので
@@ -351,31 +351,31 @@ struct LabelFilterPane: View {
         ShelfDialogs.run(command, whatHappened: String(localized: whatHappened, locale: locale))
     }
 
-    // MARK: - グループ [LF-04][LF-05][PN-02〜PN-06]
+    // MARK: - フィールド [LF-04][LF-05][PN-02〜PN-06]
 
     @ViewBuilder
-    private func groupSection(_ group: LabelGroupSummary) -> some View {
-        DisclosureGroup(isExpanded: expansionBinding(group)) {
-            ForEach(model.visibleLabels(in: group)) { label in
-                labelRow(label, in: group)
+    private func fieldSection(_ field: FieldSummary) -> some View {
+        DisclosureGroup(isExpanded: expansionBinding(field)) {
+            ForEach(model.visibleLabels(in: field)) { label in
+                labelRow(label, in: field)
             }
-            if model.hasMoreLabels(in: group) {
+            if model.hasMoreLabels(in: field) {
                 Button {
-                    model.revealedGroups.insert(group.id)
+                    model.revealedFields.insert(field.id)
                 } label: {
                     Text("labelFilter.showMore")
                         .font(.system(size: Tokens.fontSize.caption))
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.accentColor)
-            } else if model.revealedGroups.contains(group.id) {
+            } else if model.revealedFields.contains(field.id) {
                 // [PN-05] 展開中はインクリメンタル検索を出す。
-                TextField("labelFilter.searchLabels", text: searchBinding(group))
+                TextField("labelFilter.searchLabels", text: searchBinding(field))
                     .textFieldStyle(.roundedBorder)
                     .font(.system(size: Tokens.fontSize.caption))
                 Button {
-                    model.revealedGroups.remove(group.id)
-                    model.searchText[group.id] = nil
+                    model.revealedFields.remove(field.id)
+                    model.searchText[field.id] = nil
                 } label: {
                     Text("labelFilter.showLess")
                         .font(.system(size: Tokens.fontSize.caption))
@@ -384,16 +384,16 @@ struct LabelFilterPane: View {
                 .foregroundStyle(Color.accentColor)
             }
         } label: {
-            fieldBand(group)
+            fieldBand(field)
             // フィールドそのものの手入れ（ラベルの追加・削除・リネーム）は
             // 左ペインから [RL3-04]——本に対する操作（付け外し）は中央ペインと
             // 役割を分ける。編集ウインドウを**そのフィールドを選んだ状態で**開く。
             .contextMenu {
                 Button(String(format: String(localized: "labelFilter.editFieldEllipsis",
-                                             locale: locale), group.name),
+                                             locale: locale), field.name),
                        systemImage: "tag") {
-                    LabelEditorNavigation.open(libraryID: group.libraryID,
-                                               groupID: group.id, openWindow: openWindow)
+                    LabelEditorNavigation.open(libraryID: field.libraryID,
+                                               fieldID: field.id, openWindow: openWindow)
                 }
             }
         }
@@ -408,18 +408,18 @@ struct LabelFilterPane: View {
     ///
     /// 文字色は背景から計算する [CO-03][CO-05]——利用者がラベル固有色を選べる
     /// [CO-06] 以上、既定色が一様であることに寄りかからない。
-    private func fieldBand(_ group: LabelGroupSummary) -> some View {
-        let color = LabelColor(hexLight: group.colorHexLight, hexDark: group.colorHexDark)
+    private func fieldBand(_ field: FieldSummary) -> some View {
+        let color = LabelColor(hexLight: field.colorHexLight, hexDark: field.colorHexDark)
         let hex = colorScheme == .dark ? color.hexDark : color.hexLight
         let background = Color(labelHex: hex) ?? Color.secondary.opacity(0.2)
         let foreground = LabelColorPalette.readableForeground(on: hex)
             .flatMap { Color(labelHex: $0) } ?? Color.primary
         return HStack(spacing: Tokens.spacing.xs) {
-            Text(group.name)
+            Text(field.name)
                 .font(.system(size: Tokens.fontSize.caption))
                 .lineLimit(1)
             Spacer(minLength: Tokens.spacing.xs)
-            if let selected = model.selection[group.id], !selected.isEmpty {
+            if let selected = model.selection[field.id], !selected.isEmpty {
                 Text("\(selected.count)")
                     .font(.system(size: Tokens.fontSize.caption))
                     .monospacedDigit()
@@ -433,7 +433,7 @@ struct LabelFilterPane: View {
         .clipShape(RoundedRectangle(cornerRadius: Tokens.radius.s))
     }
 
-    private func labelRow(_ label: LabelSummary, in group: LabelGroupSummary) -> some View {
+    private func labelRow(_ label: LabelSummary, in field: FieldSummary) -> some View {
         HStack(spacing: Tokens.spacing.xs) {
             // [LF-05] チェックボックスで複数選択。
             Toggle(isOn: Binding(
@@ -441,7 +441,7 @@ struct LabelFilterPane: View {
                 set: { _ in model.toggle(label) }
             )) {
                 LabelChip(name: label.name,
-                          color: labelColor(label, in: group),
+                          color: labelColor(label, in: field),
                           count: label.fileCount,
                           showsPin: true,
                           isPinned: label.isPinned,
@@ -462,25 +462,25 @@ struct LabelFilterPane: View {
         .contextMenu {
             Button("labelEditor.editLabelsEllipsis", systemImage: "tag") {
                 // ラベルの属するフィールドを選んだ状態で開く [RL3-04]。
-                LabelEditorNavigation.open(libraryID: group.libraryID,
-                                           groupID: group.id, openWindow: openWindow)
+                LabelEditorNavigation.open(libraryID: field.libraryID,
+                                           fieldID: field.id, openWindow: openWindow)
             }
         }
     }
 
-    private func expansionBinding(_ group: LabelGroupSummary) -> Binding<Bool> {
+    private func expansionBinding(_ field: FieldSummary) -> Binding<Bool> {
         Binding(
-            get: { model.expandedGroups.contains(group.id) },
+            get: { model.expandedFields.contains(field.id) },
             set: { expanded in
-                if expanded { model.expandedGroups.insert(group.id) }
-                else { model.expandedGroups.remove(group.id) }
+                if expanded { model.expandedFields.insert(field.id) }
+                else { model.expandedFields.remove(field.id) }
             })
     }
 
-    private func searchBinding(_ group: LabelGroupSummary) -> Binding<String> {
+    private func searchBinding(_ field: FieldSummary) -> Binding<String> {
         Binding(
-            get: { model.searchText[group.id] ?? "" },
-            set: { model.searchText[group.id] = $0 })
+            get: { model.searchText[field.id] ?? "" },
+            set: { model.searchText[field.id] = $0 })
     }
 
     /// 帯の幅を統一する［ユーザー要望: 一番長い文字列にあわせる］。
@@ -494,8 +494,8 @@ struct LabelFilterPane: View {
     private var uniformChipWidth: CGFloat {
         let font = NSFont.systemFont(ofSize: Tokens.fontSize.caption)
         var names: [String] = []
-        for group in model.groups {
-            names += (model.labels[group.id] ?? []).map(\.name)
+        for field in model.fields {
+            names += (model.labels[field.id] ?? []).map(\.name)
         }
         let widest = names
             .map { ($0 as NSString).size(withAttributes: [.font: font]).width }
@@ -503,10 +503,10 @@ struct LabelFilterPane: View {
         return min(max(widest.rounded(.up) + 2, 40), 150)
     }
 
-    /// ラベル固有色が無ければグループ色を継承する [CO-06]。
-    private func labelColor(_ label: LabelSummary, in group: LabelGroupSummary) -> LabelColor {
+    /// ラベル固有色が無ければフィールド色を継承する [CO-06]。
+    private func labelColor(_ label: LabelSummary, in field: FieldSummary) -> LabelColor {
         guard let hex = label.colorHex else {
-            return LabelColor(hexLight: group.colorHexLight, hexDark: group.colorHexDark)
+            return LabelColor(hexLight: field.colorHexLight, hexDark: field.colorHexDark)
         }
         return LabelColor(hexLight: hex, hexDark: hex)
     }
@@ -540,13 +540,13 @@ struct LabelFilterPane: View {
         .padding(.vertical, Tokens.spacing.xs)
     }
 
-    /// 「現在の絞り込み条件」[LF-11]。グループ名は出さず値だけを並べる——
+    /// 「現在の絞り込み条件」[LF-11]。フィールド名は出さず値だけを並べる——
     /// 幅が狭いので、まず「何で絞っているか」が読めることを優先する。
     private var conditionSummary: String {
         var parts: [String] = []
-        for group in model.groups {
-            guard let ids = model.selection[group.id], !ids.isEmpty else { continue }
-            let names = (model.labels[group.id] ?? [])
+        for field in model.fields {
+            guard let ids = model.selection[field.id], !ids.isEmpty else { continue }
+            let names = (model.labels[field.id] ?? [])
                 .filter { ids.contains($0.id) }
                 .map(\.name)
             if !names.isEmpty { parts.append(names.joined(separator: ", ")) }

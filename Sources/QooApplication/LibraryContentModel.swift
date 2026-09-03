@@ -113,7 +113,7 @@ public final class LibraryContentModel {
     ///   - searchText: 名前での絞り込み [SR-01〜SR-03]。
     public func load(library: LibrarySummary?,
                      relativePath: String?,
-                     labelSelection: [LabelGroupID: Set<LabelID>] = [:],
+                     labelSelection: [FieldID: Set<LabelID>] = [:],
                      ratingFilter: FileQuery.RatingFilter? = nil,
                      searchText: String? = nil,
                      services: LibraryServices) async {
@@ -265,7 +265,7 @@ public final class LibraryContentModel {
     /// [VM-11] のは `path` のほうが担う。
     nonisolated public static func makeQuery(libraryID: LibraryID,
                                  relativePath: String,
-                                 labelSelection: [LabelGroupID: Set<LabelID>],
+                                 labelSelection: [FieldID: Set<LabelID>],
                                  ratingFilter: FileQuery.RatingFilter?,
                                  searchText: String?,
                                  sort: FileQuery.SortSpec,

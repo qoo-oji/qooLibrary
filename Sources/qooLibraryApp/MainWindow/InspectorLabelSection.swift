@@ -42,8 +42,8 @@ struct InspectorLabelSection: View {
             }
         case .ready(let subject):
             section {
-                ForEach(model.displayGroups) { group in
-                    groupSection(group)
+                ForEach(model.displayFields) { field in
+                    fieldSection(field)
                 }
                 // **対象外が混ざったことを黙って隠さない** [RP-02]。
                 // 「10 件選んだのに 8 件にしか付かなかった」を数字で見せる。
@@ -60,10 +60,10 @@ struct InspectorLabelSection: View {
                         .font(.system(size: Tokens.fontSize.caption))
                 }
                 .buttonStyle(.link)
-                .disabled(model.allGroups.isEmpty)
+                .disabled(model.allFields.isEmpty)
             }
             .onChange(of: isAddingLabel) { _, presenting in
-                // [RL-02] グループ → 既存／新規 の 2 段。独立したモーダル
+                // [RL-02] フィールド → 既存／新規 の 2 段。独立したモーダル
                 // ウインドウで出す（この画面の入力ダイアログの約束）。
                 guard presenting else { return }
                 isAddingLabel = false
@@ -91,24 +91,24 @@ struct InspectorLabelSection: View {
     }
 
     @ViewBuilder
-    private func groupSection(_ group: LabelGroupSummary) -> some View {
-        DisclosureGroup(isExpanded: expansionBinding(group)) {
-            ForEach(model.visibleLabels(in: group)) { label in
-                labelRow(label, in: group)
+    private func fieldSection(_ field: FieldSummary) -> some View {
+        DisclosureGroup(isExpanded: expansionBinding(field)) {
+            ForEach(model.visibleLabels(in: field)) { label in
+                labelRow(label, in: field)
             }
-            if model.hasMoreLabels(in: group) {
-                Button { model.revealedGroups.insert(group.id) } label: {
+            if model.hasMoreLabels(in: field) {
+                Button { model.revealedFields.insert(field.id) } label: {
                     Text("labelFilter.showMore").font(.system(size: Tokens.fontSize.caption))
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.accentColor)
-            } else if model.revealedGroups.contains(group.id) {
-                TextField("labelFilter.searchLabels", text: searchBinding(group))
+            } else if model.revealedFields.contains(field.id) {
+                TextField("labelFilter.searchLabels", text: searchBinding(field))
                     .editableFieldChrome()
                     .font(.system(size: Tokens.fontSize.caption))
                 Button {
-                    model.revealedGroups.remove(group.id)
-                    model.searchText[group.id] = nil
+                    model.revealedFields.remove(field.id)
+                    model.searchText[field.id] = nil
                 } label: {
                     Text("labelFilter.showLess").font(.system(size: Tokens.fontSize.caption))
                 }
@@ -117,14 +117,14 @@ struct InspectorLabelSection: View {
             }
         } label: {
             HStack(spacing: Tokens.spacing.xs) {
-                Circle().fill(groupColor(group)).frame(width: 8, height: 8)
-                Text(group.name)
+                Circle().fill(fieldColor(field)).frame(width: 8, height: 8)
+                Text(field.name)
                     .font(.system(size: Tokens.fontSize.caption, weight: .medium))
                     .lineLimit(1)
                 // **鍵はフィールド見出しに出す** [PR-02][PR-03]。保護の単位は
                 // フィールドであってラベル 1 つずつではないので、チップに
                 // 印を付けると単位を取り違えて読める。
-                if model.isFieldProtected(group) {
+                if model.isFieldProtected(field) {
                     Image(systemName: "lock.fill")
                         .font(.system(size: Tokens.fontSize.caption))
                         .foregroundStyle(.secondary)
@@ -134,7 +134,7 @@ struct InspectorLabelSection: View {
         }
     }
 
-    private func labelRow(_ label: LabelSummary, in group: LabelGroupSummary) -> some View {
+    private func labelRow(_ label: LabelSummary, in field: FieldSummary) -> some View {
         let assignment = model.assignment(of: label)
         return HStack(spacing: Tokens.spacing.xs) {
             // **三状態が要る** [RP-02]ので `Toggle` ではなく AppKit のチェック
@@ -143,15 +143,15 @@ struct InspectorLabelSection: View {
                 Task { await toggle(label) }
             }
             LabelChip(name: label.name,
-                      color: labelColor(label, in: group),
+                      color: labelColor(label, in: field),
                       count: label.fileCount)
                 // 改名・統合・保管庫へ送る導線 [LB-06][LB-07][LA-01]。
                 // ここでは付け外ししかできないので、編集は 15.2 のウインドウへ。
                 .contextMenu {
                     Button("labelEditor.editLabelsEllipsis", systemImage: "tag") {
                         // ラベルの属するフィールドを選んだ状態で開く [RL3-04]。
-                        LabelEditorNavigation.open(libraryID: group.libraryID,
-                                                   groupID: group.id,
+                        LabelEditorNavigation.open(libraryID: field.libraryID,
+                                                   fieldID: field.id,
                                                    openWindow: openWindow)
                     }
                 }
@@ -175,29 +175,29 @@ struct InspectorLabelSection: View {
         }
     }
 
-    private func expansionBinding(_ group: LabelGroupSummary) -> Binding<Bool> {
+    private func expansionBinding(_ field: FieldSummary) -> Binding<Bool> {
         Binding(
-            get: { model.expandedGroups.contains(group.id) },
+            get: { model.expandedFields.contains(field.id) },
             set: { expanded in
-                if expanded { model.expandedGroups.insert(group.id) }
-                else { model.expandedGroups.remove(group.id) }
+                if expanded { model.expandedFields.insert(field.id) }
+                else { model.expandedFields.remove(field.id) }
             })
     }
 
-    private func searchBinding(_ group: LabelGroupSummary) -> Binding<String> {
-        Binding(get: { model.searchText[group.id] ?? "" },
-                set: { model.searchText[group.id] = $0 })
+    private func searchBinding(_ field: FieldSummary) -> Binding<String> {
+        Binding(get: { model.searchText[field.id] ?? "" },
+                set: { model.searchText[field.id] = $0 })
     }
 
-    private func groupColor(_ group: LabelGroupSummary) -> Color {
-        let hex = colorScheme == .dark ? group.colorHexDark : group.colorHexLight
+    private func fieldColor(_ field: FieldSummary) -> Color {
+        let hex = colorScheme == .dark ? field.colorHexDark : field.colorHexLight
         return Color(labelHex: hex) ?? .secondary
     }
 
-    /// ラベル固有色が無ければグループ色を継承する [CO-06]。
-    private func labelColor(_ label: LabelSummary, in group: LabelGroupSummary) -> LabelColor {
+    /// ラベル固有色が無ければフィールド色を継承する [CO-06]。
+    private func labelColor(_ label: LabelSummary, in field: FieldSummary) -> LabelColor {
         guard let hex = label.colorHex else {
-            return LabelColor(hexLight: group.colorHexLight, hexDark: group.colorHexDark)
+            return LabelColor(hexLight: field.colorHexLight, hexDark: field.colorHexDark)
         }
         return LabelColor(hexLight: hex, hexDark: hex)
     }

@@ -37,7 +37,7 @@ public struct LabelID: Hashable, Sendable, Codable, PersistenceID {
     public init(rawValue: Int64) { self.rawValue = rawValue }
 }
 
-public struct LabelGroupID: Hashable, Sendable, Codable, PersistenceID {
+public struct FieldID: Hashable, Sendable, Codable, PersistenceID {
     public let rawValue: Int64
     public init(rawValue: Int64) { self.rawValue = rawValue }
 }

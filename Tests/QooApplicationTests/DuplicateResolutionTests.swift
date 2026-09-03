@@ -58,7 +58,7 @@ struct DuplicateResolutionTests {
     func labelsInProtectedFieldsAreNotInherited() {
         let keeper = Self.row(1, name: "残す.cbz")
         let doomed = Self.row(2, name: "捨てる.cbz")
-        let group = LabelGroupID(rawValue: 7)
+        let group = FieldID(rawValue: 7)
         let report = DuplicateLossReport.make(
             keepID: keeper.id, rows: [keeper, doomed],
             assignments: [keeper.id: [], doomed.id: [Self.label(40)]],
@@ -72,7 +72,7 @@ struct DuplicateResolutionTests {
     func labelsInUnprotectedFieldsAreInherited() {
         let keeper = Self.row(1, name: "残す.cbz")
         let doomed = Self.row(2, name: "捨てる.cbz")
-        let group = LabelGroupID(rawValue: 7)
+        let group = FieldID(rawValue: 7)
         let report = DuplicateLossReport.make(
             keepID: keeper.id, rows: [keeper, doomed],
             assignments: [keeper.id: [], doomed.id: [Self.label(40)]],
@@ -97,7 +97,7 @@ struct DuplicateResolutionTests {
         DuplicateDeletePlan(
             keeper: keeper, doomed: doomed, usesTrash: usesTrash, loss: loss,
             groupByLabel: loss.labelsOnlyOnDoomed.keys.reduce(into: [:]) {
-                $0[$1] = LabelGroupID(rawValue: 1)
+                $0[$1] = FieldID(rawValue: 1)
             })
     }
 

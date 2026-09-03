@@ -4,14 +4,14 @@ import SwiftUI
 
 /// ラベルを付ける [RL-02][RL-03]。
 ///
-/// 要件が段取りを名指ししている——「**まずどのラベルグループを設定するのかを
-/// 選択し、次にそのラベルグループの既存ラベルを使うのか、新規ラベルを作成して
+/// 要件が段取りを名指ししている——「**まずどのラベルフィールドを設定するのかを
+/// 選択し、次にそのラベルフィールドの既存ラベルを使うのか、新規ラベルを作成して
 /// 使うのかを選べること**」[RL-02]。常設の一覧（`InspectorLabelSection`）は
 /// ピン留めと付与済みしか出さない [RL-04][RL-05] ので、そこに無いものへ届く
 /// 唯一の経路がここになる。
 ///
 /// **独立したモーダルウインドウで出す**（`DialogWindowPresenter`）——右ペインは
-/// 幅が狭く、グループ選択・検索・新規名の入力を縦に積むと必ずどれかが隠れる
+/// 幅が狭く、フィールド選択・検索・新規名の入力を縦に積むと必ずどれかが隠れる
 /// （ライブラリ設定のフォーマット編集で 3 度直して分かったこと）。
 struct AddLabelDialog: View {
     let model: LabelEditorModel
@@ -22,7 +22,7 @@ struct AddLabelDialog: View {
 
     private enum Mode: Hashable { case existing, new }
 
-    @State private var groupID: LabelGroupID?
+    @State private var fieldID: FieldID?
     @State private var mode: Mode = .existing
     @State private var searchText = ""
     @State private var selectedLabel: LabelID?
@@ -38,15 +38,15 @@ struct AddLabelDialog: View {
                                  role: .cancel) { dismiss() },
             confirmDisabled: !canConfirm
         ) {
-            // [RL-02] ① まずグループを選ぶ。**ラベル 0 件のグループも出す**
+            // [RL-02] ① まずフィールドを選ぶ。**ラベル 0 件のフィールドも出す**
             // ——新しいラベルを作る先として要る。
-            LabeledContent("inspector.labels.group") {
+            LabeledContent("inspector.labels.field") {
                 Picker("", selection: Binding(
-                    get: { groupID ?? model.allGroups.first?.id },
-                    set: { groupID = $0 }
+                    get: { fieldID ?? model.allFields.first?.id },
+                    set: { fieldID = $0 }
                 )) {
-                    ForEach(model.allGroups) { group in
-                        Text(group.name).tag(Optional(group.id))
+                    ForEach(model.allFields) { field in
+                        Text(field.name).tag(Optional(field.id))
                     }
                 }
                 .labelsHidden()
@@ -88,12 +88,12 @@ struct AddLabelDialog: View {
                     .focused($isNameFocused)
             }
         }
-        .onAppear { groupID = groupID ?? model.allGroups.first?.id }
+        .onAppear { fieldID = fieldID ?? model.allFields.first?.id }
         .onChange(of: mode) { _, newValue in
             isNameFocused = newValue == .new
         }
-        .onChange(of: groupID) { _, _ in
-            // グループが変われば候補も変わる。前の選択を持ち越さない。
+        .onChange(of: fieldID) { _, _ in
+            // フィールドが変われば候補も変わる。前の選択を持ち越さない。
             selectedLabel = nil
             searchText = ""
         }
@@ -101,21 +101,21 @@ struct AddLabelDialog: View {
 
     // MARK: - 判定
 
-    private var currentGroup: LabelGroupSummary? {
-        let id = groupID ?? model.allGroups.first?.id
-        return model.allGroups.first { $0.id == id }
+    private var currentField: FieldSummary? {
+        let id = fieldID ?? model.allFields.first?.id
+        return model.allFields.first { $0.id == id }
     }
 
     /// 既存ラベルの候補 [RL-02][LA-03]。アーカイブ済みは出さない。
     private var filteredLabels: [LabelSummary] {
-        guard let currentGroup else { return [] }
-        let all = model.addableLabels(in: currentGroup)
+        guard let currentField else { return [] }
+        let all = model.addableLabels(in: currentField)
         guard !searchText.isEmpty else { return all }
         return all.filter { NameFilter.matches(name: $0.name, query: searchText) }
     }
 
     private var canConfirm: Bool {
-        guard currentGroup != nil else { return false }
+        guard currentField != nil else { return false }
         switch mode {
         case .existing:
             return selectedLabel != nil
@@ -127,7 +127,7 @@ struct AddLabelDialog: View {
     // MARK: - 操作
 
     private func add() {
-        guard let currentGroup else { return }
+        guard let currentField else { return }
         let mode = mode
         let selectedLabel = selectedLabel
         let newName = newName
@@ -137,13 +137,13 @@ struct AddLabelDialog: View {
                 switch mode {
                 case .existing:
                     guard let id = selectedLabel,
-                          let label = model.addableLabels(in: currentGroup)
+                          let label = model.addableLabels(in: currentField)
                             .first(where: { $0.id == id }) else { return }
                     try await model.add(label)
                 case .new:
                     // 同じ正規化名が既にあればそれを使う [LB-01][N-03]
                     // ——重複の判断は `ensureLabel` が持つ。
-                    try await model.createAndAdd(groupID: currentGroup.id, name: newName)
+                    try await model.createAndAdd(fieldID: currentField.id, name: newName)
                 }
                 onChanged()
             } catch {

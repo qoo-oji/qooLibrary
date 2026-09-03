@@ -64,12 +64,12 @@ struct MetadataProtectionMigrationTests {
                     VALUES (?, 1, ?, ?, ?, 1, '#000000', '#FFFFFF')
                     """, arguments: [id, index, "G\(index)", index])
             }
-            for (id, group) in [(100, 10), (200, 10), (300, 20)] {
+            for (id, field) in [(100, 10), (200, 10), (300, 20)] {
                 try db.execute(sql: """
                     INSERT INTO label (id, labelGroupId, name, normalizedName,
                                        isPinned, isArchived, fileCount)
                     VALUES (?, ?, ?, ?, 0, 0, 0)
-                    """, arguments: [id, group, "L\(id)", "l\(id)"])
+                    """, arguments: [id, field, "L\(id)", "l\(id)"])
             }
             // ファイル 2: フィールド 10 のラベルを手で付けた → 保護へ
             // ファイル 3: フィールド 20 のラベルを手で外した → 保護へ、行は消える
@@ -107,8 +107,8 @@ struct MetadataProtectionMigrationTests {
         let queue = try v9Store()
         try seed(queue)
         try QooMigrations.migrator.migrate(queue)
-        #expect(try scopes(queue, id: 2) == [.field(LabelGroupID(rawValue: 10))])
-        #expect(try scopes(queue, id: 3) == [.field(LabelGroupID(rawValue: 20))])
+        #expect(try scopes(queue, id: 2) == [.field(FieldID(rawValue: 10))])
+        #expect(try scopes(queue, id: 3) == [.field(FieldID(rawValue: 20))])
         // 自動ラベルしか無いファイルは、保護が増えない。
         #expect(try scopes(queue, id: 1) == [.basic])
     }
@@ -138,7 +138,7 @@ struct MetadataProtectionMigrationTests {
             try String.fetchOne(db, sql: "SELECT protectedScopes FROM managedFile WHERE id = ?",
                                 arguments: [2])
         }
-        #expect(raw == ProtectionScopeCoding.encode([.field(LabelGroupID(rawValue: 10))]))
+        #expect(raw == ProtectionScopeCoding.encode([.field(FieldID(rawValue: 10))]))
     }
 
     @Test("旧来の 2 列が消える")

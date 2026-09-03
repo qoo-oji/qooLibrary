@@ -15,7 +15,7 @@ import Testing
 @Suite("ラベル設定 [RL-01〜RL-07][RP-02]", .serialized)
 struct LabelEditingTests {
 
-    /// 同人誌(A) はサークル・著者・イベント・ジャンルの 4 グループを持ち、
+    /// 同人誌(A) はサークル・著者・イベント・ジャンルの 4 フィールドを持ち、
     /// 走査で自動ラベルが付く——`auto` を外す経路 [RC-04] を試すには、
     /// **その主張が成り立ちうる前提**（自動で付いたラベルがあること）が要る。
     @MainActor
@@ -74,9 +74,9 @@ struct LabelEditingTests {
         guard case .ready(let subject) = m.state else { Issue.record("読めていない"); return }
         #expect(subject.targetCount == 1)
         #expect(subject.skippedCount == 0)
-        #expect(!m.displayGroups.isEmpty, "自動付与があるので一覧に出るグループがある")
+        #expect(!m.displayFields.isEmpty, "自動付与があるので一覧に出るフィールドがある")
 
-        let assigned = m.displayGroups.flatMap { m.visibleLabels(in: $0) }.filter { m.isAssigned($0) }
+        let assigned = m.displayFields.flatMap { m.visibleLabels(in: $0) }.filter { m.isAssigned($0) }
         #expect(!assigned.isEmpty)
         // 走査が付けただけのフィールドは保護されていない [PR-01]。
         #expect(assigned.allSatisfy { !m.assignment(of: $0).isProtected })
@@ -108,14 +108,14 @@ struct LabelEditingTests {
         let stack = CommandStack()
         let m = await model(w, library, urls, stack: stack)
         guard case .ready(let subject) = m.state else { Issue.record("読めていない"); return }
-        let label = try #require(m.displayGroups.flatMap { m.visibleLabels(in: $0) }
+        let label = try #require(m.displayFields.flatMap { m.visibleLabels(in: $0) }
             .first { m.assignment(of: $0).assignedCount > 0 })
 
         try await m.toggle(label)
         let after = try await w.services.labelAssignments(fileIDs: subject.fileIDs)
         #expect(after[subject.fileIDs[0]]?.contains(label.id) != true)
         let scopes = try await w.services.protectedScopes(ids: subject.fileIDs)
-        #expect(scopes[subject.fileIDs[0]]?.contains(.field(label.groupID)) == true)
+        #expect(scopes[subject.fileIDs[0]]?.contains(.field(label.fieldID)) == true)
 
         // 再スキャンしても復活しない [PR-01]。
         _ = try await w.services.scan(libraryID: library.id, root: w.libraryRoot)
@@ -133,18 +133,18 @@ struct LabelEditingTests {
         let stack = CommandStack()
         let m = await model(w, library, urls, stack: stack)
         guard case .ready(let subject) = m.state else { Issue.record("読めていない"); return }
-        let group = try #require(m.allGroups.first)
+        let field = try #require(m.allFields.first)
 
-        try await m.createAndAdd(groupID: group.id, name: "手で付けた値")
+        try await m.createAndAdd(fieldID: field.id, name: "手で付けた値")
         await m.reload()
-        let label = try #require(m.addableLabels(in: group).first { $0.name == "手で付けた値" })
+        let label = try #require(m.addableLabels(in: field).first { $0.name == "手で付けた値" })
         #expect(m.assignment(of: label).isProtected, "付けた時点で保護されている [PR-03]")
 
         try await m.toggle(label)
         let after = try await w.services.labelAssignments(fileIDs: subject.fileIDs)
         #expect(after[subject.fileIDs[0]]?.contains(label.id) != true)
         let scopes = try await w.services.protectedScopes(ids: subject.fileIDs)
-        #expect(scopes[subject.fileIDs[0]]?.contains(.field(label.groupID)) == true)
+        #expect(scopes[subject.fileIDs[0]]?.contains(.field(label.fieldID)) == true)
     }
 
     /// **これが崩れると ⌘Z が元の状態を壊す。** ファイルごとに「付いていた／
@@ -158,14 +158,14 @@ struct LabelEditingTests {
         let m = await model(w, library, urls, stack: stack)
         guard case .ready(let subject) = m.state else { Issue.record("読めていない"); return }
         // ジャンル値1 は 2 件とも自動で付く。1 件目だけ先に保護しておく。
-        let group = try #require(m.allGroups.first { g in
+        let field = try #require(m.allFields.first { g in
             m.visibleLabels(in: g).contains { m.assignment(of: $0).checkState == .all }
         })
-        let label = try #require(m.visibleLabels(in: group).first {
+        let label = try #require(m.visibleLabels(in: field).first {
             m.assignment(of: $0).checkState == .all
         })
         try await w.services.setProtectedScopes(
-            [subject.fileIDs[0]: [.field(label.groupID)]])
+            [subject.fileIDs[0]: [.field(label.fieldID)]])
         await m.reload()
 
         try await m.toggle(label)                       // 2 件とも外れる
@@ -180,8 +180,8 @@ struct LabelEditingTests {
         // **保護はファイルごとに元へ戻る**——一律に落とすと、元から保護されて
         // いた 1 件目まで守られなくなる。
         let scopes = try await w.services.protectedScopes(ids: subject.fileIDs)
-        #expect(scopes[subject.fileIDs[0]]?.contains(.field(label.groupID)) == true)
-        #expect(scopes[subject.fileIDs[1]]?.contains(.field(label.groupID)) != true)
+        #expect(scopes[subject.fileIDs[0]]?.contains(.field(label.fieldID)) == true)
+        #expect(scopes[subject.fileIDs[1]]?.contains(.field(label.fieldID)) != true)
     }
 
     @Test("付けた直後の取り消しは、紐づけの行ごと消す [RL-07]")
@@ -191,10 +191,10 @@ struct LabelEditingTests {
         let stack = CommandStack()
         let m = await model(w, library, urls, stack: stack)
         guard case .ready(let subject) = m.state else { Issue.record("読めていない"); return }
-        let group = try #require(m.allGroups.first)
-        try await m.createAndAdd(groupID: group.id, name: "新しい値")
+        let field = try #require(m.allFields.first)
+        try await m.createAndAdd(fieldID: field.id, name: "新しい値")
         await m.reload()
-        let label = try #require(m.addableLabels(in: group).first { $0.name == "新しい値" })
+        let label = try #require(m.addableLabels(in: field).first { $0.name == "新しい値" })
 
         _ = await stack.undo()
         let after = try await w.services.labelAssignments(fileIDs: subject.fileIDs)
@@ -216,7 +216,7 @@ struct LabelEditingTests {
         let m = await model(w, library, urls, stack: stack)
         guard case .ready(let subject) = m.state else { Issue.record("読めていない"); return }
         // サークル値1 は 1 件目にだけ付く。
-        let label = try #require(m.displayGroups.flatMap { m.visibleLabels(in: $0) }
+        let label = try #require(m.displayFields.flatMap { m.visibleLabels(in: $0) }
             .first { m.assignment(of: $0).checkState == .some })
         let a = m.assignment(of: label)
         #expect(a.assignedCount == 1)
@@ -232,7 +232,7 @@ struct LabelEditingTests {
         let (w, library, urls) = try await workspace(files: [Self.name(1), Self.name(2)])
         let stack = CommandStack()
         let m = await model(w, library, urls, stack: stack)
-        let label = try #require(m.displayGroups.flatMap { m.visibleLabels(in: $0) }
+        let label = try #require(m.displayFields.flatMap { m.visibleLabels(in: $0) }
             .first { m.assignment(of: $0).checkState == .some })
 
         try await m.toggle(label)
@@ -253,13 +253,13 @@ struct LabelEditingTests {
         let stack = CommandStack()
         let m = await model(w, library, urls, stack: stack)
         guard case .ready(let subject) = m.state else { Issue.record("読めていない"); return }
-        let label = try #require(m.displayGroups.flatMap { m.visibleLabels(in: $0) }
+        let label = try #require(m.displayFields.flatMap { m.visibleLabels(in: $0) }
             .first { m.assignment(of: $0).checkState == .all })
         #expect(!m.assignment(of: label).isProtected, "走査が付けただけなら保護なし")
 
         // 片方だけ保護する。
         try await w.services.setProtectedScopes(
-            [subject.fileIDs[0]: [.field(label.groupID)]])
+            [subject.fileIDs[0]: [.field(label.fieldID)]])
         await m.reload()
         #expect(!m.assignment(of: label).isProtected,
                 "混在で鍵を出すと、守られていないほうまで守られているように読める")
@@ -272,7 +272,7 @@ struct LabelEditingTests {
     @Test("手動で非表示にしたものは候補に出さないが、付与済みなら一覧に出す [LA-03][RL-05]")
     func hiddenLabelsAreOmittedUnlessAssigned() {
         func label(_ id: Int64, hidden: Bool) -> LabelSummary {
-            LabelSummary(id: LabelID(rawValue: id), groupID: LabelGroupID(rawValue: 1),
+            LabelSummary(id: LabelID(rawValue: id), fieldID: FieldID(rawValue: 1),
                          name: "l\(id)", normalizedName: "l\(id)", colorHex: nil,
                          isPinned: false, isHidden: hidden, fileCount: 1)
         }
@@ -293,7 +293,7 @@ struct LabelEditingTests {
     @Test("実体 0 件のラベルは追加候補に出す [LA3-01]")
     func labelsWithoutFilesRemainAddable() {
         func label(_ id: Int64, count: Int) -> LabelSummary {
-            LabelSummary(id: LabelID(rawValue: id), groupID: LabelGroupID(rawValue: 1),
+            LabelSummary(id: LabelID(rawValue: id), fieldID: FieldID(rawValue: 1),
                          name: "l\(id)", normalizedName: "l\(id)", colorHex: nil,
                          isPinned: false, isHidden: false, fileCount: count)
         }
@@ -310,7 +310,7 @@ struct LabelEditingTests {
         let (w, library, urls) = try await workspace(files: [Self.name(1)])
         let stack = CommandStack()
         let m = await model(w, library, urls, stack: stack)
-        let label = try #require(m.displayGroups.flatMap { m.visibleLabels(in: $0) }
+        let label = try #require(m.displayFields.flatMap { m.visibleLabels(in: $0) }
             .first { m.assignment(of: $0).checkState == .all })
         try await m.toggle(label)                        // 外す
         let depth = stack.operationHistory.count
@@ -332,10 +332,10 @@ struct LabelEditingTests {
         let stack = CommandStack()
         let m = await model(w, library, urls, stack: stack)
         guard case .ready(let subject) = m.state else { Issue.record("読めていない"); return }
-        let group = try #require(m.allGroups.first)
-        try await m.createAndAdd(groupID: group.id, name: "残るべき値")
+        let field = try #require(m.allFields.first)
+        try await m.createAndAdd(fieldID: field.id, name: "残るべき値")
         await m.reload()
-        let label = try #require(m.addableLabels(in: group).first { $0.name == "残るべき値" })
+        let label = try #require(m.addableLabels(in: field).first { $0.name == "残るべき値" })
 
         _ = try await w.services.scan(libraryID: library.id, root: w.libraryRoot)
         let after = try await w.services.labelAssignments(fileIDs: subject.fileIDs)
@@ -352,15 +352,15 @@ struct LabelEditingTests {
         let url = w.libraryRoot.appendingPathComponent(Self.name(1))
         let previous = [AssignLabelCommand.Previous(
             fileID: FileID(rawValue: 1), url: url, wasAssigned: false, protectedScopes: [])]
-        let group = LabelGroupID(rawValue: 1)
-        let add = AssignLabelCommand(labelID: LabelID(rawValue: 1), groupID: group,
+        let field = FieldID(rawValue: 1)
+        let add = AssignLabelCommand(labelID: LabelID(rawValue: 1), fieldID: field,
                                      labelName: "サークル値1",
                                      previous: previous, assigning: true,
                                      subjectName: Self.name(1), services: w.services)
         #expect(add.displayName == "「\(Self.name(1))」のラベル「サークル値1」を付与")
         #expect(add.isUndoable)
 
-        let remove = AssignLabelCommand(labelID: LabelID(rawValue: 1), groupID: group,
+        let remove = AssignLabelCommand(labelID: LabelID(rawValue: 1), fieldID: field,
                                         labelName: "サークル値1",
                                         previous: previous, assigning: false,
                                         subjectName: "3 項目", services: w.services)
@@ -375,7 +375,7 @@ struct LabelEditingTests {
         let w = try ServicesWorkspace()
         let url = w.libraryRoot.appendingPathComponent(Self.name(1))
         let command = AssignLabelCommand(
-            labelID: LabelID(rawValue: 1), groupID: LabelGroupID(rawValue: 1),
+            labelID: LabelID(rawValue: 1), fieldID: FieldID(rawValue: 1),
             labelName: "サークル値1",
             previous: [AssignLabelCommand.Previous(fileID: FileID(rawValue: 1), url: url,
                                                    wasAssigned: false, protectedScopes: [])],
@@ -390,7 +390,7 @@ struct LabelEditingTests {
 struct PinnedLabelListingTests {
 
     private func label(_ id: Int64, _ name: String, pinned: Bool = false) -> LabelSummary {
-        LabelSummary(id: LabelID(rawValue: id), groupID: LabelGroupID(rawValue: 1),
+        LabelSummary(id: LabelID(rawValue: id), fieldID: FieldID(rawValue: 1),
                      name: name, normalizedName: name, colorHex: nil,
                      isPinned: pinned, isHidden: false, fileCount: 1)
     }

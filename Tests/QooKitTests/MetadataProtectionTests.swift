@@ -5,7 +5,7 @@ import Testing
 @Suite("メタデータの保護 [PR-01〜PR-09]")
 struct MetadataProtectionTests {
 
-    private func field(_ n: Int64) -> ProtectionScope { .field(LabelGroupID(rawValue: n)) }
+    private func field(_ n: Int64) -> ProtectionScope { .field(FieldID(rawValue: n)) }
 
     // MARK: - 綴り
 
@@ -67,18 +67,18 @@ struct MetadataProtectionTests {
     /// **フィールドは増減する**ので、集合だけを見て「全体」は判定できない。
     @Test("全体はフィールド一覧と突き合わせて判定する")
     func coversEverythingNeedsTheFieldList() {
-        let fields = [LabelGroupID(rawValue: 1), LabelGroupID(rawValue: 2)]
+        let fields = [FieldID(rawValue: 1), FieldID(rawValue: 2)]
         let all: Set<ProtectionScope> = [.basic, field(1), field(2)]
         #expect(all.coversEverything(fields: fields))
         // フィールドが 1 つ増えたら、同じ集合はもう「全体」ではない。
-        #expect(!all.coversEverything(fields: fields + [LabelGroupID(rawValue: 3)]))
+        #expect(!all.coversEverything(fields: fields + [FieldID(rawValue: 3)]))
         // 基本情報が抜けていたら全体ではない。
         #expect(!Set([field(1), field(2)]).coversEverything(fields: fields))
     }
 
     @Test("全体の集合を組み立てられる")
     func everythingBuildsTheFullSet() {
-        let fields = [LabelGroupID(rawValue: 1), LabelGroupID(rawValue: 2)]
+        let fields = [FieldID(rawValue: 1), FieldID(rawValue: 2)]
         #expect(Set<ProtectionScope>.everything(fields: fields) == [.basic, field(1), field(2)])
         #expect(Set<ProtectionScope>.everything(fields: []) == [.basic])
     }
@@ -86,7 +86,7 @@ struct MetadataProtectionTests {
     @Test("保護されたフィールドだけを取り出せる")
     func extractsProtectedFields() {
         let scopes: Set<ProtectionScope> = [.basic, field(3), field(5)]
-        #expect(scopes.protectedFields == [LabelGroupID(rawValue: 3), LabelGroupID(rawValue: 5)])
+        #expect(scopes.protectedFields == [FieldID(rawValue: 3), FieldID(rawValue: 5)])
     }
 
     // MARK: - 旧来の印からの読み替え [PR-08]

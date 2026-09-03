@@ -1,5 +1,5 @@
 //
-//  ライブラリ設定 — ラベルグループ・ファイル名フォーマット・階層割り当て・巻数 [15.1 節]。
+//  ライブラリ設定 — ラベルフィールド・ファイル名フォーマット・階層割り当て・巻数 [15.1 節]。
 //
 //  「テンプレートは雛形でしかない」を成立させる中心。テンプレートが与えるのは
 //  ここの初期値だけで、以後は自由に組み替えられる [LT-03]。
@@ -8,20 +8,20 @@ import AppKit
 import QooKit
 import SwiftUI
 
-// MARK: - ラベルグループ
+// MARK: - ラベルフィールド
 
-/// ラベルグループの一覧と編集 [LG-03][LE-01][LE-02][LE-10][CO-04]。
+/// ラベルフィールドの一覧と編集 [LG-03][LE-01][LE-02][LE-10][CO-04]。
 ///
-/// **ライブラリ設定ウインドウとラベルグループ編集ウインドウで共有する**
-/// ［ユーザー判断］。§15.2 は 3 ペインの中央にグループ一覧を置くと定めるが、
+/// **ライブラリ設定ウインドウとラベルフィールド編集ウインドウで共有する**
+/// ［ユーザー判断］。§15.2 は 3 ペインの中央にフィールド一覧を置くと定めるが、
 /// その中身（改名・予約語紐づけ）は設定ウインドウに既にある——同じ編集を
 /// 2 箇所に実装すると片方だけ直して取り残す（このリポジトリで 3 度踏んだ形）。
 ///
 /// 違うのは `selection` の有無だけ。設定ウインドウは `nil` を渡して一覧として
-/// 見せ、編集ウインドウは束縛を渡して「どのグループのラベルを右に出すか」を決める。
-struct LibraryLabelGroupsSettingsView: View {
+/// 見せ、編集ウインドウは束縛を渡して「どのフィールドのラベルを右に出すか」を決める。
+struct LibraryFieldsSettingsView: View {
     @Binding var draft: LibrarySettingsDraft
-    /// 選択中のグループ（`LabelGroupDraft.id`）。`nil` を渡すと選択させない。
+    /// 選択中のフィールド（`FieldDraft.id`）。`nil` を渡すと選択させない。
     var selection: Binding<UUID?>?
     /// 見出しと説明を出すか。編集ウインドウでは中央ペインの幅が狭いので省く。
     var showsHeader: Bool = true
@@ -29,29 +29,29 @@ struct LibraryLabelGroupsSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.l) {
             if showsHeader {
-                SettingsSectionHeader(title: "librarySettings.section.labelGroups",
-                                      explanation: "librarySettings.labelGroups.explanation")
+                SettingsSectionHeader(title: "librarySettings.section.fields",
+                                      explanation: "librarySettings.fields.explanation")
             }
 
             VStack(spacing: 0) {
                 header
                 Divider()
-                ForEach($draft.labelGroups) { $group in
-                    row($group)
-                        .background(isSelected($group.wrappedValue)
+                ForEach($draft.fields) { $field in
+                    row($field)
+                        .background(isSelected($field.wrappedValue)
                                     ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.25)
                                     : Color.clear)
                         .contentShape(Rectangle())
-                        .onTapGesture { selection?.wrappedValue = $group.wrappedValue.id }
+                        .onTapGesture { selection?.wrappedValue = $field.wrappedValue.id }
                     Divider()
                 }
             }
             .frame(maxWidth: 620, alignment: .leading)
 
             HStack {
-                Button("librarySettings.labelGroups.add") { addGroup() }
-                    .disabled(draft.nextAvailableLabelGroupIndex == nil)
-                Text("librarySettings.labelGroups.limit")
+                Button("librarySettings.fields.add") { addGroup() }
+                    .disabled(draft.nextAvailableFieldIndex == nil)
+                Text("librarySettings.fields.limit")
                     .font(.system(size: Tokens.fontSize.caption))
                     .foregroundStyle(.secondary)
             }
@@ -60,11 +60,11 @@ struct LibraryLabelGroupsSettingsView: View {
 
     private var header: some View {
         HStack(spacing: Tokens.spacing.s) {
-            Text("librarySettings.labelGroups.number").frame(width: 110, alignment: .leading)
-            Text("librarySettings.labelGroups.name").frame(minWidth: 120, alignment: .leading)
-            Text("librarySettings.labelGroups.color").frame(width: 24, alignment: .leading)
+            Text("librarySettings.fields.number").frame(width: 110, alignment: .leading)
+            Text("librarySettings.fields.name").frame(minWidth: 120, alignment: .leading)
+            Text("librarySettings.fields.color").frame(width: 24, alignment: .leading)
             Spacer(minLength: Tokens.spacing.m)
-            Text("librarySettings.labelGroups.autoAssign").frame(width: 60, alignment: .center)
+            Text("librarySettings.fields.autoAssign").frame(width: 60, alignment: .center)
             Color.clear.frame(width: 22)
         }
         .font(.system(size: Tokens.fontSize.caption))
@@ -72,31 +72,31 @@ struct LibraryLabelGroupsSettingsView: View {
         .padding(.vertical, Tokens.spacing.xs)
     }
 
-    private func row(_ group: Binding<LabelGroupDraft>) -> some View {
+    private func row(_ field: Binding<FieldDraft>) -> some View {
         HStack(spacing: Tokens.spacing.s) {
             // **フォーマットからの参照名を出す。** 既定フィールド 5 種だけが
             // 意味予約語（`@author` 等）で参照でき [RWI-02]、追加フィールドは
             // ファイル名から参照できない（`@labelgroupN` は撤去した）——手で
             // 付けるための軸なので、参照名の欄は「—」になる。
-            Text(verbatim: reference(for: group.wrappedValue.index) ?? "—")
+            Text(verbatim: reference(for: field.wrappedValue.index) ?? "—")
                 .font(.system(size: Tokens.fontSize.caption, design: .monospaced))
                 .foregroundStyle(.secondary)
                 .frame(width: 110, alignment: .leading)
-            TextField("", text: group.name)
+            TextField("", text: field.name)
                 .labelsHidden()
                 .editableFieldChrome()
                 .frame(minWidth: 120)
-            // グループ色 [LE-10][CO-04]。ライト・ダークの両方とコントラスト
+            // フィールド色 [LE-10][CO-04]。ライト・ダークの両方とコントラスト
             // 警告 [CO-05] はポップオーバーの中で扱う。
-            LabelColorWell(color: colorBinding(for: group),
-                           defaultColor: defaultColor(for: group.wrappedValue),
-                           previewName: group.wrappedValue.name)
+            LabelColorWell(color: colorBinding(for: field),
+                           defaultColor: defaultColor(for: field.wrappedValue),
+                           previewName: field.wrappedValue.name)
             Spacer(minLength: Tokens.spacing.m)
-            Toggle("", isOn: group.assignsAutomatically)
+            Toggle("", isOn: field.assignsAutomatically)
                 .labelsHidden()
                 .frame(width: 60, alignment: .center)
             Button {
-                removeGroup(group.wrappedValue)
+                removeGroup(field.wrappedValue)
             } label: {
                 Image(systemName: "minus.circle")
             }
@@ -107,33 +107,33 @@ struct LibraryLabelGroupsSettingsView: View {
             // それを使っているフォーマットが黙って値を捨てるだけになる。名前は
             // 変えられるし、ラベルが 0 件のフィールドはフィルタに出ない [LF-02] ので、
             // 残しておいても邪魔にならない（Calibre が組み込み列を消させないのと同じ）。
-            .disabled(isDefaultField(group.wrappedValue))
-            .help(isDefaultField(group.wrappedValue)
-                  ? Text("librarySettings.labelGroups.defaultCannotRemove") : Text(""))
+            .disabled(isDefaultField(field.wrappedValue))
+            .help(isDefaultField(field.wrappedValue)
+                  ? Text("librarySettings.fields.defaultCannotRemove") : Text(""))
         }
         .padding(.vertical, Tokens.spacing.xs)
     }
 
-    private func isSelected(_ group: LabelGroupDraft) -> Bool {
-        selection?.wrappedValue == group.id
+    private func isSelected(_ field: FieldDraft) -> Bool {
+        selection?.wrappedValue == field.id
     }
 
-    private func colorBinding(for group: Binding<LabelGroupDraft>) -> Binding<LabelColor> {
+    private func colorBinding(for field: Binding<FieldDraft>) -> Binding<LabelColor> {
         Binding(
-            get: { LabelColor(hexLight: group.wrappedValue.colorHexLight,
-                              hexDark: group.wrappedValue.colorHexDark) },
+            get: { LabelColor(hexLight: field.wrappedValue.colorHexLight,
+                              hexDark: field.wrappedValue.colorHexDark) },
             set: {
-                group.wrappedValue.colorHexLight = $0.hexLight
-                group.wrappedValue.colorHexDark = $0.hexDark
+                field.wrappedValue.colorHexLight = $0.hexLight
+                field.wrappedValue.colorHexDark = $0.hexDark
             })
     }
 
     /// 「既定に戻す」で戻す先 [CO-01][MT-13]。**リテラルの表を持たず**、
-    /// そのときのグループ数に応じて色相環を等分して生成する
-    /// ——グループを増減しても既定色が破綻しない。
-    private func defaultColor(for group: LabelGroupDraft) -> LabelColor? {
-        let ordered = draft.labelGroups.map(\.index).sorted()
-        guard let position = ordered.firstIndex(of: group.index) else { return nil }
+    /// そのときのフィールド数に応じて色相環を等分して生成する
+    /// ——フィールドを増減しても既定色が破綻しない。
+    private func defaultColor(for field: FieldDraft) -> LabelColor? {
+        let ordered = draft.fields.map(\.index).sorted()
+        guard let position = ordered.firstIndex(of: field.index) else { return nil }
         let palette = LabelColorPalette.palette(count: max(ordered.count, 1))
         guard position < palette.count else { return nil }
         return palette[position]
@@ -154,12 +154,12 @@ struct LibraryLabelGroupsSettingsView: View {
     }
 
     private func addGroup() {
-        guard let index = draft.nextAvailableLabelGroupIndex else { return }
-        let colors = LabelColorPalette.palette(count: max(draft.labelGroups.count + 1, 1))
-        let color = colors[min(draft.labelGroups.count, colors.count - 1)]
-        draft.labelGroups.append(LabelGroupDraft(
+        guard let index = draft.nextAvailableFieldIndex else { return }
+        let colors = LabelColorPalette.palette(count: max(draft.fields.count + 1, 1))
+        let color = colors[min(draft.fields.count, colors.count - 1)]
+        draft.fields.append(FieldDraft(
             index: index,
-            name: String(format: String(localized: "librarySettings.labelGroups.newName"), index),
+            name: String(format: String(localized: "librarySettings.fields.newName"), index),
             colorHexLight: color.hexLight, colorHexDark: color.hexDark))
     }
 
@@ -168,18 +168,18 @@ struct LibraryLabelGroupsSettingsView: View {
     /// 忘れている）。
     /// 既定フィールド 5 種かどうか [§19.2]。**番号ではなく束縛で判定する**
     /// ——番号はフィールドの身元ではないので、並べ替えると別の行を守ってしまう。
-    private func isDefaultField(_ group: LabelGroupDraft) -> Bool {
-        SemanticKeyword.defaultFields.contains { draft.semanticBindings[$0] == group.index }
+    private func isDefaultField(_ field: FieldDraft) -> Bool {
+        SemanticKeyword.defaultFields.contains { draft.semanticBindings[$0] == field.index }
     }
 
-    private func removeGroup(_ group: LabelGroupDraft) {
-        guard !isDefaultField(group) else { return }        // ボタンと二重の守り
+    private func removeGroup(_ field: FieldDraft) {
+        guard !isDefaultField(field) else { return }        // ボタンと二重の守り
         DialogWindowPresenter.shared.present(
-            title: String(localized: "librarySettings.labelGroups.removeTitle")
+            title: String(localized: "librarySettings.fields.removeTitle")
         ) { _ in
-            RemoveLabelGroupDialog(groupName: group.name) {
-                draft.labelGroups.removeAll { $0.id == group.id }
-                for (keyword, value) in draft.semanticBindings where value == group.index {
+            RemoveFieldDialog(groupName: field.name) {
+                draft.fields.removeAll { $0.id == field.id }
+                for (keyword, value) in draft.semanticBindings where value == field.index {
                     draft.semanticBindings[keyword] = nil
                 }
             }
@@ -187,7 +187,7 @@ struct LibraryLabelGroupsSettingsView: View {
     }
 }
 
-private struct RemoveLabelGroupDialog: View {
+private struct RemoveFieldDialog: View {
     @Environment(\.locale) private var locale
     @Environment(\.dialogDismiss) private var dismiss
 
@@ -197,7 +197,7 @@ private struct RemoveLabelGroupDialog: View {
     var body: some View {
         DialogScaffold(
             width: 440,
-            confirm: DialogButton(title: String(localized: "librarySettings.labelGroups.remove",
+            confirm: DialogButton(title: String(localized: "librarySettings.fields.remove",
                                                 locale: locale), role: .destructive) {
                 onConfirm()
                 dismiss()
@@ -206,7 +206,7 @@ private struct RemoveLabelGroupDialog: View {
                                  role: .cancel) { dismiss() }
         ) {
             VStack(alignment: .leading, spacing: Tokens.spacing.s) {
-                Text(String(format: String(localized: "librarySettings.labelGroups.removeExplanation",
+                Text(String(format: String(localized: "librarySettings.fields.removeExplanation",
                                            locale: locale), groupName))
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -417,7 +417,7 @@ struct FilenameFormatEditorDialog: View {
         .frame(maxWidth: 620, alignment: .leading)
     }
 
-    // [HP-01][HP-02] ラベルグループに紐づく語には現在の名称を併記する。
+    // [HP-01][HP-02] ラベルフィールドに紐づく語には現在の名称を併記する。
     /// パレットの予約語を挿し込む [ユーザー指摘: 挿入した予約語の前に
     /// スペースが入る]。
     ///
@@ -480,10 +480,10 @@ struct FilenameFormatEditorDialog: View {
         // フィールド（追加分）は `@labelgroupN` を撤去した [v3 ステージ 5] ので
         // フォーマットから指せない——出すと、押した瞬間にコンパイルできない
         // 綴りが挿し込まれる（参照名の列が「—」と出すのと食い違ってもいた）。
-        for group in draft.labelGroups.sorted(by: { $0.index < $1.index }) {
+        for field in draft.fields.sorted(by: { $0.index < $1.index }) {
             guard let keyword = SemanticKeyword.allCases
-                .first(where: { draft.semanticBindings[$0] == group.index }) else { continue }
-            entries.append((keyword.rawValue, group.name))
+                .first(where: { draft.semanticBindings[$0] == field.index }) else { continue }
+            entries.append((keyword.rawValue, field.name))
         }
         // フィールドへ束縛されていない予約語（`@series` は構造化列を持つので
         // 束縛が無くても書ける [RW-16]）も出す。
@@ -621,7 +621,7 @@ struct FormatMatchPreview: View {
     ///
     /// **名前と色は同じ判定から引く。** 別々の switch に分けると、予約語を
     /// 足したとき片方だけ直して取り残す。
-    static func boundGroupIndex(for field: FieldRef,
+    static func boundFieldIndex(for field: FieldRef,
                                 draft: LibrarySettingsDraft) -> Int? {
         guard let keyword = SemanticKeyword.allCases.first(where: { $0.fieldRef == field })
         else { return nil }
@@ -637,12 +637,12 @@ struct FormatMatchPreview: View {
     static func fieldChipIndex(for field: FieldRef,
                                draft: LibrarySettingsDraft) -> Int? {
         if case .series = field { return nil }
-        return boundGroupIndex(for: field, draft: draft)
+        return boundFieldIndex(for: field, draft: draft)
     }
 
     private static func fieldName(for field: FieldRef,
                                   draft: LibrarySettingsDraft) -> String? {
-        boundGroupIndex(for: field, draft: draft).flatMap { draft.labelGroupName(at: $0) }
+        boundFieldIndex(for: field, draft: draft).flatMap { draft.fieldName(at: $0) }
     }
 
     /// フィールドの色 [RG3-24 ①][§19.10 ステージ 2]。**ラベルへ流れる
@@ -655,9 +655,9 @@ struct FormatMatchPreview: View {
         // シリーズ・巻はラベルへ流れても色を持たせない——属性としての記録が
         // 主で、色を付けると「ラベルとして付く値」との見分けが消える。
         guard let index = fieldChipIndex(for: field, draft: draft),
-              let group = draft.labelGroups.first(where: { $0.index == index })
+              let field = draft.fields.first(where: { $0.index == index })
         else { return nil }
-        return darkMode ? group.colorHexDark : group.colorHexLight
+        return darkMode ? field.colorHexDark : field.colorHexLight
     }
 }
 
@@ -731,12 +731,12 @@ struct LibraryFolderLevelsSettingsView: View {
 
     private var kindItems: [FixedWidthPopUp<String>.Item] {
         [.init(title: String(localized: "librarySettings.folderLevels.kindNone"), tag: "none"),
-         .init(title: String(localized: "librarySettings.folderLevels.kindGroup"), tag: "group"),
+         .init(title: String(localized: "librarySettings.folderLevels.kindGroup"), tag: "field"),
          .init(title: String(localized: "librarySettings.folderLevels.kindFormat"), tag: "format")]
     }
 
     private var groupItems: [FixedWidthPopUp<Int>.Item] {
-        draft.labelGroups.sorted { $0.index < $1.index }
+        draft.fields.sorted { $0.index < $1.index }
             .map { .init(title: "\($0.index): \($0.name)", tag: $0.index) }
     }
 
@@ -745,15 +745,15 @@ struct LibraryFolderLevelsSettingsView: View {
             get: {
                 switch level.wrappedValue.assignment {
                 case .none: "none"
-                case .singleLabelGroup: "group"
+                case .singleLabelGroup: "field"
                 case .format: "format"
                 }
             },
             set: { kind in
                 switch kind {
-                case "group":
+                case "field":
                     level.wrappedValue.assignment =
-                        .singleLabelGroup(index: draft.labelGroups.first?.index ?? 1)
+                        .singleLabelGroup(index: draft.fields.first?.index ?? 1)
                 case "format":
                     level.wrappedValue.assignment = .format(source: "")
                 default:
@@ -766,7 +766,7 @@ struct LibraryFolderLevelsSettingsView: View {
         Binding(
             get: {
                 if case .singleLabelGroup(let index) = level.wrappedValue.assignment { return index }
-                return draft.labelGroups.first?.index ?? 1
+                return draft.fields.first?.index ?? 1
             },
             set: { level.wrappedValue.assignment = .singleLabelGroup(index: $0) })
     }

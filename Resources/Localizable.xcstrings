@@ -5933,7 +5933,7 @@
         }
       }
     },
-    "inspector.labels.group": {
+    "inspector.labels.field": {
       "extractionState": "manual",
       "localizations": {
         "en": {
@@ -6596,7 +6596,7 @@
         }
       }
     },
-    "labelEditor.error.crossGroupMerge": {
+    "labelEditor.error.crossFieldMerge": {
       "extractionState": "manual",
       "localizations": {
         "en": {
@@ -9195,7 +9195,7 @@
         }
       }
     },
-    "librarySettings.labelGroups.add": {
+    "librarySettings.fields.add": {
       "extractionState": "manual",
       "localizations": {
         "en": {
@@ -9212,7 +9212,7 @@
         }
       }
     },
-    "librarySettings.labelGroups.autoAssign": {
+    "librarySettings.fields.autoAssign": {
       "extractionState": "manual",
       "localizations": {
         "en": {
@@ -9229,7 +9229,7 @@
         }
       }
     },
-    "librarySettings.labelGroups.color": {
+    "librarySettings.fields.color": {
       "extractionState": "manual",
       "localizations": {
         "en": {
@@ -9246,7 +9246,7 @@
         }
       }
     },
-    "librarySettings.labelGroups.defaultCannotRemove": {
+    "librarySettings.fields.defaultCannotRemove": {
       "extractionState": "manual",
       "localizations": {
         "en": {
@@ -9263,7 +9263,7 @@
         }
       }
     },
-    "librarySettings.labelGroups.explanation": {
+    "librarySettings.fields.explanation": {
       "extractionState": "manual",
       "localizations": {
         "en": {
@@ -9280,7 +9280,7 @@
         }
       }
     },
-    "librarySettings.labelGroups.limit": {
+    "librarySettings.fields.limit": {
       "extractionState": "manual",
       "localizations": {
         "en": {
@@ -9297,7 +9297,7 @@
         }
       }
     },
-    "librarySettings.labelGroups.name": {
+    "librarySettings.fields.name": {
       "extractionState": "manual",
       "localizations": {
         "en": {
@@ -9314,7 +9314,7 @@
         }
       }
     },
-    "librarySettings.labelGroups.newName": {
+    "librarySettings.fields.newName": {
       "extractionState": "manual",
       "localizations": {
         "en": {
@@ -9331,7 +9331,7 @@
         }
       }
     },
-    "librarySettings.labelGroups.number": {
+    "librarySettings.fields.number": {
       "extractionState": "manual",
       "localizations": {
         "en": {
@@ -9348,7 +9348,7 @@
         }
       }
     },
-    "librarySettings.labelGroups.remove": {
+    "librarySettings.fields.remove": {
       "extractionState": "manual",
       "localizations": {
         "en": {
@@ -9365,7 +9365,7 @@
         }
       }
     },
-    "librarySettings.labelGroups.removeExplanation": {
+    "librarySettings.fields.removeExplanation": {
       "extractionState": "manual",
       "localizations": {
         "en": {
@@ -9382,7 +9382,7 @@
         }
       }
     },
-    "librarySettings.labelGroups.removeTitle": {
+    "librarySettings.fields.removeTitle": {
       "extractionState": "manual",
       "localizations": {
         "en": {
@@ -9807,7 +9807,7 @@
         }
       }
     },
-    "librarySettings.section.labelGroups": {
+    "librarySettings.section.fields": {
       "extractionState": "manual",
       "localizations": {
         "en": {

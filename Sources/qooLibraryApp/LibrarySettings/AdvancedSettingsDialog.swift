@@ -20,7 +20,7 @@ import SwiftUI
 /// 行があるので、`sections` に含めずに開く。
 ///
 /// 描けないのは `filenameFormats`（選択中のフォーマットとサンプル文字列を
-/// 呼び出し側が保持する必要がある）と `labelGroups`／`folderLevels`——
+/// 呼び出し側が保持する必要がある）と `fields`／`folderLevels`——
 /// いずれも通常セクションなので、高度なダイアログには現れない。`switch` は
 /// 全 case を書いておく（`default` にすると、セクションを足したときに
 /// コンパイラが指摘してくれなくなる）。
@@ -37,7 +37,7 @@ struct AdvancedSectionEditor: View {
         case .delimiters:        LibraryDelimitersSettingsView(draft: $draft)
         case .protectedTokens:   LibraryProtectedTokensSettingsView(draft: $draft)
         case .bookFolderOpening: LibraryBookFolderOpeningSettingsView(draft: $draft)
-        case .labelGroups, .folderLevels, .filenameFormats: EmptyView()
+        case .fields, .folderLevels, .filenameFormats: EmptyView()
         }
     }
 }

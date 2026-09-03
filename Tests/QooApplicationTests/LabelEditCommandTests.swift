@@ -15,10 +15,10 @@ import Testing
 @Suite("ラベルの編集コマンド [LE-07〜LE-11]", .serialized)
 struct LabelEditCommandTests {
 
-    /// 同人誌(A) で走査まで済ませ、サークルグループを返す。
+    /// 同人誌(A) で走査まで済ませ、サークルフィールドを返す。
     @MainActor
     private func workspace(files: Int = 3)
-        async throws -> (ServicesWorkspace, LibrarySummary, LabelGroupSummary)
+        async throws -> (ServicesWorkspace, LibrarySummary, FieldSummary)
     {
         let w = try ServicesWorkspace()
         await w.bootstrap()
@@ -28,16 +28,16 @@ struct LabelEditCommandTests {
         let id = try await w.enable("builtin.doujinshi-a")
         _ = try await w.services.scan(libraryID: id, root: w.libraryRoot)
         let library = try #require(w.services.library(registrationUUID: w.registrationUUID))
-        let groups = try await w.services.labelGroups(libraryID: library.id)
-        let circle = try #require(groups.first { $0.name == "サークル" })
+        let fields = try await w.services.fields(libraryID: library.id)
+        let circle = try #require(fields.first { $0.name == "サークル" })
         return (w, library, circle)
     }
 
     @MainActor
-    private func labels(_ w: ServicesWorkspace, _ group: LabelGroupSummary)
+    private func labels(_ w: ServicesWorkspace, _ field: FieldSummary)
         async throws -> [LabelSummary]
     {
-        try await w.services.labels(groupID: group.id)
+        try await w.services.labels(fieldID: field.id)
     }
 
     // MARK: - 改名 [LB-06]
@@ -45,20 +45,20 @@ struct LabelEditCommandTests {
     @Test("改名を取り消すと元の名前に戻る [LB-06][UD-01]")
     @MainActor
     func renameIsUndoable() async throws {
-        let (w, _, group) = try await workspace()
+        let (w, _, field) = try await workspace()
         let stack = CommandStack()
-        let target = try #require(try await labels(w, group).first)
+        let target = try #require(try await labels(w, field).first)
         let before = target.name
 
         _ = try await stack.run(RenameLabelCommand(
             labelID: target.id, previousName: before, newName: "新しい名前",
             services: w.services))
-        #expect(try await labels(w, group).first { $0.id == target.id }?.name == "新しい名前")
+        #expect(try await labels(w, field).first { $0.id == target.id }?.name == "新しい名前")
 
         _ = await stack.undo()
-        #expect(try await labels(w, group).first { $0.id == target.id }?.name == before)
+        #expect(try await labels(w, field).first { $0.id == target.id }?.name == before)
         // 紐づけは行 ID で張られているので、改名でも取り消しでも維持される
-        #expect(try await labels(w, group).first { $0.id == target.id }?.fileCount == 1)
+        #expect(try await labels(w, field).first { $0.id == target.id }?.fileCount == 1)
     }
 
     @Test("Undo メニューに出る名前 [UD-06]")
@@ -75,26 +75,26 @@ struct LabelEditCommandTests {
     @Test("色の変更と取り消し。既定へ戻す経路も [CO-06]")
     @MainActor
     func colorIsUndoable() async throws {
-        let (w, _, group) = try await workspace(files: 1)
+        let (w, _, field) = try await workspace(files: 1)
         let stack = CommandStack()
-        let target = try #require(try await labels(w, group).first)
+        let target = try #require(try await labels(w, field).first)
         #expect(target.colorHex == nil)
 
         _ = try await stack.run(SetLabelColorCommand(
             labelID: target.id, labelName: target.name,
             previousHex: nil, newHex: "#AABBCC", services: w.services))
-        #expect(try await labels(w, group).first?.colorHex == "#AABBCC")
+        #expect(try await labels(w, field).first?.colorHex == "#AABBCC")
 
-        // 既定（グループ色の継承）へ戻す
+        // 既定（フィールド色の継承）へ戻す
         _ = try await stack.run(SetLabelColorCommand(
             labelID: target.id, labelName: target.name,
             previousHex: "#AABBCC", newHex: nil, services: w.services))
-        #expect(try await labels(w, group).first?.colorHex == nil)
+        #expect(try await labels(w, field).first?.colorHex == nil)
 
         _ = await stack.undo()
-        #expect(try await labels(w, group).first?.colorHex == "#AABBCC")
+        #expect(try await labels(w, field).first?.colorHex == "#AABBCC")
         _ = await stack.undo()
-        #expect(try await labels(w, group).first?.colorHex == nil)
+        #expect(try await labels(w, field).first?.colorHex == nil)
     }
 
     // MARK: - 手動での非表示 [LA3-02][LE-09]
@@ -102,22 +102,22 @@ struct LabelEditCommandTests {
     @Test("非表示の切り替えの取り消しは、1 件ずつ元の状態へ戻す")
     @MainActor
     func hideRestoresPerLabelState() async throws {
-        let (w, _, group) = try await workspace()
+        let (w, _, field) = try await workspace()
         let stack = CommandStack()
-        let all = try await labels(w, group)
+        let all = try await labels(w, field)
         #expect(all.count == 3)
         // 1 件だけ先に隠しておく——**混ざった状態**を作るのが要点
         try await w.services.setLabelHidden([all[0].id], true)
 
-        let previous = try await labels(w, group).map {
+        let previous = try await labels(w, field).map {
             SetLabelHiddenCommand.Previous(id: $0.id, name: $0.name, isHidden: $0.isHidden)
         }
         _ = try await stack.run(SetLabelHiddenCommand(
             previous: previous, hidden: true, services: w.services))
-        #expect(try await labels(w, group).allSatisfy(\.isHidden))
+        #expect(try await labels(w, field).allSatisfy(\.isHidden))
 
         _ = await stack.undo()
-        let after = try await labels(w, group)
+        let after = try await labels(w, field)
         // もともと隠れていた 1 件は隠れたまま。一律に戻していない。
         #expect(after.first { $0.id == all[0].id }?.isHidden == true)
         #expect(after.filter(\.isHidden).count == 1)
@@ -126,13 +126,13 @@ struct LabelEditCommandTests {
     @Test("非表示にしてもラベルの紐づけは維持される [LA-04][LA3-02]")
     @MainActor
     func hidingKeepsAssignments() async throws {
-        let (w, _, group) = try await workspace(files: 1)
+        let (w, _, field) = try await workspace(files: 1)
         let stack = CommandStack()
-        let target = try #require(try await labels(w, group).first)
+        let target = try #require(try await labels(w, field).first)
         _ = try await stack.run(SetLabelHiddenCommand(
             previous: [.init(id: target.id, name: target.name, isHidden: false)],
             hidden: true, services: w.services))
-        #expect(try await labels(w, group).first?.fileCount == 1)
+        #expect(try await labels(w, field).first?.fileCount == 1)
     }
 
     // MARK: - 削除 [LE-07][LE-08][LB-05]
@@ -140,29 +140,29 @@ struct LabelEditCommandTests {
     @Test("削除を取り消すと、同じ ID で紐づけごと戻る [LE-08][UD-01]")
     @MainActor
     func deleteIsUndoable() async throws {
-        let (w, _, group) = try await workspace()
+        let (w, _, field) = try await workspace()
         let stack = CommandStack()
-        let target = try #require(try await labels(w, group).first)
+        let target = try #require(try await labels(w, field).first)
         try await w.services.setLabelPinned(target.id, true)
 
         _ = try await stack.run(DeleteLabelsCommand(
             labelIDs: [target.id], labelNames: [target.name], services: w.services))
-        #expect(try await labels(w, group).count == 2)
+        #expect(try await labels(w, field).count == 2)
 
         _ = await stack.undo()
-        let restored = try #require(try await labels(w, group).first { $0.id == target.id })
+        let restored = try #require(try await labels(w, field).first { $0.id == target.id })
         #expect(restored.name == target.name)
         #expect(restored.isPinned)                 // ピンも戻る
         #expect(restored.fileCount == 1)           // 紐づけも戻る
-        #expect(try await labels(w, group).count == 3)
+        #expect(try await labels(w, field).count == 3)
     }
 
     @Test("削除は取り消しできる操作として記録される [UD-10 の逆]")
     @MainActor
     func deleteGoesOnTheUndoStack() async throws {
-        let (w, _, group) = try await workspace(files: 1)
+        let (w, _, field) = try await workspace(files: 1)
         let stack = CommandStack()
-        let target = try #require(try await labels(w, group).first)
+        let target = try #require(try await labels(w, field).first)
         _ = try await stack.run(DeleteLabelsCommand(
             labelIDs: [target.id], labelNames: [target.name], services: w.services))
         #expect(stack.undoTitle != nil)
@@ -172,9 +172,9 @@ struct LabelEditCommandTests {
     @Test("写しは組み立て時ではなく実行の直前に取る")
     @MainActor
     func snapshotIsTakenAtExecutionTime() async throws {
-        let (w, library, group) = try await workspace()
+        let (w, library, field) = try await workspace()
         let stack = CommandStack()
-        let target = try #require(try await labels(w, group).first)
+        let target = try #require(try await labels(w, field).first)
         let command = DeleteLabelsCommand(labelIDs: [target.id], labelNames: [target.name],
                                           services: w.services)
 
@@ -191,14 +191,14 @@ struct LabelEditCommandTests {
         try await w.services.applyLabelAssignments(
             labelID: target.id, [LabelAssignmentChange(fileID: extra.id, isAssigned: true)],
             protectedScopes: [:])
-        let countBeforeDelete = try await labels(w, group).first { $0.id == target.id }?.fileCount
+        let countBeforeDelete = try await labels(w, field).first { $0.id == target.id }?.fileCount
         #expect(countBeforeDelete == 2, "前提: 実行の直前に 2 件へ増えていること")
 
         _ = try await stack.run(command)
         _ = await stack.undo()
 
         // 増えた紐づけも含めて戻る＝写しが実行の直前に取られている
-        #expect(try await labels(w, group).first { $0.id == target.id }?.fileCount
+        #expect(try await labels(w, field).first { $0.id == target.id }?.fileCount
                 == countBeforeDelete)
     }
 
@@ -207,21 +207,21 @@ struct LabelEditCommandTests {
     @Test("統合を取り消すと 2 つのラベルが元どおりに分かれる [LB-07][UD-01]")
     @MainActor
     func mergeIsUndoable() async throws {
-        let (w, _, group) = try await workspace()
+        let (w, _, field) = try await workspace()
         let stack = CommandStack()
-        let all = try await labels(w, group)
+        let all = try await labels(w, field)
         let source = all[0], target = all[1]
 
         _ = try await stack.run(MergeLabelsCommand(
             source: source.id, sourceName: source.name,
             target: target.id, targetName: target.name, services: w.services))
-        let merged = try await labels(w, group)
+        let merged = try await labels(w, field)
         #expect(merged.count == 2)
         #expect(merged.first { $0.id == target.id }?.fileCount == 2)
         #expect(merged.contains { $0.id == source.id } == false)
 
         _ = await stack.undo()
-        let after = try await labels(w, group)
+        let after = try await labels(w, field)
         #expect(after.count == 3)
         #expect(after.first { $0.id == source.id }?.fileCount == 1)
         #expect(after.first { $0.id == target.id }?.fileCount == 1)

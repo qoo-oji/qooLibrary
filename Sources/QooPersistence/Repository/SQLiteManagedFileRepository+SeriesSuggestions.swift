@@ -15,7 +15,7 @@ import QooKit
 extension SQLiteManagedFileRepository {
 
     public func seriesSuggestionCandidates(libraryID: LibraryID,
-                                           circleFieldID: LabelGroupID?) async throws
+                                           circleFieldID: FieldID?) async throws
         -> [SeriesSuggestionCandidate]
     {
         try await database.writer.read { db in

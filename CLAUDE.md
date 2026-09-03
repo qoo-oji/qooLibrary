@@ -42,7 +42,14 @@ qooLibrary の実装作業でこのリポジトリを扱う際に、Claude Code 
 >    **`operationHistory.count` を鍵にするのはやめた**（上限 500 件で頭打ちに
 >    なる既存の欠陥。501 回目以降は ⌘Z に追随しなくなっていた）
 >    ⑥**JSON バックアップは版 4**（`isArchived` → `isHidden`。版 3 以前も読める）
->    ⑦静的検査が 1 本増えた（`check-raw-entries-access.swift`）。
+>    ⑦静的検査が 1 本増えた（`check-raw-entries-access.swift`）
+>    ⑧**型名を「ラベルグループ」→「フィールド」へ一括改名した**
+>    （`LabelGroupSummary`→`FieldSummary` 等 26 語、ファイル 3 つ、
+>    文字列カタログの鍵 15 件）。**永続化される綴りは据え置き**
+>    ——DB のテーブル・列（`labelGroup` / `labelGroupId` / `groupIndex` /
+>    `labelGroupIndex`）、`settingsJSON` の `labelGroupOrder`、JSON
+>    バックアップと `library-types.json` の `labelGroups`、
+>    `folderLevelMapping` の生値 `singleLabelGroup`。
 >    **実機検証は未了。**
 >
 > **-14. 概念モデル v3 のステージ 10（シリーズの提案）が入った**
@@ -632,7 +639,7 @@ CLAUDE.md が「`NotificationRouter` へ繋ぐのは UI 結線のとき」とし
 | 2-19 埋め込みメタデータ | **完了**（2026-08）。残りは実機での 2 点（確認ダイアログが前面に出るか／「以降すべてに適用」の操作）と、プレビューへの反映 [LE2-16] |
 | 2-8 ラベルフィルタ | **完了**（2026-08）。左ペイン下半分が実際に動く。詳細は下記「ラベルフィルタ」節と 14章 §14.2 |
 | 2-10 右ペインのラベル・評価・カバー | **完了**（2026-08）。第 1 段＝評価 [RA-01〜08]、第 2 段＝ラベル設定 [RL-01〜07][RP-02]、第 3 段＝タイトル編集 [RP-10〜12] とカバー画像 [CV-01〜08]（サイドカー [IV-02②] 込み）。下記の 3 節を参照。**3 段とも実機検証済み**（カバーの D&D [CV-03] だけ未確認）。 あわせて**「DB 操作の Undo」（2-15）の 1〜4 つ目**を作った |
-| 2-13 ラベル保管庫の整理ウインドウ | **完了**（2026-08）。`LAW-01〜03` の 2 ペイン。**新しいコマンドは 1 つも書いていない**（既存の `SetLabelArchivedCommand` / `DeleteLabelsCommand`）。~~**ファイル保管庫 [FAW-01〜05] は 2-11 のまま**~~ → **完了**（2026-08、下記「ファイル保管庫」節）。詳細は下記「ラベル保管庫の整理ウインドウ」節と 15章 §15.3。**実機検証済み** |
+| 2-13 ラベル保管庫の整理ウインドウ | **完了**（2026-08）。`LAW-01〜03` の 2 ペイン。**新しいコマンドは 1 つも書いていない**（既存の `SetLabelHiddenCommand` / `DeleteLabelsCommand`）。~~**ファイル保管庫 [FAW-01〜05] は 2-11 のまま**~~ → **完了**（2026-08、下記「ファイル保管庫」節）。詳細は下記「ラベル保管庫の整理ウインドウ」節と 15章 §15.3。**実機検証済み** |
 | ~~2-9 ライブラリ表示モード~~ | **完了**（2026-08）。中央ペインを DB の一覧で描く経路ができ、**残り 3 件（IV-02 / SR-03 / IF-17・18）も片付けて閉じた**。下記「ライブラリ表示モード」節と「2-9 を閉じた 3 件」節。**両方とも実機検証済み** |
 | 2-11 ファイル／フォルダ保管庫 | **完了**（2026-08）。§15.4 の整理ウインドウ [FAW-01〜05] も同時に閉じた。下記「ファイル保管庫」節。**実機検証済み** |
 | 2-18 以降 | UI が主。着手前に 14章・15章を読む |
@@ -3015,7 +3022,7 @@ CLAUDE.md に既記録の教訓（「主張を検証するには、その主張�
 - **`LabelSummary` の件数は 2 つある。** フィルタは `fileCount`、編集ウインドウは
   `fileCountIncludingArchived`。**新しくラベルの件数を出す画面を作るときは、
   どちらの意味かを先に決めること**（15章 §15.2 の表）。
-- **`LibraryLabelGroupsSettingsView` は 2 つのウインドウが共有する。**
+- **`LibraryFieldsSettingsView` は 2 つのウインドウが共有する。**
   設定ウインドウ（`selection: nil`）とラベル編集ウインドウ（束縛あり）。
   行に何か足すと**両方に出る**——片方だけに出したいなら引数で切り替える。
 - **登録ルート行は 2 つある**（通常と縮退）。項目を足すときは配線が 2 か所に要る
@@ -3033,7 +3040,7 @@ CLAUDE.md に既記録の教訓（「主張を検証するには、その主張�
 
 **まずこの順で読む**: ① 本節 ② `15_UI_専用ウインドウ.md` §15.2（実装状況・
 共有の理由・件数が 2 つある理由・Undo・入口・下端の操作群・0 件の赤字）
-③ `Sources/QooApplication/LabelGroupEditorModel.swift`
+③ `Sources/QooApplication/FieldEditorModel.swift`
 ④ `Sources/QooApplication/LabelEditCommands.swift`
 ⑤ `07_永続化_スキーマとリポジトリ.md` §7.5「ラベルそのものの編集」
 ⑥ 触る領域の章。
@@ -3411,10 +3418,10 @@ CPU 0.0%・クラッシュレポート無しを確認したが、**ウインド�
 
 #### 新しいコマンドを 1 つも書かなかった
 
-戻す＝`SetLabelArchivedCommand`、削除＝`DeleteLabelsCommand`。どちらも 2-6 で
+戻す＝`SetLabelHiddenCommand`、削除＝`DeleteLabelsCommand`。どちらも 2-6 で
 作ってあり、**変更前の状態を 1 件ずつ持つ**・**削除は同じ行 ID へ復元する**
 という要る性質を既に満たしていた。並べ替えと検索も
-`LabelGroupEditorModel.rows(from:sortedBy:matching:)`、行の描画も `LabelRowView`、
+`FieldEditorModel.rows(from:sortedBy:matching:)`、行の描画も `LabelRowView`、
 削除の確認も `DeleteLabelsDialog` を共有している。**新設は 4 つだけ**
 （`archivedLabelCounts()` / `LabelVaultModel` / `LabelVaultWindow` /
 `LibraryMenuVisibility.Item.labelVault`）。
@@ -3463,7 +3470,7 @@ CPU 0.0%・クラッシュレポート無しを確認したが、**ウインド�
 同じ後始末をするため。ただし `reload()` が読み取りに失敗すると
 （`state = .failed` で早期に返るため）そこへ届かず、**消えたラベルを指したままの
 選択が残る**。壊れるのは失敗経路だけなので、通ることを理由に外さないこと
-（`LabelGroupEditorModel` に同じ注記がある）。
+（`FieldEditorModel` に同じ注記がある）。
 
 #### `code-review`（high）で 5 件見つけて全部直した
 
@@ -3769,7 +3776,7 @@ DB には 8 件あるのに出ない。**アプリを再起動するまで直ら
 `.task(id:)` は**鍵が変わると前のタスクを取り消す**ので、選択を素早く変えたり
 読み直しの合図が続けて来たりすると `catch` に `CancellationError` が届く。
 7 つのモデル（`TitleEditorModel` / `RatingEditorModel` / `LabelEditorModel` /
-`CoverEditorModel` / `LabelGroupEditorModel` / `LabelVaultModel` /
+`CoverEditorModel` / `FieldEditorModel` / `LabelVaultModel` /
 `LibraryContentModel`）が**それを無条件に `.failed` にしていた。**
 
 **取り消しは失敗ではない。** `CommandStack.isCancellation`（1-16b で作って
@@ -5163,7 +5170,7 @@ DTO キーが取れない」と落ちた——**網羅性の検査が設計上�
 
 `SetFileArchivedCommand(archived:)`。違うのは行き先の組み立て方だけで、
 中間フォルダの作成 [FA-09]・衝突の連番 [FA-13]・サイドカーの連動 [FA-14][FA-15]・
-空フォルダの後始末 [FA-06] はまったく同じ。`SetLabelArchivedCommand` と同じ形で、
+空フォルダの後始末 [FA-06] はまったく同じ。`SetLabelHiddenCommand` と同じ形で、
 **2 つ書くと片方だけ直して取り残す**（このコードベースが 5 度踏んでいる形）。
 
 実ファイル側も `FileVault.relocate(from:to:)` 1 本にした——保管庫へ入れるのも
@@ -6302,7 +6309,7 @@ Movies／Music／Pictures／Public／Virtual Machines）をすべて開き、**�
 - **`LibraryGeneration.shared` を進めるのは 3 経路だけ**（`CommandStack.record()`・
   走査／再マッチング／保管庫・設定の保存）。`record()` は run / undo / redo の
   すべてが通るので、**コマンドを足す人が配線し忘れる余地が無い**。
-- **`LabelGroupSummary.labelCount` は非表示のものも数える**（フィールド編集
+- **`FieldSummary.labelCount` は非表示のものも数える**（フィールド編集
   ウインドウが空のフィールドを触れなくなるため）。**フィルタはこの値で
   出し分けない**——読んだラベルの `isVisible` から自分で決める。ここに 2 つ目の
   意味を持たせると §19.13 #1 と同じ取り違えを生む。
@@ -6348,6 +6355,60 @@ Movies／Music／Pictures／Public／Virtual Machines）をすべて開き、**�
 落とす [`FolderContentView.reload`] のと同じ形へ揃えた。どちらも修正のうえ
 **変異検証で落ちることを確認済み**。
 
+#### 型名の一括改名（ステージ 11 に続けて実施、2026-09-03）［ユーザー要望］
+
+用語は Stage 5 で「ラベルグループ → フィールド」へ揃えたが、**型名は旧称のまま
+残っていた**（Stage 5 節が「Stage 11 とまとめる」と書いていた積み残し）。
+
+| 旧 | 新 |
+|---|---|
+| `LabelGroupSummary` / `LabelGroupRecord` / `LabelGroupDraft` / `LabelGroupBackup` / `LabelGroupSpec` / `LabelGroupID` | `FieldSummary` / `FieldRecord` / `FieldDraft` / `FieldBackup` / `FieldSpec` / `FieldID` |
+| `LabelGroupEditorModel` / `LabelGroupEditorWindow` / `LibraryLabelGroupsSettingsView` | `FieldEditorModel` / `FieldEditorWindow` / `LibraryFieldsSettingsView` |
+| `labelGroups(libraryID:)` / `groups(libraryID:)` / `group(libraryID:index:)` | `fields(libraryID:)` / `field(libraryID:index:)` |
+| `groupID:` / `selectedGroupID` / `allGroups` / `displayGroups` / `labelsByGroup` / `groupOf` / `reorderGroups` / `setGroupOrder` ほか | `fieldID:` / `selectedFieldID` / `allFields` / `displayFields` / `labelsByField` / `fieldOf` / `reorderFields` / `setFieldOrder` |
+| `maxLabelGroups` / `nextAvailableLabelGroupIndex` / `labelGroupName(at:)` / `groupedSelection` / `crossGroupMerge` | `maxFields` / `nextAvailableFieldIndex` / `fieldName(at:)` / `selectionByField` / `crossFieldMerge` |
+
+ファイルも 3 つ改名した（`FieldEditorModel.swift` / `FieldEditorWindow.swift` /
+`FieldEditorModelTests.swift`）。文字列カタログの鍵 15 件も
+`librarySettings.fields.*` / `.section.fields` / `inspector.labels.field` /
+`labelEditor.error.crossFieldMerge` へ揃えた（**値は Stage 7 で既に
+「フィールド」になっていた**ので、画面の文言は変わらない）。
+
+##### 改名してはいけない綴りが 6 つある【この作業の勘所】
+
+**永続化される綴りは Swift の呼び名と切り離す。** 改名すると、既存ストアや
+既存の JSON 文書が黙って読めなくなる——**エラーにならず、値が既定へ落ちる**
+形で壊れるので気づきにくい。
+
+| 綴り | どこの綴りか |
+|---|---|
+| `labelGroup` / `labelGroupId` / `groupIndex` / `labelGroupIndex` | DB のテーブル名・列名 |
+| `labelGroupOrder` | `library.settingsJSON` の鍵（**合成 CodingKeys なのでプロパティ名がそのまま鍵**）|
+| `labelGroups` | JSON バックアップの鍵（同上）と `library-types.json` の鍵 |
+| `singleLabelGroup` | `folderLevelMapping.assignment` の生値 |
+
+**実際に 3 つとも一度巻き込んで、テストが捕まえた**——`LibraryBackup.labelGroups`・
+`LibrarySettingsPayload.labelGroupOrder`・`TemplateDefinition.labelGroups`。
+前 2 つはプロパティ名を旧称のまま残して doc コメントで理由を書き、3 つ目は
+`labelGroups` を実体に据えて `var fields: [FieldSpec] { labelGroups }` を併設した。
+
+> **一括置換の前に「その綴りはどこかへ書き出されているか」を数えること。**
+> 合成 `CodingKeys` を持つ型では、プロパティ名の変更が**そのまま外部形式の
+> 変更**になる。
+
+##### 範囲を広げすぎて 1 度やり直した
+
+`group` → `field` を「`Sources`/`Tests` の全 Swift ファイル」に当てたところ、
+**正規表現のキャプチャグループ・`withTaskGroup`・SwiftUI の `Group`・
+シリーズの提案の「組」・重複の「組」まで巻き込んだ**（70 ファイル）。
+`git checkout` で全部戻し、**ラベルグループの意味で使っている 41 ファイルだけ**を
+名指しした一覧に対して当て直した。
+
+- **日本語の「グループ」も同時に置換したため、「キャプチャグループ」が
+  「キャプチャフィールド」になっていた**（3 ファイル）。差分を目視して直した。
+- **教訓: 語の一括置換は「その語が何を指しているか」でファイルを選ぶ。**
+  「その語を含むファイル」ではない。前者は数えられるが、後者は数えられない。
+
 #### 検証
 
 `swift test` **Debug／Release とも 1922 件全通過**（新規 12 件）、静的検査
@@ -6363,7 +6424,7 @@ Movies／Music／Pictures／Public／Virtual Machines）をすべて開き、**�
 | # | 内容 |
 |---|---|
 | 1 | **実機検証（GUI）が未了。** 見るもの: フィールド編集ウインドウで非表示のラベルが控えめに出て印が 2 通りに分かれること／「非表示にする」「表示に戻す」と ⌘Z ／**実体を全部ゴミ箱へ入れるとラベルがフィルタから消え、戻すと復帰すること** [LA3-01]／右ペインの追加候補には 0 件のラベルが出ること／⌘Z が各画面に届くこと（合図の一本化）／メニューバーとツールバーから「ラベルの保管庫…」が消えたこと |
-| 2 | **型名の一括改名**（`LabelGroupDraft`・`labelGroups`・`LibraryLabelGroupsSettingsView` → フィールド系）は**未着手**。CLAUDE.md のステージ 5 節が「Stage 11 とまとめる」と書いていたが、**§19.10 の Stage 11 の行には入っていない**ので範囲に含めなかった。フィールド編集ウインドウの題も「ラベル」のまま（§19.6 の v3 表は「フィールドの編集」）|
+| 2 | 型名の一括改名は**実施済み**（上記の節）。ただし**フィールド編集ウインドウの題は「ラベル」のまま**（§19.6 の v3 表は「フィールドの編集」）——文言の変更は別途 |
 | 3 | `LabelSummary` を作る側が `fileCount` に何を入れるかは**呼び出し側の約束**のまま（型では守れない）。テストのフェイクが違う意味の数を入れれば通ってしまう |
 | 4 | §19.13 の #4／#5／#7〜#9 は済または対象外のまま（表を参照）|
 
@@ -7789,7 +7850,7 @@ private 2,346 件とも、`@librarytype`→`@booktype` の鍵の読み替え後�
 | 1 | **予約語の整理そのものは GUI で通し確認していない**（起動確認まで）。設定ウインドウの参照名の列が束縛の無いフィールドで「—」と出ること、予約語パレットに `@labelgroup` が出ないこと、ウィザードでシリーズがチップに二重表示されないこと——いずれも次に実機を触るときに見ること |
 | 2 | **追加フィールドはファイル名から自動抽出できない**（`@labelgroupN` を撤去したため）。手で付けるための軸になる——既定 5 種で足りない軸を自動で取りたくなったら、`SemanticKeyword` に case を足すのが正しい道 |
 | 3 | プリセット改訂の差分適用 [LT-10〜17] は範囲外のまま。**JSON 取り込みで古い綴りのフォーマットが戻る経路は残る**——`v9_reservedWordCleanup` は移行時にしか走らない |
-| 4 | 用語統一は UI 文言のみ。型名（`LabelGroupDraft`・`labelGroups`・`LibraryLabelGroupsSettingsView`）と仕様書の内部記述は旧称のまま——Stage 11 とまとめる |
+| 4 | 用語統一は UI 文言のみ。**型名の改名は Stage 11 に続けて実施した**（下記「型名の一括改名」節）——ただし DB の列名・JSON の鍵など**永続化される綴りは据え置き** |
 
 #### 引き継ぎ — 次に読む順番と、次のステージ
 

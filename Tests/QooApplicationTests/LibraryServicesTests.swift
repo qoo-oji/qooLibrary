@@ -343,8 +343,8 @@ struct LibraryBackupServicesTests {
         // ずらしておかないと、再有効化しただけで同じ状態に戻ってしまい、
         // 取り込みが効いたのかどうか区別できない。
         var draft = try #require(try await w.services.settingsDraft(libraryID: id))
-        draft.labelGroups[0].name = "自分で付けた名前"
-        draft.labelGroups[0].colorHexLight = "#123456"
+        draft.fields[0].name = "自分で付けた名前"
+        draft.fields[0].colorHexLight = "#123456"
         draft.filenameFormats.append(FilenameFormatDraft(source: "@title", isEnabled: true))
         let formatCount = draft.filenameFormats.count
         try await w.services.updateSettings(draft, libraryID: id)
@@ -365,8 +365,8 @@ struct LibraryBackupServicesTests {
         #expect(applied.libraries.first?.kind == .update)
 
         let restored = try #require(try await w.services.settingsDraft(libraryID: restoredID))
-        #expect(restored.labelGroups[0].name == "自分で付けた名前")
-        #expect(restored.labelGroups[0].colorHexLight == "#123456")
+        #expect(restored.fields[0].name == "自分で付けた名前")
+        #expect(restored.fields[0].colorHexLight == "#123456")
         #expect(restored.filenameFormats.count == formatCount)
         #expect(restored.filenameFormats.contains { $0.source == "@title" })
     }

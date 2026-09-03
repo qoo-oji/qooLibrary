@@ -15,12 +15,12 @@ struct SeriesSuggestionRepositoryTests {
 
     struct Setup {
         let f: Fixture
-        let circleField: LabelGroupSummary
+        let circleField: FieldSummary
 
         static func make() async throws -> Setup {
             let f = try await Fixture.make(preset: "builtin.doujinshi-a")
             // 同人誌プリセットの `@circle` は 2 番のフィールド [RWI-02]。
-            let circle = try #require(try await f.labels.group(libraryID: f.libraryID, index: 2))
+            let circle = try #require(try await f.labels.field(libraryID: f.libraryID, index: 2))
             return Setup(f: f, circleField: circle)
         }
 
@@ -112,7 +112,7 @@ struct SeriesSuggestionRepositoryTests {
     func circleLabelsBecomeKeys() async throws {
         let s = try await Setup.make()
         let id = try await s.add(inode: 1, path: "a.cbz", title: "作品タイトル1", author: nil)
-        let label = try await s.f.labels.ensureLabel(groupID: s.circleField.id,
+        let label = try await s.f.labels.ensureLabel(fieldID: s.circleField.id,
                                                     name: "サークル値A")
         try await s.f.labels.assign(fileID: id, labelID: label)
 
@@ -124,7 +124,7 @@ struct SeriesSuggestionRepositoryTests {
     func circleIsOptional() async throws {
         let s = try await Setup.make()
         let id = try await s.add(inode: 1, path: "a.cbz", title: "作品タイトル1", author: nil)
-        let label = try await s.f.labels.ensureLabel(groupID: s.circleField.id, name: "サークル値A")
+        let label = try await s.f.labels.ensureLabel(fieldID: s.circleField.id, name: "サークル値A")
         try await s.f.labels.assign(fileID: id, labelID: label)
 
         let out = try await s.f.files.seriesSuggestionCandidates(libraryID: s.f.libraryID,

@@ -13,11 +13,11 @@ import Foundation
 
 // MARK: - 部品
 
-/// ラベルグループ 1 件 [LG-01〜LG-07]。
+/// ラベルフィールド 1 件 [LG-01〜LG-07]。
 ///
 /// `index` が `@labelgroupN` の N。**DB の行 ID ではなく `index` が
 /// フォーマットから参照される**ので、付け替えるとフォーマットの意味が変わる。
-public struct LabelGroupDraft: Sendable, Hashable, Identifiable {
+public struct FieldDraft: Sendable, Hashable, Identifiable {
     /// UI 上の安定した識別子。DB の行 ID とは無関係（新規行はまだ ID を持たない）。
     public let id: UUID
     /// DB の行 ID。既存行の同定に使う。新規なら `nil`。
@@ -127,8 +127,8 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
     public var protectedTokens: [ProtectedToken]  // [PT-01〜PT-10]
 
     // --- ラベル ---
-    public var labelGroups: [LabelGroupDraft]
-    /// 予約語 → ラベルグループ番号 [RW-13]。1 対 1 でなければならない [RW-14]。
+    public var fields: [FieldDraft]
+    /// 予約語 → ラベルフィールド番号 [RW-13]。1 対 1 でなければならない [RW-14]。
     public var semanticBindings: [SemanticKeyword: Int]
 
     // --- フォーマット ---
@@ -162,7 +162,7 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
                 imageExtensions: [String] = [],
                 delimiters: DelimiterSet = .default,
                 protectedTokens: [ProtectedToken] = [],
-                labelGroups: [LabelGroupDraft] = [],
+                fields: [FieldDraft] = [],
                 semanticBindings: [SemanticKeyword: Int] = [:],
                 filenameFormats: [FilenameFormatDraft] = [],
                 volumeFormats: [VolumeFormatDraft] = [],
@@ -180,7 +180,7 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
         self.imageExtensions = imageExtensions
         self.delimiters = delimiters
         self.protectedTokens = protectedTokens
-        self.labelGroups = labelGroups
+        self.fields = fields
         self.semanticBindings = semanticBindings
         self.filenameFormats = filenameFormats
         self.volumeFormats = volumeFormats
@@ -202,21 +202,21 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
     /// ——別々に組み立てると、片方だけ設定変更に追随しない形になる。
     public var compilationContext: FormatCompilationContext {
         FormatCompilationContext(delimiters: delimiters,
-                                 maxLabelGroups: AppLimits.Format.maxLabelGroups,
+                                 maxFields: AppLimits.Format.maxFields,
                                  allLibraryTypeNames: allLibraryTypeNames,
                                  semanticBindings: semanticBindings)
     }
 
-    public var definedLabelGroupIndexes: Set<Int> { Set(labelGroups.map(\.index)) }
+    public var definedFieldIndexes: Set<Int> { Set(fields.map(\.index)) }
 
-    public func labelGroupName(at index: Int) -> String? {
-        labelGroups.first { $0.index == index }?.name
+    public func fieldName(at index: Int) -> String? {
+        fields.first { $0.index == index }?.name
     }
 
-    /// 次に使える空きグループ番号。埋まっていれば `nil`。
-    public var nextAvailableLabelGroupIndex: Int? {
-        let used = definedLabelGroupIndexes
-        return (1...AppLimits.Format.maxLabelGroups).first { !used.contains($0) }
+    /// 次に使える空きフィールド番号。埋まっていれば `nil`。
+    public var nextAvailableFieldIndex: Int? {
+        let used = definedFieldIndexes
+        return (1...AppLimits.Format.maxFields).first { !used.contains($0) }
     }
 }
 
@@ -235,7 +235,7 @@ public struct LibrarySettingsIssue: Sendable, Hashable, Identifiable {
     /// 不備が属する設定項目。UI が「どのページを開けばよいか」を示すのに使う。
     public enum Section: String, Sendable, Hashable {
         case basics, extensions, delimiters, protectedTokens
-        case labelGroups, filenameFormats, volumeFormats, folderLevels
+        case fields, filenameFormats, volumeFormats, folderLevels
     }
 
     public let id: UUID
@@ -256,7 +256,7 @@ extension LibrarySettingsDraft {
     /// 保存前の検証 [LS-01]。**純粋関数**——DB も実ファイルも見ない。
     ///
     /// 壊れた設定を DB へ入れると、次のスキャンで全件が未解決になったり、
-    /// 実在しないラベルグループへ紐づけようとしたりする。`settingsSnapshot`
+    /// 実在しないラベルフィールドへ紐づけようとしたりする。`settingsSnapshot`
     /// が壊れたフォーマットを黙って落とす造りなのは「保存時に検証済み」を
     /// 前提にしているので、その前提をここで満たす。
     public func validate() -> [LibrarySettingsIssue] {
@@ -289,42 +289,42 @@ extension LibrarySettingsDraft {
             addWarning(.extensions, "対象拡張子と画像拡張子が重複しています: \(overlap.sorted().joined(separator: ", "))")
         }
 
-        // --- ラベルグループ ---
+        // --- ラベルフィールド ---
         var seenIndexes: Set<Int> = []
-        for group in labelGroups {
-            if group.index < 1 || group.index > AppLimits.Format.maxLabelGroups {
-                addError(.labelGroups,
-                      "グループ番号 \(group.index) は 1〜\(AppLimits.Format.maxLabelGroups) の範囲外です。")
+        for field in fields {
+            if field.index < 1 || field.index > AppLimits.Format.maxFields {
+                addError(.fields,
+                      "フィールド番号 \(field.index) は 1〜\(AppLimits.Format.maxFields) の範囲外です。")
             }
-            if !seenIndexes.insert(group.index).inserted {
-                addError(.labelGroups, "グループ番号 \(group.index) が重複しています。")
+            if !seenIndexes.insert(field.index).inserted {
+                addError(.fields, "フィールド番号 \(field.index) が重複しています。")
             }
-            if group.name.trimmingCharacters(in: .whitespaces).isEmpty {
-                addError(.labelGroups, "グループ \(group.index) の名前が空です。")
+            if field.name.trimmingCharacters(in: .whitespaces).isEmpty {
+                addError(.fields, "フィールド \(field.index) の名前が空です。")
             }
         }
 
         // --- セマンティック予約語 [RW-13][RW-14][LE-02] ---
         //
-        // 1 予約語 → 複数グループ、1 グループ → 複数予約語のどちらも禁止。
+        // 1 予約語 → 複数フィールド、1 フィールド → 複数予約語のどちらも禁止。
         // 前者は辞書の形が防いでいるので、ここで見るのは後者。
         var groupToKeywords: [Int: [SemanticKeyword]] = [:]
         for (keyword, index) in semanticBindings {
             groupToKeywords[index, default: []].append(keyword)
-            if !definedLabelGroupIndexes.contains(index) {
-                addError(.labelGroups,
-                      "\(keyword.rawValue) が存在しないグループ \(index) に紐づいています。")
+            if !definedFieldIndexes.contains(index) {
+                addError(.fields,
+                      "\(keyword.rawValue) が存在しないフィールド \(index) に紐づいています。")
             }
         }
         for (index, keywords) in groupToKeywords where keywords.count > 1 {
-            addError(.labelGroups,
-                  "グループ \(index) に複数の予約語が紐づいています: "
+            addError(.fields,
+                  "フィールド \(index) に複数の予約語が紐づいています: "
                   + keywords.map(\.rawValue).sorted().joined(separator: ", "))
         }
 
         // --- ファイル名フォーマット ---
         let context = compilationContext
-        let defined = definedLabelGroupIndexes
+        let defined = definedFieldIndexes
         if filenameFormats.allSatisfy({ !$0.isEnabled }) {
             addWarning(.filenameFormats,
                  "有効なファイル名フォーマットが 1 つもありません。すべてのファイルがどのフォーマットにも一致しなくなり、ラベルが付きません。")
@@ -372,7 +372,7 @@ extension LibrarySettingsDraft {
                 break
             case .singleLabelGroup(let index):
                 if !defined.contains(index) {
-                    addError(.folderLevels, "階層 \(level.level) が、存在しないグループ \(index) に割り当てられています。")
+                    addError(.folderLevels, "階層 \(level.level) が、存在しないフィールド \(index) に割り当てられています。")
                 }
             case .format(let source):
                 if source.trimmingCharacters(in: .whitespaces).isEmpty {

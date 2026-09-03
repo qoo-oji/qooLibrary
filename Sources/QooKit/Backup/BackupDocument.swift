@@ -80,7 +80,10 @@ public struct LibraryBackup: Codable, Sendable, Equatable {
     /// `library.settingsJSON` をそのまま持つ [07章 §7.3]。対象拡張子・区切り・
     /// 意味束縛など、可変長でユーザーが編集した設定が入っている。
     public var settings: String
-    public var labelGroups: [LabelGroupBackup]
+    /// **鍵は `labelGroups` のまま**——合成 CodingKeys なので
+    /// プロパティ名がそのまま JSON の鍵になる。版 3 以前の文書も
+    /// 読む [IE-14] ので改名できない。
+    public var labelGroups: [FieldBackup]
     public var filenameFormats: [FormatBackup]
     public var volumeFormats: [VolumeFormatBackup]
     public var folderLevelMappings: [FolderLevelMappingBackup]
@@ -99,7 +102,7 @@ public struct LibraryBackup: Codable, Sendable, Equatable {
     public init(uuid: UUID, displayName: String, rootPath: String, volumeUUID: String,
                 libraryType: LibraryTypeBackup,
                 duplicateGrouping: String, thumbnailsAlwaysHidden: Bool,
-                settings: String, labelGroups: [LabelGroupBackup],
+                settings: String, labelGroups: [FieldBackup],
                 filenameFormats: [FormatBackup], volumeFormats: [VolumeFormatBackup],
                 folderLevelMappings: [FolderLevelMappingBackup],
                 protectedTokens: [ProtectedTokenBackup],
@@ -151,7 +154,7 @@ public struct LibraryTypeBackup: Codable, Sendable, Equatable {
 // MARK: - ラベル
 
 /// ラベルグループ [LG-01]。名前・色はユーザーの設定なので再生成できない [MG-22]。
-public struct LabelGroupBackup: Codable, Sendable, Equatable {
+public struct FieldBackup: Codable, Sendable, Equatable {
     /// ライブラリ内で一意な枠番号。**復元の主キーはこちら**——グループ名は
     /// 後から変えられるので、名前だけを頼りにすると改名した瞬間に別物になる。
     public var groupIndex: Int

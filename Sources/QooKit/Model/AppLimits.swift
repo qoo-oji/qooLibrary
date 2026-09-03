@@ -18,7 +18,7 @@ public enum AppLimits {
         /// `@labelgroup#` を多桁対応にする、既定色をアルゴリズムで生成する、の
         /// 3 点が要点 [MT-12][MT-13]。この定数を書き換えるだけで引き上げられる
         /// ことを単体テストで固定している。
-        public static let maxLabelGroups = 10
+        public static let maxFields = 10
 
         /// 1 回の照合で辿ってよい探索ノード数の上限 [MT2-02]。
         /// 病的なフォーマットで停止しなくなるのを防ぐ。超過した照合は

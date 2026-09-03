@@ -44,11 +44,11 @@ struct BuiltInTemplateTests {
             .first { $0.key == "builtin.doujinshi-b" })
         let s = try TemplateInstantiation.snapshot(from: preset, volumeSets: sets,
                                                     libraryID: LibraryID(rawValue: 1))
-        guard case .singleLabelGroup(let group) = s.folderLevelAssignments[1] else {
+        guard case .singleLabelGroup(let field) = s.folderLevelAssignments[1] else {
             Issue.record("第1階層の割り当てが違う: \(String(describing: s.folderLevelAssignments[1]))")
             return
         }
-        #expect(group == 2)      // サークル
+        #expect(field == 2)      // サークル
     }
 
     @Test("一般コミック(B) は第1階層にフォーマット割り当てを持つ [AL-02]")
@@ -61,9 +61,9 @@ struct BuiltInTemplateTests {
         guard case .format(let f) = s.folderLevelAssignments[1] else {
             Issue.record("第1階層がフォーマット割り当てでない"); return
         }
-        // 著者は `@author` で取り、意味束縛で著者グループへ流す [RW-13]
+        // 著者は `@author` で取り、意味束縛で著者フィールドへ流す [RW-13]
         // ——`authorName` 列にも入るようにするため（束縛が無いと、
-        // `@author` で取った値はどのラベルグループにも付かない）。
+        // `@author` で取った値はどのラベルフィールドにも付かない）。
         // 番号ではなく**意味予約語**で書く [RWI-02]——番号はフィールドの身元では
         // ないので、並べ替えや改名で意味が変わってしまう。
         #expect(f.usedFields == [.author, .series])
@@ -136,7 +136,7 @@ struct BuiltInTemplateTests {
 
 @Suite("既定色パレット [CO-01〜CO-07][MT-13]")
 struct LabelColorPaletteTests {
-    @Test("グループ数に応じて色相環を等分する [MT-13]", arguments: [1, 5, 10, 12, 20])
+    @Test("フィールド数に応じて色相環を等分する [MT-13]", arguments: [1, 5, 10, 12, 20])
     func generatesForAnyCount(_ n: Int) {
         let palette = LabelColorPalette.palette(count: n)
         #expect(palette.count == n)

@@ -90,7 +90,7 @@ public struct FileQuery: Sendable, Hashable {
     public var scope: Scope
     public var mode: DisplayMode
     /// グループ内 OR × グループ間 AND [LF-08〜LF-10]。
-    public var labelSelection: [LabelGroupID: Set<LabelID>]
+    public var labelSelection: [FieldID: Set<LabelID>]
     public var ratingFilter: RatingFilter?
     public var searchText: String?
     public var includeArchived: Bool
@@ -113,7 +113,7 @@ public struct FileQuery: Sendable, Hashable {
     public init(libraryID: LibraryID,
                 scope: Scope = .library,
                 mode: DisplayMode = .folder,
-                labelSelection: [LabelGroupID: Set<LabelID>] = [:],
+                labelSelection: [FieldID: Set<LabelID>] = [:],
                 ratingFilter: RatingFilter? = nil,
                 searchText: String? = nil,
                 includeArchived: Bool = false,

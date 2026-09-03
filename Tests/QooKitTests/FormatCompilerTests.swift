@@ -7,7 +7,7 @@ private func ctx(maxGroups: Int = 10,
                  names: [String] = [],
                  semantic: [SemanticKeyword: Int] = [:],
                  delimiters: DelimiterSet = .default) -> FormatCompilationContext {
-    FormatCompilationContext(delimiters: delimiters, maxLabelGroups: maxGroups,
+    FormatCompilationContext(delimiters: delimiters, maxFields: maxGroups,
                              allLibraryTypeNames: types,
                              semanticBindings: semantic)
 }
@@ -17,7 +17,7 @@ private func ctx(maxGroups: Int = 10,
 @Suite("FormatLexer [LX-01〜LX-04]")
 struct FormatLexerTests {
     @Test("番号の無い @labelgroup は予約語として認めない")
-    func labelGroupWithoutNumber() {
+    func fieldWithoutNumber() {
         #expect(throws: FormatCompileError.unknownReservedWord("@labelgroup", at: 0)) {
             try FormatLexer.lex("@labelgroup", delimiters: .default)
         }

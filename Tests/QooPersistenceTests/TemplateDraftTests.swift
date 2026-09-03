@@ -28,7 +28,7 @@ struct TemplateDraftTests {
                 "\(template.key): \(errors.map(\.message).joined(separator: " / "))")
         // 空で登録すると走査が `.DS_Store` まで拾う [AL-11][IF-01]。
         #expect(!draft.targetExtensions.isEmpty)
-        #expect(draft.labelGroups.count == template.labelGroups.count)
+        #expect(draft.fields.count == template.fields.count)
         #expect(draft.filenameFormats.count == template.filenameFormats.count)
         #expect(!draft.volumeFormats.isEmpty || template.volumeSet == "VS-None")
     }
@@ -60,11 +60,11 @@ struct TemplateDraftTests {
         #expect(stored.semanticBindings == shown.semanticBindings)
         #expect(stored.seriesTitleCompositionFormat == shown.seriesTitleCompositionFormat)
         // 行 ID と UUID は保存で付くので、意味のある値だけを比べる。
-        #expect(stored.labelGroups.map(\.index) == shown.labelGroups.map(\.index))
-        #expect(stored.labelGroups.map(\.name) == shown.labelGroups.map(\.name))
-        #expect(stored.labelGroups.map(\.colorHexLight) == shown.labelGroups.map(\.colorHexLight))
-        #expect(stored.labelGroups.map(\.assignsAutomatically)
-                == shown.labelGroups.map(\.assignsAutomatically))
+        #expect(stored.fields.map(\.index) == shown.fields.map(\.index))
+        #expect(stored.fields.map(\.name) == shown.fields.map(\.name))
+        #expect(stored.fields.map(\.colorHexLight) == shown.fields.map(\.colorHexLight))
+        #expect(stored.fields.map(\.assignsAutomatically)
+                == shown.fields.map(\.assignsAutomatically))
         #expect(stored.filenameFormats.map(\.source) == shown.filenameFormats.map(\.source))
         #expect(stored.filenameFormats.map(\.isEnabled) == shown.filenameFormats.map(\.isEnabled))
         #expect(stored.volumeFormats.map(\.source) == shown.volumeFormats.map(\.source))
@@ -83,7 +83,7 @@ struct TemplateDraftTests {
 
         var draft = TemplateInstantiation.draft(
             from: template, volumeSets: sets, displayName: "テスト")
-        draft.labelGroups[0].name = "自分で決めた名前"
+        draft.fields[0].name = "自分で決めた名前"
         draft.filenameFormats.append(FilenameFormatDraft(source: "@title"))
         draft.targetExtensions = ["cbz"]
 
@@ -94,7 +94,7 @@ struct TemplateDraftTests {
             draft: draft, template: template)
 
         let stored = try #require(try await repository.settingsDraft(libraryID: id))
-        #expect(stored.labelGroups[0].name == "自分で決めた名前")
+        #expect(stored.fields[0].name == "自分で決めた名前")
         #expect(stored.filenameFormats.contains { $0.source == "@title" })
         #expect(stored.targetExtensions == ["cbz"])
     }
@@ -124,7 +124,7 @@ struct TemplateDraftTests {
         let stored = try #require(try await repository.settingsDraft(libraryID: id))
         // 白紙でも既定フィールド 5 種は入る [§19.2]——フォーマットが 1 本も
         // 無いのとは別で、分類の軸は最初から用意しておく。
-        #expect(stored.labelGroups.map(\.name)
+        #expect(stored.fields.map(\.name)
                 == ["著者", "サークル", "ジャンル", "イベント", "キーワード"])
         for (offset, keyword) in SemanticKeyword.defaultFields.enumerated() {
             #expect(stored.semanticBindings[keyword] == offset + 1)

@@ -50,9 +50,9 @@ public enum FolderLabelResolver {
             case .none:
                 continue                             // [AL-03]
 
-            case .singleLabelGroup(let group):
+            case .singleLabelGroup(let field):
                 let value = TextNormalizer.trimWhitespace(name)
-                if !value.isEmpty { out[group, default: []].append(value) }
+                if !value.isEmpty { out[field, default: []].append(value) }
 
             case .format(let format):
                 let input = ProtectedTokenMasker.mask(
@@ -72,10 +72,10 @@ public enum FolderLabelResolver {
                 // ラベルだけで、フォルダ名からタイトル・シリーズを決める経路は
                 // `resolve` が持つ [AL-22]。
                 for keyword in SemanticKeyword.allCases {
-                    guard let group = settings.semanticBindings[keyword],
+                    guard let field = settings.semanticBindings[keyword],
                           let text = result.fields[keyword.fieldRef]?.text,
                           !text.isEmpty else { continue }
-                    out[group, default: []].append(text)
+                    out[field, default: []].append(text)
                 }
             }
         }
@@ -84,9 +84,9 @@ public enum FolderLabelResolver {
 
     /// フォルダ名とファイル名の優先解決 [AL-20〜AL-22]。
     ///
-    /// **優先の単位はラベルグループごと**。フォーマット全体ではない [AL-21][FL-01]。
-    /// フォルダから得られたグループはファイル名側の値を捨て、得られなかった
-    /// グループだけファイル名側を採る。`@title` は常にファイル名から [AL-22]。
+    /// **優先の単位はラベルフィールドごと**。フォーマット全体ではない [AL-21][FL-01]。
+    /// フォルダから得られたフィールドはファイル名側の値を捨て、得られなかった
+    /// フィールドだけファイル名側を採る。`@title` は常にファイル名から [AL-22]。
     public static func resolve(relativePath: String,
                                nameWithoutExtension: String,
                                settings: LibrarySettingsSnapshot,
@@ -99,8 +99,8 @@ public enum FolderLabelResolver {
         let parsed = attempt.result.map { FieldPostProcessor.postProcess($0, settings: settings) }
 
         var final = folderLabels
-        for (group, values) in parsed?.labelValues ?? [:] where final[group] == nil {
-            final[group] = values                                                   // [AL-21]
+        for (field, values) in parsed?.labelValues ?? [:] where final[field] == nil {
+            final[field] = values                                                   // [AL-21]
         }
 
         return ResolvedLabels(labels: final,
@@ -128,7 +128,7 @@ public enum FolderLabelResolver {
         /// ——未解決の判定 [AL-31] がファイル名フォーマットの一致で決まるため。
         public let nearestFormat: NearestFormat?
         public let libraryTypeMismatch: Bool
-        /// フォルダ名から得たラベルグループ（ファイル名側を捨てた対象）。
+        /// フォルダ名から得たラベルフィールド（ファイル名側を捨てた対象）。
         public let folderProvidedGroups: Set<Int>
     }
 }

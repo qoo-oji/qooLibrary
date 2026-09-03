@@ -23,16 +23,16 @@ struct FileVaultRepositoryTests {
         static func make(path: String = "A/作品名A 第01巻.cbz") async throws -> Setup {
             let f = try await Fixture.make()
             let file = try await f.files.upsert(f.snapshot(inode: 1, path: path))
-            let group = try #require(try await f.labels.group(libraryID: f.libraryID, index: 2))
-            let label = try await f.labels.ensureLabel(groupID: group.id, name: "サークル値A")
+            let field = try #require(try await f.labels.field(libraryID: f.libraryID, index: 2))
+            let label = try await f.labels.ensureLabel(fieldID: field.id, name: "サークル値A")
             try await f.labels.assign(fileID: file, labelID: label)
             return Setup(f: f, file: file, label: label)
         }
 
         func fileCount() async throws -> Int {
-            let groups = try await f.labels.groups(libraryID: f.libraryID)
-            for group in groups {
-                let labels = try await f.labels.labels(groupID: group.id)
+            let fields = try await f.labels.fields(libraryID: f.libraryID)
+            for field in fields {
+                let labels = try await f.labels.labels(fieldID: field.id)
                 if let hit = labels.first(where: { $0.id == label }) { return hit.fileCount }
             }
             return -1

@@ -33,8 +33,8 @@ public final class LabelMenuModel {
     /// 全フィールド（表示順）。空のフィールドを出すかどうかは
     /// `menuLabels(in:for:)` の結果が決める——アーカイブ済みラベルの出し分けが
     /// 対象に依存するので、ここでは絞れない。
-    public private(set) var groups: [LabelGroupSummary] = []
-    private var labelsByGroup: [LabelGroupID: [LabelSummary]] = [:]
+    public private(set) var fields: [FieldSummary] = []
+    private var labelsByField: [FieldID: [LabelSummary]] = [:]
     /// フォルダ表示モード用: 現在フォルダ直下の「ファイル名 → 行 ID」[RL3-01]。
     private var fileIDsByName: [String: FileID] = [:]
     /// 表示中の行の紐づけ。チェック状態の出どころで、トグル直後は
@@ -74,12 +74,12 @@ public final class LabelMenuModel {
             return
         }
         do {
-            let loadedGroups = try await services.labelGroups(libraryID: library.id)
-            var loadedLabels: [LabelGroupID: [LabelSummary]] = [:]
-            for group in loadedGroups {
+            let loadedFields = try await services.fields(libraryID: library.id)
+            var loadedLabels: [FieldID: [LabelSummary]] = [:]
+            for field in loadedFields {
                 // 非表示のものも読む——付与済みなら出す必要がある [RL-05] ので、
                 // 読んでから対象ごとに出し分ける（`LabelEditorModel` と同じ）。
-                loadedLabels[group.id] = try await services.labels(groupID: group.id)
+                loadedLabels[field.id] = try await services.labels(fieldID: field.id)
             }
             var byName: [String: FileID] = [:]
             let ids: [FileID]
@@ -97,8 +97,8 @@ public final class LabelMenuModel {
             let assignments = try await services.labelAssignments(fileIDs: ids)
             let protections = try await services.protectedScopes(ids: ids)
             guard mine == generation else { return }
-            groups = loadedGroups
-            labelsByGroup = loadedLabels
+            fields = loadedFields
+            labelsByField = loadedLabels
             fileIDsByName = byName
             assignmentsByFile = assignments
             protectedByFile = protections
@@ -118,8 +118,8 @@ public final class LabelMenuModel {
     }
 
     private func clearContent() {
-        groups = []
-        labelsByGroup = [:]
+        fields = []
+        labelsByField = [:]
         fileIDsByName = [:]
         assignmentsByFile = [:]
         protectedByFile = [:]
@@ -148,11 +148,11 @@ public final class LabelMenuModel {
     /// そのフィールドでメニューに並べるラベル [LA-03][RL-05]。
     ///
     /// 出し分けの規則は `LabelEditorModel.candidates`（アーカイブ済みは
-    /// 付与済みのときだけ）と共有する。並びは `labels(groupID:)` が返す
+    /// 付与済みのときだけ）と共有する。並びは `labels(fieldID:)` が返す
     /// ピン留め優先・名前順のまま**全件**——メニューは「もっと見る」を
     /// 持てないので畳まない。
-    public func menuLabels(in group: LabelGroupSummary, for ids: [FileID]) -> [LabelSummary] {
-        LabelEditorModel.candidates(from: labelsByGroup[group.id] ?? []) { label in
+    public func menuLabels(in field: FieldSummary, for ids: [FileID]) -> [LabelSummary] {
+        LabelEditorModel.candidates(from: labelsByField[field.id] ?? []) { label in
             checkState(of: label, for: ids) != .none
         }
     }
@@ -161,7 +161,7 @@ public final class LabelMenuModel {
     /// ファイル全体の保護の三状態 [PR-05]。メニューの印に使う。
     public func protectionState(for ids: [FileID]) -> LabelEditorModel.CheckState {
         guard !ids.isEmpty else { return .none }
-        let fields = groups.map(\.id)
+        let fields = fields.map(\.id)
         let full = ids.filter { (protectedByFile[$0] ?? []).coversEverything(fields: fields) }
         if full.count == ids.count { return .all }
         return ids.contains { !(protectedByFile[$0] ?? []).isEmpty } ? .some : .none
@@ -176,7 +176,7 @@ public final class LabelMenuModel {
         guard let services, !targets.isEmpty else { return }
         guard let command = try await SetProtectionCommand.togglingAll(
             files: targets.map { (id: $0.id, url: $0.url) },
-            scopes: protectedByFile, fields: groups.map(\.id),
+            scopes: protectedByFile, fields: fields.map(\.id),
             libraryID: libraryID,
             subjectName: LabelEditorModel.displayName(for: targets.map(\.url)),
             services: services) else { return }
@@ -185,7 +185,7 @@ public final class LabelMenuModel {
         let protecting = protectionState(for: targets.map(\.id)) != .all
         for target in targets {
             protectedByFile[target.id] = protecting
-                ? .everything(fields: groups.map(\.id))
+                ? .everything(fields: fields.map(\.id))
                 : []
         }
     }
@@ -198,7 +198,7 @@ public final class LabelMenuModel {
         guard let services, !targets.isEmpty else { return }
         let assigning = checkState(of: label, for: targets.map(\.id)) != .all
         guard let command = AssignLabelCommand.toggling(
-            labelID: label.id, groupID: label.groupID, labelName: label.name,
+            labelID: label.id, fieldID: label.fieldID, labelName: label.name,
             files: targets.map { (id: $0.id, url: $0.url) },
             assignments: assignmentsByFile, protectedScopes: protectedByFile,
             assigning: assigning,
@@ -212,7 +212,7 @@ public final class LabelMenuModel {
             } else {
                 assignmentsByFile[target.id]?.remove(label.id)
             }
-            protectedByFile[target.id, default: []].insert(.field(label.groupID))
+            protectedByFile[target.id, default: []].insert(.field(label.fieldID))
         }
     }
 }

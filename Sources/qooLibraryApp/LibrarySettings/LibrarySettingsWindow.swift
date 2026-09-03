@@ -253,7 +253,7 @@ struct LibrarySettingsWindow: View {
             LibraryBasicsSettingsView(draft: bound,
                                       pending: model.pendingVolumeDecisions,
                                       onReview: presentVolumeDecision)
-        case .labelGroups:     LibraryLabelGroupsSettingsView(draft: bound)
+        case .fields:     LibraryFieldsSettingsView(draft: bound)
         case .folderLevels:    LibraryFolderLevelsSettingsView(draft: bound)
         case .filenameFormats:
             LibraryFilenameFormatsSettingsView(

@@ -287,7 +287,7 @@ struct QooLibraryApp: App {
         // フォルダツリーの「ラベルを編集…」、ラベルフィルタと右ペインの
         // ラベルの右クリックから（`LabelEditorNavigation` が対象を渡す）。
         Window("labelEditor.windowTitle", id: "labelEditor") {
-            LabelGroupEditorWindow()
+            FieldEditorWindow()
                 .appLanguageOverride()
         }
         .defaultSize(width: 1240, height: 680)

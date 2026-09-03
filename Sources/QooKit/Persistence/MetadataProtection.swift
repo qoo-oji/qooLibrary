@@ -24,7 +24,7 @@ public enum ProtectionScope: Sendable, Hashable {
     case basic
     /// ラベルの軸 1 つぶん [PR-02]。保護されたフィールドのラベルは、
     /// 付いているものも付いていないものも走査が動かさない。
-    case field(LabelGroupID)
+    case field(FieldID)
 }
 
 extension ProtectionScope {
@@ -45,7 +45,7 @@ extension ProtectionScope {
         guard storageKey.hasPrefix(Self.fieldPrefix),
               let raw = Int64(storageKey.dropFirst(Self.fieldPrefix.count))
         else { return nil }
-        self = .field(LabelGroupID(rawValue: raw))
+        self = .field(FieldID(rawValue: raw))
     }
 
     /// 綴りの部品。**JSON バックアップは同じ形式を使うが、`field:` に続く
@@ -67,8 +67,8 @@ extension ProtectionScope {
 
 extension Set where Element == ProtectionScope {
     /// 保護されているフィールドの ID。
-    public var protectedFields: Set<LabelGroupID> {
-        var result: Set<LabelGroupID> = []
+    public var protectedFields: Set<FieldID> {
+        var result: Set<FieldID> = []
         for scope in self {
             if case .field(let id) = scope { result.insert(id) }
         }
@@ -78,13 +78,13 @@ extension Set where Element == ProtectionScope {
     /// 全体が保護されているか [PR-02][PR-05]。**そのライブラリのフィールド
     /// 一覧を渡す必要がある**——フィールドは増減するので、集合だけを見て
     /// 「全体」は判定できない。
-    public func coversEverything(fields: [LabelGroupID]) -> Bool {
+    public func coversEverything(fields: [FieldID]) -> Bool {
         guard contains(.basic) else { return false }
         return fields.allSatisfy { contains(.field($0)) }
     }
 
     /// ファイル全体の保護 [PR-05]（ワンクリックで付ける側の値）。
-    public static func everything(fields: [LabelGroupID]) -> Set<ProtectionScope> {
+    public static func everything(fields: [FieldID]) -> Set<ProtectionScope> {
         var result: Set<ProtectionScope> = [.basic]
         for id in fields { result.insert(.field(id)) }
         return result

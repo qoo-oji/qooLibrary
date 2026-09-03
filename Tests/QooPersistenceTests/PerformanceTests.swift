@@ -19,10 +19,10 @@ struct PersistencePerformanceTests {
         let f = try await Fixture.make(preset: "builtin.doujinshi-a")
         var labelIDs: [[LabelID]] = []
         for (offset, cardinality) in labelsPerGroup.enumerated() {
-            let group = try #require(try await f.labels.group(libraryID: f.libraryID, index: offset + 1))
+            let field = try #require(try await f.labels.field(libraryID: f.libraryID, index: offset + 1))
             var ids: [LabelID] = []
             for i in 0..<cardinality {
-                ids.append(try await f.labels.ensureLabel(groupID: group.id, name: "g\(offset)-\(i)"))
+                ids.append(try await f.labels.ensureLabel(fieldID: field.id, name: "g\(offset)-\(i)"))
             }
             labelIDs.append(ids)
         }
@@ -38,7 +38,7 @@ struct PersistencePerformanceTests {
             })
             // `@Sendable` なクロージャへ渡すため、必要な値を先に確定させる。
             let base = produced
-            let groupsSnapshot = labelIDs
+            let fieldsSnapshot = labelIDs
             try await f.database.writer.write { db in
                 let now = Date().timeIntervalSinceReferenceDate
                 let stmt = try db.cachedStatement(sql: """
@@ -47,9 +47,9 @@ struct PersistencePerformanceTests {
                     """)
                 for (k, id) in ids.enumerated() {
                     let i = base + k
-                    for group in groupsSnapshot {
+                    for field in fieldsSnapshot {
                         try stmt.execute(arguments: [id.rawValue,
-                                                     group[i % group.count].rawValue, now])
+                                                     field[i % field.count].rawValue, now])
                     }
                 }
             }
@@ -76,23 +76,23 @@ struct PersistencePerformanceTests {
         // カーディナリティは実データの分布に合わせる（サークル 2000 / 著者 3000 /
         // ジャンル 500 / その他 30 / プレイ 5000 相当を縮めたもの）。
         let s = try await Self.makeLibrary(files: 50_000, labelsPerGroup: [30, 2000, 3000, 500, 100])
-        let groups = try await s.f.labels.groups(libraryID: s.f.libraryID)
-        func groupID(_ index: Int) -> LabelGroupID { groups.first { $0.index == index }!.id }
+        let fields = try await s.f.labels.fields(libraryID: s.f.libraryID)
+        func fieldID(_ index: Int) -> FieldID { fields.first { $0.index == index }!.id }
 
-        // (a) 狭い: 3 グループの AND
+        // (a) 狭い: 3 フィールドの AND
         var narrow = FileQuery(libraryID: s.f.libraryID)
         narrow.labelSelection = [
-            groupID(2): Set((0..<3).map { s.labelID["g1-\($0)"]! }),
-            groupID(3): Set((0..<2).map { s.labelID["g2-\($0)"]! }),
+            fieldID(2): Set((0..<3).map { s.labelID["g1-\($0)"]! }),
+            fieldID(3): Set((0..<2).map { s.labelID["g2-\($0)"]! }),
         ]
-        let narrowMS = try await Self.measure("(a) 3 グループ AND（狭い）") {
+        let narrowMS = try await Self.measure("(a) 3 フィールド AND（狭い）") {
             _ = try await s.f.files.query(narrow)
         }
         #expect(narrowMS < 500)
 
-        // (b) 最悪: 低カーディナリティのグループを全ラベル OR（ほぼ全件が該当）
+        // (b) 最悪: 低カーディナリティのフィールドを全ラベル OR（ほぼ全件が該当）
         var wide = FileQuery(libraryID: s.f.libraryID)
-        wide.labelSelection = [groupID(1): Set((0..<30).map { s.labelID["g0-\($0)"]! })]
+        wide.labelSelection = [fieldID(1): Set((0..<30).map { s.labelID["g0-\($0)"]! })]
         var wideCount = 0
         let wideMS = try await Self.measure("(b) 全ラベル OR（ほぼ全件が該当）") {
             wideCount = try await s.f.files.query(wide).totalCount
@@ -135,9 +135,9 @@ struct PersistencePerformanceTests {
         // ——**列を読んでいた頃と同等以下**であることが撤去の根拠だった
         // （109.4 → 105.3 ms。現行の経路が既に相関副問い合わせを 1 本
         // 走らせていたため）。
-        let groupsForCount = try await s.f.labels.groups(libraryID: s.f.libraryID)
+        let groupsForCount = try await s.f.labels.fields(libraryID: s.f.libraryID)
         let countMS2 = try await Self.measure("(f) 全フィールドのラベル件数") {
-            for g in groupsForCount { _ = try await s.f.labels.labels(groupID: g.id) }
+            for g in groupsForCount { _ = try await s.f.labels.labels(fieldID: g.id) }
         }
         #expect(countMS2 < 500, "[§19.13 #1] \(countMS2) ms")
 

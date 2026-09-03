@@ -47,7 +47,7 @@ struct LabelMenuModelTests {
     /// メニュー用に「そのフィールドの、対象に付いているラベル」を引く補助。
     @MainActor
     private func assignedLabels(_ m: LabelMenuModel, ids: [FileID]) -> [LabelSummary] {
-        m.groups.flatMap { m.menuLabels(in: $0, for: ids) }
+        m.fields.flatMap { m.menuLabels(in: $0, for: ids) }
             .filter { m.checkState(of: $0, for: ids) != .none }
     }
 
@@ -58,7 +58,7 @@ struct LabelMenuModelTests {
     func emptyOutsideALibrary() async throws {
         let (w, _, _) = try await workspace(files: [Self.name(1)])
         let m = await loadedModel(w, nil)
-        #expect(m.groups.isEmpty)
+        #expect(m.fields.isEmpty)
         #expect(m.fileID(forChildName: Self.name(1)) == nil)
     }
 
@@ -100,7 +100,7 @@ struct LabelMenuModelTests {
         let id2 = try #require(m.fileID(forChildName: Self.name(2)))
 
         // サークル値1 は 1 冊目にだけ付く（自動付与）。
-        let circle1 = try #require(m.groups.flatMap { m.menuLabels(in: $0, for: [id1]) }
+        let circle1 = try #require(m.fields.flatMap { m.menuLabels(in: $0, for: [id1]) }
             .first { $0.name == "サークル値1" })
         #expect(m.checkState(of: circle1, for: [id1]) == .all)
         #expect(m.checkState(of: circle1, for: [id2]) == .none)
@@ -123,7 +123,7 @@ struct LabelMenuModelTests {
         #expect(after[id1]?.contains(label.id) != true, "行ごと消える [PR-08]")
         // 外した操作はそのフィールドを保護する [PR-03]。
         let scopes = try await w.services.protectedScopes(ids: [id1])
-        #expect(scopes[id1]?.contains(.field(label.groupID)) == true)
+        #expect(scopes[id1]?.contains(.field(label.fieldID)) == true)
     }
 
     // MARK: - トグル [RL3-01][RL3-03]
@@ -136,7 +136,7 @@ struct LabelMenuModelTests {
         let m = await loadedModel(w, library, stack: stack)
         let id1 = try #require(m.fileID(forChildName: Self.name(1)))
         let id2 = try #require(m.fileID(forChildName: Self.name(2)))
-        let circle1 = try #require(m.groups.flatMap { m.menuLabels(in: $0, for: [id1]) }
+        let circle1 = try #require(m.fields.flatMap { m.menuLabels(in: $0, for: [id1]) }
             .first { $0.name == "サークル値1" })
         #expect(m.checkState(of: circle1, for: [id1, id2]) == .some)
 
@@ -151,8 +151,8 @@ struct LabelMenuModelTests {
         #expect(after[id1]?.contains(circle1.id) == true)
         #expect(after[id2]?.contains(circle1.id) == true)
         let scopes = try await w.services.protectedScopes(ids: [id1, id2])
-        #expect(scopes[id1]?.contains(.field(circle1.groupID)) == true)
-        #expect(scopes[id2]?.contains(.field(circle1.groupID)) == true)
+        #expect(scopes[id1]?.contains(.field(circle1.fieldID)) == true)
+        #expect(scopes[id2]?.contains(.field(circle1.fieldID)) == true)
     }
 
     /// **RL3-03 そのもの。** ⌘Z がファイルごとの変更前の状態へ戻す——
@@ -165,7 +165,7 @@ struct LabelMenuModelTests {
         let m = await loadedModel(w, library, stack: stack)
         let id1 = try #require(m.fileID(forChildName: Self.name(1)))
         let id2 = try #require(m.fileID(forChildName: Self.name(2)))
-        let circle1 = try #require(m.groups.flatMap { m.menuLabels(in: $0, for: [id1]) }
+        let circle1 = try #require(m.fields.flatMap { m.menuLabels(in: $0, for: [id1]) }
             .first { $0.name == "サークル値1" })
 
         let targets = [LabelMenuModel.Target(id: id1, url: urls[0]),
@@ -176,7 +176,7 @@ struct LabelMenuModelTests {
         #expect(after[id1]?.contains(circle1.id) == true, "1 冊目は付いたまま")
         #expect(after[id2]?.contains(circle1.id) != true, "2 冊目は行なしへ戻る")
         let scopes = try await w.services.protectedScopes(ids: [id1, id2])
-        #expect(scopes[id1]?.contains(.field(circle1.groupID)) != true, "保護も戻る")
+        #expect(scopes[id1]?.contains(.field(circle1.fieldID)) != true, "保護も戻る")
     }
 
     @Test("既にその状態なら Undo スタックを汚さない（factory が nil を返す）")
@@ -191,10 +191,10 @@ struct LabelMenuModelTests {
         // 全部に付いている → 外す → もう一度トグルで付け直す、は変化がある。
         // ここで試すのは factory の no-op 判定そのもの。
         let command = AssignLabelCommand.toggling(
-            labelID: label.id, groupID: label.groupID, labelName: label.name,
+            labelID: label.id, fieldID: label.fieldID, labelName: label.name,
             files: [(id: id1, url: urls[0])],
             assignments: [id1: [label.id]],
-            protectedScopes: [id1: [.field(label.groupID)]],
+            protectedScopes: [id1: [.field(label.fieldID)]],
             assigning: true, subjectName: "x", services: w.services)
         #expect(command == nil, "付いていて保護もされていれば書くことが無い")
         #expect(stack.undoTitle == nil)
@@ -209,15 +209,15 @@ struct LabelMenuModelTests {
         var m = await loadedModel(w, library)
         let id1 = try #require(m.fileID(forChildName: Self.name(1)))
         let id2 = try #require(m.fileID(forChildName: Self.name(2)))
-        let circle1 = try #require(m.groups.flatMap { m.menuLabels(in: $0, for: [id1]) }
+        let circle1 = try #require(m.fields.flatMap { m.menuLabels(in: $0, for: [id1]) }
             .first { $0.name == "サークル値1" })
 
         try await w.services.setLabelHidden([circle1.id], true)
         m = await loadedModel(w, library)
-        let group = try #require(m.groups.first { group in
-            m.menuLabels(in: group, for: [id1]).contains { $0.id == circle1.id }
+        let field = try #require(m.fields.first { field in
+            m.menuLabels(in: field, for: [id1]).contains { $0.id == circle1.id }
         }, "付与済みの対象では出る [RL-05]")
-        #expect(!m.menuLabels(in: group, for: [id2]).contains { $0.id == circle1.id },
+        #expect(!m.menuLabels(in: field, for: [id2]).contains { $0.id == circle1.id },
                 "付いていない対象では候補に出ない [LA-03]")
     }
 }

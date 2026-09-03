@@ -46,7 +46,7 @@ enum GoldenGenerator {
         let withVolume: Bool
 
         var groupNames: [Int: String] {
-            Dictionary(uniqueKeysWithValues: template.labelGroups.map { ($0.index, $0.name) })
+            Dictionary(uniqueKeysWithValues: template.fields.map { ($0.index, $0.name) })
         }
 
         /// 変種ごとに少しずつ違う形にする。実データで実際に出る揺れを混ぜる。

@@ -19,13 +19,13 @@ import SwiftUI
 /// フォーマットは高度な機能ではない］。逆に巻数の正規表現や保護文字列は、
 /// 一度決めたら年単位で触らない。
 enum LibrarySettingsSection: String, CaseIterable, Identifiable, Hashable {
-    case basics, labelGroups, folderLevels, filenameFormats
+    case basics, fields, folderLevels, filenameFormats
     case extensions, volumeFormats, seriesTitle, delimiters, protectedTokens
     case bookFolderOpening
 
     /// 通常時に中央ペインへ並ぶ 4 つ [§19.7]。登録ウィザードのカスタマイズ
     /// 画面と同じ順・同じ語にしてある——登録時に見たものを後から探せるように。
-    static let standard: [Self] = [.basics, .labelGroups, .folderLevels, .filenameFormats]
+    static let standard: [Self] = [.basics, .fields, .folderLevels, .filenameFormats]
 
     /// 「高度な設定…」の中にだけ現れる 6 つ [§19.7]。
     static let advanced: [Self] = [.extensions, .volumeFormats, .seriesTitle,
@@ -40,7 +40,7 @@ enum LibrarySettingsSection: String, CaseIterable, Identifiable, Hashable {
     var titleKey: LocalizedStringKey {
         switch self {
         case .basics:          "librarySettings.section.basics"
-        case .labelGroups:     "librarySettings.section.labelGroups"
+        case .fields:     "librarySettings.section.fields"
         case .folderLevels:    "librarySettings.section.folderLevels"
         case .filenameFormats: "librarySettings.section.filenameFormats"
         case .extensions:      "librarySettings.section.extensions"
@@ -55,7 +55,7 @@ enum LibrarySettingsSection: String, CaseIterable, Identifiable, Hashable {
     var systemImage: String {
         switch self {
         case .basics:          "gearshape"
-        case .labelGroups:     "tag"
+        case .fields:     "tag"
         case .folderLevels:    "folder.badge.gearshape"
         case .filenameFormats: "textformat.abc"
         case .extensions:      "doc.badge.gearshape"
@@ -78,7 +78,7 @@ enum LibrarySettingsSection: String, CaseIterable, Identifiable, Hashable {
         case .extensions:      self = .extensions
         case .delimiters:      self = .delimiters
         case .protectedTokens: self = .protectedTokens
-        case .labelGroups:     self = .labelGroups
+        case .fields:     self = .fields
         case .filenameFormats: self = .filenameFormats
         case .volumeFormats:   self = .volumeFormats
         case .folderLevels:    self = .folderLevels

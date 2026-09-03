@@ -77,7 +77,7 @@ public struct DuplicateLossReport: Sendable, Equatable {
     public static func make(keepID: FileID?, rows: [DuplicateComparisonRow],
                             assignments: [FileID: Set<LabelID>],
                             names: [LabelID: String],
-                            groupByLabel: [LabelID: LabelGroupID] = [:],
+                            groupByLabel: [LabelID: FieldID] = [:],
                             keeperProtections: Set<ProtectionScope> = [])
         -> DuplicateLossReport
     {
@@ -127,7 +127,7 @@ public final class DuplicateResolutionModel {
     private var assignments: [FileID: Set<LabelID>] = [:]
     private var labelNamesByID: [LabelID: String] = [:]
     /// ラベル → そのフィールド。保護の判定と、引き継ぎコマンドの組み立てに要る。
-    private var groupByLabel: [LabelID: LabelGroupID] = [:]
+    private var groupByLabel: [LabelID: FieldID] = [:]
     /// 残す側の保護スコープ [PR-02]。
     private var protections: [FileID: Set<ProtectionScope>] = [:]
 
@@ -193,12 +193,12 @@ public final class DuplicateResolutionModel {
 
     private static func labelNames(library: LibrarySummary,
                                    services: LibraryServices) async throws
-        -> (names: [LabelID: String], groups: [LabelID: LabelGroupID])
+        -> (names: [LabelID: String], groups: [LabelID: FieldID])
     {
         var out: [LabelID: String] = [:]
-        var groups: [LabelID: LabelGroupID] = [:]
-        for group in try await services.labelGroups(libraryID: library.id) {
-            for label in try await services.labels(groupID: group.id) {
+        var groups: [LabelID: FieldID] = [:]
+        for group in try await services.fields(libraryID: library.id) {
+            for label in try await services.labels(fieldID: group.id) {
                 out[label.id] = label.name
                 groups[label.id] = group.id
             }
@@ -270,7 +270,7 @@ public final class DuplicateResolutionModel {
     func seedForTesting(rows: [DuplicateComparisonRow], keepID: FileID?,
                         assignments: [FileID: Set<LabelID>] = [:],
                         names: [LabelID: String] = [:],
-                        groupByLabel: [LabelID: LabelGroupID] = [:],
+                        groupByLabel: [LabelID: FieldID] = [:],
                         protections: [FileID: Set<ProtectionScope>] = [:]) {
         self.rows = rows
         self.keepID = keepID
@@ -338,7 +338,7 @@ extension DuplicateResolutionModel {
                 .sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
                 guard let group = plan.groupByLabel[labelID] else { continue }
                 children.append(AssignLabelCommand(
-                    labelID: labelID, groupID: group, labelName: name,
+                    labelID: labelID, fieldID: group, labelName: name,
                     previous: [.init(fileID: plan.keeper.id, url: plan.keeper.url,
                                      wasAssigned: false,
                                      protectedScopes: plan.keeperProtections)],
@@ -389,13 +389,13 @@ public struct DuplicateDeletePlan: Sendable, Identifiable {
     public let usesTrash: Bool
     public let loss: DuplicateLossReport
     /// ラベル → そのフィールド。引き継ぎで保護を立てるのに要る [PR-03]。
-    public let groupByLabel: [LabelID: LabelGroupID]
+    public let groupByLabel: [LabelID: FieldID]
     /// 残す側の変更前の保護スコープ。⌘Z がここへちょうど戻す。
     public let keeperProtections: Set<ProtectionScope>
 
     public init(keeper: DuplicateComparisonRow, doomed: [DuplicateComparisonRow],
                 usesTrash: Bool, loss: DuplicateLossReport,
-                groupByLabel: [LabelID: LabelGroupID] = [:],
+                groupByLabel: [LabelID: FieldID] = [:],
                 keeperProtections: Set<ProtectionScope> = []) {
         self.keeper = keeper
         self.doomed = doomed

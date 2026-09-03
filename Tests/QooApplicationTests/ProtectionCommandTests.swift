@@ -81,7 +81,7 @@ struct ProtectionCommandTests {
 
         guard case .ready(let after) = m.state else { Issue.record("読めていない"); return }
         #expect(after.isFullyProtected)
-        let fields = try await w.services.labelGroups(libraryID: library.id).map(\.id)
+        let fields = try await w.services.fields(libraryID: library.id).map(\.id)
         let scopes = try await w.services.protectedScopes(ids: after.fileIDs)
         #expect(scopes[after.fileIDs[0]] == .everything(fields: fields))
     }

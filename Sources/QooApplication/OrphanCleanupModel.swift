@@ -9,7 +9,7 @@
 //  **`qooLibraryApp` ではなく `QooApplication` に置く**——アプリターゲットの
 //  コードは `swift test` から触れないため、判定（既定で選ぶライブラリ・検索・
 //  オフラインの出し分け）を自動テストで固定できなくなる（`FileVaultModel` /
-//  `LabelGroupEditorModel` と同じ理由）。SwiftUI に依存しない。
+//  `FieldEditorModel` と同じ理由）。SwiftUI に依存しない。
 //
 //  ## ラベル保管庫との違い
 //  形は 2 ペインで同じだが、**扱うものの性質が逆**である。ラベルは実体に

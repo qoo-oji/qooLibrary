@@ -162,7 +162,7 @@ enum GoldenRunner {
         }
         if let expectedLabels = testCase.expected.labels {
             let namesByIndex = Dictionary(uniqueKeysWithValues:
-                template.labelGroups.map { ($0.index, $0.name) })
+                template.fields.map { ($0.index, $0.name) })
             var actual: [String: [String]] = [:]
             for (index, values) in resolved.labels {
                 guard let groupName = namesByIndex[index] else { continue }

@@ -13,16 +13,16 @@ import QooKit
 @Suite("ラベルの編集 [LE-07〜LE-11]")
 struct LabelEditingTests {
 
-    /// グループ 1 つと、そこに属するファイル数件を用意する。
+    /// フィールド 1 つと、そこに属するファイル数件を用意する。
     struct Setup {
         let f: Fixture
-        let group: LabelGroupSummary
+        let field: FieldSummary
         var fileIDs: [FileID] = []
 
         static func make(files: Int = 3) async throws -> Setup {
             let f = try await Fixture.make()
-            let group = try #require(try await f.labels.group(libraryID: f.libraryID, index: 2))
-            var s = Setup(f: f, group: group)
+            let field = try #require(try await f.labels.field(libraryID: f.libraryID, index: 2))
+            var s = Setup(f: f, field: field)
             for i in 0..<files {
                 s.fileIDs.append(try await f.files.upsert(
                     f.snapshot(inode: UInt64(i + 1), path: "本\(i).cbz")))
@@ -36,8 +36,8 @@ struct LabelEditingTests {
     @Test("削除すると紐づけも消える [LE-08][LB-05]")
     func deleteRemovesAssignments() async throws {
         let s = try await Setup.make()
-        let id = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "消す")
-        let keep = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "残す")
+        let id = try await s.f.labels.ensureLabel(fieldID: s.field.id, name: "消す")
+        let keep = try await s.f.labels.ensureLabel(fieldID: s.field.id, name: "残す")
         for file in s.fileIDs {
             try await s.f.labels.assign(fileID: file, labelID: id)
             try await s.f.labels.assign(fileID: file, labelID: keep)
@@ -45,7 +45,7 @@ struct LabelEditingTests {
 
         try await s.f.labels.deleteLabels([id])
 
-        #expect(try await s.f.labels.labels(groupID: s.group.id)
+        #expect(try await s.f.labels.labels(fieldID: s.field.id)
             .map(\.id) == [keep])
         // 紐づけは外部キーの cascade で消える。残っているのは keep だけ。
         for file in s.fileIDs {
@@ -65,7 +65,7 @@ struct LabelEditingTests {
     @Test("削除した写しを復元すると、同じ ID で紐づけごと戻る")
     func restoreBringsBackTheSameRowID() async throws {
         let s = try await Setup.make()
-        let id = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "サークル値A")
+        let id = try await s.f.labels.ensureLabel(fieldID: s.field.id, name: "サークル値A")
         try await s.f.labels.setPinned(id, true)
         try await s.f.labels.setColor(id, hex: "#ABCDEF")
         try await s.f.labels.assign(fileID: s.fileIDs[0], labelID: id)
@@ -77,12 +77,12 @@ struct LabelEditingTests {
         #expect(snapshots[0].assignments.count == 3)
 
         try await s.f.labels.deleteLabels([id])
-        #expect(try await s.f.labels.labels(groupID: s.group.id).isEmpty)
+        #expect(try await s.f.labels.labels(fieldID: s.field.id).isEmpty)
 
         try await s.f.labels.restore(snapshots)
 
         let restored = try #require(try await s.f.labels
-            .labels(groupID: s.group.id).first)
+            .labels(fieldID: s.field.id).first)
         // **同じ ID で戻る。** ここが崩れると、ラベルフィルタでチェック中だった
         // 選択やウインドウ状態復元が黙って外れる。
         #expect(restored.id == id)
@@ -98,16 +98,16 @@ struct LabelEditingTests {
     @Test("削除と復元の間に別のラベルを作っても ID が食い合わない")
     func restoreDoesNotCollideWithLabelsCreatedMeanwhile() async throws {
         let s = try await Setup.make(files: 1)
-        let id = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "先")
+        let id = try await s.f.labels.ensureLabel(fieldID: s.field.id, name: "先")
         let snapshots = try await s.f.labels.snapshot(labelIDs: [id])
         try await s.f.labels.deleteLabels([id])
 
         // AUTOINCREMENT なので、この新規ラベルは消した ID を再利用しない
-        let other = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "後")
+        let other = try await s.f.labels.ensureLabel(fieldID: s.field.id, name: "後")
         #expect(other != id)
 
         try await s.f.labels.restore(snapshots)
-        let all = try await s.f.labels.labels(groupID: s.group.id)
+        let all = try await s.f.labels.labels(fieldID: s.field.id)
         #expect(Set(all.map(\.id)) == Set([id, other]))
         #expect(all.first { $0.id == id }?.name == "先")
         #expect(all.first { $0.id == other }?.name == "後")
@@ -116,7 +116,7 @@ struct LabelEditingTests {
     @Test("復元は写しに無い紐づけを消す（ちょうどその状態に揃える）")
     func restoreIsExactNotAdditive() async throws {
         let s = try await Setup.make()
-        let id = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "L")
+        let id = try await s.f.labels.ensureLabel(fieldID: s.field.id, name: "L")
         try await s.f.labels.assign(fileID: s.fileIDs[0], labelID: id)
 
         let snapshots = try await s.f.labels.snapshot(labelIDs: [id])
@@ -132,7 +132,7 @@ struct LabelEditingTests {
     @Test("相手のファイルが消えていても、残りの紐づけは戻る")
     func restoreSkipsAssignmentsWhoseFileIsGone() async throws {
         let s = try await Setup.make()
-        let id = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "L")
+        let id = try await s.f.labels.ensureLabel(fieldID: s.field.id, name: "L")
         for file in s.fileIDs { try await s.f.labels.assign(fileID: file, labelID: id) }
         let snapshots = try await s.f.labels.snapshot(labelIDs: [id])
         try await s.f.labels.deleteLabels([id])
@@ -145,7 +145,7 @@ struct LabelEditingTests {
 
         try await s.f.labels.restore(snapshots)
         let restored = try #require(try await s.f.labels
-            .labels(groupID: s.group.id).first)
+            .labels(fieldID: s.field.id).first)
         #expect(restored.fileCount == 2)   // 消えた 1 件を除いて戻る
     }
 
@@ -160,11 +160,11 @@ struct LabelEditingTests {
     @Test("保管庫へ移したファイルは件数から外れる [FA-05][LE-05 撤回]")
     func archivedFilesLeaveTheCount() async throws {
         let s = try await Setup.make()
-        let id = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "サークル値A")
+        let id = try await s.f.labels.ensureLabel(fieldID: s.field.id, name: "サークル値A")
         for file in s.fileIDs { try await s.f.labels.assign(fileID: file, labelID: id) }
 
         var label = try #require(try await s.f.labels
-            .labels(groupID: s.group.id).first)
+            .labels(fieldID: s.field.id).first)
         #expect(label.fileCount == 3)
         #expect(label.isVisible, "実体があり手動でも隠していないので見える [LA3-01]")
 
@@ -175,7 +175,7 @@ struct LabelEditingTests {
         }
 
         label = try #require(try await s.f.labels
-            .labels(groupID: s.group.id).first)
+            .labels(fieldID: s.field.id).first)
         #expect(label.fileCount == 2, "**数え直しを呼んでいない**——件数は毎回数える")
     }
 
@@ -184,12 +184,12 @@ struct LabelEditingTests {
     @Test("生きている実体が 0 件になると自動的に非表示になる [LA3-01]")
     func labelWithoutLiveFilesBecomesHidden() async throws {
         let s = try await Setup.make()
-        let id = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "サークル値A")
+        let id = try await s.f.labels.ensureLabel(fieldID: s.field.id, name: "サークル値A")
         for file in s.fileIDs { try await s.f.labels.assign(fileID: file, labelID: id) }
         try await s.f.database.writer.write { db in
             try db.execute(sql: "UPDATE managedFile SET state = 'orphaned'")
         }
-        var label = try #require(try await s.f.labels.labels(groupID: s.group.id).first)
+        var label = try #require(try await s.f.labels.labels(fieldID: s.field.id).first)
         #expect(label.fileCount == 0)
         #expect(!label.isVisible, "手動の印は無いが、実体が無いので隠れる")
         #expect(!label.isHidden, "**状態ではなく導出**——手動の印は立っていない")
@@ -198,7 +198,7 @@ struct LabelEditingTests {
         try await s.f.database.writer.write { db in
             try db.execute(sql: "UPDATE managedFile SET state = 'active'")
         }
-        label = try #require(try await s.f.labels.labels(groupID: s.group.id).first)
+        label = try #require(try await s.f.labels.labels(fieldID: s.field.id).first)
         #expect(label.isVisible)
     }
 
@@ -207,10 +207,10 @@ struct LabelEditingTests {
     @Test("手動で非表示にしたラベルは実体があっても隠れたまま [LA3-02]")
     func manuallyHiddenStaysHidden() async throws {
         let s = try await Setup.make()
-        let id = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "L")
+        let id = try await s.f.labels.ensureLabel(fieldID: s.field.id, name: "L")
         for file in s.fileIDs { try await s.f.labels.assign(fileID: file, labelID: id) }
         try await s.f.labels.setHidden([id], true)
-        let label = try #require(try await s.f.labels.labels(groupID: s.group.id).first)
+        let label = try #require(try await s.f.labels.labels(fieldID: s.field.id).first)
         #expect(label.fileCount == 3)
         #expect(label.isHidden)
         #expect(!label.isVisible, "実体が何件あっても隠れたまま")
@@ -219,14 +219,14 @@ struct LabelEditingTests {
     @Test("孤立・ゴミ箱のファイルは件数に入らない [ID-06][TR-01]")
     func orphanedFilesDoNotCount() async throws {
         let s = try await Setup.make()
-        let id = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "L")
+        let id = try await s.f.labels.ensureLabel(fieldID: s.field.id, name: "L")
         for file in s.fileIDs { try await s.f.labels.assign(fileID: file, labelID: id) }
         try await s.f.database.writer.write { db in
             try db.execute(sql: "UPDATE managedFile SET state = 'orphaned' WHERE id = ?",
                            arguments: [s.fileIDs[0].rawValue])
         }
         let label = try #require(try await s.f.labels
-            .labels(groupID: s.group.id).first)
+            .labels(fieldID: s.field.id).first)
         #expect(label.fileCount == 2)
     }
 
@@ -240,8 +240,8 @@ struct LabelEditingTests {
     func mergeFoldsOverlappingAssignments() async throws {
         let s = try await Setup.make(files: 1)
         let file = s.fileIDs[0]
-        let source = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "旧表記")
-        let target = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "新表記")
+        let source = try await s.f.labels.ensureLabel(fieldID: s.field.id, name: "旧表記")
+        let target = try await s.f.labels.ensureLabel(fieldID: s.field.id, name: "新表記")
         try await s.f.labels.assign(fileID: file, labelID: source)
         try await s.f.labels.assign(fileID: file, labelID: target)
 
@@ -249,15 +249,15 @@ struct LabelEditingTests {
 
         let byFile = try await s.f.labels.assignments(fileIDs: [file])
         #expect(byFile[file] == [target])
-        #expect(try await s.f.labels.labels(groupID: s.group.id)
+        #expect(try await s.f.labels.labels(fieldID: s.field.id)
             .first?.fileCount == 1, "1 ファイルを二重に数えない")
     }
 
     @Test("統合は片方にしか付いていないファイルもまとめる")
     func mergeMovesNonOverlappingAssignments() async throws {
         let s = try await Setup.make()
-        let source = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "旧")
-        let target = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "新")
+        let source = try await s.f.labels.ensureLabel(fieldID: s.field.id, name: "旧")
+        let target = try await s.f.labels.ensureLabel(fieldID: s.field.id, name: "新")
         try await s.f.labels.assign(fileID: s.fileIDs[0], labelID: source)
         try await s.f.labels.assign(fileID: s.fileIDs[1], labelID: target)
 
@@ -266,17 +266,17 @@ struct LabelEditingTests {
         let byFile = try await s.f.labels.assignments(fileIDs: s.fileIDs)
         #expect(byFile[s.fileIDs[0]] == [target])
         #expect(byFile[s.fileIDs[1]] == [target])
-        #expect(try await s.f.labels.labels(groupID: s.group.id)
+        #expect(try await s.f.labels.labels(fieldID: s.field.id)
             .first?.fileCount == 2)
     }
 
-    @Test("グループをまたぐ統合は断る [LB-07]")
+    @Test("フィールドをまたぐ統合は断る [LB-07]")
     func mergeAcrossGroupsIsRefused() async throws {
         let s = try await Setup.make(files: 0)
-        let other = try #require(try await s.f.labels.group(libraryID: s.f.libraryID, index: 3))
-        let a = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "A")
-        let b = try await s.f.labels.ensureLabel(groupID: other.id, name: "B")
-        await #expect(throws: LabelEditError.crossGroupMerge) {
+        let other = try #require(try await s.f.labels.field(libraryID: s.f.libraryID, index: 3))
+        let a = try await s.f.labels.ensureLabel(fieldID: s.field.id, name: "A")
+        let b = try await s.f.labels.ensureLabel(fieldID: other.id, name: "B")
+        await #expect(throws: LabelEditError.crossFieldMerge) {
             try await s.f.labels.merge(a, into: b)
         }
     }
@@ -284,8 +284,8 @@ struct LabelEditingTests {
     @Test("統合を写しから戻すと、2 つのラベルが元どおりに分かれる")
     func mergeIsUndoableFromSnapshots() async throws {
         let s = try await Setup.make()
-        let source = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "旧")
-        let target = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "新")
+        let source = try await s.f.labels.ensureLabel(fieldID: s.field.id, name: "旧")
+        let target = try await s.f.labels.ensureLabel(fieldID: s.field.id, name: "新")
         try await s.f.labels.assign(fileID: s.fileIDs[0], labelID: source)
         try await s.f.labels.assign(fileID: s.fileIDs[0], labelID: target)
         try await s.f.labels.assign(fileID: s.fileIDs[1], labelID: source)
@@ -294,12 +294,12 @@ struct LabelEditingTests {
         // 統合先へ移ってくるため。
         let before = try await s.f.labels.snapshot(labelIDs: [source, target])
         try await s.f.labels.merge(source, into: target)
-        #expect(try await s.f.labels.labels(groupID: s.group.id)
+        #expect(try await s.f.labels.labels(fieldID: s.field.id)
             .map(\.id) == [target])
 
         try await s.f.labels.restore(before)
 
-        let all = try await s.f.labels.labels(groupID: s.group.id)
+        let all = try await s.f.labels.labels(fieldID: s.field.id)
         #expect(Set(all.map(\.id)) == Set([source, target]))
         let byFile = try await s.f.labels.assignments(fileIDs: s.fileIDs)
         #expect(byFile[s.fileIDs[0]] == [source, target])
@@ -308,16 +308,16 @@ struct LabelEditingTests {
 
     // MARK: - 改名 [LB-06][LE-11]
 
-    @Test("同じグループの既存名へ改名すると、衝突相手を添えて断る [LE-11]")
+    @Test("同じフィールドの既存名へ改名すると、衝突相手を添えて断る [LE-11]")
     func renameToExistingNameReportsTheCollision() async throws {
         let s = try await Setup.make(files: 0)
-        let a = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "サークル値A")
-        let b = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "サークル値B")
+        let a = try await s.f.labels.ensureLabel(fieldID: s.field.id, name: "サークル値A")
+        let b = try await s.f.labels.ensureLabel(fieldID: s.field.id, name: "サークル値B")
         await #expect(throws: LabelEditError.nameAlreadyExists(existing: a, name: "サークル値A")) {
             try await s.f.labels.rename(b, to: "サークル値A")
         }
         // 名前は変わっていない
-        #expect(try await s.f.labels.labels(groupID: s.group.id)
+        #expect(try await s.f.labels.labels(fieldID: s.field.id)
             .first { $0.id == b }?.name == "サークル値B")
     }
 
@@ -332,26 +332,26 @@ struct LabelEditingTests {
     ])
     func renameThatOnlyChangesTheSurfaceFormIsAllowed(from: String, to: String) async throws {
         let s = try await Setup.make(files: 0)
-        let id = try await s.f.labels.ensureLabel(groupID: s.group.id, name: from)
+        let id = try await s.f.labels.ensureLabel(fieldID: s.field.id, name: from)
         let before = try #require(try await s.f.labels
-            .labels(groupID: s.group.id).first)
+            .labels(fieldID: s.field.id).first)
         try await s.f.labels.rename(id, to: to)
         let after = try #require(try await s.f.labels
-            .labels(groupID: s.group.id).first)
+            .labels(fieldID: s.field.id).first)
         // 前提の確認: 正規化名が変わらない改名であること（変わっていたら
         // 「自分自身は衝突ではない」の経路を通らず、この検査は空振りする）
         #expect(before.normalizedName == after.normalizedName)
         #expect(after.name == to)
     }
 
-    @Test("別グループに同じ名前があっても改名は通る [LB-01]")
+    @Test("別フィールドに同じ名前があっても改名は通る [LB-01]")
     func renameIgnoresCollisionsInOtherGroups() async throws {
         let s = try await Setup.make(files: 0)
-        let other = try #require(try await s.f.labels.group(libraryID: s.f.libraryID, index: 3))
-        _ = try await s.f.labels.ensureLabel(groupID: other.id, name: "同じ名前")
-        let id = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "元の名前")
+        let other = try #require(try await s.f.labels.field(libraryID: s.f.libraryID, index: 3))
+        _ = try await s.f.labels.ensureLabel(fieldID: other.id, name: "同じ名前")
+        let id = try await s.f.labels.ensureLabel(fieldID: s.field.id, name: "元の名前")
         try await s.f.labels.rename(id, to: "同じ名前")
-        #expect(try await s.f.labels.labels(groupID: s.group.id)
+        #expect(try await s.f.labels.labels(fieldID: s.field.id)
             .first?.name == "同じ名前")
     }
 
@@ -360,14 +360,14 @@ struct LabelEditingTests {
     @Test("ラベル固有色は設定と解除ができる [CO-06]")
     func labelColorCanBeSetAndCleared() async throws {
         let s = try await Setup.make(files: 0)
-        let id = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "L")
-        #expect(try await s.f.labels.labels(groupID: s.group.id)
-            .first?.colorHex == nil)   // 既定はグループ色の継承
+        let id = try await s.f.labels.ensureLabel(fieldID: s.field.id, name: "L")
+        #expect(try await s.f.labels.labels(fieldID: s.field.id)
+            .first?.colorHex == nil)   // 既定はフィールド色の継承
         try await s.f.labels.setColor(id, hex: "#123456")
-        #expect(try await s.f.labels.labels(groupID: s.group.id)
+        #expect(try await s.f.labels.labels(fieldID: s.field.id)
             .first?.colorHex == "#123456")
         try await s.f.labels.setColor(id, hex: nil)
-        #expect(try await s.f.labels.labels(groupID: s.group.id)
+        #expect(try await s.f.labels.labels(fieldID: s.field.id)
             .first?.colorHex == nil)
     }
 }

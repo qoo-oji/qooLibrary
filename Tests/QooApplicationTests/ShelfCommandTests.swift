@@ -26,9 +26,9 @@ struct ShelfCommandTests {
         let id = try await w.enable("builtin.doujinshi-a")
         _ = try await w.services.scan(libraryID: id, root: w.libraryRoot)
         let library = try #require(w.services.library(registrationUUID: w.registrationUUID))
-        let groups = try await w.services.labelGroups(libraryID: library.id)
-        let circle = try #require(groups.first { $0.name == "サークル" })
-        let labels = try await w.services.labels(groupID: circle.id)
+        let fields = try await w.services.fields(libraryID: library.id)
+        let circle = try #require(fields.first { $0.name == "サークル" })
+        let labels = try await w.services.labels(fieldID: circle.id)
         return (w, library, labels)
     }
 
@@ -171,7 +171,7 @@ struct ShelfCommandTests {
         #expect(filter.ratingFilter?.stars == 3)
         // チェックの入ったフィールドは開いておく——畳まれたままだと
         // 何が効いているのか確かめようがない。
-        #expect(filter.expandedGroups.contains(target.groupID))
+        #expect(filter.expandedFields.contains(target.fieldID))
     }
 
     @Test("いま無いラベルは復元しても選ばれない [SH-05]")

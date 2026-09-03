@@ -354,7 +354,7 @@ final class LibraryRegistrationWizardModel {
                 case .singleLabelGroup:
                     what = spec.labelGroup
                         .flatMap { index in
-                            template.labelGroups.first { $0.index == index }?.name
+                            template.fields.first { $0.index == index }?.name
                         } ?? "?"
                 case .format:
                     what = spec.format ?? "?"
@@ -710,7 +710,7 @@ struct LibraryRegistrationWizardView: View {
                         Text("libraryWizard.customize.fieldsExplanation")
                             .font(.system(size: Tokens.fontSize.caption))
                             .foregroundStyle(.secondary)
-                        LibraryLabelGroupsSettingsView(draft: $enableModel.draft)
+                        LibraryFieldsSettingsView(draft: $enableModel.draft)
                     }
                     Divider()
                     // フォルダ名によるラベル分類 [RG3-24][ユーザー指摘: フォルダは
@@ -887,7 +887,7 @@ struct LibraryRegistrationWizardView: View {
                 summary = String(localized: draft.opensBookFolderWithApp
                     ? "libraryWizard.customize.bookFolderApp"
                     : "libraryWizard.customize.bookFolderInline", locale: locale)
-            case .labelGroups, .folderLevels, .filenameFormats: summary = ""
+            case .fields, .folderLevels, .filenameFormats: summary = ""
             }
             return (section, summary)
         }

@@ -878,10 +878,10 @@ public actor ScanEngine {
         }
         var labelIDs: Set<LabelID> = []
         for (groupIndex, names) in values {
-            guard let group = try await deps.labels.group(libraryID: settings.libraryID,
+            guard let group = try await deps.labels.field(libraryID: settings.libraryID,
                                                           index: groupIndex) else { continue }
             for name in names where !name.isEmpty {
-                labelIDs.insert(try await deps.labels.ensureLabel(groupID: group.id, name: name))
+                labelIDs.insert(try await deps.labels.ensureLabel(fieldID: group.id, name: name))
             }
         }
         try await deps.labels.replaceAutoLabels(fileID: fileID, labelIDs: labelIDs)

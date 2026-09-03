@@ -1,5 +1,5 @@
 //
-//  ラベルグループ編集ウインドウ [LE-01〜LE-12][15.2 節]。
+//  ラベルフィールド編集ウインドウ [LE-01〜LE-12][15.2 節]。
 //
 //  **`qooLibraryApp` ではなく `QooApplication` に置く**——アプリターゲットの
 //  コードは `swift test` から触れないため、判定（並べ替え・検索・0 件の赤字・
@@ -7,7 +7,7 @@
 //  （`LabelEditorModel` / `RatingEditorModel` と同じ理由）。SwiftUI には依存しない。
 //
 //  ## 右ペインだけがこのモデルの担当
-//  §15.2 の 3 ペインのうち、左（ライブラリ一覧）と中央（ラベルグループの改名・
+//  §15.2 の 3 ペインのうち、左（ライブラリ一覧）と中央（ラベルフィールドの改名・
 //  予約語紐づけ）は**ライブラリ設定ウインドウと同じ経路を共有する**［ユーザー判断］
 //  ——同じ編集を 2 箇所に実装すると、片方だけ直して取り残す（このリポジトリで
 //  3 度踏んでいる形）。このモデルが持つのは**ラベルそのもの**の編集だけ。
@@ -18,7 +18,7 @@ import QooKit
 
 @MainActor
 @Observable
-public final class LabelGroupEditorModel {
+public final class FieldEditorModel {
 
     /// 一覧の並べ方 [LE-12]。
     public enum SortOrder: String, Sendable, CaseIterable, Identifiable {
@@ -47,7 +47,7 @@ public final class LabelGroupEditorModel {
         /// 手動で非表示にした印 [LA3-02]。「表示に戻す」を出すかの判断に使う。
         public var isManuallyHidden: Bool { label.isHidden }
         public var isPinned: Bool { label.isPinned }
-        /// `nil` ならグループ色を継承 [CO-06]。
+        /// `nil` ならフィールド色を継承 [CO-06]。
         public var colorHex: String? { label.colorHex }
 
         public init(label: LabelSummary) { self.label = label }
@@ -56,7 +56,7 @@ public final class LabelGroupEditorModel {
     public enum State: Sendable, Equatable {
         case notReady
         case loading
-        /// ライブラリはあるがグループが選ばれていない。
+        /// ライブラリはあるがフィールドが選ばれていない。
         case noSelection
         case ready
         case failed(String)
@@ -64,15 +64,15 @@ public final class LabelGroupEditorModel {
 
     public private(set) var state: State = .notReady
     public private(set) var libraries: [LibrarySummary] = []
-    public private(set) var groups: [LabelGroupSummary] = []
-    /// 選択中のグループのラベル。**非表示のものも含む** [LA3-03]
+    public private(set) var fields: [FieldSummary] = []
+    /// 選択中のフィールドのラベル。**非表示のものも含む** [LA3-03]
     /// ——実体 0 件・手動非表示のラベルを整理できる唯一の場所。
     public private(set) var allLabels: [LabelSummary] = []
 
     public var selectedLibraryID: LibraryID? {
-        didSet { guard oldValue != selectedLibraryID else { return }; selectedGroupID = nil }
+        didSet { guard oldValue != selectedLibraryID else { return }; selectedFieldID = nil }
     }
-    public var selectedGroupID: LabelGroupID?
+    public var selectedFieldID: FieldID?
     /// 一覧で選んでいるラベル。非表示の切り替えと削除は複数まとめて扱える [LE-07]。
     public var selection: Set<LabelID> = []
     public var sortOrder: SortOrder = .name
@@ -124,7 +124,7 @@ public final class LabelGroupEditorModel {
 
     /// 統合先に選べる相手 [LB-07][LE-11]。
     ///
-    /// **同じグループの、自分以外。** グループをまたぐ統合はリポジトリが断る
+    /// **同じフィールドの、自分以外。** フィールドをまたぐ統合はリポジトリが断る
     /// ので、そもそも選ばせない（押せるのに必ず失敗する項目を出さない）。
     /// 非表示のものも相手にできる——統合は表記ゆれの是正で、片方が非表示なのは
     /// むしろ普通の状況。
@@ -183,19 +183,19 @@ public final class LabelGroupEditorModel {
         libraries = services.libraries
         syncSelection()
         guard let libraryID = selectedLibraryID else {
-            groups = []; allLabels = []; state = .noSelection; return
+            fields = []; allLabels = []; state = .noSelection; return
         }
         do {
-            groups = try await services.labelGroups(libraryID: libraryID)
-            if selectedGroupID == nil || !groups.contains(where: { $0.id == selectedGroupID }) {
-                selectedGroupID = groups.first?.id
+            fields = try await services.fields(libraryID: libraryID)
+            if selectedFieldID == nil || !fields.contains(where: { $0.id == selectedFieldID }) {
+                selectedFieldID = fields.first?.id
             }
-            guard let groupID = selectedGroupID else {
+            guard let fieldID = selectedFieldID else {
                 allLabels = []; state = .noSelection; return
             }
             // **非表示のものも読む** [LA3-03]。この画面が、実体 0 件・手動非表示の
             // ラベルを整理できる唯一の場所である。
-            allLabels = try await services.labels(groupID: groupID)
+            allLabels = try await services.labels(fieldID: fieldID)
             selection = selection.filter { id in allLabels.contains { $0.id == id } }
             state = .ready
         } catch {
@@ -228,14 +228,14 @@ public final class LabelGroupEditorModel {
 
     /// 新しいラベルを作る [LE-07]。既に同じ正規化名があればそれを選ぶだけ [LB-01]。
     public func createLabel(named name: String) async throws {
-        guard let services, let groupID = selectedGroupID else { return }
+        guard let services, let fieldID = selectedFieldID else { return }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         // **作成は Undo に載せない**［設計判断］。紐づけを持たない空のラベルが
         // 増えるだけで、消したければ削除（Undo 可）で片付く。載せると
         // 「作る → ⌘Z で消える → ⇧⌘Z で別 ID で復活」という、ID の安定性を
         // 崩す経路を新しく作ることになる。
-        let id = try await services.ensureLabel(groupID: groupID, name: trimmed)
+        let id = try await services.ensureLabel(fieldID: fieldID, name: trimmed)
         await reload()
         selection = [id]
     }

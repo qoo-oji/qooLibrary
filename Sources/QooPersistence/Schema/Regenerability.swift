@@ -56,7 +56,7 @@ extension LabelRecord: RegenerabilityDeclaring {
     public static let internalColumns: Set<String> = ["id", "labelGroupId"]
 }
 
-extension LabelGroupRecord: RegenerabilityDeclaring {
+extension FieldRecord: RegenerabilityDeclaring {
     /// グループ名・色はユーザーの設定。再生成できない [MG-22]。
     public static let regenerableColumns: Set<String> = []
     public static let internalColumns: Set<String> = ["id", "libraryId"]
@@ -111,7 +111,7 @@ public enum RegenerabilityRegistry {
     public static let declaringTypes: [any RegenerabilityDeclaring.Type] = [
         ManagedFileRecord.self,
         LabelRecord.self,
-        LabelGroupRecord.self,
+        FieldRecord.self,
         FileLabelRecord.self,
         LibraryRecord.self,
         UnresolvedFileRecord.self,

@@ -14,7 +14,7 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
 
     // MARK: - 読み取り
 
-    public func groups(libraryID: LibraryID) async throws -> [LabelGroupSummary] {
+    public func fields(libraryID: LibraryID) async throws -> [FieldSummary] {
         try await database.writer.read { db in
             try Row.fetchAll(db, sql: """
                 SELECT labelGroup.*,
@@ -25,7 +25,7 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
         }
     }
 
-    public func group(libraryID: LibraryID, index: Int) async throws -> LabelGroupSummary? {
+    public func field(libraryID: LibraryID, index: Int) async throws -> FieldSummary? {
         try await database.writer.read { db in
             try Row.fetchOne(db, sql: """
                 SELECT labelGroup.*,
@@ -36,16 +36,16 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
         }
     }
 
-    static func groupSummary(_ row: Row) -> LabelGroupSummary {
-        LabelGroupSummary(
-            id: LabelGroupID(rawValue: row["id"]),
+    static func groupSummary(_ row: Row) -> FieldSummary {
+        FieldSummary(
+            id: FieldID(rawValue: row["id"]),
             libraryID: LibraryID(rawValue: row["libraryId"]),
             index: row["groupIndex"], name: row["name"],
             colorHexLight: row["colorHexLight"], colorHexDark: row["colorHexDark"],
             displayOrder: row["displayOrder"], labelCount: row["labelCount"])
     }
 
-    /// グループのラベル [LF-04][LE-03]。**手動で非表示にしたものも返す** [LA3-03]。
+    /// フィールドのラベル [LF-04][LE-03]。**手動で非表示にしたものも返す** [LA3-03]。
     ///
     /// **件数は 1 つだけ**——「生きていて、ファイル保管庫の外にある」ファイルの数
     /// [LA3-01]。かつては意味の違う件数を 2 つ返していた（フィルタ用の非正規化列
@@ -56,7 +56,7 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
     /// `countWithArchived` の相関副問い合わせを 1 本走らせており、実測
     /// （10 万件・50 万紐づけ）で 109.4 → 105.3 ms と**むしろ速くなった**
     /// ——列を持つ費用は速度ではなく「数え直しを忘れるとずれる」危険だけだった。
-    public func labels(groupID: LabelGroupID) async throws -> [LabelSummary] {
+    public func labels(fieldID: FieldID) async throws -> [LabelSummary] {
         try await database.writer.read { db in
             try Row.fetchAll(db, sql: """
                 SELECT label.*, COALESCE((
@@ -67,10 +67,10 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
                 ), 0) AS liveCount
                 FROM label WHERE labelGroupId = ?
                 ORDER BY isPinned DESC, name
-                """, arguments: [groupID.rawValue]).map { row in
+                """, arguments: [fieldID.rawValue]).map { row in
                 LabelSummary(
                     id: LabelID(rawValue: row["id"]),
-                    groupID: LabelGroupID(rawValue: row["labelGroupId"]),
+                    fieldID: FieldID(rawValue: row["labelGroupId"]),
                     name: row["name"], normalizedName: row["normalizedName"],
                     colorHex: row["colorHex"], isPinned: row["isPinned"],
                     isHidden: row["isHidden"], fileCount: row["liveCount"])
@@ -112,22 +112,22 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
     }
 
 
-    /// 無ければ作る。一意性は `(groupID, 正規化名)` [LB-01][N-03][NM-06][LA-07]。
+    /// 無ければ作る。一意性は `(fieldID, 正規化名)` [LB-01][N-03][NM-06][LA-07]。
     /// **表示名は最初に登録された原文**を使う [N-03]。
-    public func ensureLabel(groupID: LabelGroupID, name: String) async throws -> LabelID {
+    public func ensureLabel(fieldID: FieldID, name: String) async throws -> LabelID {
         try await database.writer.write { db in
-            try Self.ensureLabel(db, groupID: groupID, name: name)
+            try Self.ensureLabel(db, fieldID: fieldID, name: name)
         }
     }
 
-    static func ensureLabel(_ db: Database, groupID: LabelGroupID, name: String) throws -> LabelID {
+    static func ensureLabel(_ db: Database, fieldID: FieldID, name: String) throws -> LabelID {
         let key = TextNormalizer.normalize(name)
         let stmt = try db.cachedStatement(sql:
             "SELECT id FROM label WHERE labelGroupId = ? AND normalizedName = ?")
-        if let existing = try Int64.fetchOne(stmt, arguments: [groupID.rawValue, key]) {
+        if let existing = try Int64.fetchOne(stmt, arguments: [fieldID.rawValue, key]) {
             return LabelID(rawValue: existing)
         }
-        var record = LabelRecord(id: nil, labelGroupId: groupID.rawValue,
+        var record = LabelRecord(id: nil, labelGroupId: fieldID.rawValue,
                                  name: TextNormalizer.display(name), normalizedName: key,
                                  colorHex: nil, isPinned: false, isHidden: false)
         try record.insert(db)
@@ -236,7 +236,7 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
             """, arguments: [fileID.rawValue])
         // 保護されたフィールドのものは、消す候補からも外す。
         let removable = Set(current
-            .filter { !protectedFields.contains(LabelGroupID(rawValue: $0["groupId"] as Int64)) }
+            .filter { !protectedFields.contains(FieldID(rawValue: $0["groupId"] as Int64)) }
             .map { LabelID(rawValue: $0["labelId"] as Int64) })
         let attached = Set(current.map { LabelID(rawValue: $0["labelId"] as Int64) })
 
@@ -251,7 +251,7 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
                  WHERE id IN (\(SQLiteManagedFileRepository.placeholders(ids.count)))
                 """, arguments: StatementArguments(ids.map { Optional($0.rawValue) }))
             for row in rows
-            where protectedFields.contains(LabelGroupID(rawValue: row["labelGroupId"] as Int64)) {
+            where protectedFields.contains(FieldID(rawValue: row["labelGroupId"] as Int64)) {
                 wanted.remove(LabelID(rawValue: row["id"] as Int64))
             }
         }
@@ -283,10 +283,10 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
             guard let t = try LabelRecord.fetchOne(db, key: target.rawValue) else {
                 throw LabelEditError.labelNotFound(target)
             }
-            // **グループをまたぐ統合は認めない** [LB-07]。ラベルの一意性は
-            // グループ内で定義されており [LB-01]、またぐと「グループを移す」
+            // **フィールドをまたぐ統合は認めない** [LB-07]。ラベルの一意性は
+            // フィールド内で定義されており [LB-01]、またぐと「フィールドを移す」
             // という別の操作になる。
-            guard s.labelGroupId == t.labelGroupId else { throw LabelEditError.crossGroupMerge }
+            guard s.labelGroupId == t.labelGroupId else { throw LabelEditError.crossFieldMerge }
 
             // ① 両方が付いているファイル: 古いほうの付与日時に揃える。
             //    **どちらを残すかの規則は要らなくなった**——紐づけは付いて
@@ -358,7 +358,7 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
         }
     }
 
-    /// ラベル固有色 [LE-10][CO-06]。`nil` へ戻すとグループ色を継承する。
+    /// ラベル固有色 [LE-10][CO-06]。`nil` へ戻すとフィールド色を継承する。
     public func setColor(_ id: LabelID, hex: String?) async throws {
         try await database.writer.write { db in
             try db.execute(sql: "UPDATE label SET colorHex = ? WHERE id = ?",
@@ -398,7 +398,7 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
                     SELECT managedFileId, assignedAt FROM fileLabel WHERE labelId = ?
                     """, arguments: [id.rawValue])
                 result.append(LabelSnapshot(
-                    id: id, groupID: LabelGroupID(rawValue: record.labelGroupId),
+                    id: id, fieldID: FieldID(rawValue: record.labelGroupId),
                     name: record.name, normalizedName: record.normalizedName,
                     colorHex: record.colorHex, isPinned: record.isPinned,
                     isHidden: record.isHidden,
@@ -426,11 +426,11 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
         guard !snapshots.isEmpty else { return }
         try await database.writer.write { db in
             for snapshot in snapshots {
-                // グループごと消えていたら戻せない（ライブラリの登録解除など）。
+                // フィールドごと消えていたら戻せない（ライブラリの登録解除など）。
                 // その場合は Undo の対象そのものが失われているので黙って飛ばす。
                 let groupExists = try Bool.fetchOne(db, sql:
                     "SELECT EXISTS(SELECT 1 FROM labelGroup WHERE id = ?)",
-                    arguments: [snapshot.groupID.rawValue]) ?? false
+                    arguments: [snapshot.fieldID.rawValue]) ?? false
                 guard groupExists else { continue }
 
                 try db.execute(sql: """
@@ -443,7 +443,7 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
                         normalizedName = excluded.normalizedName,
                         colorHex = excluded.colorHex, isPinned = excluded.isPinned,
                         isHidden = excluded.isHidden
-                    """, arguments: [snapshot.id.rawValue, snapshot.groupID.rawValue,
+                    """, arguments: [snapshot.id.rawValue, snapshot.fieldID.rawValue,
                                      snapshot.name, snapshot.normalizedName, snapshot.colorHex,
                                      snapshot.isPinned, snapshot.isHidden])
 
@@ -469,9 +469,9 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
     ///
     /// **1 トランザクションでまとめて振り直す**——途中で落ちて順序が半分だけ
     /// 入れ替わると、`displayOrder` に重複が生まれて並びが不定になる
-    /// （`groups()` は `ORDER BY displayOrder, groupIndex` なので、同点は
+    /// （`fields()` は `ORDER BY displayOrder, groupIndex` なので、同点は
     /// `groupIndex` で決まってしまい利用者の並べ替えが黙って無かったことになる）。
-    public func setGroupOrder(_ orderedIDs: [LabelGroupID]) async throws {
+    public func setFieldOrder(_ orderedIDs: [FieldID]) async throws {
         guard !orderedIDs.isEmpty else { return }
         try await database.writer.write { db in
             for (order, id) in orderedIDs.enumerated() {

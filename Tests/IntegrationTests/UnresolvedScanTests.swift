@@ -106,7 +106,7 @@ struct UnresolvedScanTests {
         _ = try await w.scanFull()
         #expect(try await unresolved(w).count == 1)
 
-        // 「サークル」はプリセット同人誌(A) の第 2 グループ [11.4 節]。
+        // 「サークル」はプリセット同人誌(A) の第 2 フィールド [11.4 節]。
         var draft = try #require(try await w.libraries.settingsDraft(libraryID: w.libraryID))
         draft.filenameFormats.append(
             FilenameFormatDraft(source: "独自形式＿@circle＿@title"))
@@ -119,9 +119,9 @@ struct UnresolvedScanTests {
 
         let row = try #require(try await w.rows().first)
         #expect(row.title == "作品Z")
-        let groups = try await w.labels.groups(libraryID: w.libraryID)
-        let circle = try #require(groups.first { $0.name == "サークル" })
-        let labels = try await w.labels.labels(groupID: circle.id)
+        let fields = try await w.labels.fields(libraryID: w.libraryID)
+        let circle = try #require(fields.first { $0.name == "サークル" })
+        let labels = try await w.labels.labels(fieldID: circle.id)
         #expect(labels.map(\.name).contains("サークルZ"))
     }
 

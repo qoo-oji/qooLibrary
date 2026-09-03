@@ -49,12 +49,12 @@ struct LibraryRepositoryTests {
         #expect(summary.displayName == "テスト")
         #expect(summary.libraryTypeName == "同人誌")
 
-        let groups = try await f.labels.groups(libraryID: f.libraryID)
-        #expect(groups.count == 6)
-        #expect(groups.map(\.name).contains("サークル"))
+        let fields = try await f.labels.fields(libraryID: f.libraryID)
+        #expect(fields.count == 6)
+        #expect(fields.map(\.name).contains("サークル"))
         // 既定色が割り当てられている [CO-01][MT-13]。**文字色は色ごとに決まる**
         // [CO-03][CO-05]——彩度を上げた [CO-02、2026-08-30] ので「全部黒」ではない。
-        for g in groups {
+        for g in fields {
             #expect(g.colorHexLight.hasPrefix("#"))
             #expect(LabelColorPalette.readableForeground(on: g.colorHexLight) != nil,
                     "\(g.name) の \(g.colorHexLight) は黒でも白でも読めない")
@@ -70,10 +70,10 @@ struct LibraryRepositoryTests {
     func registerCopiesFolderLevels() async throws {
         let f = try await Fixture.make(preset: "builtin.doujinshi-b")
         let settings = try #require(try await f.libraries.settingsSnapshot(libraryID: f.libraryID))
-        guard case .singleLabelGroup(let group) = settings.folderLevelAssignments[1] else {
+        guard case .singleLabelGroup(let field) = settings.folderLevelAssignments[1] else {
             Issue.record("第1階層の割り当てが違う"); return
         }
-        #expect(group == 2)
+        #expect(field == 2)
     }
 
     @Test("UUID で引ける（フェーズ 1 の登録フォルダ ID を引き継ぐ）")
@@ -226,8 +226,8 @@ struct IdentityTests {
     func reidentifyKeepsLabels() async throws {
         let f = try await Fixture.make()
         let id = try await f.files.upsert(f.snapshot(inode: 1, path: "作品.cbz"))
-        let group = try #require(try await f.labels.group(libraryID: f.libraryID, index: 2))
-        let label = try await f.labels.ensureLabel(groupID: group.id, name: "サークルA")
+        let field = try #require(try await f.labels.field(libraryID: f.libraryID, index: 2))
+        let label = try await f.labels.ensureLabel(fieldID: field.id, name: "サークルA")
         try await f.labels.assign(fileID: id, labelID: label)
 
         try await f.files.reidentify(id, to: FileIdentity(volumeUUID: "VOL", inode: 777))

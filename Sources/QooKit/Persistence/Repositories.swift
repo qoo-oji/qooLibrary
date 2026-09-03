@@ -316,7 +316,7 @@ public protocol ManagedFileRepository: Sendable {
     ///   **どのフィールドを見るかは呼び出し側が設定から解決する**。`nil` なら
     ///   著者名だけを鍵にする。
     func seriesSuggestionCandidates(libraryID: LibraryID,
-                                    circleFieldID: LabelGroupID?) async throws
+                                    circleFieldID: FieldID?) async throws
         -> [SeriesSuggestionCandidate]
 
     /// 「以後この提案を出さない」の付け外し [SS-05]。
@@ -463,8 +463,8 @@ public struct VolumeDecisionCandidate: Sendable, Hashable, Identifiable {
 
 // MARK: - ラベル
 
-public struct LabelGroupSummary: Sendable, Hashable, Identifiable {
-    public let id: LabelGroupID
+public struct FieldSummary: Sendable, Hashable, Identifiable {
+    public let id: FieldID
     public let libraryID: LibraryID
     public let index: Int
     public let name: String
@@ -481,7 +481,7 @@ public struct LabelGroupSummary: Sendable, Hashable, Identifiable {
     /// 2 つ目の意味を持たせると §19.13 #1 と同じ取り違えを生む。
     public let labelCount: Int
 
-    public init(id: LabelGroupID, libraryID: LibraryID, index: Int, name: String,
+    public init(id: FieldID, libraryID: LibraryID, index: Int, name: String,
                 colorHexLight: String, colorHexDark: String, displayOrder: Int, labelCount: Int) {
         self.id = id
         self.libraryID = libraryID
@@ -496,10 +496,10 @@ public struct LabelGroupSummary: Sendable, Hashable, Identifiable {
 
 public struct LabelSummary: Sendable, Hashable, Identifiable {
     public let id: LabelID
-    public let groupID: LabelGroupID
+    public let fieldID: FieldID
     public let name: String                // 原文 [N-03]
     public let normalizedName: String
-    public let colorHex: String?           // nil → グループ色を継承 [CO-06]
+    public let colorHex: String?           // nil → フィールド色を継承 [CO-06]
     public let isPinned: Bool              // [LB-03]
     /// **手動で非表示にした印** [LA3-02]。実体が無いことによる非表示は
     /// ``isHidden`` ではなく ``fileCount`` が 0 であることから導く [LA3-01]。
@@ -521,10 +521,10 @@ public struct LabelSummary: Sendable, Hashable, Identifiable {
     /// [DB-02 撤回]。
     public let fileCount: Int
 
-    public init(id: LabelID, groupID: LabelGroupID, name: String, normalizedName: String,
+    public init(id: LabelID, fieldID: FieldID, name: String, normalizedName: String,
                 colorHex: String?, isPinned: Bool, isHidden: Bool, fileCount: Int) {
         self.id = id
-        self.groupID = groupID
+        self.fieldID = fieldID
         self.name = name
         self.normalizedName = normalizedName
         self.colorHex = colorHex
@@ -565,7 +565,7 @@ public struct LabelSnapshot: Sendable, Hashable {
     }
 
     public let id: LabelID
-    public let groupID: LabelGroupID
+    public let fieldID: FieldID
     public let name: String
     public let normalizedName: String
     public let colorHex: String?
@@ -574,11 +574,11 @@ public struct LabelSnapshot: Sendable, Hashable {
     /// そのラベルの紐づけ全件。
     public let assignments: [Assignment]
 
-    public init(id: LabelID, groupID: LabelGroupID, name: String, normalizedName: String,
+    public init(id: LabelID, fieldID: FieldID, name: String, normalizedName: String,
                 colorHex: String?, isPinned: Bool, isHidden: Bool,
                 assignments: [Assignment]) {
         self.id = id
-        self.groupID = groupID
+        self.fieldID = fieldID
         self.name = name
         self.normalizedName = normalizedName
         self.colorHex = colorHex
@@ -594,10 +594,10 @@ public struct LabelSnapshot: Sendable, Hashable {
 /// label.normalizedName」がそのまま画面に出る。**呼び出し側が次の一手を出せる
 /// ようにする**——改名の衝突なら「代わりに統合しますか」を勧められる [LE-11]。
 public enum LabelEditError: Error, Sendable, Hashable {
-    /// 同じグループに、正規化後が同じ名前のラベルが既にある [LB-01][N-03]。
+    /// 同じフィールドに、正規化後が同じ名前のラベルが既にある [LB-01][N-03]。
     case nameAlreadyExists(existing: LabelID, name: String)
-    /// 別のラベルグループへは統合できない [LB-07]。
-    case crossGroupMerge
+    /// 別のラベルフィールドへは統合できない [LB-07]。
+    case crossFieldMerge
     case labelNotFound(LabelID)
 }
 
@@ -618,22 +618,22 @@ public struct LabelAssignmentChange: Sendable, Hashable {
 }
 
 public protocol LabelRepository: Sendable {
-    func groups(libraryID: LibraryID) async throws -> [LabelGroupSummary]
+    func fields(libraryID: LibraryID) async throws -> [FieldSummary]
     /// ラベルフィルタでの表示順 [LF-03][LG-07]。**ライブラリ単位の永続設定で
     /// 全ウインドウ共有** [ST-23]——ウインドウごとに違う順序で並ぶと、
     /// 同じライブラリを 2 枚開いたときにどちらが正しいか言えなくなる。
     ///
-    /// 渡された順に 0 から振り直す。一覧に無いグループには触れない。
-    func setGroupOrder(_ orderedIDs: [LabelGroupID]) async throws
-    func group(libraryID: LibraryID, index: Int) async throws -> LabelGroupSummary?
+    /// 渡された順に 0 から振り直す。一覧に無いフィールドには触れない。
+    func setFieldOrder(_ orderedIDs: [FieldID]) async throws
+    func field(libraryID: LibraryID, index: Int) async throws -> FieldSummary?
     /// そのフィールドのラベルを、生きている実体の件数付きで返す [LF-04][LE-03]。
     ///
     /// **手動で非表示にしたものも含めて返す** [LA3-03]——出し分けは呼び出し側の
     /// 都合（フィルタは隠す [LA3-05]、フィールド編集は控えめに見せる）で、
     /// リポジトリはそれを知らない。判定は `LabelSummary.isVisible` にある。
-    func labels(groupID: LabelGroupID) async throws -> [LabelSummary]
-    /// 無ければ作る。一意性は `(groupID, 正規化名)` [LB-01][N-03][LA-07]。
-    func ensureLabel(groupID: LabelGroupID, name: String) async throws -> LabelID
+    func labels(fieldID: FieldID) async throws -> [LabelSummary]
+    /// 無ければ作る。一意性は `(fieldID, 正規化名)` [LB-01][N-03][LA-07]。
+    func ensureLabel(fieldID: FieldID, name: String) async throws -> LabelID
     func assign(fileID: FileID, labelID: LabelID) async throws
     func unassign(fileID: FileID, labelID: LabelID) async throws
     /// 1 ファイルのラベルを、走査が導いた集合へ揃える [RC-01][PR-01]。
@@ -671,12 +671,12 @@ public protocol LabelRepository: Sendable {
     /// いないの 2 値**になったので、どちらを残すかを決める規則は要らない
     /// （保護は紐づけではなくフィールド単位に付く [PR-02]）。
     ///
-    /// **別グループへは統合できない** [LB-07]——ラベルの一意性はグループ内で
-    /// 定義されており [LB-01]、またぐと「グループを移す」という別の操作になる。
+    /// **別フィールドへは統合できない** [LB-07]——ラベルの一意性はフィールド内で
+    /// 定義されており [LB-01]、またぐと「フィールドを移す」という別の操作になる。
     func merge(_ source: LabelID, into target: LabelID) async throws           // [LB-07]
     /// 改名 [LB-06]。紐づけは維持される（行の ID が変わらないため何もしなくてよい）。
     ///
-    /// 同じグループに正規化後が同じ名前があれば `LabelEditError.nameAlreadyExists`。
+    /// 同じフィールドに正規化後が同じ名前があれば `LabelEditError.nameAlreadyExists`。
     /// **素の UNIQUE 制約違反を投げない**——呼び出し側が「代わりに統合」を
     /// 勧められるよう、衝突相手の ID を添えて返す [LE-11]。
     func rename(_ id: LabelID, to name: String) async throws                   // [LB-06]
@@ -685,7 +685,7 @@ public protocol LabelRepository: Sendable {
     /// ラベルにしか使わない。
     func setHidden(_ ids: [LabelID], _ hidden: Bool) async throws              // [LA3-02]
     func setPinned(_ id: LabelID, _ pinned: Bool) async throws                 // [LB-03]
-    /// ラベル固有色 [LE-10][CO-06]。`nil` へ戻すとグループ色を継承する。
+    /// ラベル固有色 [LE-10][CO-06]。`nil` へ戻すとフィールド色を継承する。
     func setColor(_ id: LabelID, hex: String?) async throws
     /// 削除 [LE-07]。**紐づけも一緒に消える** [LE-08][LB-05]——`fileLabel` の
     /// 外部キーが `ON DELETE CASCADE` なので DB が保証する。

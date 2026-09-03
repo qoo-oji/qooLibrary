@@ -88,7 +88,7 @@ final class ScanWorkspace {
             template: template)
         // 画像拡張子だけを足す。**`settingsJSON` を丸ごと差し替えてはならない**
         // ——以前はそうしており、テンプレート由来の意味束縛 [RW-13] や
-        // ラベルグループの並びを静かに落としていた（`@author` を束縛したときに
+        // ラベルフィールドの並びを静かに落としていた（`@author` を束縛したときに
         // 「著者ラベルだけが付かない」という形で発覚した）。草案を読んで必要な
         // 部分だけ変え、製品と同じ `updateSettings` を通す。
         var draft = try #require(try await libraries.settingsDraft(libraryID: libraryID))
@@ -109,10 +109,10 @@ final class ScanWorkspace {
     /// **番号で引かない。** 既定フィールド 5 種の保証 [§19.2] のように
     /// テンプレートの並びが変わると、番号は同じでも別のフィールドを指す
     /// ——検査の主張と無関係に落ちるうえ、落ちるまで気づけない。
-    func field(_ keyword: SemanticKeyword) async throws -> LabelGroupSummary? {
+    func field(_ keyword: SemanticKeyword) async throws -> FieldSummary? {
         guard let draft = try await libraries.settingsDraft(libraryID: libraryID),
               let index = draft.semanticBindings[keyword] else { return nil }
-        return try await labels.group(libraryID: libraryID, index: index)
+        return try await labels.field(libraryID: libraryID, index: index)
     }
 
     func write(_ relativePath: String, bytes: Int = 16) throws {
@@ -197,8 +197,8 @@ struct ScanIntegrationTests {
         #expect(third.added == 0)
         #expect(try await w.rows().count == 1)
         // ラベルも増殖しない
-        let group = try #require(try await w.labels.group(libraryID: w.libraryID, index: 2))
-        #expect(try await w.labels.labels(groupID: group.id).count == 1)
+        let field = try #require(try await w.labels.field(libraryID: w.libraryID, index: 2))
+        #expect(try await w.labels.labels(fieldID: field.id).count == 1)
     }
 
     @Test("パース結果が DB へ書き戻される [RC-01]")
@@ -224,11 +224,11 @@ struct ScanIntegrationTests {
         let circle = try #require(try await w.field(.circle))
         let author = try #require(try await w.field(.author))
         let genre = try #require(try await w.field(.genre))
-        #expect(try await w.labels.labels(groupID: circle.id)
+        #expect(try await w.labels.labels(fieldID: circle.id)
             .map(\.name) == ["サークルA"])
-        #expect(Set(try await w.labels.labels(groupID: author.id)
+        #expect(Set(try await w.labels.labels(fieldID: author.id)
             .map(\.name)) == ["作家A", "作家B"])
-        #expect(try await w.labels.labels(groupID: genre.id)
+        #expect(try await w.labels.labels(fieldID: genre.id)
             .first?.fileCount == 2)
     }
 
@@ -372,8 +372,8 @@ struct ScanIntegrationTests {
         #expect(book.isBookFolder)
 
         // ラベルを手で付けておき、解除で失われないことを確かめる
-        let group = try #require(try await w.labels.group(libraryID: w.libraryID, index: 2))
-        let label = try await w.labels.ensureLabel(groupID: group.id, name: "手動ラベル")
+        let field = try #require(try await w.labels.field(libraryID: w.libraryID, index: 2))
+        let label = try await w.labels.ensureLabel(fieldID: field.id, name: "手動ラベル")
         try await w.labels.assign(fileID: book.id, labelID: label)
 
         try w.write("画像作品/追加/002.jpg")

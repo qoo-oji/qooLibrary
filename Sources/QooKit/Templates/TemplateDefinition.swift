@@ -34,7 +34,7 @@ public struct VolumeSetDefinition: Sendable, Codable, Hashable {
 }
 
 public struct LibraryTypeTemplate: Sendable, Codable, Hashable, Identifiable {
-    public struct LabelGroupSpec: Sendable, Codable, Hashable {
+    public struct FieldSpec: Sendable, Codable, Hashable {
         public let index: Int
         public let name: String
         /// `false` = 自動ラベル付与の対象外（ユーザーが手動で設定するまで無効）。
@@ -55,8 +55,12 @@ public struct LibraryTypeTemplate: Sendable, Codable, Hashable, Identifiable {
     public let libraryTypeName: String
     /// 改訂の検出用 [LT-10][LT-12]。
     public let version: Int
-    public let labelGroups: [LabelGroupSpec]
-    /// 予約語 → ラベルグループ番号 [RW-13]。
+    /// **JSON のキーは `labelGroups` のまま**——`library-types.json` に
+    /// 書かれている綴りで、改名すると読めなくなる。Swift 側の呼び名だけ
+    /// フィールドへ揃えるため `fields` を計算プロパティとして併設する。
+    public let labelGroups: [FieldSpec]
+    public var fields: [FieldSpec] { labelGroups }
+    /// 予約語 → ラベルフィールド番号 [RW-13]。
     public let semanticBindings: [String: Int]
     /// 階層番号（文字列キー）→ 割り当て [AL-01〜AL-03]。
     public let folderLevels: [String: FolderLevelSpec]
@@ -68,9 +72,9 @@ public struct LibraryTypeTemplate: Sendable, Codable, Hashable, Identifiable {
 
     public var semanticKeywordBindings: [SemanticKeyword: Int] {
         var out: [SemanticKeyword: Int] = [:]
-        for (raw, group) in semanticBindings {
+        for (raw, field) in semanticBindings {
             guard let keyword = SemanticKeyword(rawValue: raw) else { continue }
-            out[keyword] = group
+            out[keyword] = field
         }
         return out
     }
@@ -181,8 +185,8 @@ public enum TemplateInstantiation {
                 // いない」は別の意味であり、区別を失ってはならない。
                 levels[level] = FolderLevelMappingSpec.Assignment.none
             case .singleLabelGroup:
-                guard let group = spec.labelGroup else { continue }
-                levels[level] = .singleLabelGroup(index: group)
+                guard let field = spec.labelGroup else { continue }
+                levels[level] = .singleLabelGroup(index: field)
             case .format:
                 guard let source = spec.format else { continue }
                 do {
@@ -225,20 +229,20 @@ extension TemplateInstantiation {
     /// 直したときに「見たものと登録されたものが違う」という、最も気づき
     /// にくい壊れ方をする。**既定値の出どころはこの関数 1 つに閉じること。**
     ///
-    /// - Parameter colors: ラベルグループの配色 [MT-13]。件数ぶん渡す。
+    /// - Parameter colors: ラベルフィールドの配色 [MT-13]。件数ぶん渡す。
     ///   `QooKit` は配色の決め方を知っているが（`LabelColorPalette`）、
     ///   呼び出し側が別の割り当てを持つ場合に差し替えられるようにしておく。
     public static func draft(from template: LibraryTypeTemplate,
                              volumeSets: VolumeSetDefinition,
                              displayName: String,
                              otherLibraryTypeNames: [String] = []) -> LibrarySettingsDraft {
-        let colors = LabelColorPalette.palette(count: max(template.labelGroups.count, 1))
-        let groups = template.labelGroups
+        let colors = LabelColorPalette.palette(count: max(template.fields.count, 1))
+        let fields = template.fields
             .sorted { $0.index < $1.index }
             .enumerated()
             .map { offset, spec in
                 let color = colors[min(offset, colors.count - 1)]
-                return LabelGroupDraft(
+                return FieldDraft(
                     index: spec.index, name: spec.name,
                     colorHexLight: color.hexLight, colorHexDark: color.hexDark,
                     assignsAutomatically: spec.assignsAutomatically)
@@ -257,8 +261,8 @@ extension TemplateInstantiation {
                 case .none:
                     assignment = FolderLevelDraft.Assignment.none
                 case .singleLabelGroup:
-                    guard let group = spec.labelGroup else { return nil }
-                    assignment = .singleLabelGroup(index: group)
+                    guard let field = spec.labelGroup else { return nil }
+                    assignment = .singleLabelGroup(index: field)
                 case .format:
                     guard let source = spec.format else { return nil }
                     assignment = .format(source: source)
@@ -282,7 +286,7 @@ extension TemplateInstantiation {
             protectedTokens: AppDefaults.Library.protectedTokenPatterns.map {
                 ProtectedToken(pattern: $0)
             },
-            labelGroups: groups,
+            fields: fields,
             semanticBindings: template.semanticKeywordBindings,
             filenameFormats: template.filenameFormats.map {
                 FilenameFormatDraft(source: $0, isEnabled: true)
@@ -299,11 +303,11 @@ extension TemplateInstantiation {
     /// 予約語）が、既定が毎回違う番号に散ると、追加フィールドの番号取りと
     /// 設定画面の並びが登録のたびに変わって読みにくい。
     public static func defaultFields(named names: [String])
-        -> (groups: [LabelGroupDraft], bindings: [SemanticKeyword: Int])
+        -> (fields: [FieldDraft], bindings: [SemanticKeyword: Int])
     {
         let keywords = SemanticKeyword.defaultFields
         let colors = LabelColorPalette.palette(count: keywords.count)
-        var groups: [LabelGroupDraft] = []
+        var fields: [FieldDraft] = []
         var bindings: [SemanticKeyword: Int] = [:]
         for (offset, keyword) in keywords.enumerated() {
             let index = offset + 1
@@ -311,12 +315,12 @@ extension TemplateInstantiation {
             let name = offset < names.count && !names[offset].isEmpty
                 ? names[offset]
                 : String(keyword.rawValue.dropFirst())
-            groups.append(LabelGroupDraft(index: index, name: name,
+            fields.append(FieldDraft(index: index, name: name,
                                           colorHexLight: color.hexLight,
                                           colorHexDark: color.hexDark))
             bindings[keyword] = index
         }
-        return (groups, bindings)
+        return (fields, bindings)
     }
 
     /// 白紙から始める草案 [LT-02、ユーザー要望]。
@@ -346,7 +350,7 @@ extension TemplateInstantiation {
                                   otherLibraryTypeNames: [String] = []) -> LibrarySettingsDraft {
         let volumes = (volumeSets.patterns(named: volumeSetName) ?? [])
             .map { VolumeFormatDraft(source: $0.source, isEnabled: true, kind: $0.kind) }
-        let (groups, bindings) = defaultFields(named: defaultFieldNames)
+        let (fields, bindings) = defaultFields(named: defaultFieldNames)
         return LibrarySettingsDraft(
             displayName: displayName,
             libraryTypeName: libraryTypeName,
@@ -358,7 +362,7 @@ extension TemplateInstantiation {
             // **既定フィールド 5 種を置く** [§19.2]。白紙でも、著者・サークル・
             // ジャンル・イベント・キーワードは最初から使える——「何から始めれば
             // よいか」が分かるうえ、プリセットから登録した場合と持ち物が揃う。
-            labelGroups: groups,
+            fields: fields,
             semanticBindings: bindings,
             volumeFormats: volumes,
             otherLibraryTypeNames: otherLibraryTypeNames)

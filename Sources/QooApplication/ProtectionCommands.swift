@@ -40,7 +40,7 @@ public final class SetProtectionCommand: Command {
         /// ファイル全体 [PR-02][PR-05]。**フィールドの一覧を渡す**——
         /// 「全体」は別の値ではなく「基本情報 ＋ そのライブラリの全フィールド」
         /// が揃った状態なので、一覧なしには表現できない。
-        case all(fields: [LabelGroupID], protected: Bool)
+        case all(fields: [FieldID], protected: Bool)
         /// 1 つのスコープ。
         case scope(ProtectionScope, protected: Bool)
 
@@ -144,7 +144,7 @@ public final class SetProtectionCommand: Command {
     public static func togglingAll(
         files: [(id: FileID, url: URL)],
         scopes: [FileID: Set<ProtectionScope>],
-        fields: [LabelGroupID],
+        fields: [FieldID],
         libraryID: LibraryID, subjectName: String,
         services: LibraryServices
     ) async throws -> SetProtectionCommand? {

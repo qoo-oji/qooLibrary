@@ -408,22 +408,22 @@ public final class LibraryServices {
 
     // MARK: - ラベル [LF-01〜LF-14][PN-01〜PN-06]
 
-    /// ラベルフィルタに並べるグループ [LF-01]。
+    /// ラベルフィルタに並べるフィールド [LF-01]。
     ///
-    /// **見えるラベルが 0 件のグループを落とすのは呼び出し側の仕事**
+    /// **見えるラベルが 0 件のフィールドを落とすのは呼び出し側の仕事**
     /// [LF-02][LA3-05]——`labelCount` は非表示のものも数える（フィールド編集
-    /// ウインドウが空のグループを触れなくなるため）ので、フィルタは読んだ
+    /// ウインドウが空のフィールドを触れなくなるため）ので、フィルタは読んだ
     /// ラベルの `isVisible` から自分で判断する。
-    public func labelGroups(libraryID: LibraryID) async throws -> [LabelGroupSummary] {
+    public func fields(libraryID: LibraryID) async throws -> [FieldSummary] {
         guard let repository = labelRepository else { throw ServiceError.notReady }
-        return try await repository.groups(libraryID: libraryID)
+        return try await repository.fields(libraryID: libraryID)
     }
 
-    /// グループに属するラベル [LF-04]。**非表示のものも含めて返す** [LA3-03]
+    /// フィールドに属するラベル [LF-04]。**非表示のものも含めて返す** [LA3-03]
     /// ——出し分けは呼び出し側の都合で、`LabelSummary.isVisible` が判定を持つ。
-    public func labels(groupID: LabelGroupID) async throws -> [LabelSummary] {
+    public func labels(fieldID: FieldID) async throws -> [LabelSummary] {
         guard let repository = labelRepository else { throw ServiceError.notReady }
-        return try await repository.labels(groupID: groupID)
+        return try await repository.labels(fieldID: fieldID)
     }
 
     /// ピン留め [PN-04]。**ライブラリ単位の永続設定で全ウインドウ共有** [ST-23]。
@@ -432,17 +432,17 @@ public final class LibraryServices {
         try await repository.setPinned(id, pinned)
     }
 
-    /// グループの並べ替え [LF-03][LG-07]。こちらも全ウインドウ共有 [ST-23]。
-    public func setLabelGroupOrder(_ orderedIDs: [LabelGroupID]) async throws {
+    /// フィールドの並べ替え [LF-03][LG-07]。こちらも全ウインドウ共有 [ST-23]。
+    public func setFieldOrder(_ orderedIDs: [FieldID]) async throws {
         guard let repository = labelRepository else { throw ServiceError.notReady }
-        try await repository.setGroupOrder(orderedIDs)
+        try await repository.setFieldOrder(orderedIDs)
     }
 
     // MARK: - シェルフ [SH-01〜SH-12]
     //
     // **Undo は `ShelfCommands` のコマンドが担う**ので、UI から直接ここを
     // 呼ばないこと（並び順 [SH-10] だけは例外で、フィールドの並び順
-    // [LF-03] と同じくコマンドにしない——`setLabelGroupOrder` と同じ扱い）。
+    // [LF-03] と同じくコマンドにしない——`setFieldOrder` と同じ扱い）。
 
     public func shelves(libraryID: LibraryID) async throws -> [ShelfSummary] {
         guard let repository = shelfRepository else { throw ServiceError.notReady }
@@ -626,12 +626,12 @@ public final class LibraryServices {
     /// サークルは `authorName` のような専用列を持たずラベルとして入るので、
     /// 「どのフィールドがサークルか」は設定からしか分からない。束縛が無ければ
     /// `nil`（著者名だけで揃える）。
-    public func circleFieldID(libraryID: LibraryID) async throws -> LabelGroupID? {
+    public func circleFieldID(libraryID: LibraryID) async throws -> FieldID? {
         guard let repository = libraryRepository else { throw ServiceError.notReady }
         guard let snapshot = try await repository.settingsSnapshot(libraryID: libraryID),
               let index = snapshot.semanticBindings[.circle]
         else { return nil }
-        return try await labelGroups(libraryID: libraryID).first { $0.index == index }?.id
+        return try await fields(libraryID: libraryID).first { $0.index == index }?.id
     }
 
     public func updateSeriesSuggestionIgnored(set marks: [FileID: String],
@@ -1040,9 +1040,9 @@ public final class LibraryServices {
     }
 
     /// ラベルを作る（既にあればそれを返す）[RL-02][LB-01][N-03]。
-    public func ensureLabel(groupID: LabelGroupID, name: String) async throws -> LabelID {
+    public func ensureLabel(fieldID: FieldID, name: String) async throws -> LabelID {
         guard let repository = labelRepository else { throw ServiceError.notReady }
-        return try await repository.ensureLabel(groupID: groupID, name: name)
+        return try await repository.ensureLabel(fieldID: fieldID, name: name)
     }
 
     /// ラベルの紐づけを書き換える [RL-01][RL-07]。

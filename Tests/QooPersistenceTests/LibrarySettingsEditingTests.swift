@@ -18,8 +18,8 @@ struct LibrarySettingsEditingTests {
 
         #expect(draft.displayName == "テスト")
         #expect(draft.libraryTypeName == "同人誌")
-        #expect(draft.labelGroups.count == 6)
-        #expect(draft.labelGroups.allSatisfy { $0.persistentID != nil })
+        #expect(draft.fields.count == 6)
+        #expect(draft.fields.allSatisfy { $0.persistentID != nil })
         #expect(draft.filenameFormats.count == 20)
         #expect(!draft.volumeFormats.isEmpty)
         // 登録時に既定が入っている [AL-11]。空だと全ファイルが対象になる。
@@ -61,41 +61,41 @@ struct LibrarySettingsEditingTests {
         #expect(snapshot.filenameFormats.count == 2)
     }
 
-    @Test("ラベルグループの名前を変えても、紐づいたラベルは消えない [LB-05]")
-    func renamingALabelGroupKeepsItsLabels() async throws {
+    @Test("ラベルフィールドの名前を変えても、紐づいたラベルは消えない [LB-05]")
+    func renamingAFieldKeepsItsLabels() async throws {
         let f = try await Fixture.make(preset: "builtin.general-comic-a")
-        let groups = try await f.labels.groups(libraryID: f.libraryID)
-        let author = try #require(groups.first { $0.name == "著者" })
-        _ = try await f.labels.ensureLabel(groupID: author.id, name: "著者名A")
-        _ = try await f.labels.ensureLabel(groupID: author.id, name: "著者名B")
+        let fields = try await f.labels.fields(libraryID: f.libraryID)
+        let author = try #require(fields.first { $0.name == "著者" })
+        _ = try await f.labels.ensureLabel(fieldID: author.id, name: "著者名A")
+        _ = try await f.labels.ensureLabel(fieldID: author.id, name: "著者名B")
 
         var draft = try #require(try await f.libraries.settingsDraft(libraryID: f.libraryID))
-        let position = try #require(draft.labelGroups.firstIndex { $0.name == "著者" })
-        draft.labelGroups[position].name = "作者"
+        let position = try #require(draft.fields.firstIndex { $0.name == "著者" })
+        draft.fields[position].name = "作者"
         try await f.libraries.updateSettings(draft, libraryID: f.libraryID)
 
-        let after = try await f.labels.groups(libraryID: f.libraryID)
+        let after = try await f.labels.fields(libraryID: f.libraryID)
         let renamed = try #require(after.first { $0.name == "作者" })
         // **ここが要点**——作り直す実装だと 0 件になる。
         #expect(renamed.id == author.id)
-        #expect(try await f.labels.labels(groupID: renamed.id).count == 2)
+        #expect(try await f.labels.labels(fieldID: renamed.id).count == 2)
     }
 
-    @Test("ラベルグループを増やせる")
-    func addingALabelGroup() async throws {
+    @Test("ラベルフィールドを増やせる")
+    func addingAField() async throws {
         let f = try await Fixture.make(preset: "builtin.general-comic-a")
         var draft = try #require(try await f.libraries.settingsDraft(libraryID: f.libraryID))
         // **プリセットの件数を直に書かない。** 既定フィールド 5 種の保証 [§19.2]
         // のようにテンプレート側が増減すると、この検査の主張と無関係に落ちる。
-        let before = try await f.labels.groups(libraryID: f.libraryID).count
-        let index = try #require(draft.nextAvailableLabelGroupIndex)
-        draft.labelGroups.append(LabelGroupDraft(
+        let before = try await f.labels.fields(libraryID: f.libraryID).count
+        let index = try #require(draft.nextAvailableFieldIndex)
+        draft.fields.append(FieldDraft(
             index: index, name: "レーベル", colorHexLight: "#EEDDEE", colorHexDark: "#443344"))
         try await f.libraries.updateSettings(draft, libraryID: f.libraryID)
 
-        let groups = try await f.labels.groups(libraryID: f.libraryID)
-        #expect(groups.count == before + 1)
-        #expect(groups.contains { $0.name == "レーベル" })
+        let fields = try await f.labels.fields(libraryID: f.libraryID)
+        #expect(fields.count == before + 1)
+        #expect(fields.contains { $0.name == "レーベル" })
     }
 
     @Test("ライブラリタイプ名を変えても、同じプリセットの他ライブラリは巻き添えにならない [LT-05]")
@@ -160,7 +160,7 @@ struct LibrarySettingsValidationTests {
         LibrarySettingsDraft(
             displayName: "L", libraryTypeName: "T",
             targetExtensions: ["cbz"],
-            labelGroups: [LabelGroupDraft(index: 1, name: "サークル",
+            fields: [FieldDraft(index: 1, name: "サークル",
                                           colorHexLight: "#EEE", colorHexDark: "#444")],
             semanticBindings: [.circle: 1],
             filenameFormats: [FilenameFormatDraft(source: "[@circle] @title")])
@@ -178,8 +178,8 @@ struct LibrarySettingsValidationTests {
         #expect(d.validationErrors.contains { $0.section == .extensions })
     }
 
-    @Test("存在しないラベルグループを参照するフォーマットを拒否する")
-    func formatReferencingAMissingLabelGroupIsAnError() {
+    @Test("存在しないラベルフィールドを参照するフォーマットを拒否する")
+    func formatReferencingAMissingFieldIsAnError() {
         var d = base()
         d.filenameFormats = [FilenameFormatDraft(source: "[@event] @title")]
         #expect(d.validationErrors.contains { $0.section == .filenameFormats })
@@ -193,26 +193,26 @@ struct LibrarySettingsValidationTests {
         #expect(d.validate().contains { $0.severity == .warning })
     }
 
-    @Test("グループ番号の重複を拒否する")
-    func duplicateLabelGroupIndexIsAnError() {
+    @Test("フィールド番号の重複を拒否する")
+    func duplicateFieldIndexIsAnError() {
         var d = base()
-        d.labelGroups.append(LabelGroupDraft(index: 1, name: "別",
+        d.fields.append(FieldDraft(index: 1, name: "別",
                                              colorHexLight: "#E", colorHexDark: "#4"))
-        #expect(d.validationErrors.contains { $0.section == .labelGroups })
+        #expect(d.validationErrors.contains { $0.section == .fields })
     }
 
-    @Test("1 グループに複数の予約語を紐づけられない [RW-14][LE-02]")
-    func aLabelGroupCannotCarryTwoSemanticKeywords() {
+    @Test("1 フィールドに複数の予約語を紐づけられない [RW-14][LE-02]")
+    func aFieldCannotCarryTwoSemanticKeywords() {
         var d = base()
         d.semanticBindings = [.series: 1, .author: 1]
-        #expect(d.validationErrors.contains { $0.section == .labelGroups })
+        #expect(d.validationErrors.contains { $0.section == .fields })
     }
 
-    @Test("存在しないグループへの予約語紐づけを拒否する")
+    @Test("存在しないフィールドへの予約語紐づけを拒否する")
     func semanticBindingToAMissingGroupIsAnError() {
         var d = base()
         d.semanticBindings = [.series: 7]
-        #expect(d.validationErrors.contains { $0.section == .labelGroups })
+        #expect(d.validationErrors.contains { $0.section == .fields })
     }
 
     @Test("有効なフォーマットが 1 つも無いのは警告（白紙から作れるようにするため）")

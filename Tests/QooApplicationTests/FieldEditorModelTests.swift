@@ -4,7 +4,7 @@ import Testing
 @testable import QooApplication
 
 //
-//  ラベルグループ編集ウインドウのモデル [LE-01〜LE-12]。
+//  ラベルフィールド編集ウインドウのモデル [LE-01〜LE-12]。
 //
 //  並べ替え・検索・0 件の判定・統合できる相手は**純粋関数**なので、DB を
 //  開かずに固定できる（`LabelEditorModel.candidates` を切り出したのと同じ形）。
@@ -12,7 +12,7 @@ import Testing
 //
 
 @Suite("ラベル一覧の並べ方と検索 [LE-12][LE-04][LB-07]")
-struct LabelGroupEditorRowTests {
+struct FieldEditorRowTests {
 
     /// - Parameter count: **生きている実体の件数** [LA3-01]。0 なら自動的に
     ///   非表示になる——件数の意味は 1 つだけになった [§19.13 #1]。
@@ -21,14 +21,14 @@ struct LabelGroupEditorRowTests {
                        hidden: Bool = false, pinned: Bool = false,
                        id: Int64 = 0) -> LabelSummary {
         LabelSummary(id: LabelID(rawValue: id == 0 ? Int64(abs(name.hashValue % 100000)) : id),
-                     groupID: LabelGroupID(rawValue: 1), name: name,
+                     fieldID: FieldID(rawValue: 1), name: name,
                      normalizedName: name.lowercased(), colorHex: nil,
                      isPinned: pinned, isHidden: hidden, fileCount: count)
     }
 
     @Test("名前順は自然順（10 が 2 の後に来る）[LE-12]")
     func nameOrderIsNatural() {
-        let rows = LabelGroupEditorModel.rows(
+        let rows = FieldEditorModel.rows(
             from: [label("作品2"), label("作品10"), label("作品1")],
             sortedBy: .name, matching: "")
         #expect(rows.map(\.name) == ["作品1", "作品2", "作品10"])
@@ -36,7 +36,7 @@ struct LabelGroupEditorRowTests {
 
     @Test("件数順は多い順で、同数は名前順 [LE-12]")
     func fileCountOrderBreaksTiesByName() {
-        let rows = LabelGroupEditorModel.rows(
+        let rows = FieldEditorModel.rows(
             from: [label("B", count: 3), label("C", count: 7), label("A", count: 3)],
             sortedBy: .fileCount, matching: "")
         #expect(rows.map(\.name) == ["C", "A", "B"])
@@ -49,7 +49,7 @@ struct LabelGroupEditorRowTests {
         "abc", "ABC", "ＡＢＣ", "Abc",
     ])
     func searchIgnoresWidthAndCase(query: String) {
-        let rows = LabelGroupEditorModel.rows(
+        let rows = FieldEditorModel.rows(
             from: [label("STUDIO abc"), label("よそのサークル")],
             sortedBy: .name, matching: query)
         #expect(rows.map(\.name) == ["STUDIO abc"])
@@ -57,7 +57,7 @@ struct LabelGroupEditorRowTests {
 
     @Test("検索が空なら全件出る")
     func emptySearchKeepsEverything() {
-        let rows = LabelGroupEditorModel.rows(
+        let rows = FieldEditorModel.rows(
             from: [label("A"), label("B")], sortedBy: .name, matching: "   ")
         #expect(rows.count == 2)
     }
@@ -70,7 +70,7 @@ struct LabelGroupEditorRowTests {
     /// 実体 0 件 [LA3-01] は解けない。
     @Test("実体 0 件のラベルは控えめに出るが、手動の印は立たない [LA3-01][LA3-03]")
     func labelWithoutFilesIsListedAsHidden() {
-        let rows = LabelGroupEditorModel.rows(
+        let rows = FieldEditorModel.rows(
             from: [label("実体なし", count: 0), label("通常のもの")],
             sortedBy: .name, matching: "")
         let row = try! #require(rows.first { $0.name == "実体なし" })
@@ -83,7 +83,7 @@ struct LabelGroupEditorRowTests {
     /// 並び順が食い違うと、何を基準に並んでいるのか読めなくなる。
     @Test("件数順はバッジの件数で並べる [LE-12]")
     func fileCountOrderUsesTheBadgeCount() {
-        let rows = LabelGroupEditorModel.rows(
+        let rows = FieldEditorModel.rows(
             from: [label("A", count: 5), label("B", count: 9)],
             sortedBy: .fileCount, matching: "")
         #expect(rows.map(\.name) == ["B", "A"])
@@ -91,7 +91,7 @@ struct LabelGroupEditorRowTests {
 
     @Test("手動で非表示にしたラベルも一覧に出て、専用の印が付く [LA3-02][LA3-03]")
     func manuallyHiddenLabelsAreListedAndFlagged() {
-        let rows = LabelGroupEditorModel.rows(
+        let rows = FieldEditorModel.rows(
             from: [label("隠したもの", hidden: true), label("通常のもの")],
             sortedBy: .name, matching: "")
         #expect(rows.count == 2)
@@ -100,17 +100,17 @@ struct LabelGroupEditorRowTests {
         #expect(row.isManuallyHidden, "「表示に戻す」を出せる")
     }
 
-    @Test("統合先は自分を除いた同じグループの全部（非表示のものも含む）[LB-07]")
+    @Test("統合先は自分を除いた同じフィールドの全部（非表示のものも含む）[LB-07]")
     func mergeTargetsExcludeSelfAndIncludeHidden() {
         let a = label("A", id: 1), b = label("B", id: 2)
         let c = label("C", hidden: true, id: 3)
-        let targets = LabelGroupEditorModel.mergeTargets(from: [a, b, c], excluding: a.id)
+        let targets = FieldEditorModel.mergeTargets(from: [a, b, c], excluding: a.id)
         #expect(targets.map(\.name) == ["B", "C"])
     }
 }
 
-@Suite("ラベルグループ編集ウインドウ [LE-07〜LE-11]", .serialized)
-struct LabelGroupEditorModelTests {
+@Suite("ラベルフィールド編集ウインドウ [LE-07〜LE-11]", .serialized)
+struct FieldEditorModelTests {
 
     /// ワークスペースとモデルを 1 つにまとめて返す。
     ///
@@ -120,8 +120,8 @@ struct LabelGroupEditorModelTests {
     @MainActor
     final class Editor {
         let workspace: ServicesWorkspace
-        let model: LabelGroupEditorModel
-        init(workspace: ServicesWorkspace, model: LabelGroupEditorModel) {
+        let model: FieldEditorModel
+        init(workspace: ServicesWorkspace, model: FieldEditorModel) {
             self.workspace = workspace
             self.model = model
         }
@@ -136,16 +136,16 @@ struct LabelGroupEditorModelTests {
         }
         let id = try await w.enable("builtin.doujinshi-a")
         _ = try await w.services.scan(libraryID: id, root: w.libraryRoot)
-        let m = LabelGroupEditorModel(commands: CommandStack())
+        let m = FieldEditorModel(commands: CommandStack())
         await m.prepare(services: w.services)
-        // サークルグループを選んでおく
-        let circle = try #require(m.groups.first { $0.name == "サークル" })
-        m.selectedGroupID = circle.id
+        // サークルフィールドを選んでおく
+        let circle = try #require(m.fields.first { $0.name == "サークル" })
+        m.selectedFieldID = circle.id
         await m.reload()
         return Editor(workspace: w, model: m)
     }
 
-    @Test("グループを選ぶと、そのラベルが読める [LE-03]")
+    @Test("フィールドを選ぶと、そのラベルが読める [LE-03]")
     @MainActor
     func loadsLabelsOfTheSelectedGroup() async throws {
         let e = try await workspace()
@@ -248,14 +248,14 @@ struct LabelGroupEditorModelTests {
         #expect(m.rows.first { $0.id == target.id }?.fileCount == 2)
     }
 
-    @Test("ライブラリを切り替えるとグループの選択を持ち越さない")
+    @Test("ライブラリを切り替えるとフィールドの選択を持ち越さない")
     @MainActor
     func switchingLibraryClearsTheGroupSelection() async throws {
         let e = try await workspace()
         let m = e.model
-        #expect(m.selectedGroupID != nil)
+        #expect(m.selectedFieldID != nil)
         m.selectedLibraryID = LibraryID(rawValue: 999)
-        #expect(m.selectedGroupID == nil)
+        #expect(m.selectedFieldID == nil)
     }
 
     /// 起動と同時に状態復元で開かれると、DB の準備より先に「未選択」で確定して
@@ -263,7 +263,7 @@ struct LabelGroupEditorModelTests {
     @Test("一覧が遅れて届いても選択が付く")
     @MainActor
     func selectionFollowsALateArrivingLibraryList() async throws {
-        let m = LabelGroupEditorModel(commands: CommandStack())
+        let m = FieldEditorModel(commands: CommandStack())
         #expect(m.selectedLibraryID == nil)
         let e = try await workspace()
         await m.prepare(services: e.workspace.services)
