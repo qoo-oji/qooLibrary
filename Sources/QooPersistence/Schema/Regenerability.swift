@@ -47,8 +47,12 @@ extension ManagedFileRecord: RegenerabilityDeclaring {
 }
 
 extension LabelRecord: RegenerabilityDeclaring {
-    /// `fileCount` は非正規化キャッシュ [DB-02]。`normalizedName` は原文から導ける。
-    public static let regenerableColumns: Set<String> = ["fileCount", "normalizedName"]
+    /// `normalizedName` は原文から導ける。**件数の列はもう無い** [DB-02 撤回]
+    /// ——非正規化をやめ、表示のたびに数える [§19.13 #1]。
+    ///
+    /// **`isHidden` は再生成できない** [LA3-02]——「このラベルは出したくない」
+    /// という人の判断で、走査からは導けない。
+    public static let regenerableColumns: Set<String> = ["normalizedName"]
     public static let internalColumns: Set<String> = ["id", "labelGroupId"]
 }
 

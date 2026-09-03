@@ -6647,19 +6647,53 @@
         }
       }
     },
-    "labelEditor.inVault": {
+    "labelEditor.hiddenManually": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "In the vault"
+            "value": "Hidden manually"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "保管庫にあります"
+            "value": "手動で非表示にしています"
+          }
+        }
+      }
+    },
+    "labelEditor.hiddenNoFiles": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hidden because no files use it"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このラベルが付いたファイルが無いため非表示です"
+          }
+        }
+      }
+    },
+    "labelEditor.hide": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "非表示にする"
           }
         }
       }
@@ -6745,23 +6779,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "「編集」▸「取り消す」で元に戻せます。"
-          }
-        }
-      }
-    },
-    "labelEditor.moveToVault": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Move to Vault"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "保管庫へ移動"
           }
         }
       }
@@ -6868,23 +6885,6 @@
         }
       }
     },
-    "labelEditor.restoreFromVault": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Restore from Vault"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "保管庫から戻す"
-          }
-        }
-      }
-    },
     "labelEditor.searchPlaceholder": {
       "extractionState": "manual",
       "localizations": {
@@ -6983,6 +6983,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "このラベルをピン留め／解除"
+          }
+        }
+      }
+    },
+    "labelEditor.unhide": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "表示に戻す"
           }
         }
       }
@@ -7311,108 +7328,6 @@
         }
       }
     },
-    "labelVault.archivedCount": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%d in vault"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "保管庫に %d 件"
-          }
-        }
-      }
-    },
-    "labelVault.editInLabelEditor": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Edit Labels…"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ラベルを編集…"
-          }
-        }
-      }
-    },
-    "labelVault.empty": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The vault is empty"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "保管庫は空です"
-          }
-        }
-      }
-    },
-    "labelVault.emptyHint": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Labels you move to the vault stay linked to their files but are hidden from the label filter."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "保管庫へ移したラベルは、ファイルとの紐づけを保ったままラベルフィルタから隠れます。"
-          }
-        }
-      }
-    },
-    "labelVault.restoreHelp": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Move this label out of the vault"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "このラベルを保管庫から戻します"
-          }
-        }
-      }
-    },
-    "labelVault.windowTitle": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Label Vault"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ラベル保管庫"
-          }
-        }
-      }
-    },
     "library.disable.failed": {
       "extractionState": "manual",
       "localizations": {
@@ -7494,23 +7409,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "ファイルの保管庫…"
-          }
-        }
-      }
-    },
-    "library.labelVault.menuItem": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Label Vault…"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ラベルの保管庫…"
           }
         }
       }

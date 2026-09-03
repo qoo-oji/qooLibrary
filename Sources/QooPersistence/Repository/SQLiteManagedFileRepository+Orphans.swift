@@ -63,13 +63,9 @@ extension SQLiteManagedFileRepository {
     public func deleteFiles(_ ids: [FileID]) async throws {
         guard !ids.isEmpty else { return }
         try await database.writer.write { db in
-            // **消す前に集める**——`fileLabel` は cascade で消えるので、
-            // 後からでは誰の件数 [DB-02] を直せばよいか分からなくなる。
-            let labels = try Self.labelIDsAttached(db, to: ids)
             try db.execute(sql: """
                 DELETE FROM managedFile WHERE id IN (\(Self.placeholders(ids.count)))
                 """, arguments: StatementArguments(ids.map(\.rawValue)))
-            try SQLiteLabelRepository.recount(db, labelIDs: labels)
         }
     }
 
@@ -112,9 +108,6 @@ extension SQLiteManagedFileRepository {
     public func restoreFiles(_ snapshots: [ManagedFileSnapshot]) async throws {
         guard !snapshots.isEmpty else { return }
         try await database.writer.write { db in
-            var affectedLabels = Set(snapshots.flatMap { $0.labels.map(\.labelID) })
-            affectedLabels.formUnion(
-                try Self.labelIDsAttached(db, to: snapshots.map(\.id)))
             for snapshot in snapshots {
                 // ライブラリごと消えていたら戻せない（登録解除・無効化）。
                 // Undo の対象そのものが失われているので黙って飛ばす。
@@ -146,14 +139,6 @@ extension SQLiteManagedFileRepository {
                                          label.labelID.rawValue])
                 }
             }
-            // **件数の作り直しは `SQLiteLabelRepository.recount` に任せる。**
-            // 自前で書くと `state = 'active'` と `isArchived = 0` の除外条件を
-            // 写し損ねる——実際に一度落として、孤立レコードのラベルまで数える
-            // ものを書いていた。同じ計算を 2 箇所に持たない [LE-03][FA-05]。
-            // **戻す先の紐づけも数える。** 写しに無い紐づけは消すので、
-            // 写しに載っているラベルだけを数え直すと、消えたほうの件数が
-            // 古いまま残る。
-            try SQLiteLabelRepository.recount(db, labelIDs: Array(affectedLabels))
         }
     }
 

@@ -4,7 +4,7 @@
 //  **`qooLibraryApp` ではなく `QooApplication` に置く**——アプリターゲットの
 //  コードは `swift test` から触れないため、判定（既定で選ぶライブラリ・検索・
 //  無視の出し分け・500 件超の案内 [UR2-08]）を自動テストで固定できなくなる
-//  （`OrphanCleanupModel` / `LabelVaultModel` と同じ理由）。SwiftUI に依存しない。
+//  （`OrphanCleanupModel` / `FileVaultModel` と同じ理由）。SwiftUI に依存しない。
 //
 //  ## 「見つからないファイル」（§15.7）との違い
 //  形は 2 ペインで同じだが、**実体を見るかどうかが逆**である。孤立は

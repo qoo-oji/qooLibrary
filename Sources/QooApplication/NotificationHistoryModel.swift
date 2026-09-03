@@ -3,7 +3,7 @@
 //
 //  **`qooLibraryApp` ではなく `QooApplication` に置く**——アプリターゲットの
 //  コードは `swift test` から触れないため、判定（絞り込み・既読の粒度・
-//  期間の解釈）を自動テストで固定できなくなる（`LabelVaultModel` と同じ理由）。
+//  期間の解釈）を自動テストで固定できなくなる（`FileVaultModel` と同じ理由）。
 //  SwiftUI に依存しない。
 //
 import Foundation
@@ -98,7 +98,7 @@ public final class NotificationHistoryModel {
     }
 
     /// 絞り込みが 1 つでも効いているか。空状態の文言を出し分ける
-    /// [`LabelVaultModel.vaultIsEmpty` と同じ判断]——「履歴がありません」と
+    /// [`FileVaultModel.vaultIsEmpty` と同じ判断]——「履歴がありません」と
     /// 「一致するものがありません」は次の一手が違う。
     public var isFiltering: Bool {
         category != nil || libraryUUID != nil || period != .all

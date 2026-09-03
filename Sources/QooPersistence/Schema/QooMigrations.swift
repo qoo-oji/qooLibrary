@@ -18,6 +18,7 @@ public enum QooMigrations {
         "v5_identityRejection", "v6_duplicateTitleKey", "v7_identityPending",
         "v8_stage1Removals", "v9_reservedWordCleanup", "v10_metadataProtection",
         "v11_orphanedProtectedTokens", "v12_shelf", "v13_seriesSuggestionIgnore",
+        "v14_labelVisibility",
     ]
 
     public static var migrator: DatabaseMigrator {
@@ -36,6 +37,7 @@ public enum QooMigrations {
         m.registerMigration(identifiers[10], migrate: v11OrphanedProtectedTokens)
         m.registerMigration(identifiers[11], migrate: v12Shelf)
         m.registerMigration(identifiers[12], migrate: v13SeriesSuggestionIgnore)
+        m.registerMigration(identifiers[13], migrate: v14LabelVisibility)
         return m
     }
 
@@ -206,6 +208,35 @@ public enum QooMigrations {
         }
         try db.execute(sql: "UPDATE storeMetadata SET schemaVersion = ? WHERE id = 1",
                        arguments: [identifiers[12]])
+    }
+
+    // MARK: - v14
+
+    /// ラベルの非表示モデルと非正規化件数の撤去 [LA3-01〜05][DB-02 撤回]
+    /// （概念モデル v3 ステージ 11、§19.12／§19.13 #1）。
+    ///
+    /// **① `label.fileCount` を落とす。** 非正規化列は「`state` や `isArchived` を
+    /// 変える経路を新設するたびに数え直しが要る」という穴を 2 度踏んでおり
+    /// （2-14 と 2-11）、しかも**撤去しても遅くならない**ことが実測で確定した
+    /// ——10 万件・50 万紐づけで、現行（列＋`countWithArchived` の副問い合わせ）
+    /// 109.4 ms に対し、相関副問い合わせ 105.3 ms・1 本の GROUP BY 81.1 ms。
+    /// 現行の経路が既に副問い合わせを 1 本走らせていたので、払っていた費用は
+    /// 「ずれる危険」だけだった。トリガでの自動維持も要らない。
+    ///
+    /// **② `label.isArchived` を `isHidden` へ改名する** [LA3-02]。ラベルの
+    /// 「保管庫」という概念は撤回し、残るのは**手動で非表示にした印**だけになる。
+    /// **`managedFile.isArchived`（ファイル保管庫）は存続する**ので、同じ綴りの
+    /// まま意味だけ変えると取り違えの温床が残る［ユーザー判断］。
+    ///
+    /// 索引・トリガはどちらの列も参照していない（`fl_label` は `fileLabel` 側）
+    /// ので、素の `ALTER TABLE` で足りる。
+    static func v14LabelVisibility(_ db: Database) throws {
+        try db.alter(table: "label") { t in
+            t.rename(column: "isArchived", to: "isHidden")
+            t.drop(column: "fileCount")
+        }
+        try db.execute(sql: "UPDATE storeMetadata SET schemaVersion = ? WHERE id = 1",
+                       arguments: [identifiers[13]])
     }
 
     // MARK: - v10

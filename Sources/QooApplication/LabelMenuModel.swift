@@ -77,10 +77,9 @@ public final class LabelMenuModel {
             let loadedGroups = try await services.labelGroups(libraryID: library.id)
             var loadedLabels: [LabelGroupID: [LabelSummary]] = [:]
             for group in loadedGroups {
-                // アーカイブ済みも読む——付与済みなら出す必要がある [RL-05] ので、
+                // 非表示のものも読む——付与済みなら出す必要がある [RL-05] ので、
                 // 読んでから対象ごとに出し分ける（`LabelEditorModel` と同じ）。
-                loadedLabels[group.id] = try await services.labels(groupID: group.id,
-                                                                   includeArchived: true)
+                loadedLabels[group.id] = try await services.labels(groupID: group.id)
             }
             var byName: [String: FileID] = [:]
             let ids: [FileID]

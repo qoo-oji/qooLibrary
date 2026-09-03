@@ -107,18 +107,11 @@ extension SQLiteManagedFileRepository {
                     archived ? move.archivedAt.timeIntervalSinceReferenceDate : nil,
                     move.id.rawValue])
             }
-            // ラベルの非正規化件数を数え直す [DB-02][FA-05]。**保管庫の出入りは
-            // `fileCount` を必ず変える**（`recount` は `isArchived = 0` だけを
-            // 数える）ので、`state` を変える経路と同じくここでも要る。
-            // 900 件ずつに区切るのは、フォルダ丸ごと [FDA-01] だと一度に
-            // 数千件が動きうるため（上限の低いビルドで落ちる。壊れるのは
-            // そちらだけなので、通ることを理由に外さないこと）。
-            let ids = moves.map(\.id)
-            for chunk in stride(from: 0, to: ids.count, by: 900) {
-                let slice = Array(ids[chunk..<min(chunk + 900, ids.count)])
-                let labels = try Self.labelIDsAttached(db, to: slice)
-                try SQLiteLabelRepository.recount(db, labelIDs: labels)
-            }
+            // **ラベルの件数を数え直す処理はもう要らない** [DB-02 撤回]。
+            // 件数は表示のたびに数える [§19.13 #1] ので、`isArchived` を
+            // 変えればフィルタも編集ウインドウも自動的に追随する
+            // ——「この経路を新設したら数え直しを足す」を忘れて 2 度踏んだ穴が、
+            // 構造ごと消えた。
         }
     }
 }

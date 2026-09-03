@@ -26,9 +26,12 @@ public final class CommandStack {
     private let historyLimit = 500
 
     private let soundPlayer: any SystemSoundPlaying
+    private let generation: LibraryGeneration
 
-    public init(soundPlayer: any SystemSoundPlaying = SystemSoundPlayer.shared) {
+    public init(soundPlayer: any SystemSoundPlaying = SystemSoundPlayer.shared,
+                generation: LibraryGeneration = .shared) {
         self.soundPlayer = soundPlayer
+        self.generation = generation
     }
 
     public var undoTitle: String? { undoStack.last?.displayName } // [UD-06]
@@ -188,6 +191,14 @@ public final class CommandStack {
         if operationHistory.count > historyLimit {
             operationHistory.removeFirst()
         }
+        // **画面の読み直しはここ 1 箇所から知らせる** [§19.13 #2]。run / undo /
+        // redo のどれもこの関数を通るので、コマンドを足す人が合図を配線し忘れる
+        // 余地が無い（ログと操作履歴を 1 箇所に集めているのと同じ考え方）。
+        //
+        // **`operationHistory.count` を鍵にするのはもうやめた。** あれは上限
+        // 500 件で頭打ちになるので、501 回目以降の操作では値が動かず、
+        // それを観ていた画面が黙って ⌘Z に追随しなくなっていた。
+        generation.bump()
     }
 }
 

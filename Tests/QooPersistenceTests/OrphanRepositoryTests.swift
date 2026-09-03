@@ -141,16 +141,16 @@ struct OrphanRepositoryTests {
         try await s.f.labels.assign(fileID: live, labelID: label)
         try await s.f.files.setState(.active, ids: [s.orphan])
         try await s.f.labels.assign(fileID: s.orphan, labelID: label)
-        #expect(try await s.f.labels.labels(groupID: s.group.id, includeArchived: true)
+        #expect(try await s.f.labels.labels(groupID: s.group.id)
             .first { $0.id == label }?.fileCount == 2)
 
         let snapshots = try await s.f.files.fileSnapshots(ids: [s.orphan])
         try await s.f.files.deleteFiles([s.orphan])
-        #expect(try await s.f.labels.labels(groupID: s.group.id, includeArchived: true)
+        #expect(try await s.f.labels.labels(groupID: s.group.id)
             .first { $0.id == label }?.fileCount == 1)
 
         try await s.f.files.restoreFiles(snapshots)
-        #expect(try await s.f.labels.labels(groupID: s.group.id, includeArchived: true)
+        #expect(try await s.f.labels.labels(groupID: s.group.id)
             .first { $0.id == label }?.fileCount == 2)
     }
 
@@ -168,7 +168,7 @@ struct OrphanRepositoryTests {
         try await s.f.labels.assign(fileID: live, labelID: label)
 
         func count() async throws -> Int? {
-            try await s.f.labels.labels(groupID: s.group.id, includeArchived: true)
+            try await s.f.labels.labels(groupID: s.group.id)
                 .first { $0.id == label }?.fileCount
         }
         #expect(try await count() == 1)

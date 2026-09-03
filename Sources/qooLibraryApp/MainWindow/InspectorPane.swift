@@ -212,28 +212,28 @@ private struct SingleItemInspector: View {
                 break
             }
         }
-        // 評価を読む [RA-01]。**操作履歴の長さを鍵に含める**——⌘Z / ⇧⌘Z は
+        // 評価を読む [RA-01]。**世代番号を鍵に含める** [§19.13 #2]——⌘Z / ⇧⌘Z は
         // この View を通らずに DB を書き換えるので、選択と入口だけを鍵に
-        // すると取り消した結果が星に反映されない。`operationHistory` は
-        // run / undo / redo のいずれでも 1 件増える（`CommandStack.record`）。
+        // すると取り消した結果が星に反映されない。世代番号は run / undo / redo の
+        // いずれでも進む（`CommandStack.record`）。
         .task(id: RowLoadKey(url: url, libraryID: library?.id,
-                                commandRevision: CommandStack.shared.operationHistory.count)) {
+                                commandRevision: LibraryGeneration.shared.value)) {
             await rating.load(url: url, library: library, services: LibraryServices.shared)
         }
         // タイトルとカバーを読む [RP-10][CV-01]。鍵の考え方は評価と同じ。
         .task(id: RowLoadKey(url: url, libraryID: library?.id,
-                                commandRevision: CommandStack.shared.operationHistory.count)) {
+                                commandRevision: LibraryGeneration.shared.value)) {
             await title.load(url: url, library: library, services: LibraryServices.shared)
         }
         .task(id: RowLoadKey(url: url, libraryID: library?.id,
-                                commandRevision: CommandStack.shared.operationHistory.count)) {
+                                commandRevision: LibraryGeneration.shared.value)) {
             await cover.load(url: url, library: library, services: LibraryServices.shared)
         }
         // ラベルを読む [RL-01]。鍵の考え方は評価と同じ（⌘Z はこの View を
         // 通らずに DB を書き換える）。`labelRevision` も含めるのは、ダイアログ
         // から新しく作ったラベルが一覧に無いため。
         .task(id: LabelLoadKey(url: url, libraryID: library?.id,
-                               commandRevision: CommandStack.shared.operationHistory.count,
+                               commandRevision: LibraryGeneration.shared.value,
                                revision: labelRevision)) {
             await labels.load(urls: [url], library: library, services: LibraryServices.shared)
             await protection.load(urls: [url], library: library,
@@ -241,19 +241,15 @@ private struct SingleItemInspector: View {
         }
         // 保管庫の状態を読む [FA-01][DT-11]。鍵の考え方は評価と同じ。
         .task(id: RowLoadKey(url: url, libraryID: library?.id,
-                                commandRevision: CommandStack.shared.operationHistory.count)) {
+                                commandRevision: LibraryGeneration.shared.value)) {
             await vault.load(url: url, library: library, services: LibraryServices.shared)
         }
-        // 未整理のヒントを読む [UR3-04]。**鍵には 2 つの合図がどちらも要る**
-        // ［code-review の指摘］——ヒントを変えるのは走査と再マッチング
-        // （`contentRevision`）だが、この節が出す「以後無視する」[AL-33] を
-        // 変えるのは `SetUnresolvedIgnoredCommand`（`operationHistory`）で、
-        // 片方だけだと ⌘Z の結果か、足したフォーマットの結果のどちらかが届かない。
-        // どちらも単調に増えるので、和にしても後戻りしない
-        // （`parentWatch.generation &+ subtreeWatch.generation` と同じ）。
+        // 未整理のヒントを読む [UR3-04]。**以前はここだけ 2 つの合図を足して
+        // いた**［code-review の指摘］——ヒントを変えるのは走査と再マッチング、
+        // 「以後無視する」[AL-33] を変えるのはコマンドで、出どころが違った。
+        // 世代番号に一本化されたので、他の節と同じ鍵で足りる [§19.13 #2]。
         .task(id: RowLoadKey(url: url, libraryID: library?.id,
-                                commandRevision: LibraryServices.shared.contentRevision
-                                    &+ CommandStack.shared.operationHistory.count)) {
+                                commandRevision: LibraryGeneration.shared.value)) {
             await unresolved.load(url: url, library: library, services: LibraryServices.shared)
         }
         .onChange(of: url, initial: true) { _, newValue in
@@ -487,7 +483,7 @@ private struct MultiItemInspector: View {
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .task(id: LoadKey(urls: urls, libraryID: library?.id,
-                          commandRevision: CommandStack.shared.operationHistory.count,
+                          commandRevision: LibraryGeneration.shared.value,
                           revision: labelRevision)) {
             await labels.load(urls: urls, library: library, services: LibraryServices.shared)
             await protection.load(urls: urls, library: library,

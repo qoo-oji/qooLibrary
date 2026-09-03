@@ -66,13 +66,10 @@ struct MaintenanceWindow: View {
         .onChange(of: LibraryServices.shared.libraries) { _, _ in
             Task { await reloadAll() }
         }
-        // ⌘Z / ⇧⌘Z は View を通らずに DB を変える。
-        .onChange(of: CommandStack.shared.operationHistory.count) { _, _ in
-            Task { await reloadAll() }
-        }
-        // 走査が保管庫の中身を変えることがある（外部で `.qooarchive` へ
-        // 出し入れされた場合 [SY-10]）。孤立も走査で増減する。
-        .onChange(of: LibraryServices.shared.contentRevision) { _, _ in
+        // DB の中身が変わったら読み直す [§19.13 #2]。⌘Z / ⇧⌘Z（View を通らずに
+        // DB を変える）と走査（外部で `.qooarchive` へ出し入れされた場合 [SY-10]、
+        // 孤立の増減）が、どちらもこの 1 つの合図に現れる。
+        .onChange(of: LibraryGeneration.shared.value) { _, _ in
             Task { await reloadAll() }
         }
         // **シリーズの提案は、そのタブを見ているときだけ検出する**

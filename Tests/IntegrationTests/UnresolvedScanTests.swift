@@ -121,7 +121,7 @@ struct UnresolvedScanTests {
         #expect(row.title == "作品Z")
         let groups = try await w.labels.groups(libraryID: w.libraryID)
         let circle = try #require(groups.first { $0.name == "サークル" })
-        let labels = try await w.labels.labels(groupID: circle.id, includeArchived: true)
+        let labels = try await w.labels.labels(groupID: circle.id)
         #expect(labels.map(\.name).contains("サークルZ"))
     }
 

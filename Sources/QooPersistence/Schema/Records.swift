@@ -73,8 +73,12 @@ struct LabelRecord: Codable, FetchableRecord, MutablePersistableRecord, Sendable
     var normalizedName: String
     var colorHex: String?
     var isPinned: Bool
-    var isArchived: Bool
-    var fileCount: Int
+    /// **手動で非表示にした印** [LA3-02]。実体が 1 件も無いことによる非表示は
+    /// 状態ではなく導出なので、この列には現れない [LA3-01]。
+    ///
+    /// `managedFile.isArchived`（ファイル保管庫、存続する）とは別物なので、
+    /// 綴りも分けてある [v14_labelVisibility]。
+    var isHidden: Bool
 
     mutating func didInsert(_ inserted: InsertionSuccess) { id = inserted.rowID }
 }

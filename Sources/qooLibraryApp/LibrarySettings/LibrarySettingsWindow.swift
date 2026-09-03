@@ -39,8 +39,9 @@ struct LibrarySettingsWindow: View {
         // 取り消すと判断待ちが戻る**ので、含めないと「基本」の導線が復活しない。
         //
         // このウインドウは元来「草案を編集して保存する」画面で、DB 操作の
-        // Undo を想定していなかった。**DB を触る導線を足したら、この鍵も足す。**
-        .onChange(of: CommandStack.shared.operationHistory.count) { _, _ in
+        // Undo を想定していなかった。合図が世代番号 1 つになった [§19.13 #2]
+        // ので、次に導線を足す人が同じ足し忘れを繰り返す余地は減っている。
+        .onChange(of: LibraryGeneration.shared.value) { _, _ in
             Task { await model.loadPendingVolumeDecisions() }
         }
         .onChange(of: LibrarySettingsNavigation.shared.pendingLibraryID) {

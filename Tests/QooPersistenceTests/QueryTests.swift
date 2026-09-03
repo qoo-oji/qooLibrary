@@ -351,7 +351,7 @@ struct LabelRepositoryTests {
         let c = try await f.labels.ensureLabel(groupID: group.id, name: " a b c ")
         #expect(a == b, "全角と半角が別ラベルになった")
         #expect(a != c)
-        let labels = try await f.labels.labels(groupID: group.id, includeArchived: false)
+        let labels = try await f.labels.labels(groupID: group.id)
         #expect(labels.first { $0.id == a }?.name == "ＡＢＣ", "表示名は最初の原文であるべき")
     }
 
@@ -372,7 +372,7 @@ struct LabelRepositoryTests {
         let group = try #require(try await f.labels.group(libraryID: f.libraryID, index: 2))
         let label = try await f.labels.ensureLabel(groupID: group.id, name: "C1")
         func count() async throws -> Int {
-            try await f.labels.labels(groupID: group.id, includeArchived: true)
+            try await f.labels.labels(groupID: group.id)
                 .first { $0.id == label }?.fileCount ?? -1
         }
         #expect(try await count() == 0)
@@ -387,25 +387,21 @@ struct LabelRepositoryTests {
         #expect(try await count() == 1)
     }
 
-    @Test("再集計が増分更新のずれを直す [IX-04]")
-    func recountRepairsDrift() async throws {
+    /// **非正規化列を撤去したので「ずれ」という概念が無くなった** [DB-02 撤回]。
+    /// 帳簿を壊す手段がそもそも無いことを、`label` に件数の列が生えていない
+    /// ことで固定する——将来また非正規化を持ち込むなら、これが落ちる。
+    @Test("ラベルに件数の列を持たない [DB-02 撤回][§19.13 #1]")
+    func labelTableHasNoDenormalizedCount() async throws {
         let f = try await Fixture.make()
-        let group = try #require(try await f.labels.group(libraryID: f.libraryID, index: 2))
-        let label = try await f.labels.ensureLabel(groupID: group.id, name: "C1")
-        let file = try await f.files.upsert(f.snapshot(inode: 1, path: "1.cbz"))
-        try await f.labels.assign(fileID: file, labelID: label)
-        // 帳簿をわざと壊す
-        try await f.database.writer.write {
-            try $0.execute(sql: "UPDATE label SET fileCount = 999 WHERE id = ?",
-                           arguments: [label.rawValue])
+        let columns = try await f.database.writer.read { db in
+            try Row.fetchAll(db, sql: "PRAGMA table_info(label)").map { $0["name"] as String }
         }
-        try await f.labels.recountAll(libraryID: f.libraryID)
-        let after = try await f.labels.labels(groupID: group.id, includeArchived: true)
-            .first { $0.id == label }?.fileCount
-        #expect(after == 1)
+        #expect(!columns.contains("fileCount"))
+        #expect(columns.contains("isHidden"))
+        #expect(!columns.contains("isArchived"), "ファイル側の保管庫と綴りを分けた [v14]")
     }
 
-    @Test("ゴミ箱・アーカイブ済みは件数に数えない [TR-02][LF-13]")
+    @Test("ゴミ箱・保管庫のファイルは件数に数えない [TR-02][LF-13][FA-05]")
     func countExcludesTrashed() async throws {
         let f = try await Fixture.make()
         let group = try #require(try await f.labels.group(libraryID: f.libraryID, index: 2))
@@ -413,8 +409,7 @@ struct LabelRepositoryTests {
         let file = try await f.files.upsert(f.snapshot(inode: 1, path: "1.cbz"))
         try await f.labels.assign(fileID: file, labelID: label)
         try await f.files.markTrashed([file], at: Date())
-        try await f.labels.recountAll(libraryID: f.libraryID)
-        #expect(try await f.labels.labels(groupID: group.id, includeArchived: true)
+        #expect(try await f.labels.labels(groupID: group.id)
             .first { $0.id == label }?.fileCount == 0)
     }
 
@@ -478,9 +473,9 @@ struct LabelRepositoryTests {
         try await f.labels.assign(fileID: f1, labelID: b)   // 両方持つ
 
         try await f.labels.merge(a, into: b)
-        #expect(try await f.labels.labels(groupID: group.id, includeArchived: true).map(\.id) == [b])
+        #expect(try await f.labels.labels(groupID: group.id).map(\.id) == [b])
         #expect(try await f.labels.labelIDs(fileID: f1) == [b])
-        #expect(try await f.labels.labels(groupID: group.id, includeArchived: true)
+        #expect(try await f.labels.labels(groupID: group.id)
             .first?.fileCount == 2)
     }
 
@@ -490,24 +485,51 @@ struct LabelRepositoryTests {
         let group = try #require(try await f.labels.group(libraryID: f.libraryID, index: 2))
         let id = try await f.labels.ensureLabel(groupID: group.id, name: "旧名")
         try await f.labels.rename(id, to: "ＮＥＷ")
-        let label = try #require(try await f.labels.labels(groupID: group.id, includeArchived: true).first)
+        let label = try #require(try await f.labels.labels(groupID: group.id).first)
         #expect(label.name == "ＮＥＷ")
         #expect(label.normalizedName == "new")
         // 正規化名が追従しているので、同じ値で ensure すると同じ ID になる
         #expect(try await f.labels.ensureLabel(groupID: group.id, name: "new") == id)
     }
 
-    @Test("アーカイブとピン留め [LA-01][LB-03]")
-    func archiveAndPin() async throws {
+    /// **フィールドのラベル数は非表示のものも数える** [LA3-03]。
+    ///
+    /// フィールド編集ウインドウは非表示のラベルを一覧に出す唯一の場所なので、
+    /// ここで除くと「ラベルはあるのに空のフィールド」に見え、隠したラベルを
+    /// 表示に戻す手段が遠のく。
+    ///
+    /// **ラベルフィルタの出し分けにこの値を使わない** [LA3-05] のはそのため
+    /// ——あちらは読んだラベルの `isVisible` から自分で判断する。
+    @Test("フィールドのラベル数は非表示のものも数える [LA3-03]")
+    func groupLabelCountIncludesHiddenLabels() async throws {
         let f = try await Fixture.make()
         let group = try #require(try await f.labels.group(libraryID: f.libraryID, index: 2))
         let id = try await f.labels.ensureLabel(groupID: group.id, name: "L")
-        try await f.labels.setArchived([id], true)
-        #expect(try await f.labels.labels(groupID: group.id, includeArchived: false).isEmpty)
-        #expect(try await f.labels.labels(groupID: group.id, includeArchived: true).count == 1)
-        try await f.labels.setArchived([id], false)
+        #expect(try await f.labels.group(libraryID: f.libraryID, index: 2)?.labelCount == 1)
+
+        try await f.labels.setHidden([id], true)
+        #expect(try await f.labels.group(libraryID: f.libraryID, index: 2)?.labelCount == 1,
+                "隠しても数える——このフィールドを触れなくしてはならない")
+        #expect(try await f.labels.groups(libraryID: f.libraryID)
+            .first { $0.id == group.id }?.labelCount == 1)
+    }
+
+    /// **リポジトリは非表示のものも返す** [LA3-03]——出し分けは呼び出し側の
+    /// 都合で、判定は `LabelSummary.isVisible` が持つ。以前は `includeArchived`
+    /// で読む側が選んでいたが、意味の違う一覧が 2 通りできる形だった。
+    @Test("手動での非表示とピン留め [LA3-02][LB-03]")
+    func hideAndPin() async throws {
+        let f = try await Fixture.make()
+        let group = try #require(try await f.labels.group(libraryID: f.libraryID, index: 2))
+        let id = try await f.labels.ensureLabel(groupID: group.id, name: "L")
+        try await f.labels.setHidden([id], true)
+        let hidden = try await f.labels.labels(groupID: group.id)
+        #expect(hidden.count == 1, "一覧からは消えない——出し分けは呼び出し側 [LA3-03]")
+        #expect(hidden.first?.isHidden == true)
+        #expect(hidden.first?.isVisible == false)
+        try await f.labels.setHidden([id], false)
         try await f.labels.setPinned(id, true)
-        #expect(try await f.labels.labels(groupID: group.id, includeArchived: false).first?.isPinned == true)
+        #expect(try await f.labels.labels(groupID: group.id).first?.isPinned == true)
     }
 
     /// ラベルフィルタでの並べ替え [LF-03][LG-07][ST-23]。

@@ -227,7 +227,7 @@ extension ShelfCommandTests {
             libraryID: library.id, name: "S",
             condition: ShelfCondition(labelIDs: [visible.id, hidden.id]))
         // 片方を非表示にする（実体を失ったラベルと同じ見え方 [LA3-05]）。
-        try await w.services.setLabelArchived([hidden.id], true)
+        try await w.services.setLabelHidden([hidden.id], true)
 
         let filter = LabelFilterModel()
         await filter.load(registrationUUID: w.registrationUUID, services: w.services)

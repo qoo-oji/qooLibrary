@@ -355,7 +355,7 @@ struct UnresolvedFileModelIntegrationTests {
                           services: b.workspace.services)
         let groups = try await b.workspace.services.labelGroups(libraryID: b.libraryID)
         let circle = try #require(groups.first { $0.name == "サークル" })
-        let all = try await b.workspace.services.labels(groupID: circle.id, includeArchived: true)
+        let all = try await b.workspace.services.labels(groupID: circle.id)
         return (labels, try #require(all.first))
     }
 
@@ -437,7 +437,7 @@ struct UnresolvedFileModelIntegrationTests {
         let groups = try await b.workspace.services.labelGroups(libraryID: b.libraryID)
         let circle = try #require(groups.first { $0.name == "サークル" })
         let label = try #require(try await b.workspace.services
-            .labels(groupID: circle.id, includeArchived: true).first)
+            .labels(groupID: circle.id).first)
 
         try await labels.add(label)
         await b.model.reload()

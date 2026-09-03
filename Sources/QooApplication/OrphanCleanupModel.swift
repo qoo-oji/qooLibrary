@@ -8,7 +8,7 @@
 //
 //  **`qooLibraryApp` ではなく `QooApplication` に置く**——アプリターゲットの
 //  コードは `swift test` から触れないため、判定（既定で選ぶライブラリ・検索・
-//  オフラインの出し分け）を自動テストで固定できなくなる（`LabelVaultModel` /
+//  オフラインの出し分け）を自動テストで固定できなくなる（`FileVaultModel` /
 //  `LabelGroupEditorModel` と同じ理由）。SwiftUI に依存しない。
 //
 //  ## ラベル保管庫との違い
@@ -103,7 +103,7 @@ public final class OrphanCleanupModel {
     /// 0 件でもそのライブラリを見せる（「無かった」も答えである）。指定が
     /// 無ければ**孤立を持つ最初のオンラインのライブラリ**［設計判断］。
     /// 素直に先頭を選ぶと、孤立の無いライブラリやオフラインの登録に着地して
-    /// 行き止まりになる（`LabelVaultModel.defaultLibrary` と同じ考え方）。
+    /// 行き止まりになる（`FileVaultModel.defaultLibrary` と同じ考え方）。
     nonisolated public static func defaultLibrary(from libraries: [LibrarySummary],
                                                   orphanCounts: [LibraryID: Int],
                                                   preferring preferred: LibraryID?) -> LibraryID? {
@@ -155,7 +155,7 @@ public final class OrphanCleanupModel {
             // 選択が消えていたら（登録解除・無効化）選び直す。
             //
             // **「DB の準備より先に確定してしまう」競合はここでは解けない**
-            // （`LabelVaultModel` と同じ）。救っているのはウインドウ側の
+            // （`FileVaultModel` と同じ）。救っているのはウインドウ側の
             // `.onChange(of: LibraryServices.shared.isReady)` で、**この保護は
             // View にしか無い**——モデルを別の画面から使うときは同じ配線が要る。
             let current = selectedLibraryID

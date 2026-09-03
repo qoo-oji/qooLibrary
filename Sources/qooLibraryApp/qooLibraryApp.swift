@@ -292,15 +292,6 @@ struct QooLibraryApp: App {
         }
         .defaultSize(width: 1240, height: 680)
 
-        // ラベル保管庫の整理 [LAW-01〜LAW-03][15.3 節]。開くのはフォルダツリーの
-        // 「ラベルの保管庫…」と、ラベル編集ウインドウのフッターから
-        // （`LabelVaultNavigation` が対象を渡す）。
-        Window("labelVault.windowTitle", id: "labelVault") {
-            LabelVaultWindow()
-                .appLanguageOverride()
-        }
-        .defaultSize(width: 820, height: 560)
-
         // 重複の比較 [DU-20〜DU-29][15.14 節]。開くのは中央ペインの行の
         // 「重複を比較…」から（`DuplicateComparisonNavigation` が対象を渡す）。
         // **1 つの組だけを扱う**ので、他の整理ウインドウと違い左ペインは無い。

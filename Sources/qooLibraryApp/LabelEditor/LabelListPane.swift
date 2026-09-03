@@ -188,9 +188,9 @@ struct LabelListPane: View {
                 .font(.system(size: Tokens.fontSize.caption))
                 .foregroundStyle(.secondary)
             Spacer()
-            Button(model.archiveActionArchives
-                   ? "labelEditor.moveToVault" : "labelEditor.restoreFromVault") {
-                perform { try await model.setSelectedArchived(model.archiveActionArchives) }
+            Button(model.hideActionHides
+                   ? "labelEditor.hide" : "labelEditor.unhide") {
+                perform { try await model.setSelectedHidden(model.hideActionHides) }
             }
             .disabled(model.selection.isEmpty)
             Button("labelEditor.delete", role: .destructive) { confirmDelete() }
@@ -203,11 +203,12 @@ struct LabelListPane: View {
         Button(row.isPinned ? "labelEditor.unpin" : "labelEditor.pin", systemImage: "pin") {
             perform { try await model.setPinned(row.label, !row.isPinned) }
         }
-        Button(row.isArchived
-               ? "labelEditor.restoreFromVault" : "labelEditor.moveToVault",
-               systemImage: "archivebox") {
+        // **手動の印だけを切り替える** [LA3-02]。実体 0 件による非表示 [LA3-01] は
+        // 導出なので、ここで「表示に戻す」を出しても解けない。
+        Button(row.isManuallyHidden ? "labelEditor.unhide" : "labelEditor.hide",
+               systemImage: row.isManuallyHidden ? "eye" : "eye.slash") {
             model.selection = [row.id]
-            perform { try await model.setSelectedArchived(!row.isArchived) }
+            perform { try await model.setSelectedHidden(!row.isManuallyHidden) }
         }
         Divider()
         Button("labelEditor.delete", systemImage: "trash", role: .destructive) {
@@ -293,29 +294,35 @@ struct LabelListPane: View {
 
 // MARK: - 行
 
-/// 一覧の 1 行 [LE-03][LE-04][LE-06]。
+/// 一覧の 1 行 [LE-03][LA3-03]。
 struct LabelRowView: View {
     let row: LabelGroupEditorModel.Row
     let groupColor: LabelColor
 
     var body: some View {
         HStack(spacing: Tokens.spacing.s) {
-            // 保管庫はグレー [LE-06]。0 件の赤字 [LE-04][RC-07] は撤回した
-            // [§19.8]——件数バッジの 0 で足り、色まで変えると「壊れている」
-            // ように読める。
+            // **非表示のものは控えめに** [LA3-03]。手動で隠したものと、
+            // 生きている実体が 1 件も無いもの [LA3-01] を同じ見た目にする
+            // ——どちらもフィルタから消えているという点で同じ状態だから。
+            //
+            // 0 件の赤字 [LE-04][RC-07] は撤回した [LA3-04]——放っておいても
+            // 邪魔にならず、実体が戻れば生き返るのだから急かす必要が無い。
             LabelChip(name: row.name, color: color, count: row.fileCount)
-                .opacity(row.isArchived ? 0.55 : 1)
+                .opacity(row.isHidden ? 0.55 : 1)
             if row.isPinned {
                 Image(systemName: "pin.fill")
                     .font(.system(size: Tokens.fontSize.caption))
                     .foregroundStyle(.secondary)
             }
-            if row.isArchived {
-                // 保管庫にあることを示すバッジ [LE-06]
-                Image(systemName: "archivebox.fill")
+            if row.isHidden {
+                // **印は 2 通りに出し分ける** [LA3-01][LA3-02]。手動で隠したものは
+                // 「表示に戻す」で解けるが、実体 0 件のものは解けない——同じ印に
+                // すると、押しても何も起きない操作を勧めることになる。
+                Image(systemName: row.isManuallyHidden ? "eye.slash" : "circle.slash")
                     .font(.system(size: Tokens.fontSize.caption))
                     .foregroundStyle(.secondary)
-                    .help("labelEditor.inVault")
+                    .help(row.isManuallyHidden
+                          ? "labelEditor.hiddenManually" : "labelEditor.hiddenNoFiles")
             }
             Spacer(minLength: 0)
         }

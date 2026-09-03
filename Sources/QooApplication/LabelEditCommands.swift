@@ -106,55 +106,59 @@ public final class SetLabelColorCommand: Command {
     }
 }
 
-/// 保管庫へ移す／戻す [LA-01][LA-08][LE-09]。
+/// 手動での非表示の切り替え [LA3-02][LE-09]。
+///
+/// **「保管庫」ではない。** ラベルの保管庫という概念は撤回した [§19.12]
+/// ——実体を失ったラベルは自動的に非表示になる [LA3-01] ので、この印が要るのは
+/// 「実体があるのにフィルタから消したい」ときだけ（うるさい自動ラベル等）。
 ///
 /// **変更前の状態を 1 件ずつ持つ。** 複数選択でまとめて操作したとき、もともと
-/// 保管庫にあったものと無かったものが混ざりうる——一律に戻すと ⌘Z が元と違う
+/// 非表示だったものとそうでないものが混ざりうる——一律に戻すと ⌘Z が元と違う
 /// 状態を作る（`SetRatingCommand` / `AssignLabelCommand` と同じ判断）。
 @MainActor
-public final class SetLabelArchivedCommand: Command {
+public final class SetLabelHiddenCommand: Command {
     /// 変更前の状態 1 件ぶん。
     public struct Previous: Sendable, Hashable {
         public let id: LabelID
         public let name: String
-        public let isArchived: Bool
+        public let isHidden: Bool
 
-        public init(id: LabelID, name: String, isArchived: Bool) {
+        public init(id: LabelID, name: String, isHidden: Bool) {
             self.id = id
             self.name = name
-            self.isArchived = isArchived
+            self.isHidden = isHidden
         }
     }
 
     private let previous: [Previous]
-    private let archived: Bool
+    private let hidden: Bool
     private let services: LibraryServices
 
-    public init(previous: [Previous], archived: Bool, services: LibraryServices) {
+    public init(previous: [Previous], hidden: Bool, services: LibraryServices) {
         self.previous = previous
-        self.archived = archived
+        self.hidden = hidden
         self.services = services
     }
 
     public var displayName: String {
-        let verb = archived ? "保管庫へ移動" : "保管庫から戻す"
+        let verb = hidden ? "非表示に" : "表示に"
         return previous.count == 1
-            ? "ラベル「\(previous[0].name)」を\(verb)"
-            : "\(previous.count) 件のラベルを\(verb)"
+            ? "ラベル「\(previous[0].name)」を\(verb)する"
+            : "\(previous.count) 件のラベルを\(verb)する"
     }
     public var logDescription: String {
-        "setLabelArchived(\(archived)): " + previous.map { Log.redactable($0.name) }.joined(separator: ", ")
+        "setLabelHidden(\(hidden)): " + previous.map { Log.redactable($0.name) }.joined(separator: ", ")
     }
     public let isUndoable = true
 
     /// 実際に状態が変わるものだけ。既にその状態のものを含めると、⌘Z で
     /// 「触っていないラベル」まで反転させてしまう。
-    private var changing: [Previous] { previous.filter { $0.isArchived != archived } }
+    private var changing: [Previous] { previous.filter { $0.isHidden != hidden } }
 
     public func execute() async throws -> CommandResult {
         let targets = changing
         guard !targets.isEmpty else { return .success }
-        try await services.setLabelArchived(targets.map(\.id), archived)
+        try await services.setLabelHidden(targets.map(\.id), hidden)
         return .success
     }
 
@@ -162,7 +166,7 @@ public final class SetLabelArchivedCommand: Command {
         let targets = changing
         guard !targets.isEmpty else { return .impossible(reason: "元に戻す対象がありません") }
         do {
-            try await services.setLabelArchived(targets.map(\.id), !archived)
+            try await services.setLabelHidden(targets.map(\.id), !hidden)
             return .complete
         } catch {
             return .impossible(reason: error.localizedDescription)

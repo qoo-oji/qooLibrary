@@ -36,12 +36,16 @@ public final class LabelGroupEditorModel {
         public let label: LabelSummary
         public var id: LabelID { label.id }
         public var name: String { label.name }
-        /// バッジに出す件数 [LE-03]。**保管庫のファイルも数える** [LE-05]
-        /// ——紐づけは維持されているので、保管庫へ入れただけで「0 件」に
-        /// 見えてはならない（`fileCount` はフィルタ用で数えない [FA-05]）。
-        public var fileCount: Int { label.fileCountIncludingArchived }
-        /// 保管庫にある [LE-06]。グレー文字＋バッジ。
-        public var isArchived: Bool { label.isArchived }
+        /// バッジに出す件数 [LE-03]。**生きている実体の数だけ**を数える
+        /// [LA3-01]——0 なら自動的に非表示になるので、ここで別の数を出すと
+        /// 「3 件と出ているのに一覧では非表示」という食い違いになる
+        /// [LE-05 撤回][§19.13 #1]。
+        public var fileCount: Int { label.fileCount }
+        /// 一覧で控えめに見せるか [LA3-03]。**手動の印と実体 0 件の両方**が対象
+        /// ——どちらもフィルタから消えているという点で同じ状態だから。
+        public var isHidden: Bool { !label.isVisible }
+        /// 手動で非表示にした印 [LA3-02]。「表示に戻す」を出すかの判断に使う。
+        public var isManuallyHidden: Bool { label.isHidden }
         public var isPinned: Bool { label.isPinned }
         /// `nil` ならグループ色を継承 [CO-06]。
         public var colorHex: String? { label.colorHex }
@@ -61,15 +65,15 @@ public final class LabelGroupEditorModel {
     public private(set) var state: State = .notReady
     public private(set) var libraries: [LibrarySummary] = []
     public private(set) var groups: [LabelGroupSummary] = []
-    /// 選択中のグループのラベル。**アーカイブ済みも含む** [LE-06][LA-06]
-    /// ——この画面と保管庫の整理ウインドウだけが、それを見せてよい場所。
+    /// 選択中のグループのラベル。**非表示のものも含む** [LA3-03]
+    /// ——実体 0 件・手動非表示のラベルを整理できる唯一の場所。
     public private(set) var allLabels: [LabelSummary] = []
 
     public var selectedLibraryID: LibraryID? {
         didSet { guard oldValue != selectedLibraryID else { return }; selectedGroupID = nil }
     }
     public var selectedGroupID: LabelGroupID?
-    /// 一覧で選んでいるラベル。保管庫と削除は複数まとめて扱える [LE-07]。
+    /// 一覧で選んでいるラベル。非表示の切り替えと削除は複数まとめて扱える [LE-07]。
     public var selection: Set<LabelID> = []
     public var sortOrder: SortOrder = .name
     public var searchText: String = ""
@@ -109,14 +113,12 @@ public final class LabelGroupEditorModel {
         return sorted.map(Row.init)
     }
 
-    /// **並べ替えはバッジと同じ件数で決める** [LE-05]。一覧に出ている数字と
-    /// 並び順が食い違うと、何を基準に並んでいるのか読めなくなる
-    /// （`fileCount` はフィルタ用で保管庫を数えない [FA-05]）。
+    /// **並べ替えはバッジと同じ件数で決める。** 一覧に出ている数字と並び順が
+    /// 食い違うと、何を基準に並んでいるのか読めなくなる（件数の意味が
+    /// 1 つになった [§19.13 #1] ので、取り違えようが無くなった）。
     nonisolated private static func byFileCountThenName(_ a: LabelSummary,
                                                        _ b: LabelSummary) -> Bool {
-        if a.fileCountIncludingArchived != b.fileCountIncludingArchived {
-            return a.fileCountIncludingArchived > b.fileCountIncludingArchived
-        }
+        if a.fileCount != b.fileCount { return a.fileCount > b.fileCount }
         return a.name.localizedStandardCompare(b.name) == .orderedAscending
     }
 
@@ -124,8 +126,8 @@ public final class LabelGroupEditorModel {
     ///
     /// **同じグループの、自分以外。** グループをまたぐ統合はリポジトリが断る
     /// ので、そもそも選ばせない（押せるのに必ず失敗する項目を出さない）。
-    /// 保管庫にあるものも相手にできる——統合は表記ゆれの是正で、片方が保管庫に
-    /// あるのはむしろ普通の状況。
+    /// 非表示のものも相手にできる——統合は表記ゆれの是正で、片方が非表示なのは
+    /// むしろ普通の状況。
     nonisolated public static func mergeTargets(from labels: [LabelSummary],
                                                 excluding source: LabelID) -> [LabelSummary] {
         labels.filter { $0.id != source }
@@ -136,17 +138,20 @@ public final class LabelGroupEditorModel {
         allLabels.filter { selection.contains($0.id) }
     }
 
-    /// 保管庫へ「移す」を出すか「戻す」を出すか [LA-01][LA-08]。
+    /// 「非表示にする」を出すか「表示に戻す」を出すか [LA3-02][LA3-03]。
     ///
-    /// **選択が混ざっていたら「移す」。** 一部が保管庫にあるとき、揃える先として
-    /// 自然なのは移すほう（三状態のチェックボックスで `.some` を押したら全部に
-    /// 付ける、としたのと同じ考え方 [RP-02]）。
+    /// **選択が混ざっていたら「非表示にする」。** 一部が非表示のとき、揃える先
+    /// として自然なのは隠すほう（三状態のチェックボックスで `.some` を押したら
+    /// 全部に付ける、としたのと同じ考え方 [RP-02]）。
     ///
-    /// **何も選んでいないときも「移す」**［実機検証で発見］。ボタンは押せないが、
-    /// 何も選んでいない画面に「保管庫から戻す」と出ていると、まれで逆向きの
-    /// 操作をこの画面の主目的だと読ませてしまう。
-    public var archiveActionArchives: Bool {
-        selectedLabels.isEmpty || !selectedLabels.allSatisfy(\.isArchived)
+    /// **何も選んでいないときも「非表示にする」**［実機検証で発見］。ボタンは
+    /// 押せないが、何も選んでいない画面に「表示に戻す」と出ていると、まれで
+    /// 逆向きの操作をこの画面の主目的だと読ませてしまう。
+    ///
+    /// 見るのは**手動の印だけ** [LA3-02]——実体 0 件による非表示 [LA3-01] は
+    /// 導出なので、「表示に戻す」で解けるものではない。
+    public var hideActionHides: Bool {
+        selectedLabels.isEmpty || !selectedLabels.allSatisfy(\.isHidden)
     }
 
     // MARK: - 読み込み
@@ -188,16 +193,16 @@ public final class LabelGroupEditorModel {
             guard let groupID = selectedGroupID else {
                 allLabels = []; state = .noSelection; return
             }
-            // **アーカイブ済みも読む** [LE-06]。この画面は保管庫の中身を
-            // 見せてよい数少ない場所のひとつ [LA-06]。
-            allLabels = try await services.labels(groupID: groupID, includeArchived: true)
+            // **非表示のものも読む** [LA3-03]。この画面が、実体 0 件・手動非表示の
+            // ラベルを整理できる唯一の場所である。
+            allLabels = try await services.labels(groupID: groupID)
             selection = selection.filter { id in allLabels.contains { $0.id == id } }
             state = .ready
         } catch {
             // **取り消しは失敗ではない**［2-9 の実機検証でユーザーが発見］。
             // `.task(id:)` は鍵が変わると前のタスクを取り消すので、選択を
-            // 素早く変えたり読み直しの合図（`operationHistory.count`・
-            // `contentRevision`）が続けて来たりすると、ここへ
+            // 素早く変えたり読み直しの合図（`LibraryGeneration`）が
+            // 続けて来たりすると、ここへ
             // `CancellationError` が届く。そのまま出すと画面に
             // 「タイトル: CancellationError()」という、利用者にとって
             // 意味の無い赤字が残る——**直後に新しい読み込みが正しい値を
@@ -250,15 +255,15 @@ public final class LabelGroupEditorModel {
         await reload()
     }
 
-    /// 選択したものを保管庫へ移す／戻す [LA-01][LA-08][LE-09]。
-    public func setSelectedArchived(_ archived: Bool) async throws {
+    /// 選択したものを手動で非表示にする／表示に戻す [LA3-02][LE-09]。
+    public func setSelectedHidden(_ hidden: Bool) async throws {
         guard let services else { return }
         let previous = selectedLabels.map {
-            SetLabelArchivedCommand.Previous(id: $0.id, name: $0.name, isArchived: $0.isArchived)
+            SetLabelHiddenCommand.Previous(id: $0.id, name: $0.name, isHidden: $0.isHidden)
         }
-        guard previous.contains(where: { $0.isArchived != archived }) else { return }
-        _ = try await commands.run(SetLabelArchivedCommand(
-            previous: previous, archived: archived, services: services))
+        guard previous.contains(where: { $0.isHidden != hidden }) else { return }
+        _ = try await commands.run(SetLabelHiddenCommand(
+            previous: previous, hidden: hidden, services: services))
         await reload()
     }
 

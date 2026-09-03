@@ -95,7 +95,7 @@ public struct SQLiteBackupRepository: BackupRepository, Sendable {
                 .filter(sql: "labelGroupId = ?", arguments: [group.id ?? 0])
                 .order(sql: "name").fetchAll(db)
                 .map { LabelBackup(name: $0.name, colorHex: $0.colorHex,
-                                   isPinned: $0.isPinned, isArchived: $0.isArchived) }
+                                   isPinned: $0.isPinned, isHidden: $0.isHidden) }
             return LabelGroupBackup(
                 groupIndex: group.groupIndex, name: group.name,
                 colorHexLight: group.colorHexLight, colorHexDark: group.colorHexDark,
@@ -423,13 +423,12 @@ extension SQLiteBackupRepository {
                     labelIDByKey[LabelKey(groupIndex: group.groupIndex, normalized: normalized)] = id
                     if !dryRun {
                         var updated = existing
-                        // 原文・色・ピン・アーカイブはユーザーの設定 [MG-22]。
-                        // `fileCount` は触らない——非正規化キャッシュ [DB-02] で、
-                        // 紐づけの増減にあわせて別途更新される。
+                        // 原文・色・ピン・非表示はユーザーの設定 [MG-22]。
+                        // **件数の列はもう無い** [DB-02 撤回]。
                         updated.name = label.name
                         updated.colorHex = label.colorHex
                         updated.isPinned = label.isPinned
-                        updated.isArchived = label.isArchived
+                        updated.isHidden = label.isHidden
                         try updated.update(db)
                     }
                 } else {
@@ -438,7 +437,7 @@ extension SQLiteBackupRepository {
                     var created = LabelRecord(
                         id: nil, labelGroupId: groupID, name: label.name,
                         normalizedName: normalized, colorHex: label.colorHex,
-                        isPinned: label.isPinned, isArchived: label.isArchived, fileCount: 0)
+                        isPinned: label.isPinned, isHidden: label.isHidden)
                     try created.insert(db)
                     labelIDByKey[LabelKey(groupIndex: group.groupIndex,
                                           normalized: normalized)] = created.id

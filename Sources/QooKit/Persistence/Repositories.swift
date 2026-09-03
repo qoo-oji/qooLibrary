@@ -236,9 +236,10 @@ public protocol ManagedFileRepository: Sendable {
     /// 作る——衝突で連番が付く [FA-13] ことがあるので、予定のパスを書くと
     /// 実体とずれる。
     ///
-    /// ラベルの非正規化件数 [DB-02] はここで数え直す——`fileCount` は
-    /// 「生きていて保管庫にも入っていない」ファイルだけを数えるので、
-    /// 忘れるとフィルタと編集ウインドウの件数が実態からずれる。
+    /// **ラベルの件数を数え直す必要はもう無い** [DB-02 撤回]。件数は表示のたびに
+    /// 数える [§19.13 #1] ので、保管庫の出入りは自動的に反映される——「`state` や
+    /// `isArchived` を変える経路を新設するたびに数え直しが要る」という穴
+    /// （2 度踏んだ）が構造ごと消えた。
     func setArchived(_ moves: [VaultMove], archived: Bool) async throws
     /// フォルダ配下の行（相対パス付き）[FDA-01]。
     ///
@@ -470,6 +471,14 @@ public struct LabelGroupSummary: Sendable, Hashable, Identifiable {
     public let colorHexLight: String
     public let colorHexDark: String
     public let displayOrder: Int
+    /// そのフィールドが持つラベルの総数。**非表示のものも数える** [LA3-03]
+    /// ——フィールド編集ウインドウは非表示のラベルも一覧に出すので、ここで
+    /// 除くと「ラベルはあるのに空のフィールド」に見える。
+    ///
+    /// **ラベルフィルタの出し分けにはこの値を使わない** [LA3-05]。あちらは
+    /// 「見えるラベルが 1 件でもあるか」で決めるが、それは実体の件数から
+    /// 導く値で（`LabelFilterModel` が読んだラベルから求める）、ここに
+    /// 2 つ目の意味を持たせると §19.13 #1 と同じ取り違えを生む。
     public let labelCount: Int
 
     public init(id: LabelGroupID, libraryID: LibraryID, index: Int, name: String,
@@ -492,36 +501,43 @@ public struct LabelSummary: Sendable, Hashable, Identifiable {
     public let normalizedName: String
     public let colorHex: String?           // nil → グループ色を継承 [CO-06]
     public let isPinned: Bool              // [LB-03]
-    public let isArchived: Bool            // [LA-01]
-    /// ラベルフィルタが見せる件数 [LF-11]。非正規化 [DB-02]。
+    /// **手動で非表示にした印** [LA3-02]。実体が無いことによる非表示は
+    /// ``isHidden`` ではなく ``fileCount`` が 0 であることから導く [LA3-01]。
+    public let isHidden: Bool
+    /// **生きている実体の件数。これが唯一の件数である** [LA3-01][§19.13 #1]。
     ///
-    /// **ファイル保管庫に入れたファイルは数えない** [FA-05]——保管庫の中身は
-    /// フィルタの結果から外れるので、件数だけ残ると数が合わない。
+    /// 数えるのは `state = active` かつ**ファイル保管庫の外** [FA-05] のファイル
+    /// ——つまりラベルフィルタが返しうるファイルそのもの。0 なら LA3-01 により
+    /// 自動的に非表示になる。
+    ///
+    /// **かつては意味の違う件数を 2 つ持っていた**（フィルタ用と、保管庫の
+    /// ファイルも数える編集ウインドウ用 [LE-05]）。0 件ラベルの赤字 [LE-04] が
+    /// 撤回された [LA3-04] ことで後者の存在理由が消え、逆に「バッジは 3 件と
+    /// 出ているのに一覧では非表示」という食い違いを生むだけになったので
+    /// 1 つに統合した［ユーザー判断］。
+    ///
+    /// **非正規化列ではない**——表示のたびに数える。実測（10 万件・50 万紐づけ）
+    /// で非正規化列を読むのと同等以下（109.4 → 105.3 ms）だったため
+    /// [DB-02 撤回]。
     public let fileCount: Int
-    /// ラベル編集ウインドウのバッジが見せる件数 [LE-03][LE-05]。
-    ///
-    /// **保管庫に入れたファイルも数える** [LE-05]。`fileCount` とわざわざ分けて
-    /// いるのは要件が意図的に食い違っているため——フィルタからは外す [FA-05] が、
-    /// **バッジには影響させない**。同じ値を使い回すと、ファイルを保管庫へ入れた
-    /// だけでラベルが「0 件」＝赤字＝消してよさそう [LE-04][RC-07] に見えてしまう。
-    /// 紐づけは維持されているのに、である。
-    ///
-    /// ファイル保管庫（2-11）が入るまでは `fileCount` と必ず一致する。
-    public let fileCountIncludingArchived: Int
 
     public init(id: LabelID, groupID: LabelGroupID, name: String, normalizedName: String,
-                colorHex: String?, isPinned: Bool, isArchived: Bool, fileCount: Int,
-                fileCountIncludingArchived: Int? = nil) {
+                colorHex: String?, isPinned: Bool, isHidden: Bool, fileCount: Int) {
         self.id = id
         self.groupID = groupID
         self.name = name
         self.normalizedName = normalizedName
         self.colorHex = colorHex
         self.isPinned = isPinned
-        self.isArchived = isArchived
+        self.isHidden = isHidden
         self.fileCount = fileCount
-        self.fileCountIncludingArchived = fileCountIncludingArchived ?? fileCount
     }
+
+    /// 一覧に出すべきか [LA3-01][LA3-05]。**手動の印と実体の有無の両方**を見る。
+    ///
+    /// 判定をここに置くのは、フィルタ・右ペインの候補・フィールド編集の
+    /// 3 箇所が同じ規則を別々に書かないため（`PinnedLabelListing` と同じ考え方）。
+    public var isVisible: Bool { !isHidden && fileCount > 0 }
 }
 
 /// ラベル 1 件と、その紐づけの完全な写し。**削除とマージを ⌘Z で戻すために要る。**
@@ -535,7 +551,7 @@ public struct LabelSummary: Sendable, Hashable, Identifiable {
 /// フィルタでチェック中だった選択やウインドウ状態復元 [ST-26] が黙って外れる
 /// ——`label` にだけ AUTOINCREMENT を付けた T-03 の決定③が、想定とは別の形でここでも効く。
 ///
-/// `fileCount` は持たない。非正規化された再生成可能な値なので、復元後に数え直す。
+/// 件数は持たない——実体から導く値なので、復元すれば自然に一致する [LA3-01]。
 public struct LabelSnapshot: Sendable, Hashable {
     /// 紐づけ 1 件ぶん。
     public struct Assignment: Sendable, Hashable {
@@ -554,12 +570,12 @@ public struct LabelSnapshot: Sendable, Hashable {
     public let normalizedName: String
     public let colorHex: String?
     public let isPinned: Bool
-    public let isArchived: Bool
+    public let isHidden: Bool              // [LA3-02]
     /// そのラベルの紐づけ全件。
     public let assignments: [Assignment]
 
     public init(id: LabelID, groupID: LabelGroupID, name: String, normalizedName: String,
-                colorHex: String?, isPinned: Bool, isArchived: Bool,
+                colorHex: String?, isPinned: Bool, isHidden: Bool,
                 assignments: [Assignment]) {
         self.id = id
         self.groupID = groupID
@@ -567,7 +583,7 @@ public struct LabelSnapshot: Sendable, Hashable {
         self.normalizedName = normalizedName
         self.colorHex = colorHex
         self.isPinned = isPinned
-        self.isArchived = isArchived
+        self.isHidden = isHidden
         self.assignments = assignments
     }
 }
@@ -610,17 +626,12 @@ public protocol LabelRepository: Sendable {
     /// 渡された順に 0 から振り直す。一覧に無いグループには触れない。
     func setGroupOrder(_ orderedIDs: [LabelGroupID]) async throws
     func group(libraryID: LibraryID, index: Int) async throws -> LabelGroupSummary?
-    func labels(groupID: LabelGroupID, includeArchived: Bool) async throws -> [LabelSummary]
-    /// ライブラリごとのアーカイブ済みラベル件数 [LA-01][15.3 節]。
+    /// そのフィールドのラベルを、生きている実体の件数付きで返す [LF-04][LE-03]。
     ///
-    /// ラベル保管庫の整理ウインドウが、左ペインで**保管庫が空のライブラリを
-    /// グレーアウトする**ために使う。件数が 0 のライブラリはキーごと現れない。
-    ///
-    /// **1 回の問い合わせで全ライブラリぶんを返す**［設計判断］。ライブラリ
-    /// ごとに `groups` → `labels` と辿ると問い合わせが「ライブラリ数 ×
-    /// グループ数」になり、しかもそれが ⌘Z のたびに走る（このウインドウは
-    /// `operationHistory.count` を鍵に読み直すため）。
-    func archivedLabelCounts() async throws -> [LibraryID: Int]
+    /// **手動で非表示にしたものも含めて返す** [LA3-03]——出し分けは呼び出し側の
+    /// 都合（フィルタは隠す [LA3-05]、フィールド編集は控えめに見せる）で、
+    /// リポジトリはそれを知らない。判定は `LabelSummary.isVisible` にある。
+    func labels(groupID: LabelGroupID) async throws -> [LabelSummary]
     /// 無ければ作る。一意性は `(groupID, 正規化名)` [LB-01][N-03][LA-07]。
     func ensureLabel(groupID: LabelGroupID, name: String) async throws -> LabelID
     func assign(fileID: FileID, labelID: LabelID) async throws
@@ -669,7 +680,10 @@ public protocol LabelRepository: Sendable {
     /// **素の UNIQUE 制約違反を投げない**——呼び出し側が「代わりに統合」を
     /// 勧められるよう、衝突相手の ID を添えて返す [LE-11]。
     func rename(_ id: LabelID, to name: String) async throws                   // [LB-06]
-    func setArchived(_ ids: [LabelID], _ archived: Bool) async throws          // [LA-01][LA-08]
+    /// 手動での非表示の切り替え [LA3-02]。**「保管庫」ではない**——実体が
+    /// 無いことによる非表示は導出なので、この印は「実体があるのに出したくない」
+    /// ラベルにしか使わない。
+    func setHidden(_ ids: [LabelID], _ hidden: Bool) async throws              // [LA3-02]
     func setPinned(_ id: LabelID, _ pinned: Bool) async throws                 // [LB-03]
     /// ラベル固有色 [LE-10][CO-06]。`nil` へ戻すとグループ色を継承する。
     func setColor(_ id: LabelID, hex: String?) async throws
@@ -685,10 +699,8 @@ public protocol LabelRepository: Sendable {
     ///
     /// 「指定した状態へ揃える」という `applyAssignments` と同じ形にしてある
     /// ——戻すことも「ある状態へ揃える」ことに他ならないので、復元専用の
-    /// 別の意味を持つ API を作らない。`fileCount` は数え直す。
+    /// 別の意味を持つ API を作らない。
     func restore(_ snapshots: [LabelSnapshot]) async throws
-    /// 増分更新の破綻に備えた再集計 [IX-03][IX-04]。実測 844 ms / 10,530 ラベル。
-    func recountAll(libraryID: LibraryID) async throws
 }
 
 // MARK: - シェルフ [SH-01〜SH-12]

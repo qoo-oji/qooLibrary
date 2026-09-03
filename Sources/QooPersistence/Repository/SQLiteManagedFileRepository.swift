@@ -46,24 +46,6 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
         return (FileID(rawValue: row["id"]), row["isArchived"])
     }
 
-    /// 対象ファイルに紐づくラベルの、非正規化件数 [DB-02] を作り直す。
-    ///
-    /// **`fileCount` は「生きていて保管庫にも入っていない」ファイルだけを
-    /// 数える**（`SQLiteLabelRepository.recount`）ので、`state` が変わるか
-    /// 行が消えるたびに直さないと、ラベルフィルタと編集ウインドウの件数が
-    /// 実態からずれていく。
-    ///
-    /// **消す・変える「前」に呼んで ID を集めること**——`fileLabel` は cascade
-    /// で消えるので、後からでは誰を数え直せばよいか分からなくなる。
-    static func labelIDsAttached(_ db: Database, to ids: [FileID]) throws -> [LabelID] {
-        guard !ids.isEmpty else { return [] }
-        let raw = try Int64.fetchAll(db, sql: """
-            SELECT DISTINCT labelId FROM fileLabel
-            WHERE managedFileId IN (\(placeholders(ids.count)))
-            """, arguments: StatementArguments(ids.map(\.rawValue)))
-        return raw.map { LabelID(rawValue: $0) }
-    }
-
     /// タイトルから導く鍵（`searchKey` [SR-03] と `titleKey` [DU-02]）を
     /// 行の現在値から作り直す。
     ///
@@ -166,17 +148,12 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
         return try await database.writer.write { db in
             var out: [FileID] = []
             out.reserveCapacity(snapshots.count)
-            // 保管庫の出入りが起きた行 [FA-05]。ラベルの非正規化件数 [DB-02] は
-            // 「生きていて保管庫にも入っていない」ファイルだけを数えるので、
-            // ここを数え直さないとフィルタと編集ウインドウの件数がずれていく。
-            // **`state` について 2-14 で直したのと同じ穴**——外部で
-            // `.qooarchive` へ出し入れされると走査だけで値が変わる。
-            var vaultFlipped: [FileID] = []
+            // **保管庫の出入りでラベルの件数を数え直す処理はもう無い**
+            // [DB-02 撤回][§19.13 #1]——件数は表示のたびに数える。以前は
+            // 出入りした行を控えて数え直しており、それを忘れる穴を 2 度踏んだ
+            // （`state` について 2-14、保管庫について 2-11）。
             for snapshot in snapshots {
                 if let existing = try Self.findForUpsert(db, identity: snapshot.identity) {
-                    if existing.isArchived != snapshot.isArchived {
-                        vaultFlipped.append(existing.id)
-                    }
                     // パス・ファイル名の変化を追従更新する [ID-02]
                     try Self.updateInPlace(db, id: existing.id, snapshot: snapshot)
                     out.append(existing.id)
@@ -185,17 +162,6 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
                     try record.insert(db)
                     out.append(FileID(rawValue: record.id ?? 0))
                 }
-            }
-            // 変えた**あと**でよい——`fileLabel` の行は消えないので、
-            // 誰を数え直すかは後からでも分かる（削除の経路とは事情が違う）。
-            // 900 件ずつに区切るのは、フォルダごと外から出し入れされると
-            // 一度に数千件が変わりうるため（ホスト変数の上限が低いビルドで
-            // 落ちる。壊れるのは上限の低い環境だけなので、通ることを理由に
-            // 外さないこと）。
-            for chunk in stride(from: 0, to: vaultFlipped.count, by: 900) {
-                let slice = Array(vaultFlipped[chunk..<min(chunk + 900, vaultFlipped.count)])
-                let labels = try Self.labelIDsAttached(db, to: slice)
-                try SQLiteLabelRepository.recount(db, labelIDs: labels)
             }
             return out
         }
@@ -245,13 +211,9 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
     public func setState(_ state: FileState, ids: [FileID]) async throws {
         guard !ids.isEmpty else { return }
         try await database.writer.write { db in
-            // **先に集める**——`state` が変われば `fileCount` の母数が変わる
-            // ので、変更後のラベルを引き直すのではなく変更前の紐づけから引く。
-            let labels = try Self.labelIDsAttached(db, to: ids)
             try db.execute(sql: """
                 UPDATE managedFile SET state = ? WHERE id IN (\(Self.placeholders(ids.count)))
                 """, arguments: StatementArguments([state.rawValue] + ids.map(\.rawValue)) ?? StatementArguments())
-            try SQLiteLabelRepository.recount(db, labelIDs: labels)
         }
     }
 
@@ -313,15 +275,8 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
         try await database.writer.write { db in
             try Self.fillSeenTable(db, seen)
             let (clause, args) = Self.unseenClause(libraryID: libraryID, scope: scope)
-            // 孤立にする前に、影響を受けるラベルを控える [DB-02]。
-            let labels = try Int64.fetchAll(db, sql: """
-                SELECT DISTINCT labelId FROM fileLabel
-                WHERE managedFileId IN (SELECT id FROM managedFile WHERE \(clause))
-                """, arguments: StatementArguments(args.map { Optional($0) }))
-                .map { LabelID(rawValue: $0) }
             try db.execute(sql: "UPDATE managedFile SET state = 'orphaned' WHERE \(clause)",
                            arguments: StatementArguments(args.map { Optional($0) }))
-            try SQLiteLabelRepository.recount(db, labelIDs: labels)
             return db.changesCount
         }
     }

@@ -48,19 +48,6 @@ public final class LibraryServices {
     /// ストアを開けなかった理由。`nil` なら正常。
     public private(set) var startupFailure: StoreStartupFailure?
 
-    /// DB の中身が変わるたびに増える [VM-10]。
-    ///
-    /// **ライブラリ表示モードの一覧は実体ではなく DB を描く**ので、
-    /// `DirectoryObservation`（実体の変更）だけでは追随できない——外部で
-    /// ファイルが増えても、走査が DB へ書き込むまで一覧に出る材料が無い。
-    /// 走査が 1 本終わるたびにここを進め、中央ペインが `.task(id:)` の鍵に
-    /// 混ぜて読み直す。
-    ///
-    /// **評価・ラベル・タイトルの編集はここを進めない**——あちらは
-    /// `CommandStack.operationHistory.count` が同じ役目を果たしており、
-    /// 2 つの合図を 1 つに畳むと「どちらで起きた変化か」が読めなくなる。
-    public private(set) var contentRevision = 0
-
 
     /// ライブラリ機能が使えるか。UI はこれを見てメニュー項目の有効／無効を決める。
     public var isReady: Bool { database != nil }
@@ -207,7 +194,7 @@ public final class LibraryServices {
         sync?.onScanFinished = { [weak self] id, summary in
             Task { @MainActor in
                 if summary.added > 0 || summary.updated > 0 || summary.orphaned > 0 {
-                    self?.contentRevision &+= 1
+                    LibraryGeneration.shared.bump()
                 }
                 self?.onAutomaticScanFinished?(id, summary)
             }
@@ -414,35 +401,29 @@ public final class LibraryServices {
         try await repository.updateSettings(draft, libraryID: libraryID)
         Log.app.info("ライブラリ設定を保存: \(Log.redactable(draft.displayName))")
         await refreshLibraries()
+        // 設定の保存も DB を書く経路 [§19.13 #2]。`settingsRevision`（DB 列）は
+        // パーサのキャッシュ鍵 [VT-02] で画面の合図ではないので、別に進める。
+        LibraryGeneration.shared.bump()
     }
 
     // MARK: - ラベル [LF-01〜LF-14][PN-01〜PN-06]
 
     /// ラベルフィルタに並べるグループ [LF-01]。
     ///
-    /// **ラベルが 0 件のグループを落とすのは呼び出し側の仕事** [LF-02][LA-09]
-    /// ——`labelCount` はアーカイブ済みを数えないので、この値が 0 かどうかで
-    /// 判定できる。ここで落としてしまうと、ラベルグループ編集ウインドウ
-    /// （2-6）が空のグループを触れなくなる。
+    /// **見えるラベルが 0 件のグループを落とすのは呼び出し側の仕事**
+    /// [LF-02][LA3-05]——`labelCount` は非表示のものも数える（フィールド編集
+    /// ウインドウが空のグループを触れなくなるため）ので、フィルタは読んだ
+    /// ラベルの `isVisible` から自分で判断する。
     public func labelGroups(libraryID: LibraryID) async throws -> [LabelGroupSummary] {
         guard let repository = labelRepository else { throw ServiceError.notReady }
         return try await repository.groups(libraryID: libraryID)
     }
 
-    /// グループに属するラベル [LF-04]。既定でアーカイブ済みを含めない [LF-12][LA-02]。
-    public func labels(groupID: LabelGroupID,
-                       includeArchived: Bool = false) async throws -> [LabelSummary] {
+    /// グループに属するラベル [LF-04]。**非表示のものも含めて返す** [LA3-03]
+    /// ——出し分けは呼び出し側の都合で、`LabelSummary.isVisible` が判定を持つ。
+    public func labels(groupID: LabelGroupID) async throws -> [LabelSummary] {
         guard let repository = labelRepository else { throw ServiceError.notReady }
-        return try await repository.labels(groupID: groupID, includeArchived: includeArchived)
-    }
-
-    /// ライブラリごとのアーカイブ済みラベル件数 [LA-01][15.3 節]。
-    ///
-    /// 保管庫の整理ウインドウが左ペインのグレーアウトに使う。**0 件の
-    /// ライブラリはキーごと現れない**ので `?? 0` で読むこと。
-    public func archivedLabelCounts() async throws -> [LibraryID: Int] {
-        guard let repository = labelRepository else { throw ServiceError.notReady }
-        return try await repository.archivedLabelCounts()
+        return try await repository.labels(groupID: groupID)
     }
 
     /// ピン留め [PN-04]。**ライブラリ単位の永続設定で全ウインドウ共有** [ST-23]。
@@ -517,9 +498,10 @@ public final class LibraryServices {
         try await repository.rename(id, to: name)
     }
 
-    public func setLabelArchived(_ ids: [LabelID], _ archived: Bool) async throws {
+    /// 手動での非表示の切り替え [LA3-02]。
+    public func setLabelHidden(_ ids: [LabelID], _ hidden: Bool) async throws {
         guard let repository = labelRepository else { throw ServiceError.notReady }
-        try await repository.setArchived(ids, archived)
+        try await repository.setHidden(ids, hidden)
     }
 
     public func setLabelColor(_ id: LabelID, hex: String?) async throws {
@@ -592,15 +574,15 @@ public final class LibraryServices {
 
     /// 未解決ファイルを現在の設定でパースし直す [AL-34][UR-04]。
     ///
-    /// **走査そのものではないので `contentRevision` を上げる**——ラベルが
-    /// 増えるので、ラベルフィルタと中央ペインが読み直す必要がある。
+    /// **走査そのものではないが世代番号を進める**——ラベルが増えるので、
+    /// ラベルフィルタと中央ペインが読み直す必要がある。
     /// 起点（`lastFSEventID`）は触らない：実ファイルを 1 つも見ていないので、
     /// 「どこまで実体を反映したか」は変わっていない。
     @discardableResult
     public func rematchUnresolved(libraryID: LibraryID) async throws -> RematchOutcome {
         guard let engine = makeScanEngineIfNeeded() else { throw ServiceError.notReady }
         let outcome = try await engine.rematchUnresolved(libraryID: libraryID)
-        if outcome.resolved > 0 { contentRevision &+= 1 }
+        if outcome.resolved > 0 { LibraryGeneration.shared.bump() }
         return outcome
     }
 
@@ -716,15 +698,16 @@ public final class LibraryServices {
     /// 保管庫の出入りを DB へ記録する [FA-04][FA-05]。**実ファイルを動かした
     /// あとに呼ぶこと**（`FileVault.relocate` が返した着地点を渡す）。
     ///
-    /// **`contentRevision` を進める。** 評価・ラベル・タイトルの編集では
-    /// 進めない（あちらは `operationHistory.count` が同じ役目を果たす）が、
-    /// 保管庫の出入りは**蔵書の一覧そのものが変わる** [FA-05][FA-12] ので、
-    /// 走査と同じ扱いにする——さもないと左ペインのラベル件数が、次の走査まで
-    /// 古いまま残る（`labelFilterLoadKey` は `operationHistory` を見ない）。
+    /// **世代番号を進める** [§19.13 #2]。保管庫の出入りは蔵書の一覧そのものが
+    /// 変わる [FA-05][FA-12]。
+    ///
+    /// なお `VaultCommands` 経由なら `CommandStack` も進めるので二重になるが、
+    /// **合図は「変わったこと」しか意味しない**ので害は無い——数える値では
+    /// ないので、進みすぎることはあっても止まることが無いほうが大事。
     public func setFileArchived(_ moves: [VaultMove], archived: Bool) async throws {
         guard let repository = fileRepository else { throw ServiceError.notReady }
         try await repository.setArchived(moves, archived: archived)
-        contentRevision &+= 1
+        LibraryGeneration.shared.bump()
     }
 
     /// 同一性で行を引く [ID-02]。再紐づけのコマンドが「消される側」を
@@ -1161,7 +1144,7 @@ public final class LibraryServices {
                                  eventID: eventID, mode: scanMode)
         }
         await refreshLibraries()
-        contentRevision &+= 1
+        LibraryGeneration.shared.bump()
         return summary
     }
 

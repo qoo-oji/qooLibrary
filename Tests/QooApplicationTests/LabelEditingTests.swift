@@ -269,23 +269,39 @@ struct LabelEditingTests {
 
     /// [LA-03] 追加候補には出さないが、[RL-05] 付与済みなら一覧に出す
     /// ——出さないと「画面に無いのに付いている」ラベルができ、外す手段が消える。
-    ///
-    /// **この規則だけを直に試す。** アーカイブする経路（`setArchived`）は
-    /// 2-6 の担当で、そこに production の呼び出し元がまだ無い——試すためだけに
-    /// `LibraryServices` へ API を足すと、誰も呼ばないコードが production に残る。
-    @Test("アーカイブ済みは候補に出さないが、付与済みなら一覧に出す [LA-03][RL-05]")
-    func archivedLabelsAreHiddenUnlessAssigned() {
-        func label(_ id: Int64, archived: Bool) -> LabelSummary {
+    @Test("手動で非表示にしたものは候補に出さないが、付与済みなら一覧に出す [LA-03][RL-05]")
+    func hiddenLabelsAreOmittedUnlessAssigned() {
+        func label(_ id: Int64, hidden: Bool) -> LabelSummary {
             LabelSummary(id: LabelID(rawValue: id), groupID: LabelGroupID(rawValue: 1),
                          name: "l\(id)", normalizedName: "l\(id)", colorHex: nil,
-                         isPinned: false, isArchived: archived, fileCount: 0)
+                         isPinned: false, isHidden: hidden, fileCount: 1)
         }
-        let all = [label(1, archived: false), label(2, archived: true), label(3, archived: true)]
+        let all = [label(1, hidden: false), label(2, hidden: true), label(3, hidden: true)]
         // 2 番だけ付与済み。
         let shown = LabelEditorModel.candidates(from: all, isAssigned: { $0.id.rawValue == 2 })
         #expect(shown.map(\.id.rawValue) == [1, 2], "[RL-05] 付いているものは見えなければならない")
         #expect(LabelEditorModel.addable(from: all).map(\.id.rawValue) == [1],
-                "[LA-03] 追加候補にはアーカイブ済みを出さない")
+                "[LA-03] 追加候補には手動で非表示にしたものを出さない")
+    }
+
+    /// **実体 0 件のラベルは、追加候補には出す**［ユーザー判断、LA3-01］。
+    ///
+    /// ラベルフィルタ [LA3-05] は「いま在るもので絞る」ための一覧なので 0 件を
+    /// 隠すが、こちらは「これから付けるもの」の一覧で目的が違う——付ければ
+    /// 1 件になって自動的に表示へ戻る。隠すと、同名で「新規作成」して既存の行を
+    /// 引き当てるという遠回りしか手段が無くなる。
+    @Test("実体 0 件のラベルは追加候補に出す [LA3-01]")
+    func labelsWithoutFilesRemainAddable() {
+        func label(_ id: Int64, count: Int) -> LabelSummary {
+            LabelSummary(id: LabelID(rawValue: id), groupID: LabelGroupID(rawValue: 1),
+                         name: "l\(id)", normalizedName: "l\(id)", colorHex: nil,
+                         isPinned: false, isHidden: false, fileCount: count)
+        }
+        let all = [label(1, count: 3), label(2, count: 0)]
+        #expect(!all[1].isVisible, "フィルタからは消えている [LA3-01]")
+        #expect(LabelEditorModel.addable(from: all).map(\.id.rawValue) == [1, 2])
+        #expect(LabelEditorModel.candidates(from: all, isAssigned: { _ in false })
+            .map(\.id.rawValue) == [1, 2])
     }
 
     @Test("同じ状態への操作は Undo スタックを汚さない")
@@ -376,7 +392,7 @@ struct PinnedLabelListingTests {
     private func label(_ id: Int64, _ name: String, pinned: Bool = false) -> LabelSummary {
         LabelSummary(id: LabelID(rawValue: id), groupID: LabelGroupID(rawValue: 1),
                      name: name, normalizedName: name, colorHex: nil,
-                     isPinned: pinned, isArchived: false, fileCount: 0)
+                     isPinned: pinned, isHidden: false, fileCount: 1)
     }
 
     @Test("ピン留めがあればピン留めだけ [PN-02]")

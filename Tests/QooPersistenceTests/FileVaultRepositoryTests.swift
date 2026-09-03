@@ -32,7 +32,7 @@ struct FileVaultRepositoryTests {
         func fileCount() async throws -> Int {
             let groups = try await f.labels.groups(libraryID: f.libraryID)
             for group in groups {
-                let labels = try await f.labels.labels(groupID: group.id, includeArchived: true)
+                let labels = try await f.labels.labels(groupID: group.id)
                 if let hit = labels.first(where: { $0.id == label }) { return hit.fileCount }
             }
             return -1

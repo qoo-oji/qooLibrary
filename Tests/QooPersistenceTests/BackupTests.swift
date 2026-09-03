@@ -231,6 +231,64 @@ struct BackupTests {
                 == UnresolvedCounts(pending: 0, ignored: 1))
     }
 
+    /// **版 4 で `isArchived` を `isHidden` へ改名した** [LA3-02]。版を上げたのは
+    /// 書き出す側の話で、**以前書き出した文書は読めなければならない** [IE-14]
+    /// ——古い綴りも「フィルタから外す」という同じ意図を持っていた。
+    @Test("版 3 以前の `isArchived` を `isHidden` として読む [LA3-02][IE-14]")
+    func decodesLabelVisibilityWrittenUnderTheOldName() async throws {
+        let (f, backup) = try await Self.seeded()
+        try await f.database.writer.write { db in
+            try db.execute(sql: "UPDATE label SET isHidden = 1")
+        }
+        let document = try await backup.export(scope: .everything, appVersion: nil)
+        #expect(document.schemaVersion == 4)
+
+        // 版 3 の文書に化けさせる——キーを旧しい綴りへ戻す。
+        let encoded = try BackupCoding.encode(document)
+        var json = try #require(try JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        json["schemaVersion"] = 3
+        var libraries = try #require(json["libraries"] as? [[String: Any]])
+        var library = libraries[0]
+        library["labelGroups"] = (library["labelGroups"] as? [[String: Any]] ?? [])
+            .map { group -> [String: Any] in
+                var copy = group
+                copy["labels"] = (group["labels"] as? [[String: Any]] ?? []).map { label -> [String: Any] in
+                    var l = label
+                    l["isArchived"] = l.removeValue(forKey: "isHidden") ?? false
+                    return l
+                }
+                return copy
+            }
+        libraries[0] = library
+        json["libraries"] = libraries
+
+        let legacy = try JSONSerialization.data(withJSONObject: json)
+        let decoded = try BackupCoding.decode(legacy)
+        let labels = decoded.libraries[0].labelGroups.flatMap(\.labels)
+        #expect(!labels.isEmpty)
+        #expect(labels.allSatisfy { $0.isHidden }, "旧しい綴りから読み替える")
+    }
+
+    /// **キーが消えるので版を上げた** [IE-14][JS-09]。版 3 までの実装は
+    /// `isArchived` を非 Optional で要求しており、無いと文書全体の取り込みが
+    /// 失敗する——版 3 のときと同じ判断。
+    /// **ファイル側の `isArchived`（保管庫 [FA-05]）は存続する**ので、文書全体を
+    /// 文字列で見ても区別が付かない——ラベルのブロックだけを取り出して確かめる。
+    @Test("書き出す文書はラベルに `isHidden` を使う [LA3-02]")
+    func exportsLabelVisibilityUnderTheNewName() async throws {
+        let (_, backup) = try await Self.seeded()
+        let document = try await backup.export(scope: .everything, appVersion: nil)
+        let data = try BackupCoding.encode(document)
+        let json = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let libraries = try #require(json["libraries"] as? [[String: Any]])
+        let labels = libraries.flatMap { ($0["labelGroups"] as? [[String: Any]] ?? []) }
+            .flatMap { ($0["labels"] as? [[String: Any]] ?? []) }
+        #expect(!labels.isEmpty)
+        #expect(labels.allSatisfy { $0["isHidden"] != nil })
+        #expect(labels.allSatisfy { $0["isArchived"] == nil }, "ラベル側の旧しい綴りは出さない")
+        #expect(labels.allSatisfy { $0["fileCount"] == nil }, "件数は出さない [DB-02 撤回]")
+    }
+
     @Test("書き出して取り込むと、評価・手動タイトル・手動ラベルが戻る")
     func roundTripRestoresUnrecoverableData() async throws {
         let (f, backup) = try await Self.seeded()

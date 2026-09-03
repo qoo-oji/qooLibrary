@@ -198,7 +198,7 @@ struct ScanIntegrationTests {
         #expect(try await w.rows().count == 1)
         // ラベルも増殖しない
         let group = try #require(try await w.labels.group(libraryID: w.libraryID, index: 2))
-        #expect(try await w.labels.labels(groupID: group.id, includeArchived: true).count == 1)
+        #expect(try await w.labels.labels(groupID: group.id).count == 1)
     }
 
     @Test("パース結果が DB へ書き戻される [RC-01]")
@@ -224,11 +224,11 @@ struct ScanIntegrationTests {
         let circle = try #require(try await w.field(.circle))
         let author = try #require(try await w.field(.author))
         let genre = try #require(try await w.field(.genre))
-        #expect(try await w.labels.labels(groupID: circle.id, includeArchived: false)
+        #expect(try await w.labels.labels(groupID: circle.id)
             .map(\.name) == ["サークルA"])
-        #expect(Set(try await w.labels.labels(groupID: author.id, includeArchived: false)
+        #expect(Set(try await w.labels.labels(groupID: author.id)
             .map(\.name)) == ["作家A", "作家B"])
-        #expect(try await w.labels.labels(groupID: genre.id, includeArchived: false)
+        #expect(try await w.labels.labels(groupID: genre.id)
             .first?.fileCount == 2)
     }
 

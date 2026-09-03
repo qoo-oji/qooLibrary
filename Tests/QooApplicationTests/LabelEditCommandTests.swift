@@ -37,7 +37,7 @@ struct LabelEditCommandTests {
     private func labels(_ w: ServicesWorkspace, _ group: LabelGroupSummary)
         async throws -> [LabelSummary]
     {
-        try await w.services.labels(groupID: group.id, includeArchived: true)
+        try await w.services.labels(groupID: group.id)
     }
 
     // MARK: - 改名 [LB-06]
@@ -97,41 +97,41 @@ struct LabelEditCommandTests {
         #expect(try await labels(w, group).first?.colorHex == nil)
     }
 
-    // MARK: - 保管庫 [LA-01][LA-08][LE-09]
+    // MARK: - 手動での非表示 [LA3-02][LE-09]
 
-    @Test("保管庫へ移す／戻すの取り消しは、1 件ずつ元の状態へ戻す")
+    @Test("非表示の切り替えの取り消しは、1 件ずつ元の状態へ戻す")
     @MainActor
-    func archiveRestoresPerLabelState() async throws {
+    func hideRestoresPerLabelState() async throws {
         let (w, _, group) = try await workspace()
         let stack = CommandStack()
         let all = try await labels(w, group)
         #expect(all.count == 3)
-        // 1 件だけ先に保管庫へ入れておく——**混ざった状態**を作るのが要点
-        try await w.services.setLabelArchived([all[0].id], true)
+        // 1 件だけ先に隠しておく——**混ざった状態**を作るのが要点
+        try await w.services.setLabelHidden([all[0].id], true)
 
         let previous = try await labels(w, group).map {
-            SetLabelArchivedCommand.Previous(id: $0.id, name: $0.name, isArchived: $0.isArchived)
+            SetLabelHiddenCommand.Previous(id: $0.id, name: $0.name, isHidden: $0.isHidden)
         }
-        _ = try await stack.run(SetLabelArchivedCommand(
-            previous: previous, archived: true, services: w.services))
-        #expect(try await labels(w, group).allSatisfy(\.isArchived))
+        _ = try await stack.run(SetLabelHiddenCommand(
+            previous: previous, hidden: true, services: w.services))
+        #expect(try await labels(w, group).allSatisfy(\.isHidden))
 
         _ = await stack.undo()
         let after = try await labels(w, group)
-        // もともと保管庫にあった 1 件は保管庫のまま。一律に戻していない。
-        #expect(after.first { $0.id == all[0].id }?.isArchived == true)
-        #expect(after.filter(\.isArchived).count == 1)
+        // もともと隠れていた 1 件は隠れたまま。一律に戻していない。
+        #expect(after.first { $0.id == all[0].id }?.isHidden == true)
+        #expect(after.filter(\.isHidden).count == 1)
     }
 
-    @Test("保管庫にあるラベルの紐づけは維持される [LA-04]")
+    @Test("非表示にしてもラベルの紐づけは維持される [LA-04][LA3-02]")
     @MainActor
-    func archivingKeepsAssignments() async throws {
+    func hidingKeepsAssignments() async throws {
         let (w, _, group) = try await workspace(files: 1)
         let stack = CommandStack()
         let target = try #require(try await labels(w, group).first)
-        _ = try await stack.run(SetLabelArchivedCommand(
-            previous: [.init(id: target.id, name: target.name, isArchived: false)],
-            archived: true, services: w.services))
+        _ = try await stack.run(SetLabelHiddenCommand(
+            previous: [.init(id: target.id, name: target.name, isHidden: false)],
+            hidden: true, services: w.services))
         #expect(try await labels(w, group).first?.fileCount == 1)
     }
 
@@ -251,8 +251,8 @@ struct LabelEditCommandTests {
                                services: w.services),
             SetLabelColorCommand(labelID: id, labelName: "実名A", previousHex: nil,
                                  newHex: "#112233", services: w.services),
-            SetLabelArchivedCommand(previous: [.init(id: id, name: "実名A", isArchived: false)],
-                                    archived: true, services: w.services),
+            SetLabelHiddenCommand(previous: [.init(id: id, name: "実名A", isHidden: false)],
+                                  hidden: true, services: w.services),
             SetLabelPinnedCommand(labelID: id, labelName: "実名A", pinned: true,
                                   services: w.services),
             DeleteLabelsCommand(labelIDs: [id], labelNames: ["実名A"], services: w.services),

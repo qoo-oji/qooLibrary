@@ -82,7 +82,9 @@ public final class NotificationRouter {
     public private(set) var unreadCount = 0
 
     /// 履歴が変わるたびに増える。開いている履歴ウインドウが読み直す合図で、
-    /// 値そのものに意味は無い（`LibraryServices.contentRevision` と同じ形）。
+    /// 値そのものに意味は無い（`LibraryGeneration` と同じ形）。**通知履歴は
+    /// ライブラリの中身ではない**ので、あちらとは混ぜない［ユーザー判断、
+    /// §19.13 #2］——混ぜると走査のたびに通知履歴が読み直される。
     public private(set) var historyRevision = 0
 
     /// 通知履歴の実体 [NT-01][02章 §2.4]。`LibraryServices.bootstrap()` が

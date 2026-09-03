@@ -78,7 +78,7 @@ struct LibrarySettingsEditingTests {
         let renamed = try #require(after.first { $0.name == "作者" })
         // **ここが要点**——作り直す実装だと 0 件になる。
         #expect(renamed.id == author.id)
-        #expect(try await f.labels.labels(groupID: renamed.id, includeArchived: true).count == 2)
+        #expect(try await f.labels.labels(groupID: renamed.id).count == 2)
     }
 
     @Test("ラベルグループを増やせる")

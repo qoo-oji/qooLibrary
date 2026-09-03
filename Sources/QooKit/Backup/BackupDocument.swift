@@ -37,7 +37,13 @@ public struct BackupDocument: Codable, Sendable, Equatable {
     ///      非 Optional で要求しており、無いと文書全体の取り込みが失敗する。
     ///      版 1／2 の文書は取り込み時に `LegacyMetadataProtection` で
     ///      読み替える（DB の `v10_metadataProtection` と同じ規則）。
-    public static let currentSchemaVersion = 3
+    /// - 4: ラベルの非表示モデル [LA3-01〜05]。`LabelBackup.isArchived`（「保管庫」）
+    ///      が `isHidden`（「手動で非表示にした印」）へ改名される。**版を上げたのは
+    ///      キーが消えるから**——版 3 までの実装は `isArchived` を非 Optional で
+    ///      要求しており、無いと文書全体の取り込みが失敗する（版 3 と同じ判断）。
+    ///      版 3 以前の文書は `isArchived` をそのまま `isHidden` として読む
+    ///      （どちらも「フィルタから外す」という同じ効果を持っていたため）。
+    public static let currentSchemaVersion = 4
 
     public var schemaVersion: Int
     public var exportedAt: Date
@@ -170,19 +176,48 @@ public struct LabelGroupBackup: Codable, Sendable, Equatable {
 
 /// ラベル 1 件 [LB-01]。
 ///
-/// `normalizedName` と `fileCount` は出さない——前者は原文から導け、後者は
-/// 非正規化キャッシュ [DB-02] でどちらも再生成可能 [MG-21]。
+/// `normalizedName` は出さない——原文から導ける [MG-21]。**件数も出さない**
+/// ——実体から導く値になった [DB-02 撤回][LA3-01]。
 public struct LabelBackup: Codable, Sendable, Equatable {
     public var name: String
     public var colorHex: String?
     public var isPinned: Bool
-    public var isArchived: Bool
+    /// **手動で非表示にした印** [LA3-02]。実体が無いことによる非表示は導出なので
+    /// 出さない（復元すれば自然に一致する）。
+    ///
+    /// 版 3 以前は `isArchived` という名前だった。読み込みは両方を受ける
+    /// ——古い文書でも「フィルタから外す」という同じ意図を持っていたため。
+    public var isHidden: Bool
 
-    public init(name: String, colorHex: String?, isPinned: Bool, isArchived: Bool) {
+    public init(name: String, colorHex: String?, isPinned: Bool, isHidden: Bool) {
         self.name = name
         self.colorHex = colorHex
         self.isPinned = isPinned
-        self.isArchived = isArchived
+        self.isHidden = isHidden
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case name, colorHex, isPinned, isHidden
+        case isArchived      // 版 3 以前
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decode(String.self, forKey: .name)
+        colorHex = try c.decodeIfPresent(String.self, forKey: .colorHex)
+        isPinned = try c.decode(Bool.self, forKey: .isPinned)
+        // 版 4 で改名した。**古い綴りも受ける**——版を上げたのは書き出す側の
+        // 話で、以前書き出した文書を読めなくする理由は無い [IE-14]。
+        isHidden = try c.decodeIfPresent(Bool.self, forKey: .isHidden)
+            ?? c.decodeIfPresent(Bool.self, forKey: .isArchived) ?? false
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(name, forKey: .name)
+        try c.encodeIfPresent(colorHex, forKey: .colorHex)
+        try c.encode(isPinned, forKey: .isPinned)
+        try c.encode(isHidden, forKey: .isHidden)
     }
 }
 

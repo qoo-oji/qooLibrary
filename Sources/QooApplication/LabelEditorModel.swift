@@ -198,22 +198,27 @@ public final class LabelEditorModel {
         Self.candidates(from: labels[group.id] ?? [], isAssigned: { self.isAssigned($0) })
     }
 
-    /// 常設の一覧に出す候補 [LA-03][RL-05]。
+    /// 常設の一覧に出す候補 [LA-03][RL-05][LA3-02]。
     ///
-    /// **アーカイブ済みは出さないが、付与済みなら出す。** 出さないと「画面に
-    /// 無いのに付いている」ラベルができ、外す手段が消える——`LA-03` が禁じて
-    /// いるのは*追加候補*に出すことであって、既に付いているものを隠すことでは
-    /// ない。**この 1 行が LA-03 と RL-05 の境目そのもの**なので、View にも
+    /// **手動で非表示にしたものは出さないが、付与済みなら出す。** 出さないと
+    /// 「画面に無いのに付いている」ラベルができ、外す手段が消える——`LA-03` が
+    /// 禁じているのは*追加候補*に出すことであって、既に付いているものを隠す
+    /// ことではない。**この 1 行が LA-03 と RL-05 の境目そのもの**なので、View にも
     /// `load` にも埋めずここに置く（`starsAfterTapping` と同じ理由）。
+    ///
+    /// **実体 0 件による自動的な非表示 [LA3-01] は、ここでは効かせない**
+    /// ［ユーザー判断］。ラベルフィルタ [LA3-05] は「いま在るもので絞る」ための
+    /// 一覧なので 0 件を隠すが、こちらは「これから付けるもの」の一覧で目的が
+    /// 違う——付ければ 1 件になって自動的に表示へ戻る。
     nonisolated public static func candidates(
         from all: [LabelSummary], isAssigned: (LabelSummary) -> Bool
     ) -> [LabelSummary] {
-        all.filter { !$0.isArchived || isAssigned($0) }
+        all.filter { !$0.isHidden || isAssigned($0) }
     }
 
-    /// 追加の候補 [LA-03]。**付与済みでも、アーカイブ済みなら候補に出さない。**
+    /// 追加の候補 [LA-03][LA3-02]。**付与済みでも、手動で非表示なら候補に出さない。**
     nonisolated public static func addable(from all: [LabelSummary]) -> [LabelSummary] {
-        all.filter { !$0.isArchived }
+        all.filter { !$0.isHidden }
     }
 
     // MARK: - 読み込み
@@ -279,7 +284,7 @@ public final class LabelEditorModel {
     }
 
     /// 同じ対象を読み直すときはスピナーへ戻さない——読み直しの合図
-    /// （`operationHistory.count` 等）が来るたびにちらつくため。
+    /// （`LibraryGeneration` 等）が来るたびにちらつくため。
     private func beginLoading(key: [URL]) {
         if loadedKey != key {
             state = .loading
@@ -310,8 +315,7 @@ public final class LabelEditorModel {
         let groups = try await services.labelGroups(libraryID: library.id)
         var loaded: [LabelGroupID: [LabelSummary]] = [:]
         for group in groups {
-            loaded[group.id] = try await services.labels(groupID: group.id,
-                                                         includeArchived: true)
+            loaded[group.id] = try await services.labels(groupID: group.id)
         }
         allGroups = groups
         labels = loaded
@@ -326,7 +330,7 @@ public final class LabelEditorModel {
 
     /// **取り消しは失敗ではない**［2-9 の実機検証でユーザーが発見］。
     /// `.task(id:)` は鍵が変わると前のタスクを取り消すので、選択を素早く
-    /// 変えたり読み直しの合図（`operationHistory.count`・`contentRevision`）が
+    /// 変えたり読み直しの合図（`LibraryGeneration`）が
     /// 続けて来たりすると、ここへ `CancellationError` が届く。そのまま出すと
     /// 画面に「タイトル: CancellationError()」という、利用者にとって意味の
     /// 無い赤字が残る——**直後に新しい読み込みが正しい値を入れる**ので、

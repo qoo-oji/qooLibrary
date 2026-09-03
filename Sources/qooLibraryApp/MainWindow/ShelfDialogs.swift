@@ -16,7 +16,7 @@ enum ShelfDialogs {
     /// **失敗は握りつぶさない** [ER-01]——保存も改名も削除も、押した結果が
     /// 画面に出ないまま黙って何も起きないのがいちばん分かりにくい。
     /// 一覧の読み直しは `MainWindowView` の `.task(id:)` が駆動する（鍵に
-    /// `operationHistory.count` を含めてあるので ⌘Z にも追随する）。
+    /// 世代番号を含めてあるので ⌘Z にも追随する）。
     @MainActor
     static func run(_ command: some Command, whatHappened: String) {
         Task {

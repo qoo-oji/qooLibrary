@@ -198,7 +198,7 @@ public final class DuplicateResolutionModel {
         var out: [LabelID: String] = [:]
         var groups: [LabelID: LabelGroupID] = [:]
         for group in try await services.labelGroups(libraryID: library.id) {
-            for label in try await services.labels(groupID: group.id, includeArchived: true) {
+            for label in try await services.labels(groupID: group.id) {
                 out[label.id] = label.name
                 groups[label.id] = group.id
             }

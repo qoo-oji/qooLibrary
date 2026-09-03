@@ -26,11 +26,12 @@ public final class LabelFilterModel {
     /// 表示中のライブラリ。`nil` ならフィルタは出さない [LF-01]。
     public private(set) var library: LibrarySummary?
 
-    /// 並べる順に整えたグループ [LF-01][LF-03]。**ラベル 0 件は含まない**
-    /// [LF-02][LG-05][LA-09]（`labelCount` はアーカイブ済みを数えない）。
+    /// 並べる順に整えたグループ [LF-01][LF-03]。**見えるラベルが 1 件も無い
+    /// グループは含まない** [LF-02][LG-05][LA3-05]。
     public private(set) var groups: [LabelGroupSummary] = []
 
-    /// グループごとのラベル [LF-04]。アーカイブ済みは含まない [LF-12][LA-02]。
+    /// グループごとのラベル [LF-04]。**非表示のものは含まない** [LA3-05]
+    /// ——手動で隠したもの [LA3-02] と、生きている実体が 1 件も無いもの [LA3-01]。
     public private(set) var labels: [LabelGroupID: [LabelSummary]] = [:]
 
     // MARK: - 選択（ウインドウ固有）
@@ -223,14 +224,21 @@ public final class LabelFilterModel {
         }
         do {
             let all = try await services.labelGroups(libraryID: library.id)
-            // [LF-02][LG-05][LA-09] ラベルが 1 件も無いグループは出さない。
-            let usable = all.filter { $0.labelCount > 0 }
+            // **フィルタに出すのは「見えるラベル」だけ** [LA3-05]——手動で
+            // 隠したもの [LA3-02] と、生きている実体が 1 件も無いもの [LA3-01]。
+            // 後者は導出なので、実体が戻れば次の読み直しで自然に復帰する。
+            //
+            // **グループの出し分けを `labelCount` で先に決めない**——あの値は
+            // 非表示のラベルも数える（フィールド編集ウインドウのため）。
+            // 読んでから絞り、空になったグループを落とす [LF-02][LG-05]。
             var loaded: [LabelGroupID: [LabelSummary]] = [:]
-            for group in usable {
-                loaded[group.id] = try await services.labels(groupID: group.id)
+            for group in all where group.labelCount > 0 {
+                let visible = try await Self.visibleLabels(in: group.id, services: services)
+                if !visible.isEmpty { loaded[group.id] = visible }
             }
-            groups = usable
+            groups = all.filter { loaded[$0.id] != nil }
             labels = loaded
+            pruneSelectionToVisibleLabels()
             totalCount = try await services.fileCount(FileQuery(libraryID: library.id))
             unresolvedCounts = try await services.unresolvedFileCounts()[library.id]
             loadFailure = nil
@@ -306,14 +314,58 @@ public final class LabelFilterModel {
 
     /// ピン留め [PN-04]。全ウインドウ共有の永続設定なので、書き込んだあと
     /// 手元の一覧も並べ直す（`labels` はピン留め優先の順で来る）。
+    ///
+    /// **読み直しも `visibleLabels` を通す** [LA3-05]［code-review の指摘］。
+    /// リポジトリは非表示のものも返す [LA3-03] ので、素で入れ直すと
+    /// **ピンを 1 つ切り替えただけでフィルタに非表示のラベルが並ぶ。**
+    /// しかも `setLabelPinned` は世代番号を進めないため、次の走査まで直らない。
     public func setPinned(_ label: LabelSummary, _ pinned: Bool,
                           services: LibraryServices) async {
         do {
             try await services.setLabelPinned(label.id, pinned)
-            labels[label.groupID] = try await services.labels(groupID: label.groupID)
+            labels[label.groupID] = try await Self.visibleLabels(in: label.groupID,
+                                                                services: services)
+            pruneSelectionToVisibleLabels()
         } catch {
             Log.ui.warning("ピン留めを保存できない: \(String(describing: error))")
         }
+    }
+
+    /// **フィルタに出すラベルを決める唯一の場所** [LA3-05]。
+    ///
+    /// リポジトリは非表示のものも返す [LA3-03]——出し分けは呼び出し側の都合
+    /// なので、その判断をこの型の中で 2 度書かない（読み直す経路が
+    /// `load` と `setPinned` の 2 つあり、片方だけ絞る形を実際に作った）。
+    private static func visibleLabels(in groupID: LabelGroupID,
+                                      services: LibraryServices) async throws -> [LabelSummary] {
+        try await services.labels(groupID: groupID).filter(\.isVisible)
+    }
+
+    /// 一覧から消えたラベルのチェックを落とす [LA3-01][LF-05]。
+    ///
+    /// **これが無いと、絞り込みが効いたまま外す手段が消える**
+    /// ［code-review の指摘］。チェック中のラベルの実体が全部ゴミ箱・保管庫へ
+    /// 行くと、そのラベルは一覧から消える [LA3-01] のに `labelSelection` には
+    /// 残るので、**中央ペインが空になったまま、原因のチェックボックスが
+    /// どこにも見えない**——⇧⌘K で全部落とすしか手が無くなる。
+    /// `PinnedLabelListing` の `mustInclude` [PN-06] では救えない（あちらは
+    /// 渡された一覧の中でしか効かない）。
+    ///
+    /// 中央ペインが `entries` に無い選択を落とす [`FolderContentView.reload`]
+    /// のと同じ形。**絞り込みが黙って緩む**ことにはなるが、残しても 0 件しか
+    /// 返さない条件なので、緩むほうが利用者に説明できる。
+    private func pruneSelectionToVisibleLabels() {
+        var changed = false
+        for (groupID, selected) in selection {
+            let visible = Set((labels[groupID] ?? []).map(\.id))
+            let kept = selected.intersection(visible)
+            if kept.count != selected.count {
+                changed = true
+                if kept.isEmpty { selection.removeValue(forKey: groupID) }
+                else { selection[groupID] = kept }
+            }
+        }
+        if changed { bumpRevision() }
     }
 
     /// グループの並べ替え [LF-03][LG-07]。

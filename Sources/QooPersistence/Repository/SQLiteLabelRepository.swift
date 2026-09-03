@@ -19,7 +19,7 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
             try Row.fetchAll(db, sql: """
                 SELECT labelGroup.*,
                        (SELECT COUNT(*) FROM label
-                         WHERE label.labelGroupId = labelGroup.id AND label.isArchived = 0) AS labelCount
+                         WHERE label.labelGroupId = labelGroup.id) AS labelCount
                 FROM labelGroup WHERE libraryId = ? ORDER BY displayOrder, groupIndex
                 """, arguments: [libraryID.rawValue]).map(Self.groupSummary)
         }
@@ -30,7 +30,7 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
             try Row.fetchOne(db, sql: """
                 SELECT labelGroup.*,
                        (SELECT COUNT(*) FROM label
-                         WHERE label.labelGroupId = labelGroup.id AND label.isArchived = 0) AS labelCount
+                         WHERE label.labelGroupId = labelGroup.id) AS labelCount
                 FROM labelGroup WHERE libraryId = ? AND groupIndex = ?
                 """, arguments: [libraryID.rawValue, index]).map(Self.groupSummary)
         }
@@ -45,65 +45,37 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
             displayOrder: row["displayOrder"], labelCount: row["labelCount"])
     }
 
-    /// グループのラベル [LF-04][LE-03]。
+    /// グループのラベル [LF-04][LE-03]。**手動で非表示にしたものも返す** [LA3-03]。
     ///
-    /// **件数を 2 つ返す。** `fileCount`（非正規化列）はフィルタ用で保管庫の
-    /// ファイルを数えない [FA-05]、`fileCountIncludingArchived` は編集ウインドウの
-    /// バッジ用で数える [LE-05]。要件が意図的に食い違っているので、1 つの値では
-    /// 両方を満たせない——同じ値を使うと、ファイルを保管庫へ入れただけで
-    /// ラベルが「0 件」＝消してよさそう [LE-04] に見える。
+    /// **件数は 1 つだけ**——「生きていて、ファイル保管庫の外にある」ファイルの数
+    /// [LA3-01]。かつては意味の違う件数を 2 つ返していた（フィルタ用の非正規化列
+    /// [DB-02] と、保管庫のファイルも数える編集ウインドウ用 [LE-05]）が、
+    /// 0 件ラベルの赤字 [LE-04] が撤回された [LA3-04] ことで後者の存在理由が消えた。
     ///
-    /// 後者だけ毎回数え直すのは、**保管庫は稀な操作なので専用の非正規化列を
-    /// 増やすほどではない**ため（列を増やすと `adjustCount` の呼び出し全てに
-    /// 二重の更新が要り、ずれる箇所が倍になる）。
-    public func labels(groupID: LabelGroupID, includeArchived: Bool) async throws -> [LabelSummary] {
+    /// **非正規化列は撤去した** [DB-02 撤回][§19.13 #1]。この経路は元々
+    /// `countWithArchived` の相関副問い合わせを 1 本走らせており、実測
+    /// （10 万件・50 万紐づけ）で 109.4 → 105.3 ms と**むしろ速くなった**
+    /// ——列を持つ費用は速度ではなく「数え直しを忘れるとずれる」危険だけだった。
+    public func labels(groupID: LabelGroupID) async throws -> [LabelSummary] {
         try await database.writer.read { db in
-            let sql = """
+            try Row.fetchAll(db, sql: """
                 SELECT label.*, COALESCE((
                     SELECT COUNT(*) FROM fileLabel fl
                     JOIN managedFile mf ON mf.id = fl.managedFileId
                     WHERE fl.labelId = label.id
-                      AND mf.state = 'active'
-                ), 0) AS countWithArchived
+                      AND mf.state = 'active' AND mf.isArchived = 0
+                ), 0) AS liveCount
                 FROM label WHERE labelGroupId = ?
-                \(includeArchived ? "" : "AND isArchived = 0")
                 ORDER BY isPinned DESC, name
-                """
-            return try Row.fetchAll(db, sql: sql, arguments: [groupID.rawValue]).map { row in
+                """, arguments: [groupID.rawValue]).map { row in
                 LabelSummary(
                     id: LabelID(rawValue: row["id"]),
                     groupID: LabelGroupID(rawValue: row["labelGroupId"]),
                     name: row["name"], normalizedName: row["normalizedName"],
                     colorHex: row["colorHex"], isPinned: row["isPinned"],
-                    isArchived: row["isArchived"], fileCount: row["fileCount"],
-                    fileCountIncludingArchived: row["countWithArchived"])
+                    isHidden: row["isHidden"], fileCount: row["liveCount"])
             }
         }
-    }
-
-    /// ライブラリごとのアーカイブ済みラベル件数 [LA-01][15.3 節]。
-    ///
-    /// **0 件のライブラリはキーごと現れない**（`GROUP BY` の性質そのもの）。
-    /// 呼び出し側は `counts[id] ?? 0` で読むこと。
-    public func archivedLabelCounts() async throws -> [LibraryID: Int] {
-        try await database.writer.read { db in
-            var result: [LibraryID: Int] = [:]
-            for row in try Row.fetchAll(db, sql: """
-                SELECT labelGroup.libraryId AS libraryId, COUNT(*) AS n
-                FROM label JOIN labelGroup ON labelGroup.id = label.labelGroupId
-                WHERE label.isArchived = 1
-                GROUP BY labelGroup.libraryId
-                """) {
-                result[LibraryID(rawValue: row["libraryId"])] = row["n"]
-            }
-            return result
-        }
-    }
-
-    static func summary(_ r: LabelRecord) -> LabelSummary {
-        LabelSummary(id: LabelID(rawValue: r.id ?? 0), groupID: LabelGroupID(rawValue: r.labelGroupId),
-                     name: r.name, normalizedName: r.normalizedName, colorHex: r.colorHex,
-                     isPinned: r.isPinned, isArchived: r.isArchived, fileCount: r.fileCount)
     }
 
     public func labelIDs(fileID: FileID) async throws -> [LabelID] {
@@ -157,7 +129,7 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
         }
         var record = LabelRecord(id: nil, labelGroupId: groupID.rawValue,
                                  name: TextNormalizer.display(name), normalizedName: key,
-                                 colorHex: nil, isPinned: false, isArchived: false, fileCount: 0)
+                                 colorHex: nil, isPinned: false, isHidden: false)
         try record.insert(db)
         return LabelID(rawValue: record.id ?? 0)
     }
@@ -175,9 +147,6 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
             ON CONFLICT (managedFileId, labelId) DO NOTHING
             """, arguments: [fileID.rawValue, labelID.rawValue,
                              Date().timeIntervalSinceReferenceDate])
-        // [IX-03] 件数の増分更新。**実際に行ができたときだけ**——既に付いて
-        // いたものを付け直しても件数は動かない。
-        if db.changesCount > 0 { try adjustCount(db, labelID: labelID, by: 1) }
     }
 
     public func unassign(fileID: FileID, labelID: LabelID) async throws {
@@ -189,7 +158,6 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
     static func unassign(_ db: Database, fileID: FileID, labelID: LabelID) throws {
         try db.execute(sql: "DELETE FROM fileLabel WHERE managedFileId = ? AND labelId = ?",
                        arguments: [fileID.rawValue, labelID.rawValue])
-        if db.changesCount > 0 { try adjustCount(db, labelID: labelID, by: -1) }
     }
 
     /// 1 つのラベルの紐づけを、指定した状態へ揃える [RL-01][RL-07]。
@@ -291,14 +259,12 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
         for id in removable.subtracting(wanted) {
             try db.execute(sql: "DELETE FROM fileLabel WHERE managedFileId = ? AND labelId = ?",
                            arguments: [fileID.rawValue, id.rawValue])
-            try adjustCount(db, labelID: id, by: -1)
         }
         let now = Date().timeIntervalSinceReferenceDate
         for id in wanted.subtracting(attached) {
             try db.execute(sql: """
                 INSERT INTO fileLabel (managedFileId, labelId, assignedAt) VALUES (?, ?, ?)
                 """, arguments: [fileID.rawValue, id.rawValue, now])
-            try adjustCount(db, labelID: id, by: 1)
         }
     }
 
@@ -343,7 +309,6 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
                 """, arguments: [target.rawValue, source.rawValue])
             // ③ 統合元を消す。残った重複行は `ON DELETE CASCADE` で一緒に消える。
             try db.execute(sql: "DELETE FROM label WHERE id = ?", arguments: [source.rawValue])
-            try Self.recount(db, labelIDs: [target])
         }
     }
 
@@ -374,13 +339,14 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
         }
     }
 
-    public func setArchived(_ ids: [LabelID], _ archived: Bool) async throws {
+    /// 手動での非表示の切り替え [LA3-02]。
+    public func setHidden(_ ids: [LabelID], _ hidden: Bool) async throws {
         guard !ids.isEmpty else { return }
         try await database.writer.write { db in
             try db.execute(sql: """
-                UPDATE label SET isArchived = ? WHERE id IN (\(SQLiteManagedFileRepository.placeholders(ids.count)))
+                UPDATE label SET isHidden = ? WHERE id IN (\(SQLiteManagedFileRepository.placeholders(ids.count)))
                 """, arguments: StatementArguments(
-                    [archived as any DatabaseValueConvertible]
+                    [hidden as any DatabaseValueConvertible]
                     + ids.map { $0.rawValue as any DatabaseValueConvertible }) ?? StatementArguments())
         }
     }
@@ -435,7 +401,7 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
                     id: id, groupID: LabelGroupID(rawValue: record.labelGroupId),
                     name: record.name, normalizedName: record.normalizedName,
                     colorHex: record.colorHex, isPinned: record.isPinned,
-                    isArchived: record.isArchived,
+                    isHidden: record.isHidden,
                     assignments: rows.map { row in
                         LabelSnapshot.Assignment(
                             fileID: FileID(rawValue: row["managedFileId"]),
@@ -470,16 +436,16 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
                 try db.execute(sql: """
                     INSERT INTO label
                         (id, labelGroupId, name, normalizedName, colorHex,
-                         isPinned, isArchived, fileCount)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+                         isPinned, isHidden)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
                         labelGroupId = excluded.labelGroupId, name = excluded.name,
                         normalizedName = excluded.normalizedName,
                         colorHex = excluded.colorHex, isPinned = excluded.isPinned,
-                        isArchived = excluded.isArchived
+                        isHidden = excluded.isHidden
                     """, arguments: [snapshot.id.rawValue, snapshot.groupID.rawValue,
                                      snapshot.name, snapshot.normalizedName, snapshot.colorHex,
-                                     snapshot.isPinned, snapshot.isArchived])
+                                     snapshot.isPinned, snapshot.isHidden])
 
                 // 「ちょうど戻す」ので、写しに無い紐づけは消す。
                 try db.execute(sql: "DELETE FROM fileLabel WHERE labelId = ?",
@@ -496,7 +462,6 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
                                          assignment.fileID.rawValue])
                 }
             }
-            try Self.recount(db, labelIDs: snapshots.map(\.id))
         }
     }
 
@@ -513,43 +478,6 @@ public struct SQLiteLabelRepository: LabelRepository, Sendable {
                 try db.execute(sql: "UPDATE labelGroup SET displayOrder = ? WHERE id = ?",
                                arguments: [order, id.rawValue])
             }
-        }
-    }
-
-    /// 増分更新 [IX-03] の破綻に備えた全件再集計 [IX-04]。
-    /// 実測 844 ms / 10,530 ラベル——疑わしければ気軽に回してよい。
-    public func recountAll(libraryID: LibraryID) async throws {
-        try await database.writer.write { db in
-            try db.execute(sql: """
-                UPDATE label SET fileCount = COALESCE((
-                    SELECT COUNT(*) FROM fileLabel fl
-                    JOIN managedFile mf ON mf.id = fl.managedFileId
-                    WHERE fl.labelId = label.id
-                      AND mf.state = 'active' AND mf.isArchived = 0
-                ), 0)
-                WHERE labelGroupId IN (SELECT id FROM labelGroup WHERE libraryId = ?)
-                """, arguments: [libraryID.rawValue])
-        }
-    }
-
-    // MARK: - 内部
-
-    static func adjustCount(_ db: Database, labelID: LabelID, by delta: Int) throws {
-        let stmt = try db.cachedStatement(sql:
-            "UPDATE label SET fileCount = MAX(0, fileCount + ?) WHERE id = ?")
-        try stmt.execute(arguments: [delta, labelID.rawValue])
-    }
-
-    static func recount(_ db: Database, labelIDs: [LabelID]) throws {
-        for id in labelIDs {
-            try db.execute(sql: """
-                UPDATE label SET fileCount = COALESCE((
-                    SELECT COUNT(*) FROM fileLabel fl
-                    JOIN managedFile mf ON mf.id = fl.managedFileId
-                    WHERE fl.labelId = label.id
-                      AND mf.state = 'active' AND mf.isArchived = 0
-                ), 0) WHERE id = ?
-                """, arguments: [id.rawValue])
         }
     }
 

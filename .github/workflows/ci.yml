@@ -50,6 +50,8 @@ jobs:
         run: swift Scripts/check-change-ledger.swift
       - name: Settings sections are classified as standard or advanced [§19.7]
         run: swift Scripts/check-settings-sections.swift
+      - name: The displayed list goes through displayedEntries [§19.13 #6]
+        run: swift Scripts/check-raw-entries-access.swift
 
   # QooKitTests。カバレッジ 80% 未満で失敗させる方針だが、テスト対象コードが
   # まだ存在しないフェーズ 0 の時点では実行のみ確認する [MT-01]。

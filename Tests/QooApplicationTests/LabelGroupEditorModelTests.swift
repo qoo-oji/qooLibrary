@@ -14,18 +14,16 @@ import Testing
 @Suite("ラベル一覧の並べ方と検索 [LE-12][LE-04][LB-07]")
 struct LabelGroupEditorRowTests {
 
-    /// - Parameter countWithVault: 保管庫のファイルを含む件数 [LE-05]。省略すると
-    ///   `count` と同じ——**2 つを同じ値にした標本だけでは、どちらを見ているかを
-    ///   検証できない**（変異検証で空振りして分かった）ので、区別したい検査では
-    ///   必ず違う値を渡すこと。
-    private func label(_ name: String, count: Int = 1, countWithVault: Int? = nil,
-                       archived: Bool = false, pinned: Bool = false,
+    /// - Parameter count: **生きている実体の件数** [LA3-01]。0 なら自動的に
+    ///   非表示になる——件数の意味は 1 つだけになった [§19.13 #1]。
+    /// - Parameter hidden: 手動で非表示にした印 [LA3-02]。
+    private func label(_ name: String, count: Int = 1,
+                       hidden: Bool = false, pinned: Bool = false,
                        id: Int64 = 0) -> LabelSummary {
         LabelSummary(id: LabelID(rawValue: id == 0 ? Int64(abs(name.hashValue % 100000)) : id),
                      groupID: LabelGroupID(rawValue: 1), name: name,
                      normalizedName: name.lowercased(), colorHex: nil,
-                     isPinned: pinned, isArchived: archived, fileCount: count,
-                     fileCountIncludingArchived: countWithVault)
+                     isPinned: pinned, isHidden: hidden, fileCount: count)
     }
 
     @Test("名前順は自然順（10 が 2 の後に来る）[LE-12]")
@@ -65,44 +63,47 @@ struct LabelGroupEditorRowTests {
     }
 
     /// **保管庫にあるラベルも一覧に出す** [LE-06][LA-06]。この画面と保管庫の
-    /// 整理ウインドウだけが、それを見せてよい場所。
-    /// **バッジは保管庫のファイルも数える** [LE-05]——フィルタからは外れる
-    /// [FA-05] が、紐づけは維持されているので、保管庫へ入れただけで
-    /// 「0 件」に見えてはならない。かつての 0 件の赤字 [LE-04][RC-07] は
-    /// 撤回した [§19.8]。
-    @Test("全ファイルが保管庫にあっても件数バッジは 0 にならない [LE-05]")
-    func vaultOnlyLabelKeepsItsBadgeCount() {
+    /// **実体 0 件のラベルも一覧に出て、控えめな印が付く** [LA3-03]。
+    /// この画面が、非表示になったラベルを整理できる唯一の場所である。
+    ///
+    /// 印は 2 通りに出し分ける——手動 [LA3-02] は「表示に戻す」で解けるが、
+    /// 実体 0 件 [LA3-01] は解けない。
+    @Test("実体 0 件のラベルは控えめに出るが、手動の印は立たない [LA3-01][LA3-03]")
+    func labelWithoutFilesIsListedAsHidden() {
         let rows = LabelGroupEditorModel.rows(
-            from: [label("全部が保管庫", count: 0, countWithVault: 3)],
+            from: [label("実体なし", count: 0), label("通常のもの")],
             sortedBy: .name, matching: "")
-        let row = try! #require(rows.first)
-        #expect(row.fileCount == 3, "バッジは保管庫のぶんも数える [LE-03][LE-05]")
+        let row = try! #require(rows.first { $0.name == "実体なし" })
+        #expect(row.fileCount == 0)
+        #expect(row.isHidden, "フィルタから消えているので控えめに出す")
+        #expect(!row.isManuallyHidden, "**導出であって印ではない**——「表示に戻す」は出さない")
     }
 
     /// 件数順の並べ替えも**バッジと同じ件数**で決める——一覧に出ている数字と
     /// 並び順が食い違うと、何を基準に並んでいるのか読めなくなる。
-    @Test("件数順はバッジの件数で並べる [LE-12][LE-05]")
+    @Test("件数順はバッジの件数で並べる [LE-12]")
     func fileCountOrderUsesTheBadgeCount() {
         let rows = LabelGroupEditorModel.rows(
-            from: [label("A", count: 5, countWithVault: 5),
-                   label("B", count: 0, countWithVault: 9)],
+            from: [label("A", count: 5), label("B", count: 9)],
             sortedBy: .fileCount, matching: "")
         #expect(rows.map(\.name) == ["B", "A"])
     }
 
-    @Test("保管庫のラベルも一覧に出て、印が付く [LE-06]")
-    func archivedLabelsAreListedAndFlagged() {
+    @Test("手動で非表示にしたラベルも一覧に出て、専用の印が付く [LA3-02][LA3-03]")
+    func manuallyHiddenLabelsAreListedAndFlagged() {
         let rows = LabelGroupEditorModel.rows(
-            from: [label("保管庫のもの", archived: true), label("通常のもの")],
+            from: [label("隠したもの", hidden: true), label("通常のもの")],
             sortedBy: .name, matching: "")
         #expect(rows.count == 2)
-        #expect(rows.first { $0.name == "保管庫のもの" }?.isArchived == true)
+        let row = try! #require(rows.first { $0.name == "隠したもの" })
+        #expect(row.isHidden)
+        #expect(row.isManuallyHidden, "「表示に戻す」を出せる")
     }
 
-    @Test("統合先は自分を除いた同じグループの全部（保管庫のものも含む）[LB-07]")
-    func mergeTargetsExcludeSelfAndIncludeArchived() {
+    @Test("統合先は自分を除いた同じグループの全部（非表示のものも含む）[LB-07]")
+    func mergeTargetsExcludeSelfAndIncludeHidden() {
         let a = label("A", id: 1), b = label("B", id: 2)
-        let c = label("C", archived: true, id: 3)
+        let c = label("C", hidden: true, id: 3)
         let targets = LabelGroupEditorModel.mergeTargets(from: [a, b, c], excluding: a.id)
         #expect(targets.map(\.name) == ["B", "C"])
     }
@@ -192,35 +193,35 @@ struct LabelGroupEditorModelTests {
         #expect(m.rows.count == 4)
     }
 
-    @Test("保管庫へ移す／戻す。選択が混ざっていたら移す側に倒す [LA-01][LA-08]")
+    @Test("非表示にする／表示に戻す。選択が混ざっていたら隠す側に倒す [LA3-02]")
     @MainActor
-    func archiveAction() async throws {
+    func hideAction() async throws {
         let e = try await workspace()
         let m = e.model
         let all = m.rows.map(\.label)
         m.selection = [all[0].id]
-        #expect(m.archiveActionArchives)
-        try await m.setSelectedArchived(true)
-        #expect(m.rows.first { $0.id == all[0].id }?.isArchived == true)
+        #expect(m.hideActionHides)
+        try await m.setSelectedHidden(true)
+        #expect(m.rows.first { $0.id == all[0].id }?.isManuallyHidden == true)
 
-        // 保管庫のものだけを選べば「戻す」
-        #expect(m.archiveActionArchives == false)
+        // 隠したものだけを選べば「表示に戻す」
+        #expect(m.hideActionHides == false)
 
-        // 混ざっていたら「移す」
+        // 混ざっていたら「隠す」
         m.selection = [all[0].id, all[1].id]
-        #expect(m.archiveActionArchives)
+        #expect(m.hideActionHides)
     }
 
-    /// **実機検証で見つけた。** 何も選んでいないのに「保管庫から戻す」と
+    /// **実機検証で見つけた。** 何も選んでいないのに「表示に戻す」と
     /// 出ていた——押せないが、まれで逆向きの操作をこの画面の主目的だと
     /// 読ませてしまう。
-    @Test("何も選んでいないときは「保管庫へ移動」を出す")
+    @Test("何も選んでいないときは「非表示にする」を出す")
     @MainActor
-    func archiveActionDefaultsToArchivingWhenNothingIsSelected() async throws {
+    func hideActionDefaultsToHidingWhenNothingIsSelected() async throws {
         let e = try await workspace()
         let m = e.model
         m.selection = []
-        #expect(m.archiveActionArchives)
+        #expect(m.hideActionHides)
     }
 
     @Test("削除すると一覧から消え、選択も片付く [LE-07]")

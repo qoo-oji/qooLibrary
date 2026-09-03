@@ -126,11 +126,20 @@ struct PersistencePerformanceTests {
         #expect(total == 50_000)
         #expect(countMS < 2000)
 
-        // (f) ラベル件数の全件再集計 [IX-04]
-        let recountMS = try await Self.measure("(f) ラベル件数の全件再集計") {
-            try await s.f.labels.recountAll(libraryID: s.f.libraryID)
+        // (f) ラベル件数の集計 [§19.13 #1]。**非正規化列を撤去した**ので、
+        // フィルタペインが開くたびにこの経路を通る——ここが遅ければ撤去は
+        // 誤りだったことになる。
+        //
+        // 10 万件・50 万紐づけでの実測は 105.3 ms（この suite の 5 万件・
+        // 25 万紐づけならその半分程度）。上限は現行の PF 目標に合わせて 500 ms
+        // ——**列を読んでいた頃と同等以下**であることが撤去の根拠だった
+        // （109.4 → 105.3 ms。現行の経路が既に相関副問い合わせを 1 本
+        // 走らせていたため）。
+        let groupsForCount = try await s.f.labels.groups(libraryID: s.f.libraryID)
+        let countMS2 = try await Self.measure("(f) 全フィールドのラベル件数") {
+            for g in groupsForCount { _ = try await s.f.labels.labels(groupID: g.id) }
         }
-        #expect(recountMS < 5000)
+        #expect(countMS2 < 500, "[§19.13 #1] \(countMS2) ms")
 
         // (g) 同一性判定のホットパス [ID-02]
         let identityMS = try await Self.measure("(g) (volumeUUID, inode) で 1 万回") {

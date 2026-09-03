@@ -62,6 +62,110 @@ struct LabelFilterModelTests {
         }
     }
 
+    // MARK: - 非表示 [LA3-01][LA3-02][LA3-05]
+
+    /// **手動で非表示にしたラベルはフィルタに出さない** [LA3-02][LA3-05]。
+    /// 実体が何件あっても隠れたまま——うるさい自動ラベルを消す唯一の手段
+    /// （削除しても次の走査で復活する）。
+    @Test("手動で非表示にしたラベルはフィルタに出ない [LA3-02][LA3-05]")
+    @MainActor
+    func manuallyHiddenLabelsAreOmitted() async throws {
+        let (w, model) = try await Self.prepared([Self.doujin(0), Self.doujin(1)])
+        let circle = try #require(model.groups.first { $0.name == "サークル" })
+        let before = try #require(model.labels[circle.id])
+        #expect(before.count == 2)
+
+        try await w.services.setLabelHidden([before[0].id], true)
+        await model.load(registrationUUID: w.registrationUUID, services: w.services)
+
+        let after = try #require(model.labels[circle.id])
+        #expect(after.map(\.id) == [before[1].id])
+    }
+
+    /// **実体を 1 件も持たないラベルはフィルタに出さない** [LA3-01][LA3-05]。
+    /// これは状態ではなく導出なので、実体が戻れば次の読み直しで自動的に復帰する。
+    @Test("実体 0 件のラベルはフィルタに出ないが、戻れば自動的に復帰する [LA3-01]")
+    @MainActor
+    func labelsWithoutLiveFilesDisappearAndComeBack() async throws {
+        let (w, model) = try await Self.prepared([Self.doujin(0), Self.doujin(1)])
+        let circle = try #require(model.groups.first { $0.name == "サークル" })
+        let before = try #require(model.labels[circle.id])
+        #expect(before.count == 2)
+
+        // 1 冊をファイル保管庫へ入れる [FA-05] ——そのサークルの実体が 0 になる。
+        // **DB の記録だけを動かす**（実ファイルは動かさない）——ここで確かめたい
+        // のは「実体が無くなったラベルが隠れるか」であって、移送の正しさではない。
+        let libraryID = try #require(model.library?.id)
+        let rows = try await w.services.files(FileQuery(libraryID: libraryID)).rows
+        let target = try #require(rows.first { $0.filename == Self.doujin(0) })
+        let archived = VaultPath.archived(target.relativePath)
+        try await w.services.setFileArchived(
+            [VaultMove(id: target.id, relativePath: archived,
+                       previousPath: target.relativePath)],
+            archived: true)
+        await model.load(registrationUUID: w.registrationUUID, services: w.services)
+        #expect((model.labels[circle.id] ?? []).count == 1, "**手動の印は無い**——実体が無いだけ")
+
+        // 戻せば、何もしなくても表示へ返る。
+        try await w.services.setFileArchived(
+            [VaultMove(id: target.id, relativePath: target.relativePath,
+                       previousPath: archived)],
+            archived: false)
+        await model.load(registrationUUID: w.registrationUUID, services: w.services)
+        #expect((model.labels[circle.id] ?? []).count == 2)
+    }
+
+    /// **見えるラベルが 1 件も無くなったフィールドは出さない** [LF-02][LA3-05]。
+    /// `labelCount`（非表示も数える）だけで判断すると、隠したラベルしか無い
+    /// フィールドが空の見出しとして残る。
+    @Test("見えるラベルが 0 件になったフィールドは出さない [LF-02][LA3-05]")
+    @MainActor
+    func fieldsWithNoVisibleLabelsAreOmitted() async throws {
+        let (w, model) = try await Self.prepared([Self.doujin(0)])
+        let circle = try #require(model.groups.first { $0.name == "サークル" })
+        let labels = try #require(model.labels[circle.id])
+        try await w.services.setLabelHidden(labels.map(\.id), true)
+        await model.load(registrationUUID: w.registrationUUID, services: w.services)
+        #expect(!model.groups.contains { $0.id == circle.id })
+    }
+
+    /// **ピンを切り替えただけで非表示のラベルが並ばない**［code-review の指摘］。
+    /// 読み直す経路が `load` と `setPinned` の 2 つあり、片方だけ絞っていた。
+    @Test("ピン留めの読み直しも非表示のラベルを除く [LA3-05][PN-04]")
+    @MainActor
+    func pinningDoesNotBringBackHiddenLabels() async throws {
+        let (w, model) = try await Self.prepared([Self.doujin(0), Self.doujin(1)])
+        let circle = try #require(model.groups.first { $0.name == "サークル" })
+        let before = try #require(model.labels[circle.id])
+        try await w.services.setLabelHidden([before[0].id], true)
+        await model.load(registrationUUID: w.registrationUUID, services: w.services)
+        #expect(model.labels[circle.id]?.count == 1)
+
+        await model.setPinned(before[1], true, services: w.services)
+        #expect(model.labels[circle.id]?.map(\.id) == [before[1].id],
+                "隠したラベルが戻ってきてはならない")
+    }
+
+    /// **チェック中のラベルが一覧から消えたら、チェックも落とす**
+    /// ［code-review の指摘］。残すと絞り込みが効いたまま、原因の
+    /// チェックボックスがどこにも見えない状態になる。
+    @Test("一覧から消えたラベルの選択は落ちる [LA3-01][LF-05]")
+    @MainActor
+    func selectionDropsLabelsThatDisappear() async throws {
+        let (w, model) = try await Self.prepared([Self.doujin(0), Self.doujin(1)])
+        let circle = try #require(model.groups.first { $0.name == "サークル" })
+        let before = try #require(model.labels[circle.id])
+        model.toggle(before[0])
+        model.toggle(before[1])
+        #expect(model.selectedLabelCount == 2)
+
+        try await w.services.setLabelHidden([before[0].id], true)
+        await model.load(registrationUUID: w.registrationUUID, services: w.services)
+
+        #expect(model.selectedLabelCount == 1)
+        #expect(model.isSelected(before[1]))
+    }
+
     // MARK: - 絞り込み [LF-08〜LF-11]
 
     @Test("グループ内 OR × グループ間 AND [LF-08〜LF-10]、件数は常時出る [LF-11]")

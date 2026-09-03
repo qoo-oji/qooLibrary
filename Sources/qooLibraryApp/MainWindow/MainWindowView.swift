@@ -601,14 +601,18 @@ struct MainWindowView: View {
 
     /// ブックフォルダの一覧を読み直す条件 [IF-17][IF-18]。
     ///
-    /// `contentRevision` を含めるのは、走査が `isBookFolder` を書き換えたとき
+    /// `generation` を含めるのは、走査が `isBookFolder` を書き換えたとき
     /// （画像フォルダにサブフォルダができて 1 冊扱いが解除された [IF-05] 等）に
     /// 印を消すため——実体の変更を見る `DirectoryObservation` では足りない。
+    ///
+    /// `settingsRevisions` も残す——設定ウインドウで [IF-18] を切り替えたら
+    /// その場で効かせたいが、**あれは DB 列（パーサのキャッシュ鍵 [VT-02]）で
+    /// 世代番号とは別物**なので、片方だけでは足りない。
     private struct BookFolderLoadKey: Hashable {
         let mode: DisplayMode
         let root: NavigationRoot
         let relativePath: String?
-        let contentRevision: Int
+        let generation: Int
         let settingsRevisions: [Int]
     }
 
@@ -617,22 +621,20 @@ struct MainWindowView: View {
             mode: windowState.displayMode,
             root: windowState.navigationRoot,
             relativePath: windowState.libraryRelativePath,
-            contentRevision: LibraryServices.shared.contentRevision,
-            // 設定ウインドウで [IF-18] を切り替えたら、その場で効く。
+            generation: LibraryGeneration.shared.value,
             settingsRevisions: LibraryServices.shared.libraries.map(\.settingsRevision))
     }
 
     /// ラベルメニューの事前読み込みを読み直す条件 [RL3-01]。
     ///
-    /// `bookFolderLoadKey` の条件に加えて `historyCount`（⌘Z・インスペクタでの
-    /// 付け外しが紐づけを変える）と `libraryRowCount`（ライブラリ表示モードの
-    /// 追加読み込みで対象が増える [FI-05]）にも乗る。
+    /// `bookFolderLoadKey` の条件に加えて `libraryRowCount`（ライブラリ表示
+    /// モードの追加読み込みで対象が増える [FI-05]）にも乗る。⌘Z とインスペクタ
+    /// での付け外しは世代番号が拾う [§19.13 #2]。
     private struct LabelMenuLoadKey: Hashable {
         let mode: DisplayMode
         let root: NavigationRoot
         let relativePath: String?
-        let contentRevision: Int
-        let historyCount: Int
+        let generation: Int
         let libraryRowCount: Int
         let settingsRevisions: [Int]
     }
@@ -642,8 +644,7 @@ struct MainWindowView: View {
             mode: windowState.displayMode,
             root: windowState.navigationRoot,
             relativePath: windowState.libraryRelativePath,
-            contentRevision: LibraryServices.shared.contentRevision,
-            historyCount: CommandStack.shared.operationHistory.count,
+            generation: LibraryGeneration.shared.value,
             libraryRowCount: windowState.libraryContent.rows.count,
             settingsRevisions: LibraryServices.shared.libraries.map(\.settingsRevision))
     }
@@ -654,8 +655,7 @@ struct MainWindowView: View {
     private var unresolvedRescueKey: UnresolvedRescueKey {
         UnresolvedRescueKey(
             libraryID: windowState.showsUnresolvedFiles ? windowState.currentLibrary?.id : nil,
-            contentRevision: LibraryServices.shared.contentRevision,
-            operationCount: CommandStack.shared.operationHistory.count)
+            generation: LibraryGeneration.shared.value)
     }
 
     private var labelFilterLoadKey: LabelFilterLoadKey {
@@ -664,8 +664,7 @@ struct MainWindowView: View {
             libraries: LibraryServices.shared.libraries.map {
                 "\($0.id.rawValue):\($0.settingsRevision)"
             },
-            contentRevision: LibraryServices.shared.contentRevision,
-            operationCount: CommandStack.shared.operationHistory.count)
+            generation: LibraryGeneration.shared.value)
     }
 
     private var labelFilterResultKey: LabelFilterResultKey {
@@ -816,7 +815,7 @@ struct MainWindowView: View {
         }
         // 保存した絞り込みを読む [SH-01]。**ラベルフィルタと同じ鍵で駆動する**
         // ——どちらも「表示中のライブラリについて左ペインが出すもの」で、
-        // `operationHistory.count` を含んでいるので ⌘Z にも追随する。
+        // 世代番号を含んでいるので ⌘Z にも追随する。
         .task(id: labelFilterLoadKey) {
             await windowState.shelves.load(library: windowState.currentLibrary,
                                            services: LibraryServices.shared)
@@ -967,28 +966,25 @@ private struct PaneWidthPersisting: ViewModifier {
 private struct UnresolvedRescueKey: Hashable {
     /// `nil` なら未整理ビューを見ていない（読まない）。
     let libraryID: LibraryID?
-    let contentRevision: Int
-    let operationCount: Int
+    let generation: Int
 }
 
 private struct LabelFilterLoadKey: Hashable {
     let root: NavigationRoot
     let libraries: [String]
-    /// 走査が DB を書き換えるたびに増える [`LibraryServices.contentRevision`]。
+    /// DB の中身が変わるたびに増える [`LibraryGeneration`]。走査・⌘Z・
+    /// インスペクタでの付け外し・設定保存のどれもここに現れる [§19.13 #2]。
     ///
     /// **これが無いとラベルが一覧に出ない**［2-9 の実機検証で発見］。有効化と
     /// 初回走査は同時に走るので、`libraries` が空 → 1 件に変わった時点で
     /// 一度読み込まれ、そのときはまだラベルが 1 件も無い。走査が終わっても
     /// `settingsRevision` は変わらないため鍵が動かず、**アプリを再起動する
     /// まで「このライブラリにはまだラベルがありません」のまま**だった。
-    let contentRevision: Int
-    /// DB を触る操作（⌘Z を含む）のたびに増える [`CommandStack` 参照]。
     ///
-    /// **未整理の件数 [UR3-01] がこれを要る。**「以後無視する」[AL-33] は
-    /// `CommandStack` 経由の取り消せる操作で、走査ではないので
-    /// `contentRevision` は動かない——含めないと、無視した直後も ⌘Z で戻した
-    /// 直後も左ペインの件数が古いままになる。
-    let operationCount: Int
+    /// **未整理の件数 [UR3-01] も同じ鍵に乗る。**「以後無視する」[AL-33] は
+    /// 走査ではない取り消せる操作だが、世代番号は `CommandStack` からも
+    /// 進むので、以前のように 2 つ目の合図を足す必要が無い。
+    let generation: Int
 }
 
 /// 件数と絞り込み結果を数え直す条件。

@@ -45,7 +45,7 @@ struct LabelEditingTests {
 
         try await s.f.labels.deleteLabels([id])
 
-        #expect(try await s.f.labels.labels(groupID: s.group.id, includeArchived: true)
+        #expect(try await s.f.labels.labels(groupID: s.group.id)
             .map(\.id) == [keep])
         // 紐づけは外部キーの cascade で消える。残っているのは keep だけ。
         for file in s.fileIDs {
@@ -77,12 +77,12 @@ struct LabelEditingTests {
         #expect(snapshots[0].assignments.count == 3)
 
         try await s.f.labels.deleteLabels([id])
-        #expect(try await s.f.labels.labels(groupID: s.group.id, includeArchived: true).isEmpty)
+        #expect(try await s.f.labels.labels(groupID: s.group.id).isEmpty)
 
         try await s.f.labels.restore(snapshots)
 
         let restored = try #require(try await s.f.labels
-            .labels(groupID: s.group.id, includeArchived: true).first)
+            .labels(groupID: s.group.id).first)
         // **同じ ID で戻る。** ここが崩れると、ラベルフィルタでチェック中だった
         // 選択やウインドウ状態復元が黙って外れる。
         #expect(restored.id == id)
@@ -107,7 +107,7 @@ struct LabelEditingTests {
         #expect(other != id)
 
         try await s.f.labels.restore(snapshots)
-        let all = try await s.f.labels.labels(groupID: s.group.id, includeArchived: true)
+        let all = try await s.f.labels.labels(groupID: s.group.id)
         #expect(Set(all.map(\.id)) == Set([id, other]))
         #expect(all.first { $0.id == id }?.name == "先")
         #expect(all.first { $0.id == other }?.name == "後")
@@ -145,47 +145,79 @@ struct LabelEditingTests {
 
         try await s.f.labels.restore(snapshots)
         let restored = try #require(try await s.f.labels
-            .labels(groupID: s.group.id, includeArchived: true).first)
+            .labels(groupID: s.group.id).first)
         #expect(restored.fileCount == 2)   // 消えた 1 件を除いて戻る
     }
 
     // MARK: - 件数の 2 つの意味 [LE-03][LE-05][FA-05]
 
     /// **要件が意図的に食い違う 1 点。** ファイル保管庫へ移したファイルは
-    /// ラベルフィルタの結果から外れる [FA-05] が、ラベル編集ウインドウの
-    /// バッジには影響しない [LE-05]——紐づけは維持されているので、保管庫へ
-    /// 入れただけでラベルが「0 件」＝赤字＝消してよさそう [LE-04] に見えるのは誤り。
-    ///
-    /// ファイル保管庫そのものは 2-11 で未実装なので、ここでは `isArchived` を
-    /// 直接書いて**その状況を作ってから**確かめる（主張が成り立ちうる前提を
-    /// 先に用意する）。
-    @Test("保管庫へ移したファイルは、フィルタの件数からは外れるがバッジには残る [LE-05][FA-05]")
-    func archivedFilesLeaveTheFilterCountButKeepTheBadgeCount() async throws {
+    /// **件数は 1 つだけになった** [§19.13 #1]。ファイル保管庫へ入れたファイルは
+    /// フィルタの結果から外れる [FA-05] ので、件数からも外れる——0 になれば
+    /// LA3-01 により自動的に非表示になり、**画面に出る数字と一覧の見え方が
+    /// 必ず一致する**。以前はここだけ保管庫のファイルも数えていた [LE-05] が、
+    /// 0 件ラベルの赤字 [LE-04] が撤回された [LA3-04] ことで存在理由が消えた。
+    @Test("保管庫へ移したファイルは件数から外れる [FA-05][LE-05 撤回]")
+    func archivedFilesLeaveTheCount() async throws {
         let s = try await Setup.make()
         let id = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "サークル値A")
         for file in s.fileIDs { try await s.f.labels.assign(fileID: file, labelID: id) }
-        try await s.f.labels.recountAll(libraryID: s.f.libraryID)
 
         var label = try #require(try await s.f.labels
-            .labels(groupID: s.group.id, includeArchived: true).first)
+            .labels(groupID: s.group.id).first)
         #expect(label.fileCount == 3)
-        #expect(label.fileCountIncludingArchived == 3, "保管庫が空なら 2 つは一致する")
+        #expect(label.isVisible, "実体があり手動でも隠していないので見える [LA3-01]")
 
         // 1 件をファイル保管庫へ入れる [FA-05]
         try await s.f.database.writer.write { db in
             try db.execute(sql: "UPDATE managedFile SET isArchived = 1 WHERE id = ?",
                            arguments: [s.fileIDs[0].rawValue])
         }
-        try await s.f.labels.recountAll(libraryID: s.f.libraryID)
 
         label = try #require(try await s.f.labels
-            .labels(groupID: s.group.id, includeArchived: true).first)
-        #expect(label.fileCount == 2, "フィルタからは外れる [FA-05]")
-        #expect(label.fileCountIncludingArchived == 3, "バッジには影響しない [LE-05]")
+            .labels(groupID: s.group.id).first)
+        #expect(label.fileCount == 2, "**数え直しを呼んでいない**——件数は毎回数える")
     }
 
-    @Test("孤立・ゴミ箱のファイルはどちらの件数にも入らない [ID-06][TR-01]")
-    func orphanedFilesCountForNeither() async throws {
+    /// **全件が保管庫か孤立になれば自動的に非表示** [LA3-01]。移動イベントも
+    /// 印も持たない——実体が戻れば件数が 1 以上になり、そのまま表示へ戻る。
+    @Test("生きている実体が 0 件になると自動的に非表示になる [LA3-01]")
+    func labelWithoutLiveFilesBecomesHidden() async throws {
+        let s = try await Setup.make()
+        let id = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "サークル値A")
+        for file in s.fileIDs { try await s.f.labels.assign(fileID: file, labelID: id) }
+        try await s.f.database.writer.write { db in
+            try db.execute(sql: "UPDATE managedFile SET state = 'orphaned'")
+        }
+        var label = try #require(try await s.f.labels.labels(groupID: s.group.id).first)
+        #expect(label.fileCount == 0)
+        #expect(!label.isVisible, "手動の印は無いが、実体が無いので隠れる")
+        #expect(!label.isHidden, "**状態ではなく導出**——手動の印は立っていない")
+
+        // 実体が戻れば、何もしなくても表示へ戻る。
+        try await s.f.database.writer.write { db in
+            try db.execute(sql: "UPDATE managedFile SET state = 'active'")
+        }
+        label = try #require(try await s.f.labels.labels(groupID: s.group.id).first)
+        #expect(label.isVisible)
+    }
+
+    /// **手動の印は実体があっても効き続ける** [LA3-02]。うるさい自動ラベルを
+    /// フィルタから消す唯一の手段（削除しても次の走査で復活する）。
+    @Test("手動で非表示にしたラベルは実体があっても隠れたまま [LA3-02]")
+    func manuallyHiddenStaysHidden() async throws {
+        let s = try await Setup.make()
+        let id = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "L")
+        for file in s.fileIDs { try await s.f.labels.assign(fileID: file, labelID: id) }
+        try await s.f.labels.setHidden([id], true)
+        let label = try #require(try await s.f.labels.labels(groupID: s.group.id).first)
+        #expect(label.fileCount == 3)
+        #expect(label.isHidden)
+        #expect(!label.isVisible, "実体が何件あっても隠れたまま")
+    }
+
+    @Test("孤立・ゴミ箱のファイルは件数に入らない [ID-06][TR-01]")
+    func orphanedFilesDoNotCount() async throws {
         let s = try await Setup.make()
         let id = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "L")
         for file in s.fileIDs { try await s.f.labels.assign(fileID: file, labelID: id) }
@@ -193,11 +225,9 @@ struct LabelEditingTests {
             try db.execute(sql: "UPDATE managedFile SET state = 'orphaned' WHERE id = ?",
                            arguments: [s.fileIDs[0].rawValue])
         }
-        try await s.f.labels.recountAll(libraryID: s.f.libraryID)
         let label = try #require(try await s.f.labels
-            .labels(groupID: s.group.id, includeArchived: true).first)
+            .labels(groupID: s.group.id).first)
         #expect(label.fileCount == 2)
-        #expect(label.fileCountIncludingArchived == 2)
     }
 
     // MARK: - 統合 [LB-07][LE-11]
@@ -219,7 +249,7 @@ struct LabelEditingTests {
 
         let byFile = try await s.f.labels.assignments(fileIDs: [file])
         #expect(byFile[file] == [target])
-        #expect(try await s.f.labels.labels(groupID: s.group.id, includeArchived: true)
+        #expect(try await s.f.labels.labels(groupID: s.group.id)
             .first?.fileCount == 1, "1 ファイルを二重に数えない")
     }
 
@@ -236,7 +266,7 @@ struct LabelEditingTests {
         let byFile = try await s.f.labels.assignments(fileIDs: s.fileIDs)
         #expect(byFile[s.fileIDs[0]] == [target])
         #expect(byFile[s.fileIDs[1]] == [target])
-        #expect(try await s.f.labels.labels(groupID: s.group.id, includeArchived: true)
+        #expect(try await s.f.labels.labels(groupID: s.group.id)
             .first?.fileCount == 2)
     }
 
@@ -264,12 +294,12 @@ struct LabelEditingTests {
         // 統合先へ移ってくるため。
         let before = try await s.f.labels.snapshot(labelIDs: [source, target])
         try await s.f.labels.merge(source, into: target)
-        #expect(try await s.f.labels.labels(groupID: s.group.id, includeArchived: true)
+        #expect(try await s.f.labels.labels(groupID: s.group.id)
             .map(\.id) == [target])
 
         try await s.f.labels.restore(before)
 
-        let all = try await s.f.labels.labels(groupID: s.group.id, includeArchived: true)
+        let all = try await s.f.labels.labels(groupID: s.group.id)
         #expect(Set(all.map(\.id)) == Set([source, target]))
         let byFile = try await s.f.labels.assignments(fileIDs: s.fileIDs)
         #expect(byFile[s.fileIDs[0]] == [source, target])
@@ -287,7 +317,7 @@ struct LabelEditingTests {
             try await s.f.labels.rename(b, to: "サークル値A")
         }
         // 名前は変わっていない
-        #expect(try await s.f.labels.labels(groupID: s.group.id, includeArchived: true)
+        #expect(try await s.f.labels.labels(groupID: s.group.id)
             .first { $0.id == b }?.name == "サークル値B")
     }
 
@@ -304,10 +334,10 @@ struct LabelEditingTests {
         let s = try await Setup.make(files: 0)
         let id = try await s.f.labels.ensureLabel(groupID: s.group.id, name: from)
         let before = try #require(try await s.f.labels
-            .labels(groupID: s.group.id, includeArchived: true).first)
+            .labels(groupID: s.group.id).first)
         try await s.f.labels.rename(id, to: to)
         let after = try #require(try await s.f.labels
-            .labels(groupID: s.group.id, includeArchived: true).first)
+            .labels(groupID: s.group.id).first)
         // 前提の確認: 正規化名が変わらない改名であること（変わっていたら
         // 「自分自身は衝突ではない」の経路を通らず、この検査は空振りする）
         #expect(before.normalizedName == after.normalizedName)
@@ -321,7 +351,7 @@ struct LabelEditingTests {
         _ = try await s.f.labels.ensureLabel(groupID: other.id, name: "同じ名前")
         let id = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "元の名前")
         try await s.f.labels.rename(id, to: "同じ名前")
-        #expect(try await s.f.labels.labels(groupID: s.group.id, includeArchived: true)
+        #expect(try await s.f.labels.labels(groupID: s.group.id)
             .first?.name == "同じ名前")
     }
 
@@ -331,13 +361,13 @@ struct LabelEditingTests {
     func labelColorCanBeSetAndCleared() async throws {
         let s = try await Setup.make(files: 0)
         let id = try await s.f.labels.ensureLabel(groupID: s.group.id, name: "L")
-        #expect(try await s.f.labels.labels(groupID: s.group.id, includeArchived: true)
+        #expect(try await s.f.labels.labels(groupID: s.group.id)
             .first?.colorHex == nil)   // 既定はグループ色の継承
         try await s.f.labels.setColor(id, hex: "#123456")
-        #expect(try await s.f.labels.labels(groupID: s.group.id, includeArchived: true)
+        #expect(try await s.f.labels.labels(groupID: s.group.id)
             .first?.colorHex == "#123456")
         try await s.f.labels.setColor(id, hex: nil)
-        #expect(try await s.f.labels.labels(groupID: s.group.id, includeArchived: true)
+        #expect(try await s.f.labels.labels(groupID: s.group.id)
             .first?.colorHex == nil)
     }
 }

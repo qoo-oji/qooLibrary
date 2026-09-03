@@ -212,7 +212,7 @@ struct LabelMenuModelTests {
         let circle1 = try #require(m.groups.flatMap { m.menuLabels(in: $0, for: [id1]) }
             .first { $0.name == "サークル値1" })
 
-        try await w.services.setLabelArchived([circle1.id], true)
+        try await w.services.setLabelHidden([circle1.id], true)
         m = await loadedModel(w, library)
         let group = try #require(m.groups.first { group in
             m.menuLabels(in: group, for: [id1]).contains { $0.id == circle1.id }

@@ -186,6 +186,6 @@ struct SeriesSuggestionRepositoryTests {
             try db.columns(in: "managedFile").map(\.name)
         }
         #expect(columns.contains("seriesSuggestionIgnoredTitle"))
-        #expect(QooMigrations.identifiers.last == "v13_seriesSuggestionIgnore")
+        #expect(QooMigrations.identifiers.contains("v13_seriesSuggestionIgnore"))
     }
 }

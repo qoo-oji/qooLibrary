@@ -1319,6 +1319,7 @@ struct FolderContentView: View {
         // **画面に出ている一覧を測る** [code-review 指摘]。ライブラリ表示
         // モードでは `entries`（実体の直下）と表示内容が別物で、素の
         // `entries` を測ると列幅が中身と合わない。
+        // [raw-entries] モードで明示的に振り分けている。
         let measured = displayMode == .library ? displayedEntries : entries
 
         func fitWidth(header: String.LocalizationValue, values: [String]) -> CGFloat {
@@ -1662,15 +1663,14 @@ struct FolderContentView: View {
         let sort: FolderSortComparator
         let filterRevision: Int
         let searchText: String
-        /// DB を触る操作（⌘Z を含む）のたびに増える [`CommandStack` 参照]。
-        /// **含めないと ⌘Z で評価やタイトルを戻しても一覧が古いまま**になる
-        /// ——右ペインが `.task(id:)` の鍵に同じものを混ぜているのと同じ理由。
-        let operationCount: Int
-        /// 走査が DB を書き換えるたびに増える
-        /// [`LibraryServices.contentRevision`]。**実体の変更を見る
-        /// `DirectoryObservation` では足りない**——ライブラリ表示モードが
-        /// 描いているのは DB の行なので、走査が書き終わるまで出す材料が無い。
-        let contentRevision: Int
+        /// DB の中身が変わるたびに増える [`LibraryGeneration`][§19.13 #2]。
+        ///
+        /// **⌘Z も走査もここに現れる。** 前者が無いと評価やタイトルを戻しても
+        /// 一覧が古いまま、後者が無いと外部で増えたファイルが出てこない
+        /// （実体の変更を見る `DirectoryObservation` では足りない——ライブラリ
+        /// 表示モードが描いているのは DB の行なので、走査が書き終わるまで
+        /// 出す材料が無い）。以前は 2 つの合図を別々に混ぜていた。
+        let generation: Int
         /// 未整理ビューの出入り [UR3-01]。**左ペインから切り替わる**ので、
         /// この View の中の操作だけを見ていると読み直しの契機が無い。
         let unresolvedFilter: FileQuery.UnresolvedFilter?
@@ -1701,8 +1701,7 @@ struct FolderContentView: View {
                        sort: sortOrder.first ?? FolderSortComparator(key: .name),
                        filterRevision: labelFilterRevision,
                        searchText: searchText,
-                       operationCount: CommandStack.shared.operationHistory.count,
-                       contentRevision: LibraryServices.shared.contentRevision,
+                       generation: LibraryGeneration.shared.value,
                        unresolvedFilter: libraryContent.unresolvedFilter)
     }
 
@@ -1782,6 +1781,8 @@ struct FolderContentView: View {
         // 非同期・キャンセル可能に行い、ここは受け取った結果を並べるだけ。
         // 一致判定の規則とその理由は `NameFilter` 側にまとめてある。
         // ライブラリ横断検索・ラベル検索はフェーズ2の担当。
+        // **ここが `entries` を画面の一覧へ変える唯一の場所** [§19.13 #6]。
+        // [raw-entries] 他から読むときは `displayedEntries` を使う。
         var result = hasActiveSearch ? searchResults : entries
         // [VM-02] ラベルフィルタ。該当ファイルと、該当ファイルを配下に持つ
         // フォルダだけを残す。
@@ -2588,6 +2589,7 @@ struct FolderContentView: View {
             // FSEvents が動くたびに選択が消える。DB 由来の一覧に対する
             // 同じ後始末は `.onChange(of: libraryContent.rows)` が行う。
             if displayMode == .folder {
+                // [raw-entries] フォルダ表示モードに限った後始末（直上の理由）。
                 let currentURLs = Set(entries.map(\.url))
                 selection.formIntersection(currentURLs)
             }

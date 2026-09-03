@@ -48,7 +48,7 @@ struct RegenerabilityTests {
             #expect(report["managedFile"]?.contains("protectedScopes") == true)
             #expect(report["managedFile"]?.contains("coverImageSource") == true)
             #expect(report["label"]?.contains("isPinned") == true)
-            #expect(report["label"]?.contains("isArchived") == true)
+            #expect(report["label"]?.contains("isHidden") == true)
             #expect(report["label"]?.contains("name") == true)
             #expect(report["labelGroup"]?.contains("name") == true)
             #expect(report["labelGroup"]?.contains("colorHexLight") == true)

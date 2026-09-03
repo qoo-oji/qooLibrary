@@ -195,7 +195,7 @@ public final class SeriesSuggestionModel {
     /// 提案を適用する [SS-06]。
     ///
     /// **複数のグループをまとめて適用したときは 1 つの Undo 単位** [UD-04]。
-    /// グループごとにコマンドを積むと、`operationHistory.count` が N 回動いて
+    /// グループごとにコマンドを積むと、世代番号が N 回動いて
     /// **その回数だけ検出が走り直す**（5 万件で 1 回 400 ms）——しかも適用の
     /// ループがまだ回っている最中に重なる［code-review の指摘］。
     public func apply(_ groups: [Group]) async throws {

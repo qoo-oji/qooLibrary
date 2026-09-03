@@ -44,18 +44,9 @@ struct LabelGroupEditorWindow: View {
                 .navigationSplitViewColumnWidth(min: 380, ideal: 460)
         }
         .navigationTitle(Text("labelEditor.windowTitle"))
-        // 保管庫の整理ウインドウへの導線 [15.3 節]。**保管庫へ送る手段が
-        // ここにある以上、送った先を見に行く手段もここに要る**——ツリーへ
-        // 戻らないと開けないのでは、送った直後に確かめられない。
-        .toolbar {
-            ToolbarItem {
-                Button("library.labelVault.menuItem", systemImage: "archivebox") {
-                    guard let id = model.selectedLibraryID else { return }
-                    LabelVaultNavigation.open(libraryID: id, openWindow: openWindow)
-                }
-                .disabled(model.selectedLibraryID == nil)
-            }
-        }
+        // **保管庫の整理ウインドウへの導線は無くなった** [§19.12]。非表示の
+        // ラベルはこのウインドウの一覧にそのまま並ぶ [LA3-03] ので、別の場所へ
+        // 見に行く必要が無い。
         .frame(minWidth: 1040, minHeight: 540)
         // **読んだら消費する（`nil` に戻す）。** 残したままだと、次に同じ
         // ライブラリで開く要求が来ても `.onChange` が変化を見ず、グループの
@@ -85,7 +76,7 @@ struct LabelGroupEditorWindow: View {
         }
         // ⌘Z / ⇧⌘Z は View を通らずに DB を変える。含めないと取り消した結果が
         // 画面に出ない（右ペインの評価・ラベル設定と同じ）。
-        .onChange(of: CommandStack.shared.operationHistory.count) { _, _ in
+        .onChange(of: LibraryGeneration.shared.value) { _, _ in
             Task { await model.reload() }
         }
     }
