@@ -2303,7 +2303,7 @@ struct FolderContentView: View {
             if allowsStructuralOperations { // [VM-13]
                 Button("folder.duplicate", systemImage: "plus.square.on.square") { duplicate(targets) } // [FM-02]
             }
-            if allowsItemOperations { // [VM3-01] 代表 1 冊だけがボードへ載る
+            if allowsItemOperations {
             Button("action.copy", systemImage: "document.on.document") { copySelectionToPasteboard(targets) } // [KB-02 相当、⌘C]
                 // Finder と同じく ⌥ で「パス名をコピー」に入れ替わる [FM-10]
                 // [Finder 対比監査。⌥ 代替の一覧と、対応しなかった項目の理由は
@@ -2311,6 +2311,13 @@ struct FolderContentView: View {
                 .modifierKeyAlternate(.option) {
                     Button("folder.copyPath", systemImage: "document.on.document") { copyPaths(targets) }
                 }
+            } else {
+                // [VM3-01] スタックでは**ファイルのコピーだけを外す**——⌘C で
+                // 代表 1 冊がボードに載ると、12 冊のつもりで貼り付けたときに
+                // 1 冊しか出てこない。**パス名のコピーは残す**（読むだけの操作で、
+                // メニューバー側 `canCopyPath` も有効のまま——同じコマンドの
+                // 2 経路が食い違わないようにする）［code-review の指摘］。
+                Button("folder.copyPath", systemImage: "document.on.document") { copyPaths(targets) }
             }
             if allowsStructuralOperations { // [VM-13] カットは移動の一種
                 Button("action.cut", systemImage: "scissors") { cutSelectionToPasteboard(targets) } // [Finder/Edit メニュー整備、⌘X]
@@ -2806,6 +2813,12 @@ struct FolderContentView: View {
     }
 
     private func beginRename(_ entry: FolderEntry) {
+        // [VM3-01] スタック行は 1 冊ではないので改名させない［ユーザー判断］。
+        // **ここ 1 箇所で塞ぐ**——⌘R もコンテキストメニューもメニューバーも
+        // 塞いだのに、**Finder 流の「選択済みの行をもう一度クリック」だけが
+        // 残っていた**［code-review の指摘］。しかも編集欄に出るのは代表巻の
+        // ファイル名で、行に見えているシリーズ名とも一致しない。
+        guard !entry.isSeriesStack else { return }
         renamingEntry = entry
         renameText = entry.name
     }

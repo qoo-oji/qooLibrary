@@ -172,18 +172,24 @@ public final class LibraryContentModel {
             || unresolvedFilter != nil || duplicatesOnly
         // ドリルイン中は畳まない [VM3-03]——同じシリーズの巻を見ている
         // ところなので、畳めば 1 行に戻ってしまう。
-        foldsIntoSeriesStacks = seriesStacking && drilledSeries == nil && !isFiltering
+        let wantsStacks = seriesStacking && drilledSeries == nil && !isFiltering
         // グループ化の可否は**ライブラリの設定**が決める [DU-01][DU-02]。
         // `clear()` で戻さずここで毎回入れ直すのは、設定ウインドウで変えた
         // 直後の読み直しでも新しい値が効くようにするため（`settingsRevision`
         // が上がると呼び出し側が読み直す）。
         //
-        // **スタックへ畳んでいる間は重複を畳まない**［ユーザー判断］——
-        // 外側の一覧はシリーズで畳み、スタックを開いた巻一覧の中で重複を
-        // 畳む、という役割分担。二重に畳むと SQL も費用も積になる。
-        grouping = foldsIntoSeriesStacks ? .off : library.duplicateGrouping
-        // 畳んでいないのに「重複のみ」は意味を持たない [DU-11]。
-        let onlyDuplicates = grouping.isEnabled && duplicatesOnly
+        // **両方を渡し、どちらで畳んだかは応答から読む**［code-review の指摘］。
+        // 「スタックへ畳んでいる間は重複を畳まない」［ユーザー判断］は永続化層の
+        // 優先順（シリーズが先）が満たす——ここで `grouping` を先に `.off` へ
+        // 落とすと、**シリーズ名を持つ行が 1 件も無いライブラリで重複グループ化が
+        // 黙って恒久的に無効になる**（永続化層は畳まずに返すのに、こちらは
+        // 畳んだつもりでいる [VM3S-04]）。降りるスタックも無いので、復帰手段が
+        // 「無関係に見えるシリーズスタックの切り替え」しか残らない。
+        let duplicateMode = library.duplicateGrouping
+        // 畳んでいないのに「重複のみ」は意味を持たない [DU-11]。**`duplicatesOnly`
+        // が立っていれば `wantsStacks` は偽**（絞り込み扱い [VM3-06]）なので、
+        // この 2 つが同時に効くことはない。
+        let onlyDuplicates = duplicateMode.isEnabled && duplicatesOnly
         let query = Self.makeQuery(libraryID: library.id,
                                    relativePath: relativePath,
                                    labelSelection: labelSelection,
@@ -191,10 +197,10 @@ public final class LibraryContentModel {
                                    searchText: searchText,
                                    sort: sort,
                                    offset: 0,
-                                   grouping: grouping,
+                                   grouping: duplicateMode,
                                    duplicatesOnly: onlyDuplicates,
                                    unresolvedFilter: unresolvedFilter,
-                                   seriesStacking: foldsIntoSeriesStacks,
+                                   seriesStacking: wantsStacks,
                                    seriesName: drilledSeries)
         generation &+= 1
         let mine = generation
@@ -204,6 +210,10 @@ public final class LibraryContentModel {
         do {
             let page = try await services.files(query)
             guard mine == generation else { return }
+            // **希望ではなく結果を写す。** 事前確認 [VM3S-04] で畳まなかった
+            // ときは、重複グループ化の設定がそのまま生きている。
+            foldsIntoSeriesStacks = page.groupedBy == .series
+            grouping = page.groupedBy == .duplicates ? duplicateMode : .off
             rows = Self.rows(from: page.rows, libraryRootPath: library.resolvedPath,
                              userCoverURL: { services.userCoverURL(ref: $0, library: library) },
                              groupCounts: page.groupCounts,
@@ -217,6 +227,8 @@ public final class LibraryContentModel {
             guard !CommandStack.isCancellation(error) else { return }
             rows = []
             totalCount = 0
+            foldsIntoSeriesStacks = false
+            grouping = .off
             state = .failed(error.localizedDescription)
         }
     }
@@ -243,7 +255,7 @@ public final class LibraryContentModel {
             let more = Self.rows(from: page.rows, libraryRootPath: library.resolvedPath,
                                  userCoverURL: { services.userCoverURL(ref: $0, library: library) },
                                  groupCounts: page.groupCounts,
-                             asSeriesStacks: foldsIntoSeriesStacks)
+                                 asSeriesStacks: page.groupedBy == .series)
             // 同じ行が二度入らないようにする。ページの境目で走査が行を挿すと
             // `offset` がずれて重複し得る（`Identifiable` の id が衝突すると
             // SwiftUI が実行時に文句を言う）。
@@ -318,8 +330,10 @@ public final class LibraryContentModel {
     /// いまの一覧が実際にスタックへ畳まれているか [VM3-01][VM3-06]。
     ///
     /// `seriesStacking` は利用者の希望で、こちらは**その回の問い合わせで
-    /// 実際に畳んだか**。絞り込み中 [VM3-06]・ドリルイン中 [VM3-03] は
-    /// 希望が立っていても畳まないので、バッジや操作の出し分けはこちらを見る。
+    /// 実際に畳んだか**（`FilePage.groupedBy` の写し）。絞り込み中 [VM3-06]・
+    /// ドリルイン中 [VM3-03] は希望が立っていても畳まないし、**シリーズ名を
+    /// 持つ行が 1 件も無いライブラリでは永続化層が畳まずに返す** [VM3S-04]。
+    /// バッジや操作の出し分けはこちらを見る。
     public private(set) var foldsIntoSeriesStacks = false
 
     /// スタックを開いているか [VM3-03]。ヘッダの出し分けに使う。

@@ -711,7 +711,10 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
                 let n: Int = r["groupCount"] ?? 1
                 if n > 1 { counts[row.id] = n }      // 1 件だけの組は畳んでいない
             }
-            return FilePage(rows: rows, totalCount: total, groupCounts: counts)
+            return FilePage(rows: rows, totalCount: total, groupCounts: counts,
+                            // **希望ではなく結果を返す** [VM3S-04]。事前確認で
+                            // `seriesStacking` を降ろしていれば重複側になる。
+                            groupedBy: q.seriesStacking ? .series : .duplicates)
         }
     }
 

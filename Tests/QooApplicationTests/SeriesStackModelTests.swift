@@ -207,6 +207,37 @@ struct SeriesStackModelTests {
         #expect(model.grouping == .byTitle)
     }
 
+    /// **シリーズ名を 1 件も持たないライブラリで重複グループ化が死なないこと**
+    /// [code-review の指摘]。永続化層は事前確認 [VM3S-04] で畳まずに返すのに、
+    /// モデルが「シリーズで畳んだつもり」で `grouping` を落としていると、
+    /// **重複が恒久的に畳まれなくなる**——「重複のみを表示」も「重複を比較…」も
+    /// 画面から消え、降りるスタックも無いので復帰手段が残らない。
+    @MainActor
+    @Test("シリーズが 1 件も無いライブラリでは重複グループ化が生きる [DU-01][VM3S-04]")
+    func duplicateGroupingSurvivesWhenNoBookHasASeries() async throws {
+        // 同人誌(A) は巻数フォーマットを持たないのでシリーズ名が 1 件も出ない
+        // ——プリセットがシリーズを取らないライブラリ（成年コミック等）と同じ形。
+        let w = try ServicesWorkspace()
+        await w.bootstrap()
+        for i in 1...2 {
+            try w.write("(同人誌) [サークル値A (著者値1)] 同じ題 (ジャンル値1)\(i).cbz")
+        }
+        let id = try await w.enable("builtin.doujinshi-a")
+        _ = try await w.services.scan(libraryID: id, root: w.libraryRoot)
+        var draft = try #require(try await w.services.settingsDraft(libraryID: id))
+        draft.duplicateGrouping = .byTitle
+        try await w.services.updateSettings(draft, libraryID: id)
+        await w.services.refreshLibraries()
+        let library = try #require(w.services.library(registrationUUID: w.registrationUUID))
+
+        let model = LibraryContentModel()
+        #expect(model.seriesStacking, "希望は立っている（既定 ON）")
+        await load(model, w, library)
+
+        #expect(!model.foldsIntoSeriesStacks, "シリーズが無いので実際には畳まない")
+        #expect(model.grouping == .byTitle, "重複グループ化が生きていること")
+    }
+
     // MARK: - 状態の後始末
 
     @MainActor

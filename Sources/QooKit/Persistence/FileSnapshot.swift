@@ -152,6 +152,22 @@ public struct FileRow: Sendable, Hashable, Identifiable {
 
 /// ページと総件数を一度に返す。総件数を毎回数え直さないため。
 public struct FilePage: Sendable {
+    /// この問い合わせが**実際に**何で畳んだか [DU-04][VM3-01]。
+    ///
+    /// **希望と結果を混同しないため**に要る。`FileQuery.seriesStacking` は
+    /// 呼び出し側の希望で、シリーズ名を持つ行が 1 件も無ければ永続化層が
+    /// 畳まずに返す [VM3S-04]。呼び出し側がそれを知らないまま「シリーズで
+    /// 畳んだつもり」でいると、**重複グループ化を切ったまま誰も畳まない**
+    /// という状態になる（code-review の指摘で実証: 同一タイトル 2 件が
+    /// 畳まれず、「重複のみを表示」も「重複を比較…」も画面から消える）。
+    public enum Grouping: String, Sendable, Hashable {
+        case none
+        /// 同じ作品のファイルを畳んだ [DU-04〜06]。
+        case duplicates
+        /// 同じシリーズの巻を畳んだ [VM3-01][VM3-02]。
+        case series
+    }
+
     public let rows: [FileRow]
     /// 絞り込み後の総数。**グループ化しているときはグループ数** [DU-06][VM3-01]。
     public let totalCount: Int
@@ -164,12 +180,15 @@ public struct FilePage: Sendable {
     /// **問い合わせを組み立てた側が知っている**。器を 2 つに分けると
     /// 「片方が常に空」という読みにくい形になる。
     public let groupCounts: [FileID: Int]
+    public let groupedBy: Grouping
 
     public init(rows: [FileRow], totalCount: Int,
-                groupCounts: [FileID: Int] = [:]) {
+                groupCounts: [FileID: Int] = [:],
+                groupedBy: Grouping = .none) {
         self.rows = rows
         self.totalCount = totalCount
         self.groupCounts = groupCounts
+        self.groupedBy = groupedBy
     }
 }
 
