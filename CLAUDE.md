@@ -8880,6 +8880,48 @@ identityPending の DROP を外す／reconcile で `.nameOnly` を自動で引�
   checkout が**自分の編集を破棄した**。スクリプト化してあったので再実行で
   済んだが、手作業の編集なら失われていた。原状確認は `git show HEAD:file | head`
   で足り、作業ツリーに触れる必要は無かった。
+##### 2026-09-04、同じことをもう一度やった（今度は私が）
+
+**CI 用の署名上書きを、手元の全ビルドに使った。**
+
+```
+CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM=   ← ci.yml だけのもの
+```
+
+証明書を必要とせずビルドが通るので、そのまま使い続けてしまった。結果、
+DerivedData の成果物が**アドホック署名**（`TeamIdentifier=not set`）になり、
+起動確認でそれを起動した瞬間に**ダウンロードフォルダの許可ダイアログが
+利用者の画面に出た。**
+
+**tccd のログが名指しで残っていた**（`/usr/bin/log show --last 4h
+--predicate 'process == "tccd"'`。**zsh の `log` は組み込みなので絶対パスで
+呼ぶこと**）:
+
+| 時刻 | 何が起きたか |
+|---|---|
+| 18:58 / 19:28 / 19:31 / 20:24（利用者の起動）| 同じ `kTCCServiceSystemPolicyDownloadsFolder` を要求し、**黙って通っている** |
+| **21:09:58（私の起動確認、pid 4463）** | `Failed to match existing code requirement for subject com.qoolibrary.app` → `AUTHREQ_PROMPTING` |
+| 21:51:15 | 利用者が答え、`TCCDEvent: type=Create` で記録が作られた |
+
+**「entitlement があるから Downloads は出ないはず」は誤りだった。**
+`qooLibrary.entitlements` の実測表は `~/Downloads` を ○ としているが、
+**あれは*サンドボックス*の到達性**（`NSCocoaError 257` が出ないこと）で、
+TCC は別の層——現に TCC の記録が存在し、正しい署名のときだけ黙って通る。
+**同じファイルのコメントにそう書いてある**（「`/` への許可は…TCC 層は
+通さない」）のに、○ の表だけを読んで反証したつもりになった。
+**表を読むときは、その表が何を測ったものかを読むこと。**
+
+**構造的な対処: `Scripts/build-app.sh` を唯一の入口にした。**
+`xcodegen generate` → 署名の上書き**なし**でビルド → **成果物がアドホック
+署名なら落とす**。CLAUDE.md には既に「CI 用の上書きである」と書いてあったが、
+それでも写した——**書いてある注意は新しい作業に自動では適用されない**
+（このリポジトリで何度も記録している形）。だからコマンドのほうを 1 つにした。
+検査が実際に落ちることは、成果物の複製をアドホック署名し直して確認済み。
+
+> **アプリターゲットを手元でビルドするときは `Scripts/build-app.sh` を使う。**
+> `xcodebuild` を直に叩くなら、**署名の引数を一切付けない**こと。
+> `ci.yml` の 1 行をコピーしてはならない。
+
 - 起動確認の前に **既に起動中のインスタンスが無いか `pgrep` で確かめる**。
   今回はユーザーが開いた古いビルドが残っており、確認を取ってから終了した
   ——黙って kill すればユーザーの作業を奪っていた。
@@ -12650,6 +12692,12 @@ Swift 6 言語モード、`StrictConcurrency` 有効。
 - パーサに変更を加えたら `Tests/GoldenDataset/public` 全件を実行し、差分が出たら「期待値を直す」か「実装を直す」かを明示的に判断する。
 
 ## 8. CI 静的検査（実装後に必ず通す）
+
+**アプリターゲットのビルドは `Scripts/build-app.sh` が唯一の入口。**
+`ci.yml` の署名上書き（`CODE_SIGN_IDENTITY=-` 等）は**証明書の無い CI 専用**で、
+手元で使うとアドホック署名になり **TCC の許可が毎回失効して利用者へダイアログが
+出る**（2026-08 と 2026-09-04 に 2 度踏んだ）。スクリプトは成果物がアドホック
+署名なら落とす。
 
 **実体は `Scripts/check-*.swift` の 11 本**（`for s in Scripts/check-*.swift; do
 swift "$s"; done` で全部回る）。CI にも入っているが、**漏洩検査 2 本は手元でしか
