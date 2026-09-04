@@ -599,6 +599,15 @@ private struct ViewMenuCommands: View {
         Button(thumbnailsGloballyHidden ? "view.showThumbnails" : "view.hideThumbnails", systemImage: "photo") {
             ThumbnailVisibility.shared.toggleGlobal()
         }
+        // シリーズスタック [VM3-05]。**表示/非表示の項目と同じく動的な
+        // タイトル**（Finder に倣った既存の書き方）で、ライブラリ表示モードで
+        // なければ無効にする——項目ごと消すと「あったはずの項目が無い」と
+        // 読まれるため。ツールバー側にも同じ操作を置いてある [VM3-05]。
+        Button(window?.seriesStacking == true
+               ? "view.ungroupSeries" : "view.groupSeries", systemImage: "square.stack") {
+            window?.setSeriesStacking(window?.seriesStacking != true)
+        }
+        .disabled(window?.canUseSeriesStacking != true)
         Divider()
         Menu("common.sortBy", systemImage: "arrow.up.arrow.down") { // [LV-01]
             Picker("common.sortBy", selection: sortKeyBinding) {

@@ -653,6 +653,18 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
 
     public func query(_ q: FileQuery) async throws -> FilePage {
         try await database.writer.read { db in
+            var q = q
+            // **シリーズ名を持つ行が 1 件も無ければ畳まない** [VM3-01、
+            // ユーザー判断]。[実測] 畳む形にするだけで 53 ms かかるのに対し、
+            // この存在確認は索引 `mf_lib_series` が効いて 0.1 ms——プリセットが
+            // シリーズを取らないライブラリ（成年コミックなど [Stage 10 の調査]）
+            // では費用が完全にゼロになる。
+            //
+            // **判定は関数の中に置く** [Stage 6 と同じ理由]——呼び出し側に
+            // 確かめさせると、次に足す呼び出し元が忘れる。
+            if q.seriesStacking, !(try Self.hasAnySeries(db, libraryID: q.libraryID)) {
+                q.seriesStacking = false
+            }
             let (where_, args) = Self.whereClause(q)
             guard let grouped = Self.groupedSubquery(q, where_: where_) else {
                 // グループ化しない従来の経路。
@@ -696,10 +708,10 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
             for r in raw {
                 let row = try ManagedFileRecord(row: r).fileRow
                 rows.append(row)
-                let n: Int = r["dupCount"] ?? 1
-                if n > 1 { counts[row.id] = n }      // 1 件だけの組は「重複」ではない
+                let n: Int = r["groupCount"] ?? 1
+                if n > 1 { counts[row.id] = n }      // 1 件だけの組は畳んでいない
             }
-            return FilePage(rows: rows, totalCount: total, duplicateCounts: counts)
+            return FilePage(rows: rows, totalCount: total, groupCounts: counts)
         }
     }
 
@@ -736,12 +748,17 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
     static func groupedSubquery(_ q: FileQuery, where_: String)
         -> (sql: String, repeatsWhereArgs: Int)?
     {
+        // **シリーズが先。** 1 回の問い合わせが両方を畳むことは無い
+        // [VM3-01 の設計判断]——外側の一覧はシリーズで畳み、スタックを開いた
+        // 巻一覧の中で重複を畳む。呼び出し側（`LibraryContentModel`）が
+        // どちらか片方だけを立てるが、万一両方来てもシリーズを優先する。
+        if q.seriesStacking { return seriesStackSubquery(where_: where_) }
         guard let partition = partitionExpression(q.grouping) else { return nil }
-        let onlyDuplicates = q.duplicatesOnly ? " AND dupCount > 1" : ""
+        let onlyDuplicates = q.duplicatesOnly ? " AND groupCount > 1" : ""
         let folded = """
             SELECT * FROM (
               SELECT managedFile.*,
-                     COUNT(*) OVER dupWindow AS dupCount,
+                     COUNT(*) OVER dupWindow AS groupCount,
                      ROW_NUMBER() OVER (
                        PARTITION BY \(partition)
                        ORDER BY rating DESC, fileSize DESC,
@@ -758,9 +775,71 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
         return ("""
             \(folded)
             UNION ALL
-            SELECT managedFile.*, 1 AS dupCount, 1 AS dupRank
+            SELECT managedFile.*, 1 AS groupCount, 1 AS dupRank
               FROM managedFile
              WHERE \(where_) AND titleKey IS NULL
+            """, 2)
+    }
+
+    /// 同じシリーズの本を 1 行へ畳む [VM3-01][VM3-02][VM3-04]。
+    ///
+    /// **重複グループ化（窓関数）とは実装が違う。** こちらは `GROUP BY` ＋
+    /// 代表 id の JOIN で、索引 `mf_lib_series`（v1 から存在）がそのまま効く
+    /// ——[実測、5 万件・全件シリーズあり・Release]:
+    ///
+    /// | 形 | 所要 |
+    /// |---|---|
+    /// | 素の一覧（畳まない）| 4.4 ms |
+    /// | 窓関数（重複と同じ形）| 144.9 ms |
+    /// | **GROUP BY ＋ JOIN（この形）** | **29.1 ms** |
+    ///
+    /// **シリーズスタックは既定 ON** [VM3-05] なので、費用を払うのは全利用者
+    /// である——重複グループ化が既定 OFF [DU-01] で「有効にした人だけが払う」
+    /// と言えたのとは事情が違う。窓関数のままなら 145 ms をページ送りのたびに
+    /// 払うことになるので、実装を変えた。
+    ///
+    /// ## 代表は「巻数順の先頭」[VM3-02]
+    ///
+    /// SQLite は **`min()` を 1 つだけ含む集約で、裸の列を「最小値の行のもの」
+    /// から取る**（文書化された挙動）。これを使って代表の `id` を集約 1 回で
+    /// 得る。合成鍵は固定幅のゼロ詰めなので、素の文字列比較が
+    /// 「巻数の種別 → 巻数 → id」の複合順序と一致する。
+    ///
+    /// **`id` を鍵の末尾に混ぜてあるのが要点**——巻数を持たない本が複数ある
+    /// シリーズでは巻数だけでは同点になり、SQLite がどの行を返すかは
+    /// 決まらない。代表が実行のたびに変わると**一覧のカバーがちらつく**。
+    ///
+    /// 巻数は 0〜999,999,999 に丸めてから 10,000 倍する（小数第 4 位まで
+    /// 保つ [SE-09]）。丸めないと桁があふれて固定幅が崩れ、**そのシリーズ
+    /// だけ順序が壊れる**——負の巻数も同じ理由で 0 へ寄せる。
+    ///
+    /// ## シリーズ名を持たない行は畳まない [VM3-04]
+    ///
+    /// 重複グループ化と同じく**問い合わせを 2 本に割る**。SQLite の
+    /// `GROUP BY` は NULL どうしを同じ組と見なすので、素の `seriesKey` で
+    /// 括ると**シリーズ名の無い本が全部 1 スタックへ畳まれ、1 行を残して
+    /// 画面から消える**。空文字も同じ扱いにする——`TextNormalizer.normalize`
+    /// は空白だけの入力を空文字へ畳むため、手動編集でそこへ落ちうる。
+    static func seriesStackSubquery(where_: String) -> (sql: String, repeatsWhereArgs: Int) {
+        let representativeKey = """
+            printf('%d%016d%020d',
+                   CASE volumeKind WHEN 'numeric' THEN 0 ELSE 1 END,
+                   CAST(CASE WHEN volumeNumber IS NULL OR volumeNumber < 0 THEN 0
+                             WHEN volumeNumber > 999999999 THEN 999999999
+                             ELSE volumeNumber END * 10000 AS INTEGER),
+                   id)
+            """
+        return ("""
+            SELECT managedFile.*, g.groupCount FROM managedFile
+              JOIN (SELECT id AS repId, COUNT(*) AS groupCount,
+                           min(\(representativeKey)) AS representative
+                      FROM managedFile
+                     WHERE \(where_) AND seriesKey IS NOT NULL AND seriesKey <> ''
+                     GROUP BY seriesKey) g ON managedFile.id = g.repId
+            UNION ALL
+            SELECT managedFile.*, 1 AS groupCount
+              FROM managedFile
+             WHERE \(where_) AND (seriesKey IS NULL OR seriesKey = '')
             """, 2)
     }
 
@@ -772,6 +851,22 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
     /// 1 行を残して画面から消える**——未解決ファイル [AL-30] は蔵書によっては
     /// 数千件あるので、実害になる。`DuplicateGroupKey.make` が `nil` を返すのと
     /// 同じ判断を、SQL 側でも守る。
+    /// このライブラリにシリーズ名を持つ行があるか [VM3-01]。
+    ///
+    /// **索引 `mf_lib_series` が効くので実測 0.1 ms**。`LIMIT 1` で
+    /// 打ち切るため、シリーズを持つ行が 1 件でもあれば即座に返る。
+    ///
+    /// **ライブラリ単位で見る**（現在フォルダ配下ではない）——フォルダまで
+    /// 絞ると `relativePath LIKE` が入って索引が効かなくなる。ライブラリに
+    /// 1 件も無ければ配下にも無いので、いちばん効かせたい場合は取り逃さない。
+    static func hasAnySeries(_ db: Database, libraryID: LibraryID) throws -> Bool {
+        try Bool.fetchOne(db, sql: """
+            SELECT EXISTS(SELECT 1 FROM managedFile
+                           WHERE libraryId = ? AND seriesKey IS NOT NULL AND seriesKey <> ''
+                           LIMIT 1)
+            """, arguments: [libraryID.rawValue]) ?? false
+    }
+
     static func partitionExpression(_ mode: DuplicateGrouping) -> String? {
         // **`titleKey IS NOT NULL` に絞った側でしか使わない**ので、素の列で
         // よい（NULL の行は別の枝を通り、畳まれない）。素の列にしておくと
@@ -948,6 +1043,22 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
             args.append(rating.stars)
         }
 
+        // このシリーズの巻だけに絞る（スタックのドリルイン）[VM3-03]。
+        // **正規化はここで導出する** [3.8 節]——書き込み側（`applyParsedFields`・
+        // `setFields`）と同じ `TextNormalizer.normalize` を通すので、規則が
+        // 変わっても照合がずれない。
+        //
+        // **空文字は絞り込みとして扱わない**——`normalize` は空白だけの入力を
+        // 空文字へ畳むので、そこへ落ちた行を「1 つのシリーズ」として引くと
+        // シリーズ名を持たない本すべてが対象になってしまう。
+        if let name = q.seriesName {
+            let key = TextNormalizer.normalize(name)
+            if !key.isEmpty {
+                clauses.append("seriesKey = ?")
+                args.append(key)
+            }
+        }
+
         if let text = q.searchText, !text.isEmpty {
             // 正規化済みの検索用カラムで比較する [SR-06][DB-03]。
             // 実測: 10 万件の全走査で 20.7 ms（目標 300 ms）[PF-04]
@@ -988,8 +1099,20 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
         let column: String
         switch q.sort.key {
         case .filename:   column = "filename"
-        case .title:      column = "COALESCE(title, filename)"
-        case .series:     column = "COALESCE(seriesKey, '')"
+        // **シリーズで畳んでいるときは「シリーズ名と単体タイトルの混在ソート」**
+        // [VM3-04]。スタックの行が代表（＝ふつうは第 1 巻）のタイトルで並ぶと、
+        // シリーズ名と関係のない位置に現れて探せない。
+        //
+        // 他の並べ替え（サイズ・評価・日付・巻数）は**代表の値**で並ぶ
+        // ——これは既知の限界で、とくに巻数はスタックがどれも第 1 巻に
+        // なるためほとんど意味を持たない。集約（合計・最大）にすると
+        // 「一覧に出ている値」と「並びの根拠」が食い違うので採らない。
+        case .title:
+            column = q.seriesStacking ? "COALESCE(seriesName, title, filename)"
+                                      : "COALESCE(title, filename)"
+        case .series:
+            column = q.seriesStacking ? "COALESCE(seriesKey, titleKey, '')"
+                                      : "COALESCE(seriesKey, '')"
         case .volume:
             // numeric < none。巻数を持たないものは末尾へ [VM-15]。
             // （序列巻数は 2026-08 の仕様変更で廃止したので 2 段しかない。）

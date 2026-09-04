@@ -4728,6 +4728,23 @@
         }
       }
     },
+    "folder.seriesStackIndicator" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This series has several volumes. Open the stack to see them."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このシリーズには複数の巻があります。開くと巻の一覧になります。"
+          }
+        }
+      }
+    },
     "folder.shareEllipsis": {
       "extractionState": "stale",
       "localizations": {
@@ -14739,6 +14756,40 @@
         }
       }
     },
+    "seriesStack.showAll" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All Series"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "すべてのシリーズ"
+          }
+        }
+      }
+    },
+    "seriesStack.volumeCount" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d volumes"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d 冊"
+          }
+        }
+      }
+    },
     "seriesSuggestions.apply" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -15430,6 +15481,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "ライブラリに取り込まれていないため、保管庫へ移せません。保管庫にしまえるのは、ライブラリが取り込んだファイルだけです。"
+          }
+        }
+      }
+    },
+    "view.groupSeries" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Group by Series"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "シリーズごとにまとめる"
           }
         }
       }
@@ -16943,6 +17011,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "メンテナンス"
+          }
+        }
+      }
+    },
+    "view.ungroupSeries" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Every Volume"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "巻ごとに表示"
           }
         }
       }

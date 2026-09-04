@@ -153,17 +153,23 @@ public struct FileRow: Sendable, Hashable, Identifiable {
 /// ページと総件数を一度に返す。総件数を毎回数え直さないため。
 public struct FilePage: Sendable {
     public let rows: [FileRow]
-    /// 絞り込み後の総数。**グループ化しているときはグループ数** [DU-06]。
+    /// 絞り込み後の総数。**グループ化しているときはグループ数** [DU-06][VM3-01]。
     public let totalCount: Int
-    /// 代表行 → その組の件数 [DU-06]。**2 件以上の組だけを持つ**ので、
-    /// 「入っていない ＝ 重複していない」と読める。
-    public let duplicateCounts: [FileID: Int]
+    /// 代表行 → その組の件数 [DU-06][VM3-02]。**2 件以上の組だけを持つ**ので、
+    /// 「入っていない ＝ 畳まれていない」と読める。
+    ///
+    /// **重複の組とシリーズのスタックで同じ器を使う。** 1 回の問い合わせが
+    /// 両方を畳むことは無い [VM3-01 の設計判断: 外側はシリーズで畳み、
+    /// スタックを開いた巻一覧の中で重複を畳む] ので、どちらの意味かは
+    /// **問い合わせを組み立てた側が知っている**。器を 2 つに分けると
+    /// 「片方が常に空」という読みにくい形になる。
+    public let groupCounts: [FileID: Int]
 
     public init(rows: [FileRow], totalCount: Int,
-                duplicateCounts: [FileID: Int] = [:]) {
+                groupCounts: [FileID: Int] = [:]) {
         self.rows = rows
         self.totalCount = totalCount
-        self.duplicateCounts = duplicateCounts
+        self.groupCounts = groupCounts
     }
 }
 

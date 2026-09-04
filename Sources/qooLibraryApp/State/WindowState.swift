@@ -84,6 +84,18 @@ public struct TabTarget: Sendable, Hashable, Codable {
 struct TabHistoryEntry: Sendable, Equatable {
     let url: URL
     let navigationRoot: NavigationRoot
+    /// 開いていたシリーズスタック [VM3-03]。`nil` なら全体一覧。
+    ///
+    /// **ドリルインはフォルダを変えないので、URL だけでは表せない。**
+    /// 履歴に載せると「開く → 戻る」が既存の ⌘[ とツールバーの戻るで
+    /// そのまま効く——VM3-03 が求めているのはそれ。
+    let series: String?
+
+    init(url: URL, navigationRoot: NavigationRoot, series: String? = nil) {
+        self.url = url
+        self.navigationRoot = navigationRoot
+        self.series = series
+    }
 }
 
 /// 中央ペインの表示モード [VM-01〜VM-23]。**シーソーで切り替える** [TB-01]。
@@ -246,9 +258,15 @@ public final class WindowState {
         navigationCameFromTree = fromTree
         let resolvedRoot = Self.normalizedRoot(root ?? navigationRoot, for: url)
         if let current = folder, current != url {
-            backHistory.append(TabHistoryEntry(url: current, navigationRoot: navigationRoot))
+            backHistory.append(TabHistoryEntry(url: current, navigationRoot: navigationRoot,
+                                               series: libraryContent.drilledSeries))
             forwardHistory.removeAll()
         }
+        // [VM3-03] フォルダを移ったらスタックからは出る。`libraryContent.clear()`
+        // も同じことをするが、同じライブラリの中で移動した場合はそちらを
+        // 通らない——**そのシリーズが移動先の配下に無ければ一覧が空になる**
+        // うえ、開いていた覚えの無い絞り込みとして残る。
+        libraryContent.exitSeries()
         folder = url
         title = url.lastPathComponent
         navigationRoot = resolvedRoot
@@ -367,12 +385,17 @@ public final class WindowState {
         guard let previous = backHistory.popLast() else { return }
         let leavingFolder = folder
         if let current = folder {
-            forwardHistory.append(TabHistoryEntry(url: current, navigationRoot: navigationRoot))
+            forwardHistory.append(TabHistoryEntry(url: current, navigationRoot: navigationRoot,
+                                                  series: libraryContent.drilledSeries))
         }
         folder = previous.url
         navigationRoot = previous.navigationRoot
         title = previous.url.lastPathComponent
         searchText = "" // [1-16]
+        restoreSeriesDrill(previous.series)     // [VM3-03]
+        // **同じフォルダへの「戻る」でも中央ペインを読み直す**——スタックを
+        // 開いた／閉じただけのときは `folder` が変わらないので、フォルダの
+        // 変化を鍵にしている読み込みは走らない。
         revealIfParent(of: leavingFolder, newFolder: previous.url)
     }
 
@@ -380,12 +403,56 @@ public final class WindowState {
     public func goForward() {
         guard let next = forwardHistory.popLast() else { return }
         if let current = folder {
-            backHistory.append(TabHistoryEntry(url: current, navigationRoot: navigationRoot))
+            backHistory.append(TabHistoryEntry(url: current, navigationRoot: navigationRoot,
+                                               series: libraryContent.drilledSeries))
         }
         folder = next.url
         navigationRoot = next.navigationRoot
         title = next.url.lastPathComponent
         searchText = "" // [1-16]
+        restoreSeriesDrill(next.series)         // [VM3-03]
+    }
+
+    // MARK: - シリーズスタック [VM3-01〜VM3-06]
+
+    /// スタックを開く [VM3-03]。**履歴に積む**ので ⌘[ とツールバーの戻るで
+    /// そのまま抜けられる。
+    ///
+    /// **フォルダは変わらない**——`navigate(to:)` を通さないのはそのため
+    /// （あちらは「現在地と違う URL」でしか履歴へ積まない）。
+    public func enterSeriesStack(named name: String) {
+        guard displayMode == .library, let current = folder else { return }
+        backHistory.append(TabHistoryEntry(url: current, navigationRoot: navigationRoot,
+                                           series: libraryContent.drilledSeries))
+        forwardHistory.removeAll()
+        libraryContent.enterSeries(name)
+    }
+
+    /// スタックから出る [VM3-03]。ヘッダの「すべてのシリーズ」から呼ぶ。
+    /// **戻ると同じ結果になるが履歴の使い方が違う**——こちらは新しい状態へ
+    /// 進むので、進む側の履歴は捨てる。
+    public func exitSeriesStack() {
+        guard libraryContent.isInsideSeriesStack, let current = folder else { return }
+        backHistory.append(TabHistoryEntry(url: current, navigationRoot: navigationRoot,
+                                           series: libraryContent.drilledSeries))
+        forwardHistory.removeAll()
+        libraryContent.exitSeries()
+    }
+
+    /// スタックへ畳むかどうかの切り替え [VM3-05]。
+    public func setSeriesStacking(_ on: Bool) {
+        libraryContent.setSeriesStacking(on)
+    }
+
+    /// 戻る／進むでドリルインの状態を復元する [VM3-03]。
+    ///
+    /// **読み直しの合図は張らない**——`FolderContentView.libraryLoadKey` が
+    /// `drilledSeries` と `seriesStacking` を鍵に含めており、`@Observable`
+    /// なので値が変われば自動で読み直る（未整理ビューの出入り [UR3-01] と
+    /// 同じ形）。ここで別の合図を足すと**同じ読み直しが 2 回走る**。
+    private func restoreSeriesDrill(_ series: String?) {
+        guard series != libraryContent.drilledSeries else { return }
+        if let series { libraryContent.enterSeries(series) } else { libraryContent.exitSeries() }
     }
 
     /// `⌘↑` 相当 [KB-02]。`goBack`/`goForward` と同じく `navigate(to:)` を

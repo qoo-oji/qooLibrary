@@ -24,6 +24,16 @@ struct WindowMenuActions {
     var canSaveShelf = false
     var saveShelf: () -> Void = {}
 
+    /// シリーズスタック [VM3-01][VM3-05]。**ライブラリ表示モードでだけ
+    /// 意味を持つ**——フォルダ表示モードは実体の一覧なので、畳むと
+    /// 「ディスクにある物と画面が食い違う」ことになる [DU-04 と同じ理由]。
+    ///
+    /// **項目は隠さず無効にする**——ツールバーで隠すと他の項目の位置が
+    /// ずれるし、メニューでは「あったはずの項目が消えた」ように見える。
+    var canUseSeriesStacking = false
+    var seriesStacking = false
+    var setSeriesStacking: (Bool) -> Void = { _ in }
+
     var canGoBack = false
     var canGoForward = false
     var canGoToParent = false

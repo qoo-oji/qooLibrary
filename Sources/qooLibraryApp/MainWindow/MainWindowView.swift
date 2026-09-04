@@ -188,6 +188,9 @@ struct MainWindowView: View {
             canSaveShelf: windowState.displayMode == .library
                 && windowState.currentShelfCondition?.isActive == true,
             saveShelf: { presentSaveShelfDialog() },
+            canUseSeriesStacking: windowState.displayMode == .library,   // [VM3-05]
+            seriesStacking: windowState.libraryContent.seriesStacking,
+            setSeriesStacking: { windowState.setSeriesStacking($0) },
             canGoBack: windowState.canGoBack,
             canGoForward: windowState.canGoForward,
             canGoToParent: windowState.canGoToParent,
@@ -450,6 +453,20 @@ struct MainWindowView: View {
                     // 検索 [1-16]。**表示切替の左**に置く [ユーザー要望]。
                     searchControl
 
+                    // シリーズスタック [VM3-05]。表示の見え方を変える操作なので
+                    // リスト／アイコンの切替の隣に置く。ライブラリ表示モードで
+                    // なければ無効（隠すと他の項目の位置がずれる）。
+                    Toggle(isOn: Binding(
+                        get: { windowState.libraryContent.seriesStacking },
+                        set: { windowState.setSeriesStacking($0) }
+                    )) {
+                        Image(systemName: "square.stack")
+                    }
+                    .toggleStyle(.button)
+                    .disabled(windowState.displayMode != .library)
+                    .help(windowState.libraryContent.seriesStacking
+                          ? "view.ungroupSeries" : "view.groupSeries")
+
                     Picker("common.view", selection: $windowState.listStyle) { // [TB-04][LV-04]
                         Image(systemName: "list.bullet").tag(ListStyle.list)
                         Image(systemName: "square.grid.2x2").tag(ListStyle.icon)
@@ -553,6 +570,10 @@ struct MainWindowView: View {
                             labelMenu: windowState.labelMenu,      // [RL3-01〜RL3-03]
                             unresolvedRescue: windowState.unresolvedRescue, // [UR3-03]
                             onExitUnresolvedView: { windowState.toggleUnresolvedFiles() },
+                            // [VM3-03] スタックの出入り。履歴に積むので
+                            // ⌘[ とツールバーの戻るでそのまま抜けられる。
+                            onEnterSeriesStack: { windowState.enterSeriesStack(named: $0) },
+                            onExitSeriesStack: { windowState.exitSeriesStack() },
                             onSetUnresolvedIncludesIgnored: {
                                 windowState.setUnresolvedIncludesIgnored($0)
                             },

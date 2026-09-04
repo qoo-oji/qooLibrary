@@ -105,6 +105,26 @@ public struct FileQuery: Sendable, Hashable {
     /// `.folder` のときは `.off` を渡すこと。フォルダ表示モードは実体の
     /// 一覧なので、畳むと「ディスクにある物と画面が食い違う」ことになる。
     public var grouping: DuplicateGrouping   // [DU-01][DU-04]
+    /// 同じシリーズの本を 1 行のスタックに畳むか [VM3-01][VM3-04]。
+    ///
+    /// **`grouping` とは同時に立てない。** 外側の一覧はシリーズで畳み、
+    /// スタックを開いた巻一覧の中で重複を畳む——という役割分担にしてある
+    /// [VM3-01 の設計判断]。両方立てても壊れはしないが（シリーズが勝つ）、
+    /// 意味のある組み合わせではない。
+    ///
+    /// **絞り込んでいる間は立てない** [VM3-06]——検索語・ラベル・評価・
+    /// 未整理のいずれかで絞っているときにスタックへ畳むと、せっかく
+    /// 一致した本がスタックの中に隠れてしまう。判定は
+    /// `LibraryContentModel.foldsIntoSeriesStacks` 1 箇所。
+    public var seriesStacking: Bool          // [VM3-01]
+    /// このシリーズの巻だけに絞る（スタックのドリルイン）[VM3-03]。
+    ///
+    /// **正規化済みの `seriesKey` ではなく、表示用のシリーズ名を渡す** [3.8 節]。
+    /// 正規化は永続化層が導出する——`FileRow` は `seriesKey` を持たないので、
+    /// 呼び出し側に畳ませると**同じ導出規則が 2 箇所に生まれ**、規則が変わった
+    /// ときにドリルインだけが黙って 1 件も引かなくなる。`filesInSeries` [RA-04]
+    /// が基準の `FileID` を受け取って呼び出し側に正規化させないのと同じ判断。
+    public var seriesName: String?           // [VM3-03]
     public var sort: SortSpec
     public var offset: Int
     /// 遅延読み込み [PF-10]。**全件を materialize しない** [FI-05]。
@@ -120,6 +140,8 @@ public struct FileQuery: Sendable, Hashable {
                 duplicatesOnly: Bool = false,
                 unresolvedFilter: UnresolvedFilter? = nil,
                 grouping: DuplicateGrouping = .off,
+                seriesStacking: Bool = false,
+                seriesName: String? = nil,
                 sort: SortSpec = .byFilename,
                 offset: Int = 0,
                 limit: Int = AppLimits.Query.defaultPageSize) {
@@ -133,6 +155,8 @@ public struct FileQuery: Sendable, Hashable {
         self.duplicatesOnly = duplicatesOnly
         self.unresolvedFilter = unresolvedFilter
         self.grouping = grouping
+        self.seriesStacking = seriesStacking
+        self.seriesName = seriesName
         self.sort = sort
         self.offset = offset
         self.limit = limit

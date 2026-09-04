@@ -47,7 +47,7 @@ struct DuplicateGroupingQueryTests {
         try await add(f, inode: 2, path: "b.cbz", title: "作品名A")
         let page = try await f.files.query(query(f, .off))
         #expect(page.totalCount == 2)
-        #expect(page.duplicateCounts.isEmpty)
+        #expect(page.groupCounts.isEmpty)
     }
 
     @Test("同じタイトルが 1 行に畳まれ、件数が付く [DU-02][DU-06]")
@@ -60,7 +60,7 @@ struct DuplicateGroupingQueryTests {
         let page = try await f.files.query(query(f, .byTitle))
         #expect(page.totalCount == 2, "2 グループ（作品名A と 別の作品）")
         #expect(page.rows.count == 2)
-        let counts = page.duplicateCounts
+        let counts = page.groupCounts
         #expect(counts.count == 1, "重複しているのは 1 組だけ")
         #expect(counts.values.first == 2)
     }
@@ -94,7 +94,7 @@ struct DuplicateGroupingQueryTests {
         for mode in [DuplicateGrouping.byTitle, .byTitleAndVolume] {
             let page = try await f.files.query(query(f, mode))
             #expect(page.totalCount == 5, "\(mode): 5 件とも残る")
-            #expect(page.duplicateCounts.isEmpty, "\(mode): 重複扱いされない")
+            #expect(page.groupCounts.isEmpty, "\(mode): 重複扱いされない")
         }
     }
 

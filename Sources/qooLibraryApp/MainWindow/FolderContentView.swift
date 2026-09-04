@@ -147,6 +147,11 @@ struct FolderContentView: View {
     let unresolvedRescue: UnresolvedFileModel
     /// 未整理ビューを抜ける [UR3-01]。実体は `WindowState.toggleUnresolvedFiles()`。
     let onExitUnresolvedView: () -> Void
+    /// シリーズのスタックを開く [VM3-03]。実体は
+    /// `WindowState.enterSeriesStack(named:)`（履歴に積む）。
+    let onEnterSeriesStack: (String) -> Void
+    /// スタックから出る [VM3-03]。ヘッダの「すべてのシリーズ」から呼ぶ。
+    let onExitSeriesStack: () -> Void
     /// 「無視したものも表示」[UR3-03]。
     let onSetUnresolvedIncludesIgnored: (Bool) -> Void
     /// 一覧の末尾が見えたら次のページを求める [FI-05][PF-10]。**何度呼ばれても
@@ -336,6 +341,7 @@ struct FolderContentView: View {
         ScrollViewReader { scrollProxy in
         VStack(alignment: .leading, spacing: 0) {
             unresolvedBar
+            seriesStackBar      // [VM3-03]
             Group {
             if let loadError {
                 // 権限が無いだけなら、行き止まりにせずその場で許可を求められる
@@ -394,7 +400,7 @@ struct FolderContentView: View {
                                     .resizable()
                                     .frame(width: 16, height: 16)
                                     .bookFolderBadge(entry.isBookFolder, iconSize: 16)  // [IF-17]
-                                    .duplicateCountBadge(entry.duplicateCount,
+                                    .groupCountBadge(entry.group,
                                                          iconSize: 16)  // [DU-06]
                                 if renamingEntry?.url == entry.url {
                                     // Finder 流のインライン名前編集 [ユーザー要望]。
@@ -918,6 +924,49 @@ struct FolderContentView: View {
         }
     }
 
+    /// スタックを開いているときのヘッダ [VM3-03]。
+    ///
+    /// **抜ける導線を必ず添える。** ライブラリ表示モードでは ⌘↑ が無効
+    /// ［ユーザー判断: 階層移動はしない］なので、戻る／進む以外の脱出口が
+    /// ここしか無い——そのシリーズの本が走査で 1 冊も無くなると一覧が空に
+    /// なるが、そのときでも帯は残るので行き止まりにならない。
+    ///
+    /// **未整理の帯 [UR3-03] と同じ形にしてある**——「いま何を見ているか」を
+    /// 示す帯という役割が同じで、見た目を分ける理由が無い。
+    @ViewBuilder
+    private var seriesStackBar: some View {
+        if let series = libraryContent.drilledSeries {
+            HStack(spacing: Tokens.spacing.m) {
+                Image(systemName: "books.vertical")
+                    .foregroundStyle(Color.accentColor)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(series)
+                        .font(.system(size: Tokens.fontSize.body, weight: .semibold))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Text(String(format: String(localized: "seriesStack.volumeCount", locale: locale),
+                                libraryContent.totalCount))
+                        .font(.system(size: Tokens.fontSize.caption))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: Tokens.spacing.s)
+                Button("seriesStack.showAll") { onExitSeriesStack() }
+                Button {
+                    onExitSeriesStack()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help(String(localized: "seriesStack.showAll", locale: locale))
+            }
+            .padding(.horizontal, Tokens.spacing.m)
+            .padding(.vertical, Tokens.spacing.s)
+            .background(Color.accentColor.opacity(0.08))
+            Divider()
+        }
+    }
+
     /// 帯の 2 行目。**直近の再マッチング結果があればそれを出す** [AL-34]
     /// ——「足したフォーマットが効いたのか」がその場で分からないと、
     /// 足す → 数える → また足す、を画面を行き来しながらやることになる。
@@ -1076,14 +1125,17 @@ struct FolderContentView: View {
     @ViewBuilder
     private var customisableKeyBindingButtons: some View {
         Group {
-            KeyBindingButtons(action: .rename, store: keyBindingStore, isDisabled: selection.count != 1) {
+            KeyBindingButtons(action: .rename, store: keyBindingStore,
+                              isDisabled: selection.count != 1 || !selectionAllowsItemOperations) { // [VM3-01]
                 beginRenameFromShortcut()
             }
             // [FM-16] 既定では未割り当て。環境設定「キーボード」タブで
             // ユーザーが自分で割り当てた場合にだけ実際に効く
             // （`KeyBindingButtons` は `combos` が空ならボタンを 1 つも
             // 生成しない）。割り当てても確認シートは必ず経由する [FM-15]。
-            KeyBindingButtons(action: .deletePermanently, store: keyBindingStore, isDisabled: selection.isEmpty, role: .destructive) {
+            KeyBindingButtons(action: .deletePermanently, store: keyBindingStore,
+                              isDisabled: selection.isEmpty || !selectionAllowsItemOperations, // [VM3-01]
+                              role: .destructive) {
                 deletePermanently(Array(selection))
             }
             // 戻る／進むだけは 2 つ目の ⌘←／⌘→ をここで配線する
@@ -1150,7 +1202,9 @@ struct FolderContentView: View {
         actions.canNewFolder = allowsStructuralOperations && folder != nil
         actions.canNewFolderWithSelection = allowsStructuralOperations && folder != nil && !selection.isEmpty
         // 複数選択でも「名前を変更…」を出す（一括リネームのシートが開く）。
-        actions.canRename = !selection.isEmpty
+        // [VM3-01] スタックが混ざっていれば 1 冊単位の操作は通さない。
+        let itemOps = selectionAllowsItemOperations
+        actions.canRename = !selection.isEmpty && itemOps
         actions.canDuplicate = allowsStructuralOperations && !selection.isEmpty
         actions.canMakeAlias = allowsStructuralOperations && !selection.isEmpty
         actions.canCompress = allowsStructuralOperations && !selection.isEmpty
@@ -1158,10 +1212,10 @@ struct FolderContentView: View {
         // 選択があっても実行させない（パスワードを尋ねておきながら平文の
         // アーカイブを作ってしまうため、`FolderOperations` のコメント参照）。
         actions.canCompressWithPassword = allowsStructuralOperations && !selection.isEmpty && operations.canCompressWithPassword
-        actions.canMoveToTrash = !selection.isEmpty
-        actions.canDeletePermanently = !selection.isEmpty // [FM-14]
+        actions.canMoveToTrash = !selection.isEmpty && itemOps          // [VM3-01]
+        actions.canDeletePermanently = !selection.isEmpty && itemOps    // [FM-14][VM3-01]
         actions.canCopyPath = !selection.isEmpty // [FM-10]
-        actions.canCopy = !selection.isEmpty
+        actions.canCopy = !selection.isEmpty && itemOps                 // [VM3-01]
         actions.canCut = allowsStructuralOperations && !selection.isEmpty // カットは移動の一種
         actions.canPaste = allowsStructuralOperations && canPaste && folder != nil
         actions.canSelectAll = !displayedEntries.isEmpty
@@ -1674,6 +1728,11 @@ struct FolderContentView: View {
         /// 未整理ビューの出入り [UR3-01]。**左ペインから切り替わる**ので、
         /// この View の中の操作だけを見ていると読み直しの契機が無い。
         let unresolvedFilter: FileQuery.UnresolvedFilter?
+        /// シリーズスタックの ON/OFF と、開いているスタック [VM3-03][VM3-05]。
+        /// **表示メニュー・ツールバー・ヘッダ・戻る/進むから変わる**ので、
+        /// `unresolvedFilter` と同じ理由でここに要る。
+        let seriesStacking: Bool
+        let drilledSeries: String?
     }
 
     /// いまの表示モードで選べる並び替えキー [LV-01][LV-04][VM-15]。
@@ -1695,6 +1754,20 @@ struct FolderContentView: View {
     /// ——条件を View の式に散らすと、経路が増えたときに片方だけ取り残される。
     private var allowsStructuralOperations: Bool { displayMode == .folder }
 
+    /// いまの選択に 1 冊単位の操作を許すか [VM3-01]。
+    ///
+    /// **シリーズのスタックが混ざっていれば偽**［ユーザー判断］。スタックは
+    /// 12 冊を束ねた 1 行なので、代表 1 冊にだけ効くリネーム・ゴミ箱・完全
+    /// 削除を通すと「まとめて消したつもりが 1 冊だけ消えた」という取り返しの
+    /// つきにくい誤解を生む。巻一覧へ降りてから 1 冊ずつ操作させる。
+    ///
+    /// **コンテキストメニュー・メニューバー・キーバインドがこの 1 つを見る**
+    /// ——`allowsStructuralOperations` [VM-13] と同じ理由で、条件を経路ごとに
+    /// 書くと片方だけ取り残される（このリポジトリが繰り返し踏んでいる形）。
+    private var selectionAllowsItemOperations: Bool {
+        !displayedEntries.contains { selection.contains($0.url) && $0.isSeriesStack }
+    }
+
     private var libraryLoadKey: LibraryLoadKey {
         LibraryLoadKey(mode: displayMode,
                        folder: folder,
@@ -1702,7 +1775,9 @@ struct FolderContentView: View {
                        filterRevision: labelFilterRevision,
                        searchText: searchText,
                        generation: LibraryGeneration.shared.value,
-                       unresolvedFilter: libraryContent.unresolvedFilter)
+                       unresolvedFilter: libraryContent.unresolvedFilter,
+                       seriesStacking: libraryContent.seriesStacking,
+                       drilledSeries: libraryContent.drilledSeries)
     }
 
     /// ライブラリ表示モードでだけ現れる列 [LV-04]。
@@ -2153,6 +2228,18 @@ struct FolderContentView: View {
             // `entries` から引くと空になり「開く」が何もしない・「名前を変更…」
             // が消える・`allSatisfy` が真になって的外れな項目が出る。
             let targetEntries = displayedEntries.filter { urls.contains($0.url) }
+            // [VM3-01] シリーズのスタックが混ざっている間は、**1 冊に対する
+            // 操作を出さない**［ユーザー判断］。スタックは 12 冊を束ねた行なので、
+            // 代表 1 冊にだけ効く操作（リネーム・ゴミ箱・ラベル・保護・ロック）を
+            // 並べると「12 冊まとめて消したつもりが 1 冊だけ消えた」「12 冊
+            // 消えた」のどちらの誤解も起こりうる。**開く（＝ドリルイン）・
+            // Quick Look・Finder で表示のような参照系は残す**——巻一覧へ降りて
+            // から 1 冊ずつ操作させるのが、この機能の意図した使い方。
+            //
+            // 判定を 1 つの名前へ集約してあるのは `allowsStructuralOperations`
+            // [VM-13] と同じ理由——条件を View の式に散らすと、項目が増えた
+            // ときに片方だけ取り残される。
+            let allowsItemOperations = !targetEntries.contains { $0.isSeriesStack }
             Button("action.open", systemImage: "arrow.up.forward.app") { openEntries(targetEntries) } // [KB-02 相当]
             // [QL-01] 右クリックした対象が現在の選択と違う場合は、まず選択を
             // 合わせてから開く——Quick Look の対象は「現在の選択」であり
@@ -2171,14 +2258,14 @@ struct FolderContentView: View {
             // **畳んでいないときは出さない**——組が存在しないので比較する
             // ものが無い。
             if targets.count == 1, let only = targetEntries.first,
-               only.duplicateCount > 1, let row = only.libraryRow {
+               only.isDuplicateRepresentative, let row = only.libraryRow {
                 Button("folder.compareDuplicates", systemImage: "rectangle.on.rectangle") {
                     DuplicateComparisonNavigation.open(
                         file: row.id, library: row.libraryID, openWindow: openWindow)
                 }
                 Divider()
             }
-            if targets.count == 1, let only = targetEntries.first {
+            if targets.count == 1, let only = targetEntries.first, allowsItemOperations {
                 OpenWithMenu(url: only.url, isDirectory: only.isNavigableFolder)
                 // **パッケージの中を見る唯一の導線** [ユーザー要望、Finder 準拠]。
                 // ダブルクリックは起動に割り当てたので、中身を見たいときは
@@ -2201,6 +2288,7 @@ struct FolderContentView: View {
                 }
             }
             Divider()
+            if allowsItemOperations { // [VM3-01]
             labelSubmenu(for: targetEntries) // [RL3-01〜RL3-03]
             protectionMenuItem(for: targetEntries) // [PR-05]
             unresolvedIgnoreItem(for: targetEntries) // [UR3-03][AL-33]
@@ -2211,9 +2299,11 @@ struct FolderContentView: View {
             } else if targets.count > 1 {
                 Button("menu.renameItems", systemImage: "pencil") { beginBulkRename(targets) }
             }
+            }
             if allowsStructuralOperations { // [VM-13]
                 Button("folder.duplicate", systemImage: "plus.square.on.square") { duplicate(targets) } // [FM-02]
             }
+            if allowsItemOperations { // [VM3-01] 代表 1 冊だけがボードへ載る
             Button("action.copy", systemImage: "document.on.document") { copySelectionToPasteboard(targets) } // [KB-02 相当、⌘C]
                 // Finder と同じく ⌥ で「パス名をコピー」に入れ替わる [FM-10]
                 // [Finder 対比監査。⌥ 代替の一覧と、対応しなかった項目の理由は
@@ -2221,6 +2311,7 @@ struct FolderContentView: View {
                 .modifierKeyAlternate(.option) {
                     Button("folder.copyPath", systemImage: "document.on.document") { copyPaths(targets) }
                 }
+            }
             if allowsStructuralOperations { // [VM-13] カットは移動の一種
                 Button("action.cut", systemImage: "scissors") { cutSelectionToPasteboard(targets) } // [Finder/Edit メニュー整備、⌘X]
             // Finder の「選択項目で新規フォルダを作成」[Finder/Edit メニュー整備]。
@@ -2229,6 +2320,7 @@ struct FolderContentView: View {
                 Button("action.newFolderWithSelection") { newFolderWithSelection(targets) }
             }
             Divider()
+            if allowsItemOperations { // [VM3-01]［ユーザー判断: スタックでは無効］
             Button("folder.moveToTrash", systemImage: "trash", role: .destructive) { moveToTrash(targets) } // [FM-04]
                 // Finder と同じく ⌥ で「すぐに削除…」に入れ替わる [FM-14]
                 // [Finder 対比監査]。対にすることで、ゴミ箱が出せない場面で
@@ -2239,6 +2331,7 @@ struct FolderContentView: View {
                     }
                 }
             vaultSection(for: targetEntries)
+            }
             Divider()
             // 圧縮・展開関連をサブメニューにまとめる [ユーザー要望]。
             // [VM-13] ライブラリ表示モードでは出さない——展開は「どこへ」を
@@ -2276,10 +2369,12 @@ struct FolderContentView: View {
             if allowsStructuralOperations { // [VM-13] 一覧に無いファイルを作る
                 Button("folder.createAlias", systemImage: "square.on.square.dashed") { createAliases(for: targets) }
             }
+            if allowsItemOperations { // [VM3-01] 代表 1 冊にしか効かない
             Divider()
             Button(targetEntries.allSatisfy(\.isLocked) ? "folder.unlock" : "folder.lock",
                    systemImage: targetEntries.allSatisfy(\.isLocked) ? "lock.open" : "lock") {
                 toggleLock(targetEntries)
+            }
             }
             // 「情報を見る」の簡易シートは 1-10 で常設の右ペイン
             // インスペクタ（`InspectorPane`）に置き換えたため削除した。
@@ -2778,6 +2873,16 @@ struct FolderContentView: View {
     ///   **メインスレッドでは行わない** [NV6-02]。ネットワーク上のリンクを
     ///   ダブルクリックしただけで固まらないようにするため。
     private func openEntries(_ targets: [FolderEntry]) {
+        // [VM3-03] スタックを「開く」＝そのシリーズの巻一覧へ降りる。
+        // **単一選択のときだけ**——複数のスタックを同時に開くことはできない
+        // （降りられる先が 1 つに定まらない）。混在した選択では
+        // スタック以外の本だけを開く。
+        if targets.count == 1, case .series(_, let name)? = targets.first?.group {
+            onEnterSeriesStack(name)
+            return
+        }
+        let targets = targets.filter { !$0.isSeriesStack }
+        guard !targets.isEmpty else { return }
         let urls = targets.map(\.url)
         // [IF-18] 関連付けアプリに任せるか。**リンクを解決する前に、元の項目で
         // 判定する**——印（`isBookFolder`）は直下の一覧から来ており、解決先が
@@ -3100,9 +3205,29 @@ struct FolderEntry: Identifiable {
     /// ——ライブラリ表示モードでは 1 冊として 1 行に出ており、印の出番が無い。
     /// 判定は DB（`isBookFolder`）が出したもので、その場では計算しない。
     var isBookFolder: Bool = false
-    /// 代表している重複グループの件数 [DU-06]。**1 は「重複していない」。**
-    /// ライブラリ表示モードで畳んでいるときだけ 2 以上になる [DU-04]。
-    var duplicateCount: Int = 1
+    /// 代表している組 [DU-06][VM3-02]。**`.none` は「畳んでいない」。**
+    /// ライブラリ表示モードで畳んでいるときだけ `.duplicate` / `.series` になる。
+    var group: LibraryContentModel.RowGroup = .none
+
+    /// バッジに出す件数 [DU-06][VM3-02]。1 なら印を出さない。
+    var groupCount: Int { group.count }
+
+    /// シリーズのスタックか [VM3-01]。**開ける行**であり、**リネーム・
+    /// ゴミ箱・完全削除の対象にならない行**でもある［ユーザー判断: 12 冊に
+    /// 見える行を消して 1 冊しか消えない／12 冊消える、のどちらの誤解も
+    /// 構造的に起きないようにする］。
+    var isSeriesStack: Bool {
+        if case .series = group { return true }
+        return false
+    }
+
+    /// 重複の組を代表しているか [DU-06][DU-12]。**シリーズのスタックは
+    /// 含まない**——「重複を比較…」はファイルが 2 つある状態を並べる画面で、
+    /// 違う巻を並べても意味を成さない。
+    var isDuplicateRepresentative: Bool {
+        if case .duplicate = group { return true }
+        return false
+    }
 
     /// 一覧に出す名前 [IV-05][IV-07]。ライブラリ表示モードではタイトル、
     /// 無ければファイル名。フォルダ表示モードでは常にファイル名。
@@ -3111,6 +3236,9 @@ struct FolderEntry: Identifiable {
     /// 検索・パスの組み立てがこれを使うので、表示のためにここを書き換えると
     /// 「タイトルでファイル名を上書きする」事故になる [IV-10][RP-10]。
     var displayName: String {
+        // [VM3-02] スタックはシリーズ名で出す——代表（ふつうは第 1 巻）の
+        // タイトルを出すと、12 冊を束ねた行が 1 冊の名前を名乗ることになる。
+        if case .series(_, let seriesName) = group { return seriesName }
         guard let libraryRow else { return name }
         return LibraryContentModel.displayName(for: libraryRow)
     }
@@ -3185,7 +3313,7 @@ extension FolderEntry {
             isLocked: false,
             libraryRow: row.file,
             userCoverURL: row.userCoverURL)     // [IV-02①]
-        self.duplicateCount = row.duplicateCount        // [DU-06]
+        self.group = row.group                          // [DU-06][VM3-02]
     }
 }
 

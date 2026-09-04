@@ -35,6 +35,32 @@ public final class LibraryContentModel {
         case failed(String)
     }
 
+    /// 一覧の 1 行が代表している組 [DU-06][VM3-02]。
+    ///
+    /// **1 回の問い合わせが重複とシリーズの両方を畳むことは無い**
+    /// [VM3-01 の設計判断: 外側の一覧はシリーズで畳み、スタックを開いた
+    /// 巻一覧の中で重複を畳む]。だから 1 つの列挙で表せる——器を 2 つ持つと
+    /// 「片方が常に 1」という読みにくい形になるうえ、バッジやメニューの
+    /// 出し分けで両方を見る必要が出てくる。
+    public enum RowGroup: Sendable, Hashable {
+        /// 畳んでいない（単体の本）。
+        case none
+        /// 同じ作品のファイルが複数ある [DU-04〜06]。
+        case duplicate(count: Int)
+        /// 同じシリーズの巻が複数ある [VM3-01][VM3-02]。`name` は表示用の
+        /// シリーズ名で、**ドリルインの絞り込みにもこれを渡す**
+        /// （正規化は永続化層が導出する [FileQuery.seriesName]）。
+        case series(count: Int, name: String)
+
+        /// バッジに出す件数。**1 なら畳んでいない**ので印は出さない。
+        public var count: Int {
+            switch self {
+            case .none: return 1
+            case .duplicate(let n), .series(let n, _): return n
+            }
+        }
+    }
+
     /// 一覧の 1 行。`FileRow` に、描くのに要る 2 つ（実体の URL と表示名）を
     /// 添えたもの。
     ///
@@ -52,24 +78,40 @@ public final class LibraryContentModel {
         /// ここで持つのは**パスの組み立てだけ**（`UserCoverStore.url(forRef:)`
         /// は純粋な計算）なので、200 行ぶん作っても費用が無い。
         public let userCoverURL: URL?
-        /// この行が代表している組の件数 [DU-06]。**1 は「重複していない」**。
-        /// バッジを出すかどうかはこの値だけで決まる。
-        public let duplicateCount: Int
+        /// この行が何を代表しているか [DU-06][VM3-02]。
+        public let group: RowGroup
         public var id: URL { url }
 
-        /// 重複の組を代表しているか [DU-06][DU-12]。
-        public var isDuplicateRepresentative: Bool { duplicateCount > 1 }
+        /// 重複の組を代表しているか [DU-06][DU-12]。**シリーズのスタックは
+        /// 含まない**——「重複を比較…」はファイルが 2 つある状態を並べる
+        /// 画面で、違う巻を並べても意味を成さない。
+        public var isDuplicateRepresentative: Bool {
+            if case .duplicate = group { return true }
+            return false
+        }
+
+        /// シリーズのスタックか [VM3-01]。**開ける行**であり、
+        /// **リネーム・削除の対象にならない行**でもある［ユーザー判断］。
+        public var isSeriesStack: Bool {
+            if case .series = group { return true }
+            return false
+        }
 
         public init(file: FileRow, url: URL, userCoverURL: URL? = nil,
-                    duplicateCount: Int = 1) {
+                    group: RowGroup = .none) {
             self.file = file
             self.url = url
             self.userCoverURL = userCoverURL
-            self.duplicateCount = duplicateCount
+            self.group = group
         }
 
-        /// 一覧に出す名前 [IV-05][IV-07]。
-        public var displayName: String { LibraryContentModel.displayName(for: file) }
+        /// 一覧に出す名前 [IV-05][IV-07][VM3-02]。**スタックはシリーズ名**
+        /// ——代表（ふつうは第 1 巻）のタイトルを出すと、12 冊を束ねた行が
+        /// 1 冊の名前を名乗ることになる。
+        public var displayName: String {
+            if case .series(_, let name) = group { return name }
+            return LibraryContentModel.displayName(for: file)
+        }
     }
 
     public private(set) var state: State = .inactive
@@ -121,11 +163,25 @@ public final class LibraryContentModel {
             clear()
             return
         }
+        // **絞り込んでいる間はシリーズへ畳まない** [VM3-06]。せっかく一致した
+        // 本がスタックの中に隠れてしまうため。要件が名指しするのは検索語と
+        // ラベルフィルタだが、評価・未整理・「重複のみ」も同じ理由で外す
+        // ——どれも「該当する本を見たい」操作である。
+        let isFiltering = !labelSelection.isEmpty || ratingFilter != nil
+            || (searchText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+            || unresolvedFilter != nil || duplicatesOnly
+        // ドリルイン中は畳まない [VM3-03]——同じシリーズの巻を見ている
+        // ところなので、畳めば 1 行に戻ってしまう。
+        foldsIntoSeriesStacks = seriesStacking && drilledSeries == nil && !isFiltering
         // グループ化の可否は**ライブラリの設定**が決める [DU-01][DU-02]。
         // `clear()` で戻さずここで毎回入れ直すのは、設定ウインドウで変えた
         // 直後の読み直しでも新しい値が効くようにするため（`settingsRevision`
         // が上がると呼び出し側が読み直す）。
-        grouping = library.duplicateGrouping
+        //
+        // **スタックへ畳んでいる間は重複を畳まない**［ユーザー判断］——
+        // 外側の一覧はシリーズで畳み、スタックを開いた巻一覧の中で重複を
+        // 畳む、という役割分担。二重に畳むと SQL も費用も積になる。
+        grouping = foldsIntoSeriesStacks ? .off : library.duplicateGrouping
         // 畳んでいないのに「重複のみ」は意味を持たない [DU-11]。
         let onlyDuplicates = grouping.isEnabled && duplicatesOnly
         let query = Self.makeQuery(libraryID: library.id,
@@ -137,7 +193,9 @@ public final class LibraryContentModel {
                                    offset: 0,
                                    grouping: grouping,
                                    duplicatesOnly: onlyDuplicates,
-                                   unresolvedFilter: unresolvedFilter)
+                                   unresolvedFilter: unresolvedFilter,
+                                   seriesStacking: foldsIntoSeriesStacks,
+                                   seriesName: drilledSeries)
         generation &+= 1
         let mine = generation
         activeQuery = query
@@ -148,7 +206,8 @@ public final class LibraryContentModel {
             guard mine == generation else { return }
             rows = Self.rows(from: page.rows, libraryRootPath: library.resolvedPath,
                              userCoverURL: { services.userCoverURL(ref: $0, library: library) },
-                             duplicateCounts: page.duplicateCounts)
+                             groupCounts: page.groupCounts,
+                             asSeriesStacks: foldsIntoSeriesStacks)
             totalCount = page.totalCount
             state = .ready
         } catch {
@@ -183,7 +242,8 @@ public final class LibraryContentModel {
             totalCount = page.totalCount
             let more = Self.rows(from: page.rows, libraryRootPath: library.resolvedPath,
                                  userCoverURL: { services.userCoverURL(ref: $0, library: library) },
-                                 duplicateCounts: page.duplicateCounts)
+                                 groupCounts: page.groupCounts,
+                             asSeriesStacks: foldsIntoSeriesStacks)
             // 同じ行が二度入らないようにする。ページの境目で走査が行を挿すと
             // `offset` がずれて重複し得る（`Identifiable` の id が衝突すると
             // SwiftUI が実行時に文句を言う）。
@@ -236,6 +296,52 @@ public final class LibraryContentModel {
     /// バッジ・コンテキストメニューの出し分けはこれを見る。
     public private(set) var grouping: DuplicateGrouping = .off
 
+    // MARK: - シリーズスタック [VM3-01〜VM3-06]
+
+    /// 同じシリーズの本を 1 行へ畳むか [VM3-05]。**既定 ON**。
+    ///
+    /// **ウインドウ固有の表示状態** [ST-20] なので DB には保存しない
+    /// ——`duplicatesOnly` と同じ扱い。同じライブラリを 2 枚開いて、片方を
+    /// 巻ごとの一覧、もう片方をスタックにできる。
+    ///
+    /// **`clear()` で戻さない。** これは「一覧の絞り込み」ではなく利用者が
+    /// 選んだ見え方なので、フォルダを移動しても保つ（`grouping` や
+    /// `duplicatesOnly` とはそこが違う）。
+    public private(set) var seriesStacking = true
+
+    /// いま開いているスタックのシリーズ名 [VM3-03]。`nil` なら全体一覧。
+    ///
+    /// **表示用の名前をそのまま持つ**——正規化は永続化層が導出する
+    /// [`FileQuery.seriesName`]。ヘッダの見出しにもこの値を出す。
+    public private(set) var drilledSeries: String?
+
+    /// いまの一覧が実際にスタックへ畳まれているか [VM3-01][VM3-06]。
+    ///
+    /// `seriesStacking` は利用者の希望で、こちらは**その回の問い合わせで
+    /// 実際に畳んだか**。絞り込み中 [VM3-06]・ドリルイン中 [VM3-03] は
+    /// 希望が立っていても畳まないので、バッジや操作の出し分けはこちらを見る。
+    public private(set) var foldsIntoSeriesStacks = false
+
+    /// スタックを開いているか [VM3-03]。ヘッダの出し分けに使う。
+    public var isInsideSeriesStack: Bool { drilledSeries != nil }
+
+    public func setSeriesStacking(_ on: Bool) {
+        seriesStacking = on
+        // 畳むのをやめたらドリルインも解く——スタックが無いのに「1 つの
+        // シリーズだけ」が残ると、抜け出す導線（ヘッダの戻る）だけが宙に浮く。
+        if !on { drilledSeries = nil }
+    }
+
+    /// スタックを開く [VM3-03]。呼び出し側は続けて読み直すこと。
+    public func enterSeries(_ name: String) {
+        drilledSeries = name
+    }
+
+    /// スタックから出る [VM3-03]。
+    public func exitSeries() {
+        drilledSeries = nil
+    }
+
     /// 一覧を捨てて `.inactive` に戻す。モードをフォルダ側へ切り替えたとき、
     /// ライブラリの外へ出たときに呼ぶ。
     public func clear() {
@@ -252,6 +358,12 @@ public final class LibraryContentModel {
         // 出て戻ってきたときに一覧が黙って絞られたままになる（`grouping` を
         // 戻しているのと同じ理由）。
         unresolvedFilter = nil
+        // **ドリルインも解く** [VM3-03]。中央ペインがフォルダ表示へ移った・
+        // ライブラリの外へ出たあとで「1 つのシリーズだけ」が残っていると、
+        // 戻ってきたときに理由の分からない絞り込みとして現れる。
+        // **`seriesStacking`（利用者が選んだ見え方）は戻さない。**
+        drilledSeries = nil
+        foldsIntoSeriesStacks = false
         state = .inactive
     }
 
@@ -272,7 +384,9 @@ public final class LibraryContentModel {
                                  offset: Int,
                                  grouping: DuplicateGrouping = .off,
                                  duplicatesOnly: Bool = false,
-                                 unresolvedFilter: FileQuery.UnresolvedFilter? = nil) -> FileQuery {
+                                 unresolvedFilter: FileQuery.UnresolvedFilter? = nil,
+                                 seriesStacking: Bool = false,
+                                 seriesName: String? = nil) -> FileQuery {
         let text = searchText?.trimmingCharacters(in: .whitespacesAndNewlines)
         return FileQuery(
             libraryID: libraryID,
@@ -284,6 +398,8 @@ public final class LibraryContentModel {
             duplicatesOnly: duplicatesOnly,
             unresolvedFilter: unresolvedFilter,
             grouping: grouping,
+            seriesStacking: seriesStacking,
+            seriesName: seriesName,
             sort: sort,
             offset: offset,
             limit: AppLimits.Query.defaultPageSize)
@@ -319,7 +435,8 @@ public final class LibraryContentModel {
     /// 実体がディレクトリだが `managedFile` の 1 行として 1 冊分を表す。
     nonisolated static func rows(from files: [FileRow], libraryRootPath: String,
                                  userCoverURL: (String) -> URL?,
-                                 duplicateCounts: [FileID: Int] = [:]) -> [Row] {
+                                 groupCounts: [FileID: Int] = [:],
+                                 asSeriesStacks: Bool = false) -> [Row] {
         let root = URL(fileURLWithPath: libraryRootPath, isDirectory: true)
         return files.map { file in
             Row(file: file,
@@ -328,7 +445,25 @@ public final class LibraryContentModel {
                 // [IV-02①] 参照があるときだけ場所を組み立てる。I/O は無い。
                 userCoverURL: file.coverImageSource == .userSpecified
                     ? file.coverImageRef.flatMap(userCoverURL) : nil,
-                duplicateCount: duplicateCounts[file.id] ?? 1)
+                group: Self.group(for: file, counts: groupCounts,
+                                  asSeriesStacks: asSeriesStacks))
         }
+    }
+
+    /// 行が何を代表しているかを決める [DU-06][VM3-02]。
+    ///
+    /// **件数の器は 1 つで、意味は問い合わせた側が知っている**
+    /// （`FilePage.groupCounts` のコメント参照）。シリーズ名が無い行は
+    /// 畳まれていないので、`asSeriesStacks` でも `.none` になる [VM3-04]。
+    nonisolated static func group(for file: FileRow, counts: [FileID: Int],
+                                  asSeriesStacks: Bool) -> RowGroup {
+        guard let count = counts[file.id], count > 1 else { return .none }
+        guard asSeriesStacks else { return .duplicate(count: count) }
+        // シリーズ名が無い行はスタックにならない [VM3-04]。SQL 側でも
+        // 畳んでいないので通常はここへ来ないが、意味の食い違いを
+        // この関数の中で止めておく（Stage 6 と同じ「判定は関数の中」）。
+        guard let name = file.seriesName?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !name.isEmpty else { return .none }
+        return .series(count: count, name: name)
     }
 }

@@ -29,6 +29,19 @@ struct LibraryContentModelTests {
         return (w, library)
     }
 
+    /// **巻ごとの一覧を前提にするテスト用**のモデル [VM3-05]。
+    ///
+    /// シリーズスタックは既定 ON なので、`作品名A 第01巻`〜`第03巻` のような
+    /// 標本はそのままだと 1 行へ畳まれる——ここで試したいのはフラット表示
+    /// [VM-10] とページング [FI-05] であって畳み方ではないので、切って使う。
+    /// スタック側の性質は `SeriesStackModelTests` が固定している。
+    @MainActor
+    private func flatModel() -> LibraryContentModel {
+        let model = LibraryContentModel()
+        model.setSeriesStacking(false)
+        return model
+    }
+
     private static func file(_ name: String) -> String {
         "(一般コミック) [著者値A] \(name).cbz"
     }
@@ -165,7 +178,7 @@ struct LibraryContentModelTests {
             "作品A/\(Self.file("作品名A 第02巻"))",
             "作品B/\(Self.file("作品名B 第01巻"))",
         ])
-        let model = LibraryContentModel()
+        let model = flatModel()
         await model.load(library: library, relativePath: "", services: w.services)
         #expect(model.state == .ready)
         #expect(model.rows.count == 3)
@@ -182,7 +195,7 @@ struct LibraryContentModelTests {
             "作品A/\(Self.file("作品名A 第02巻"))",
             "作品B/\(Self.file("作品名B 第01巻"))",
         ])
-        let model = LibraryContentModel()
+        let model = flatModel()
         await model.load(library: library, relativePath: "作品A", services: w.services)
         #expect(model.rows.count == 2)
         #expect(model.rows.allSatisfy { $0.file.relativePath.hasPrefix("作品A/") })
@@ -296,7 +309,7 @@ struct LibraryContentModelTests {
         let names = (1...count).map { Self.file(String(format: "作品名A 第%03d巻", $0)) }
         let (w, library) = try await workspace(files: names)
 
-        let model = LibraryContentModel()
+        let model = flatModel()
         await model.load(library: library, relativePath: "", services: w.services)
         #expect(model.rows.count == AppLimits.Query.defaultPageSize)
         #expect(model.totalCount == count)
@@ -317,7 +330,7 @@ struct LibraryContentModelTests {
         let names = (1...count).map { Self.file(String(format: "作品名A 第%03d巻", $0)) }
         let (w, library) = try await workspace(files: names)
 
-        let model = LibraryContentModel()
+        let model = flatModel()
         await model.load(library: library, relativePath: "", services: w.services)
         await model.loadNextPage(library: library, services: w.services)
         await model.loadNextPage(library: library, services: w.services)
@@ -338,7 +351,7 @@ struct LibraryContentModelTests {
         let names = (1...count).map { Self.file(String(format: "作品名B 第%03d巻", $0)) }
         let (w, library) = try await workspace(files: names)
 
-        let model = LibraryContentModel()
+        let model = flatModel()
         await model.load(library: library, relativePath: "", services: w.services)
         #expect(model.rows.count == AppLimits.Query.defaultPageSize)
         #expect(model.totalCount == count)
