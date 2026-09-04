@@ -34,6 +34,7 @@ enum LibraryRegistrationWizard {
         let model = LibraryRegistrationWizardModel(
             templates: services.presetTemplates,
             volumeSets: volumeSets,
+            userTemplates: services.userTemplates,
             otherTypeNames: services.libraries.map(\.libraryTypeName))
         DialogWindowPresenter.shared.present(
             title: String(localized: "libraryWizard.title", locale: locale)
@@ -71,6 +72,7 @@ enum LibraryRegistrationWizard {
         let model = LibraryRegistrationWizardModel(
             templates: services.presetTemplates,
             volumeSets: volumeSets,
+            userTemplates: services.userTemplates,
             otherTypeNames: services.libraries.map(\.libraryTypeName),
             minStep: .template)
         model.step = .template
@@ -125,6 +127,10 @@ final class LibraryRegistrationWizardModel {
     private(set) var enable: LibraryEnableModel?
 
     let templates: [LibraryTypeTemplate]
+    /// ユーザー定義テンプレート [LT-02]。**プリセットと同じ扱い**で一覧に並び、
+    /// 推奨の判定 [RG3-23] にも入る——自分で作った物こそ当たるはずなので、
+    /// 対象から外すと推奨が本来より悪い側を指す。
+    let userTemplates: [UserTemplate]
     private let volumeSets: VolumeSetDefinition
     private let otherTypeNames: [String]
 
@@ -147,9 +153,13 @@ final class LibraryRegistrationWizardModel {
     }
 
     private(set) var merged: [MergedTemplate] = []
-    /// 一覧の選択。統合テンプレートの id か、白紙の番兵。
+    /// 一覧の選択。統合テンプレートの id か、ユーザー定義の id か、白紙の番兵。
     private(set) var listSelection: String?
     static let blankSelection = "__blank__"
+
+    /// ユーザー定義テンプレートの一覧上の id。**`LibraryEnableModel.Origin` の
+    /// `id` と同じ綴りにする**——2 通りの綴りがあると選択の照合が静かに外れる。
+    static func selectionID(forUserTemplate id: UUID) -> String { "user.\(id.uuidString)" }
 
     /// フォルダ名を整理の手がかりに使うか [RG3-24]。旧 (A)/(B) の実体。
     private(set) var folderUsageOn = false
@@ -166,8 +176,10 @@ final class LibraryRegistrationWizardModel {
     private(set) var isEvaluating = false
 
     init(templates: [LibraryTypeTemplate], volumeSets: VolumeSetDefinition,
+         userTemplates: [UserTemplate] = [],
          otherTypeNames: [String] = [], minStep: Step = .intro) {
         self.templates = templates
+        self.userTemplates = userTemplates
         self.volumeSets = volumeSets
         self.otherTypeNames = otherTypeNames
         self.minStep = minStep
@@ -206,6 +218,7 @@ final class LibraryRegistrationWizardModel {
         let model = LibraryEnableModel(
             folderName: url.lastPathComponent, folderURL: url,
             templates: templates, volumeSets: volumeSets,
+            userTemplates: userTemplates,
             otherTypeNames: otherTypeNames)
         enable = model
         isEvaluating = true
@@ -244,11 +257,46 @@ final class LibraryRegistrationWizardModel {
                 best = (item.id, outcome.matchRate, outcome.matched)
             }
         }
+        // ユーザー定義も同じ物差しで測る [★17]。**プリセットの後に測る**ので、
+        // 同率ならプリセットが推奨のまま残る——自分で作った物を推したい場合は
+        // 適合率で勝てばよく、同率で入れ替えると理由の説明がつかない。
+        for template in userTemplates {
+            let id = Self.selectionID(forUserTemplate: template.id)
+            let draft = template.settings.draft(displayName: model.folderName,
+                                                otherLibraryTypeNames: otherTypeNames)
+            let outcome = LibraryPreview.run(filenames: model.sampleNames, draft: draft,
+                                             truncated: model.sampleTruncated)
+            map[id] = outcome
+            if let current = best {
+                if outcome.matchRate > current.rate
+                    || (outcome.matchRate == current.rate && outcome.matched > current.matched) {
+                    best = (id, outcome.matchRate, outcome.matched)
+                }
+            } else {
+                best = (id, outcome.matchRate, outcome.matched)
+            }
+        }
         outcomes = map
         recommendedID = best?.id
         if let id = recommendedID {
             select(id)
         }
+    }
+
+    /// 確認ステップに出す「何を基にするか」の名前 [RG3-20]。
+    ///
+    /// **`currentMerged` だけを見てはならない**——あちらはプリセットしか
+    /// 探さないので、ユーザー定義を選んでいても「カスタム（空）」と出る
+    /// ［code-review で発見］。**この画面は「これから何が確定するか」を
+    /// 述べる場所**なので、起点の取り違えは最も出してはいけない誤りになる。
+    func originName(blankTitle: String) -> String {
+        if let item = currentMerged { return item.displayName }
+        if let id = listSelection,
+           let template = userTemplates.first(
+               where: { Self.selectionID(forUserTemplate: $0.id) == id }) {
+            return template.name
+        }
+        return blankTitle
     }
 
     var currentMerged: MergedTemplate? {
@@ -265,6 +313,10 @@ final class LibraryRegistrationWizardModel {
         if let id, id != Self.blankSelection,
            let item = merged.first(where: { $0.id == id }) {
             model.origin = .template(key: item.variant(folderUsage: folderUsageOn).key)
+        } else if let id,
+                  let template = userTemplates.first(
+                      where: { Self.selectionID(forUserTemplate: $0.id) == id }) {
+            model.origin = .userTemplate(id: template.id)
         } else if id == Self.blankSelection {
             model.origin = .blank
         }
@@ -643,6 +695,17 @@ struct LibraryRegistrationWizardView: View {
                         .tag(item.id)
                 }
             }
+            // **区画を分ける** [★16]。プリセットと自分のテンプレートは
+            // 「編集できるか」[LT-05] が違うので、並べるだけでは見分けが付かない。
+            if !model.userTemplates.isEmpty {
+                Section("libraryWizard.template.userHeader") {
+                    ForEach(model.userTemplates) { template in
+                        userTemplateRow(template)
+                            .tag(LibraryRegistrationWizardModel
+                                .selectionID(forUserTemplate: template.id))
+                    }
+                }
+            }
             Section {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("libraryEnable.blank")
@@ -655,6 +718,43 @@ struct LibraryRegistrationWizardView: View {
             }
         }
         .frame(width: 340)
+    }
+
+    /// ユーザー定義テンプレートの行 [LT-02]。**プリセットの行と同じ形**
+    /// （名前・推奨の印・適合率・フォーマットの例）——扱いを同等にするとは
+    /// 見え方も同じにするということ。
+    private func userTemplateRow(_ template: UserTemplate) -> some View {
+        let id = LibraryRegistrationWizardModel.selectionID(forUserTemplate: template.id)
+        let outcome = model.outcomes[id]
+        return VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: Tokens.spacing.xs) {
+                Text(template.name)
+                if id == model.recommendedID {
+                    Text("libraryWizard.template.recommended")
+                        .font(.system(size: 9, weight: .semibold))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(Color.accentColor, in: Capsule())
+                        .foregroundStyle(.white)
+                }
+                Spacer(minLength: 0)
+            }
+            if let outcome {
+                Text(String(format: String(localized: "libraryWizard.template.matchCount",
+                                           locale: locale),
+                            outcome.total, outcome.matched))
+                    .font(.system(size: Tokens.fontSize.caption))
+                    .foregroundStyle(outcome.matched > 0 ? Color.secondary : Color.orange)
+            }
+            if let example = template.settings.filenameFormats.first?.source {
+                Text(example)
+                    .font(.system(size: Tokens.fontSize.caption, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+        }
+        .padding(.vertical, 1)
     }
 
     private func templateRow(_ item: LibraryRegistrationWizardModel.MergedTemplate) -> some View {
@@ -794,6 +894,27 @@ struct LibraryRegistrationWizardView: View {
                         }
                         .padding(.top, Tokens.spacing.xs)
                     }
+                    Divider()
+                    // ここまで整えた設定をテンプレートとして残す
+                    // [LT-02、★10 の 3 つ目]。**登録を完了する前に保存できる**
+                    // ——同じ形の蔵書が複数あるとき、1 つ目で整えた設定を
+                    // 2 つ目以降で選び直せる。
+                    VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
+                        Button("templates.saveAsTemplateEllipsis") {
+                            TemplateSaveAction.present(
+                                draft: enable.draft,
+                                suggestedName: enable.draft.libraryTypeName,
+                                locale: locale)
+                        }
+                        // 不備のあるテンプレートは保存させない [H1]。
+                        // **`TemplateSaveAction` の中でも同じ検査をしている**が、
+                        // 押せるのに何も起きないボタンにしないため、ここでも止める。
+                        .disabled(!enable.draft.validate(as: .template)
+                            .filter { $0.severity == .error }.isEmpty)
+                        Text("templates.saveFromWizardExplanation")
+                            .font(.system(size: Tokens.fontSize.caption))
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 .padding(Tokens.spacing.l)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -904,8 +1025,8 @@ struct LibraryRegistrationWizardView: View {
                     Text(String(format: String(localized: "libraryWizard.confirm.header",
                                                locale: locale),
                                 enable.draft.displayName,
-                                model.currentMerged?.displayName
-                                    ?? String(localized: "libraryEnable.blank", locale: locale)))
+                                model.originName(blankTitle: String(
+                                    localized: "libraryEnable.blank", locale: locale))))
                         .font(.system(size: Tokens.fontSize.title3, weight: .semibold))
                     Text(String(format: String(localized: "libraryWizard.confirm.summary",
                                                locale: locale),

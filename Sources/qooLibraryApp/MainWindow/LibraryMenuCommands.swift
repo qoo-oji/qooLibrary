@@ -50,6 +50,13 @@ struct LibraryMenuCommands: View {
         }
         .disabled(actions?.canSaveShelf != true)
         Divider()
+        // テンプレートの手入れ [LT-02][LT-05][LT-06]。**表示中のライブラリが
+        // 無くても開ける**——テンプレートはライブラリに属さないアプリ全体の
+        // 持ち物で、そもそもライブラリを 1 つも持たない段階で使う。
+        Button("templates.manageEllipsis", systemImage: "square.on.square") {
+            TemplateManagerNavigation.shared.open(openWindow: openWindow)
+        }
+        Divider()
         // 片付けごとの入口 [§19.6、ステージ 4]。**表示中のライブラリが無くても
         // 開ける**——メンテナンスは左ペインでライブラリを選べるので、ここで
         // 塞ぐと「保管庫を見たいだけなのにライブラリへ移動してから」になる

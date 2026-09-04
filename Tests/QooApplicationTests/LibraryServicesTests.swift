@@ -24,6 +24,9 @@ final class ServicesWorkspace {
     /// 互いの複製を掃除し合う（`purgeUnreferencedUserCovers` は「参照されて
     /// いないものを捨てる」ので、別のテストの複製は必ず未参照に見える）。
     let coverDirectory: URL
+    /// ユーザー定義テンプレート [LT-02]。**作業領域ごとに分ける**——共有すると
+    /// 互いのテンプレートが混ざる（`coverDirectory` と同じ理由）。
+    let templateStoreURL: URL
 
     let registrationUUID = UUID()
 
@@ -33,8 +36,10 @@ final class ServicesWorkspace {
         storeDirectory = base.appendingPathComponent("store")
         libraryRoot = base.appendingPathComponent("library")
         coverDirectory = base.appendingPathComponent("usercovers")
+        templateStoreURL = base.appendingPathComponent("userTemplates.json")
         services = LibraryServices(
-            userCoverStore: DefaultUserCoverStore(baseDirectory: coverDirectory))
+            userCoverStore: DefaultUserCoverStore(baseDirectory: coverDirectory),
+            userTemplateStore: UserTemplateStore(storageURL: templateStoreURL))
         try FileManager.default.createDirectory(at: libraryRoot, withIntermediateDirectories: true)
     }
 

@@ -50,15 +50,26 @@ public struct BackupDocument: Codable, Sendable, Equatable {
     /// 書き出したアプリの版。復元時には使わないが、問い合わせの手がかりになる。
     public var appVersion: String?
     public var libraries: [LibraryBackup]
+    /// ユーザー定義テンプレート [LT-02][★8]。
+    ///
+    /// **DB の外**（`userTemplates.json`）にあるものを、ここでも運ぶ——含めないと
+    /// 「設定の書き出しにユーザー定義プリセットが含まれず、移行で失われる」という、
+    /// この種の機能でよく報告される失敗様式をそのまま踏む（CrealityPrint の実例）。
+    ///
+    /// **`Optional` なので `schemaVersion` は上げていない**（`shelves` と同じ判断）
+    /// ——鍵が増えるだけで、古い実装も新しい文書を読める。
+    public var userTemplates: [UserTemplate]?
 
     public init(schemaVersion: Int = BackupDocument.currentSchemaVersion,
                 exportedAt: Date,
                 appVersion: String?,
-                libraries: [LibraryBackup]) {
+                libraries: [LibraryBackup],
+                userTemplates: [UserTemplate]? = nil) {
         self.schemaVersion = schemaVersion
         self.exportedAt = exportedAt
         self.appVersion = appVersion
         self.libraries = libraries
+        self.userTemplates = userTemplates
     }
 }
 

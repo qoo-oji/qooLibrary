@@ -259,7 +259,20 @@ extension LibrarySettingsDraft {
     /// 実在しないラベルフィールドへ紐づけようとしたりする。`settingsSnapshot`
     /// が壊れたフォーマットを黙って落とす造りなのは「保存時に検証済み」を
     /// 前提にしているので、その前提をここで満たす。
-    public func validate() -> [LibrarySettingsIssue] {
+    /// 何として検証するか [LS-01][LT-02]。
+    ///
+    /// **表示名の要否だけが違う。** ライブラリの表示名はフォルダ名に追随する
+    /// [RG3-31] ので、テンプレート（＝まだどのフォルダにも結び付いていない
+    /// 設定の雛形）は持ちようがない。同じ草案の型を使う以上、どちらとして
+    /// 見るかを呼び出し側が言う必要がある。
+    public enum ValidationContext: Sendable {
+        /// ライブラリの設定として。表示名を要求する。
+        case library
+        /// テンプレートとして [LT-02]。**表示名を要求しない。**
+        case template
+    }
+
+    public func validate(as context: ValidationContext = .library) -> [LibrarySettingsIssue] {
         var issues: [LibrarySettingsIssue] = []
         func addError(_ section: LibrarySettingsIssue.Section, _ message: String) {
             issues.append(.init(severity: .error, section: section, message: message))
@@ -269,7 +282,7 @@ extension LibrarySettingsDraft {
         }
 
         // --- 基本 ---
-        if displayName.trimmingCharacters(in: .whitespaces).isEmpty {
+        if context == .library, displayName.trimmingCharacters(in: .whitespaces).isEmpty {
             addError(.basics, "表示名を入力してください。")
         }
         if libraryTypeName.trimmingCharacters(in: .whitespaces).isEmpty {

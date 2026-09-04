@@ -284,6 +284,23 @@ struct LibrarySettingsWindow: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                // いまの設定をテンプレートとして保存 [LT-02、★10 の 2 つ目]。
+                // **実際に蔵書へ当てて調整し終えた設定を次のライブラリでも
+                // 使いたい**——この機能の実態に一番近い経路。保存されるのは
+                // 画面の草案（未保存の編集を含む）で、テンプレートは
+                // ライブラリと切り離された写しになる [LT-03]。
+                Button("templates.saveAsTemplateEllipsis") {
+                    guard let draft = model.draft else { return }
+                    TemplateSaveAction.present(
+                        draft: draft,
+                        suggestedName: draft.libraryTypeName.isEmpty
+                            ? draft.displayName : draft.libraryTypeName,
+                        locale: locale)
+                }
+                // 不備のあるテンプレートは保存させない [H1]。
+                .disabled(model.draft.map {
+                    !$0.validate(as: .template).filter { $0.severity == .error }.isEmpty
+                } ?? true)
                 Button("librarySettings.revert") { model.revert() }
                     .disabled(!model.isDirty || model.isBusy)
                 Button("librarySettings.save") { performSave() }

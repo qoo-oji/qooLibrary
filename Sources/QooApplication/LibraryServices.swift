@@ -45,6 +45,14 @@ public final class LibraryServices {
     /// 草案を組み立てるのに要る（巻数はテンプレートが名前で参照する）。
     public var volumeSetDefinition: VolumeSetDefinition? { volumeSets }
 
+    /// ユーザー定義テンプレート [LT-02]。プリセットと**同じ扱い**で並べる
+    /// ——一覧・推奨・登録はどちらも草案へ畳んでから行う
+    /// （`UserTemplate.swift` の解説）。
+    ///
+    /// **DB とは独立に読める。** プリセットと同じく、ストアが開けなくても
+    /// 型の一覧は見せられる。
+    public private(set) var userTemplates: [UserTemplate] = []
+
     /// ストアを開けなかった理由。`nil` なら正常。
     public private(set) var startupFailure: StoreStartupFailure?
 
@@ -71,6 +79,9 @@ public final class LibraryServices {
 
     private var database: QooDatabase?
     private var volumeSets: VolumeSetDefinition?
+    /// ユーザー定義テンプレートの保管 [LT-02][LT-06]。**DB ではない**
+    /// （`UserTemplateStore` の解説）。
+    private let userTemplateStore: UserTemplateStore
     private var libraryRepository: (any LibraryRepository)?
     private var fileRepository: (any ManagedFileRepository)?
     private var labelRepository: (any LabelRepository)?
@@ -93,8 +104,13 @@ public final class LibraryServices {
     ///   **テストは独立した一時ディレクトリを渡すこと**（`bootstrap(storeURL:)` と
     ///   同じ理由）。既定も `swift test` 中は振り替わるが、テストどうしが
     ///   同じ場所を共有すると互いの複製を掃除し合う。
-    public init(userCoverStore: any UserCoverStoring = DefaultUserCoverStore.shared) {
+    /// - Parameter userTemplateStore: ユーザー定義テンプレートの保管 [LT-02]。
+    ///   **テストは独立した一時ディレクトリを渡すこと**（`userCoverStore` と
+    ///   同じ理由——既定のままだと開発機の実ファイルを書き換える）。
+    public init(userCoverStore: any UserCoverStoring = DefaultUserCoverStore.shared,
+                userTemplateStore: UserTemplateStore = .shared) {
         self.userCoverStore = userCoverStore
+        self.userTemplateStore = userTemplateStore
     }
 
     // MARK: - 起動
@@ -120,6 +136,9 @@ public final class LibraryServices {
             startupFailure = .templatesUnavailable(String(describing: error))
             return
         }
+        // **プリセットと同じくストアと独立に読む。** ここで失敗しても
+        // 起動は止めない——ユーザー定義が 0 件になるだけで、プリセットは使える。
+        await refreshUserTemplates()
 
         guard let storeURL = explicitStoreURL ?? Self.defaultStoreURL() else {
             startupFailure = .storeLocationUnavailable
@@ -236,6 +255,49 @@ public final class LibraryServices {
         guard let appSupport = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return nil }
         return QooDatabase.defaultStoreURL(applicationSupport: appSupport)
+    }
+
+    // MARK: - ユーザー定義テンプレート [LT-02][LT-06]
+
+    /// 保管から読み直す。**DB とは独立**（`userTemplates` の解説）。
+    public func refreshUserTemplates() async {
+        userTemplates = await userTemplateStore.templates()
+    }
+
+    /// 追加または上書き（`id` で同定）。
+    @discardableResult
+    public func saveUserTemplate(_ template: UserTemplate) async throws -> UserTemplate {
+        let saved = try await userTemplateStore.save(template)
+        await refreshUserTemplates()
+        return saved
+    }
+
+    /// 削除 [★14]。**そのテンプレートから登録したライブラリがあっても消せる**
+    /// ——[LT-03] により設定は登録時にライブラリ側へ写るので既存は無傷。
+    public func removeUserTemplate(id: UUID) async throws {
+        try await userTemplateStore.remove(id: id)
+        await refreshUserTemplates()
+    }
+
+    /// 書き出す文書を組み立てる [LT-06]。`ids` が `nil` なら全件。
+    public func userTemplateDocument(ids: Set<UUID>? = nil) async -> UserTemplateDocument {
+        await userTemplateStore.exportDocument(ids: ids)
+    }
+
+    /// 文書を取り込む [LT-06]。**併合も上書きもしない**（`importDocument` の解説）。
+    @discardableResult
+    public func importUserTemplates(at url: URL) async throws -> UserTemplateImportOutcome {
+        let outcome = try await userTemplateStore.importDocument(at: url)
+        await refreshUserTemplates()
+        return outcome
+    }
+
+    /// JSON バックアップからの復元 [★8]。**併合する**（`merge` の解説）。
+    @discardableResult
+    public func mergeUserTemplates(_ templates: [UserTemplate]) async throws -> Int {
+        let added = try await userTemplateStore.merge(templates)
+        if added > 0 { await refreshUserTemplates() }
+        return added
     }
 
     // MARK: - 問い合わせ
@@ -1065,13 +1127,31 @@ public final class LibraryServices {
     /// 何を出し、何を出さないかは `BackupDocument`（`QooKit`）の型コメントが正。
     public func exportBackup(scope: BackupScope = .everything) async throws -> BackupDocument {
         guard let repository = backupRepository else { throw ServiceError.notReady }
-        return try await repository.export(scope: scope, appVersion: Self.appVersion())
+        var document = try await repository.export(scope: scope, appVersion: Self.appVersion())
+        // **ユーザー定義テンプレートは DB の外にあるのでここで足す** [★8]。
+        // 永続化層は `userTemplates.json` を知らない（知るべきでもない）ので、
+        // 両方を見られるこの層が唯一の合流点になる [A-02]。
+        let templates = await userTemplateStore.templates()
+        document.userTemplates = templates.isEmpty ? nil : templates
+        return document
     }
 
     /// 取り込んだら何が起きるかを数える。**DB は変えない** [IE-11]。
     public func planImport(_ document: BackupDocument) async throws -> ImportPlan {
         guard let repository = backupRepository else { throw ServiceError.notReady }
-        return try await repository.plan(document)
+        var plan = try await repository.plan(document)
+        // テンプレートは DB の外なので永続化層は数えない [★8]。
+        // **数に入れないと「取り込むものが無い」と判定されて、テンプレート
+        // だけを戻す経路が丸ごと消える**［code-review で発見］。
+        plan.templatesAdded = await countImportableTemplates(in: document)
+        return plan
+    }
+
+    /// 併合したときに実際に足される件数（既にあるものは数えない）。
+    private func countImportableTemplates(in document: BackupDocument) async -> Int {
+        guard let incoming = document.userTemplates else { return 0 }
+        let known = Set(await userTemplateStore.templates().map(\.id))
+        return incoming.filter { !known.contains($0.id) }.count
     }
 
     /// 取り込む [JS-08]。承認を得てから呼ぶこと——`planImport` の結果を
@@ -1079,11 +1159,21 @@ public final class LibraryServices {
     @discardableResult
     public func importBackup(_ document: BackupDocument) async throws -> ImportPlan {
         guard let repository = backupRepository else { throw ServiceError.notReady }
-        let plan = try await repository.import(document)
+        var plan = try await repository.import(document)
+        // テンプレートは DB の外なので、永続化層の取り込みでは戻らない [★8]。
+        // **`try?` で握りつぶさない**——書き込めない場所（アクセス権・容量）
+        // なら「0 件」と成功を報告するのではなく、この関数の呼び出し側へ
+        // 理由を返す［code-review で発見。他のストアで直したのと同じ形］。
+        var addedTemplates = 0
+        if let templates = document.userTemplates {
+            addedTemplates = try await mergeUserTemplates(templates)
+        }
+        plan.templatesAdded = addedTemplates
         Log.app.info("""
             バックアップを取り込んだ: ライブラリ \(plan.libraries.count) 件 \
             / ファイル更新 \(plan.filesUpdated) 件 / ラベル追加 \(plan.labelsAdded) 件 \
-            / 取り込めないライブラリ \(plan.missingLibraries.count) 件
+            / 取り込めないライブラリ \(plan.missingLibraries.count) 件 \
+            / テンプレート追加 \(addedTemplates) 件
             """)
         await refreshLibraries()
         return plan

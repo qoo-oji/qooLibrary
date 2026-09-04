@@ -292,6 +292,15 @@ struct QooLibraryApp: App {
         }
         .defaultSize(width: 1240, height: 680)
 
+        // テンプレートの管理 [LT-02][LT-05][LT-06]。開くのはメニューバーの
+        // 「ライブラリ」→「テンプレートを管理…」から。**ライブラリを 1 つも
+        // 持たない段階でも開ける**——テンプレートはライブラリに属さない。
+        Window("templates.windowTitle", id: "templateManager") {
+            TemplateManagerWindow()
+                .appLanguageOverride()
+        }
+        .defaultSize(width: 980, height: 620)
+
         // 重複の比較 [DU-20〜DU-29][15.14 節]。開くのは中央ペインの行の
         // 「重複を比較…」から（`DuplicateComparisonNavigation` が対象を渡す）。
         // **1 つの組だけを扱う**ので、他の整理ウインドウと違い左ペインは無い。

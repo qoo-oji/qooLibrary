@@ -51,12 +51,23 @@ public struct ImportPlan: Sendable, Equatable {
     }
 
     public var libraries: [LibraryChange]
+    /// 取り込むユーザー定義テンプレート [LT-02][★8]。
+    ///
+    /// **永続化層は数えない**——テンプレートは DB の外（`userTemplates.json`）に
+    /// あり、`BackupRepository` はそれを知らない。合流点である
+    /// `LibraryServices` が埋める [A-02]。
+    public var templatesAdded: Int
 
-    public init(libraries: [LibraryChange]) {
+    public init(libraries: [LibraryChange], templatesAdded: Int = 0) {
         self.libraries = libraries
+        self.templatesAdded = templatesAdded
     }
 
-    public var isEmpty: Bool { libraries.isEmpty }
+    /// **テンプレートも数える。** ライブラリが 1 つも一致しなくても、
+    /// テンプレートだけ戻せる状況はある——復旧の手順が
+    /// 「有効化 → 再スキャン → 取り込み」[MG-24] である以上、
+    /// **ライブラリを作る前に取り込む場面が普通にある**［code-review で発見］。
+    public var isEmpty: Bool { libraries.isEmpty && templatesAdded == 0 }
     public var filesUpdated: Int { libraries.reduce(0) { $0 + $1.filesUpdated } }
     public var filesMissing: Int { libraries.reduce(0) { $0 + $1.filesMissing } }
     public var labelsAdded: Int { libraries.reduce(0) { $0 + $1.labelsAdded } }

@@ -102,7 +102,12 @@ enum LibraryBackupAction {
                 // 押せない決定ボタンを見せて眺めさせるのは、承認を求める形を
                 // しているだけで何も選ばせていない（実機で実際にそうなっていた）。
                 // 理由を言って終わるほうが親切。
-                guard plan.libraries.contains(where: { $0.kind == .update }) else {
+                // **テンプレートだけでも取り込む**［code-review で発見］。
+                // ライブラリが 1 つも一致しなくても、テンプレートは戻せる
+                // ——復旧の手順が「有効化 → 再スキャン → 取り込み」[MG-24] で
+                // ある以上、ライブラリを作る前に取り込む場面が普通にある。
+                let hasLibraries = plan.libraries.contains { $0.kind == .update }
+                guard hasLibraries || plan.templatesAdded > 0 else {
                     presentNothingToImport(plan, locale: locale)
                     return
                 }
@@ -183,6 +188,12 @@ enum LibraryBackupAction {
             lines.append(String(
                 format: String(localized: "backup.importResultFilesMissing", locale: locale),
                 plan.filesMissing))
+        }
+        if plan.templatesAdded > 0 {
+            lines.append("")
+            lines.append(String(
+                format: String(localized: "backup.importResultTemplates", locale: locale),
+                plan.templatesAdded))
         }
         Task {
             await NotificationRouter.shared.present(NotificationItem(

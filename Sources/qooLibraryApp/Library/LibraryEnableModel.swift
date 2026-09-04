@@ -19,13 +19,18 @@ import SwiftUI
 @Observable
 final class LibraryEnableModel {
 
-    /// 起点の選択。プリセットか、白紙か [LT-02]。
+    /// 起点の選択。プリセットか、ユーザー定義か、白紙か [LT-02]。
     enum Origin: Hashable, Identifiable {
         case template(key: String)
+        /// ユーザー定義テンプレート [LT-02]。プリセットと**同じ扱い**で、
+        /// 違うのは草案の作り方だけ（あちらは `draft(from:)`、こちらは
+        /// 保存された設定をそのまま草案へ戻す）。
+        case userTemplate(id: UUID)
         case blank
         var id: String {
             switch self {
             case .template(let key): key
+            case .userTemplate(let id): "user.\(id.uuidString)"
             case .blank: "__blank__"
             }
         }
@@ -34,6 +39,8 @@ final class LibraryEnableModel {
     let folderName: String
     let folderURL: URL
     let templates: [LibraryTypeTemplate]
+    /// ユーザー定義テンプレート [LT-02]。プリセットと同じ一覧に並ぶ。
+    let userTemplates: [UserTemplate]
     private let volumeSets: VolumeSetDefinition
     private let otherTypeNames: [String]
 
@@ -74,17 +81,29 @@ final class LibraryEnableModel {
     var errors: [LibrarySettingsIssue] { issues.filter { $0.severity == .error } }
     var canEnable: Bool { errors.isEmpty && !folderName.isEmpty }
 
+    /// 登録時に**プリセットの行を共有してよい**テンプレート [LT-05]。
+    ///
+    /// **ユーザー定義では `nil` を返す。** 返すとリポジトリがプリセット行
+    /// （`presetKey` 付き・`isPreset=1`）を作ってしまい、他のライブラリと
+    /// 型名を共有してしまう。ユーザー定義は専用の非プリセット型になるのが正しい。
     var selectedTemplate: LibraryTypeTemplate? {
         guard case .template(let key) = origin else { return nil }
         return templates.first { $0.key == key }
     }
 
+    var selectedUserTemplate: UserTemplate? {
+        guard case .userTemplate(let id) = origin else { return nil }
+        return userTemplates.first { $0.id == id }
+    }
+
     init(folderName: String, folderURL: URL, templates: [LibraryTypeTemplate],
          volumeSets: VolumeSetDefinition,
+         userTemplates: [UserTemplate] = [],
          otherTypeNames: [String] = []) {
         self.folderName = folderName
         self.folderURL = folderURL
         self.templates = templates
+        self.userTemplates = userTemplates
         self.volumeSets = volumeSets
         self.otherTypeNames = otherTypeNames
         let first = templates.first
@@ -108,6 +127,12 @@ final class LibraryEnableModel {
             draft = TemplateInstantiation.draft(
                 from: template, volumeSets: volumeSets, displayName: folderName,
                 otherLibraryTypeNames: otherTypeNames)
+        case .userTemplate(let id):
+            guard let template = userTemplates.first(where: { $0.id == id }) else { return }
+            // **保存された設定をそのまま草案へ戻す。** プリセットと違い
+            // 既定値の補完は要らない——保存した時点で全項目が入っている。
+            draft = template.settings.draft(displayName: folderName,
+                                            otherLibraryTypeNames: otherTypeNames)
         case .blank:
             draft = TemplateInstantiation.blankDraft(
                 volumeSets: volumeSets, displayName: folderName,
