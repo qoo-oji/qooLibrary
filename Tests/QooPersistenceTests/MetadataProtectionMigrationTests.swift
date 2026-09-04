@@ -50,9 +50,9 @@ struct MetadataProtectionMigrationTests {
                         (id, libraryId, inode, volumeUUID, relativePath, filename,
                          normalizedName, searchKey, fileSize, createdAt, modifiedAt,
                          title, titleOrigin, rating, coverImageSource, isArchived,
-                         isBookFolder, state, libraryTypeMismatch, volumeKind)
+                         isBookFolder, state, volumeKind)
                     VALUES (?, 1, ?, 'VOL', ?, ?, ?, ?, 4096, 0, 0,
-                            '題', ?, 0, 'auto', 0, 0, 'active', 0, 'none')
+                            '題', ?, 0, 'auto', 0, 0, 'active', 'none')
                     """, arguments: [id, id * 100, "\(id).cbz", "\(id).cbz",
                                      "\(id)", "\(id)", titleOrigin])
             }
@@ -181,9 +181,9 @@ struct MetadataProtectionMigrationTests {
                     (id, libraryId, inode, volumeUUID, relativePath, filename,
                      normalizedName, searchKey, fileSize, createdAt, modifiedAt,
                      rating, coverImageSource, isArchived, isBookFolder, state,
-                     libraryTypeMismatch, volumeKind, protectedScopes)
+                     volumeKind, protectedScopes)
                 VALUES (9, 1, 900, 'VOL', '9.cbz', '9.cbz', '9', '9', 1, 0, 0,
-                        0, 'auto', 0, 0, 'active', 0, 'none', ?)
+                        0, 'auto', 0, 0, 'active', 'none', ?)
                 """, arguments: [ProtectionScopeCoding.empty])
         }
         #expect(try scopes(queue, id: 9).isEmpty)

@@ -70,7 +70,6 @@ public struct ManagedFileSnapshot: Sendable, Hashable {
     public let trashedAt: Date?                // [TR-03]
     public let state: FileState                // [ID-06][TR-01]
     public let lastParsedFormatID: String?
-    public let libraryTypeMismatch: Bool       // [RW-01]
     public let metadataStamp: String?          // [EM-07]
     public let metadataSource: String?
     public let metadataJSON: String?
@@ -92,7 +91,7 @@ public struct ManagedFileSnapshot: Sendable, Hashable {
                 pageCount: Int?, subfolderCount: Int?,
                 firstImageWidth: Int?, firstImageHeight: Int?,
                 trashedAt: Date?, state: FileState,
-                lastParsedFormatID: String?, libraryTypeMismatch: Bool,
+                lastParsedFormatID: String?,
                 metadataStamp: String?, metadataSource: String?, metadataJSON: String?,
                 hasVolumeConflict: Bool,
                 seriesSuggestionIgnoredTitle: String? = nil,
@@ -128,7 +127,6 @@ public struct ManagedFileSnapshot: Sendable, Hashable {
         self.trashedAt = trashedAt
         self.state = state
         self.lastParsedFormatID = lastParsedFormatID
-        self.libraryTypeMismatch = libraryTypeMismatch
         self.metadataStamp = metadataStamp
         self.metadataSource = metadataSource
         self.metadataJSON = metadataJSON

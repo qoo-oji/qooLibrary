@@ -15,7 +15,6 @@ import Testing
     static func fullyPopulatedDraft() -> LibrarySettingsDraft {
         LibrarySettingsDraft(
             displayName: "表示名",
-            libraryTypeName: "独自タイプ",
             thumbnailsAlwaysHidden: true,
             duplicateGrouping: .byTitleAndVolume,
             targetExtensions: ["cbz", "zip"],
@@ -50,7 +49,7 @@ import Testing
             readsEmbeddedMetadata: false,
             comicInfoVolumeSource: .number,
             opensBookFolderWithApp: true,
-            otherLibraryTypeNames: ["ほかのタイプ"])
+            bookTypeVocabulary: ["ほかのタイプ"])
     }
 
     static func settingsKeys() throws -> Set<String> {
@@ -70,7 +69,7 @@ import Testing
     @Test func documentCoversEveryDraftField() throws {
         // 意図的に持たないもの。**理由は `UserTemplateSettings` の表にある。**
         // ここへ足すときは、なぜ持たなくてよいかを併せて書くこと。
-        let intentionallyExcluded: Set<String> = ["displayName", "otherLibraryTypeNames"]
+        let intentionallyExcluded: Set<String> = ["displayName", "bookTypeVocabulary"]
         let keys = try Self.settingsKeys()
         let mirror = Mirror(reflecting: Self.fullyPopulatedDraft())
         var checked = 0
@@ -110,9 +109,8 @@ import Testing
         let original = Self.fullyPopulatedDraft()
         let restored = UserTemplateSettings(original)
             .draft(displayName: original.displayName,
-                   otherLibraryTypeNames: original.otherLibraryTypeNames)
+                   bookTypeVocabulary: original.bookTypeVocabulary)
 
-        #expect(restored.libraryTypeName == original.libraryTypeName)
         #expect(restored.thumbnailsAlwaysHidden == original.thumbnailsAlwaysHidden)
         #expect(restored.duplicateGrouping == original.duplicateGrouping)
         #expect(restored.targetExtensions == original.targetExtensions)
@@ -144,7 +142,7 @@ import Testing
         #expect(restored.readsEmbeddedMetadata == original.readsEmbeddedMetadata)
         #expect(restored.comicInfoVolumeSource == original.comicInfoVolumeSource)
         #expect(restored.opensBookFolderWithApp == original.opensBookFolderWithApp)
-        #expect(restored.otherLibraryTypeNames == original.otherLibraryTypeNames)
+        #expect(restored.bookTypeVocabulary == original.bookTypeVocabulary)
     }
 
     /// **「明示的に割り当てない」[AL-03] が消えない。**
@@ -195,13 +193,13 @@ import Testing
     @Test func savingAsMakesANewIdentity() {
         let original = UserTemplate(name: "元", settings: UserTemplateSettings())
         var edited = UserTemplateSettings()
-        edited.libraryTypeName = "変えた"
+        edited.seriesTitleCompositionFormat = "変えた"
         let copy = original.savedAs(name: "別名", settings: edited)
         #expect(copy.id != original.id)
         #expect(copy.name == "別名")
         #expect(copy.version == 1)
-        #expect(copy.settings.libraryTypeName == "変えた")
-        #expect(original.settings.libraryTypeName.isEmpty)
+        #expect(copy.settings.seriesTitleCompositionFormat == "変えた")
+        #expect(original.settings.seriesTitleCompositionFormat == "@series @volume")
     }
 
     /// 上書き保存は身元を保ち、版を 1 つ進める。
@@ -233,7 +231,7 @@ import Testing
     /// 保存が永久に無効になる（表示名の欄は §19.10 ステージ 7 で撤去済み）。
     @Test func templatesDoNotRequireADisplayName() {
         var draft = LibrarySettingsDraft(
-            displayName: "", libraryTypeName: "型",
+            displayName: "",
             targetExtensions: ["cbz"],
             filenameFormats: [FilenameFormatDraft(source: "@title", isEnabled: true)])
         draft.fields = []
@@ -246,12 +244,25 @@ import Testing
         #expect(asTemplate.isEmpty, "表示名以外に不備が無ければテンプレートとして保存できる")
     }
 
+    /// **白紙から作った草案は、そのままテンプレートとして保存できる。**
+    ///
+    /// 以前はブックタイプ名が必須だったため、テンプレートマネージャの ＋ が
+    /// 「このテンプレートはまだ保存できません」で必ず弾かれ、白紙から作る道が
+    /// 塞がっていた［実機検証で発見、2026-09-04］。本の種別をライブラリ固有の
+    /// 設定から外した [TY-01] ことで、原因ごと消えた。
+    @Test func aBlankDraftCanBeSavedAsATemplate() throws {
+        let sets = try BuiltInTemplates.volumeSets()
+        let blank = TemplateInstantiation.blankDraft(
+            volumeSets: sets, displayName: "白紙",
+            defaultFieldNames: ["著者", "サークル", "ジャンル", "イベント", "キーワード", "本の種別"])
+        #expect(blank.validate(as: .template).filter { $0.severity == .error }.isEmpty)
+    }
+
     /// 表示名以外の不備は**どちらの文脈でも**止める [H1]。
     @Test func otherProblemsStillBlockTemplates() {
-        let draft = LibrarySettingsDraft(displayName: "", libraryTypeName: "",
+        let draft = LibrarySettingsDraft(displayName: "",
                                          targetExtensions: [])
         let asTemplate = draft.validate(as: .template).filter { $0.severity == .error }
-        #expect(asTemplate.contains { $0.message.contains("ライブラリタイプ名") })
         #expect(asTemplate.contains { $0.message.contains("対象拡張子") })
     }
 }

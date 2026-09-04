@@ -3385,6 +3385,22 @@
         }
       }
     },
+    "field.default.bookType": {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Book Type"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本の種別"
+          }
+        }
+      }
+    },
     "field.default.circle": {
       "extractionState": "manual",
       "localizations": {
@@ -8056,23 +8072,6 @@
         }
       }
     },
-    "libraryEnable.preview.mismatch": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%d have a different book type"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%d 件はブックタイプが違います"
-          }
-        }
-      }
-    },
     "libraryEnable.preview.noFiles": {
       "extractionState": "manual",
       "localizations": {
@@ -8409,40 +8408,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "このライブラリではサムネイルを常に非表示にする"
-          }
-        }
-      }
-    },
-    "librarySettings.basics.typeName": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Book type name"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ブックタイプ名"
-          }
-        }
-      }
-    },
-    "librarySettings.basics.typeNameHint": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The value matched by @booktype. It must be written exactly as it appears in your filenames — for example “(Doujin CG Collection)” rather than “Doujin CG”."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "@booktype が照合する値です。ファイル名に現れる表記と正確に一致させる必要があります（例:「同人CG」ではなく「同人CG集」）。"
           }
         }
       }
@@ -9303,13 +9268,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The axes you classify books by. The five defaults (author, circle, genre, event, keyword) are always set up for a new library; you can rename them and add your own."
+            "value": "The axes you classify books by. The six defaults (author, circle, genre, event, keyword, book type) are always set up for a new library; you can rename them and add your own."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "本を分類する軸です。既定の 5 種（著者・サークル・ジャンル・イベント・キーワード）は新しいライブラリに最初から用意されます。名前の変更と追加ができます。"
+            "value": "本を分類する軸です。既定の 6 種（著者・サークル・ジャンル・イベント・キーワード・本の種別）は新しいライブラリに最初から用意されます。名前の変更と追加ができます。"
           }
         }
       }
@@ -15906,23 +15871,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "無視したものも表示"
-          }
-        }
-      }
-    },
-    "unresolvedFiles.typeMismatch": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "book type does not match"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ブックタイプが一致しません"
           }
         }
       }

@@ -17,7 +17,6 @@ public struct LibrarySummary: Sendable, Hashable, Identifiable {
     public let resolvedPath: String
     public let volumeUUID: String
     public let libraryTypeID: LibraryTypeID
-    public let libraryTypeName: String
     public let isOnline: Bool                 // [SB-05]
     public let isReadOnlyDueToFS: Bool        // [FS-08]
     public let fileCount: Int
@@ -29,7 +28,7 @@ public struct LibrarySummary: Sendable, Hashable, Identifiable {
     public let duplicateGrouping: DuplicateGrouping
 
     public init(id: LibraryID, uuid: UUID, displayName: String, resolvedPath: String,
-                volumeUUID: String, libraryTypeID: LibraryTypeID, libraryTypeName: String,
+                volumeUUID: String, libraryTypeID: LibraryTypeID,
                 isOnline: Bool, isReadOnlyDueToFS: Bool, fileCount: Int, settingsRevision: Int,
                 duplicateGrouping: DuplicateGrouping = .off) {
         self.id = id
@@ -38,7 +37,6 @@ public struct LibrarySummary: Sendable, Hashable, Identifiable {
         self.resolvedPath = resolvedPath
         self.volumeUUID = volumeUUID
         self.libraryTypeID = libraryTypeID
-        self.libraryTypeName = libraryTypeName
         self.isOnline = isOnline
         self.isReadOnlyDueToFS = isReadOnlyDueToFS
         self.fileCount = fileCount

@@ -133,7 +133,7 @@ enum GoldenGenerator {
                     context: .init(template: template.displayName, folderPath: nil),
                     expected: .init(matched: true, formatIndex: index, fields: fields,
                                     series: expectedSeries, volume: expectedVolume,
-                                    labels: nil, libraryTypeMismatch: false)))
+                                    labels: nil)))
             }
         }
         return out
@@ -159,7 +159,7 @@ enum GoldenGenerator {
         var out: [GoldenCase] = []
         for (i, shape) in shapes.enumerated() where out.count < minimum {
             let name = (shape as NSString).deletingPathExtension
-            let actual = FilenameParser().parse(name, settings: settings, purpose: .libraryScan)
+            let actual = FilenameParser().parse(name, settings: settings)
             let actualIndex = actual.flatMap { r in
                 settings.filenameFormats.firstIndex { $0.id == r.matchedFormatID }
             }
@@ -173,7 +173,7 @@ enum GoldenGenerator {
                 context: .init(template: template.displayName, folderPath: nil),
                 expected: .init(matched: actual != nil, formatIndex: actualIndex,
                                 fields: nil, series: nil, volume: nil, labels: nil,
-                                libraryTypeMismatch: actual.map { _ in false })))
+                                )))
             _ = i
         }
         return out
@@ -198,7 +198,7 @@ struct GoldenGeneratorTests {
         for preset in presets {
             let settings = try TemplateInstantiation.snapshot(
                 from: preset, volumeSets: volumeSets, libraryID: LibraryID(rawValue: 1),
-                allLibraryTypeNames: typeNames)
+                bookTypeVocabulary: typeNames)
             let cases = try GoldenGenerator.positives(for: preset, settings: settings, minimum: 22)
                 + GoldenGenerator.negatives(for: preset, settings: settings, minimum: 22)
             let dataset = GoldenDataset(datasetName: preset.key, visibility: "public", cases: cases)
@@ -297,7 +297,7 @@ struct PrivateGoldenGeneratorTests {
                   let preset = presets.first(where: { $0.key == presetKey }) else { continue }
             let settings = try TemplateInstantiation.snapshot(
                 from: preset, volumeSets: volumeSets, libraryID: LibraryID(rawValue: 1),
-                allLibraryTypeNames: typeNames)
+                bookTypeVocabulary: typeNames)
 
             var report = PrivateGoldenGenerator.Report()
             var cases: [GoldenCase] = []
@@ -310,7 +310,7 @@ struct PrivateGoldenGeneratorTests {
                 let folderPath = (entry.relativePath as NSString).deletingLastPathComponent
                 let resolved = FolderLabelResolver.resolve(
                     relativePath: entry.relativePath, nameWithoutExtension: stem, settings: settings)
-                let result = parser.parse(stem, settings: settings, purpose: .libraryScan)
+                let result = parser.parse(stem, settings: settings)
 
                 var fields: [String: String] = [:]
                 if let result {
@@ -340,8 +340,7 @@ struct PrivateGoldenGeneratorTests {
                         fields: fields.isEmpty ? nil : fields,
                         series: resolved.seriesName,
                         volume: GoldenRunner.ExpectedVolumeOf(resolved.volume),
-                        labels: nil,
-                        libraryTypeMismatch: result?.libraryTypeMismatch)))
+                        labels: nil)))
             }
 
             let dataset = GoldenDataset(datasetName: "real-\(corpus.libraryName)",

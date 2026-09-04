@@ -11,8 +11,13 @@ import Foundation
 public struct FormatCompilationContext: Sendable {
     public var delimiters: DelimiterSet
     public var maxFields: Int
-    /// `@booktype` の照合候補 [TY-01][9.2.2]。
-    public var allLibraryTypeNames: [String]
+    /// `@booktype` の照合語彙 [TY-01][9.2.2]。
+    ///
+    /// **ライブラリ固有の 1 値ではない。** 出どころは「プリセットが持つ
+    /// 本の種別の和集合 ∪ そのライブラリの『本の種別』フィールドに既にある
+    /// ラベル」で、後者があるおかげで**利用者独自の種別も育つ**
+    /// ——手で 1 件ラベルを付ければ、次の走査から自動で拾える。
+    public var bookTypeVocabulary: [String]
     /// セマンティック予約語 → フィールド番号 [RW-13]。
     ///
     /// 仕様書 03章はここを `UUID` としていたが、`QooKit` は DB の識別子を
@@ -22,11 +27,11 @@ public struct FormatCompilationContext: Sendable {
 
     public init(delimiters: DelimiterSet = .default,
                 maxFields: Int = AppLimits.Format.maxFields,
-                allLibraryTypeNames: [String] = [],
+                bookTypeVocabulary: [String] = [],
                 semanticBindings: [SemanticKeyword: Int] = [:]) {
         self.delimiters = delimiters
         self.maxFields = maxFields
-        self.allLibraryTypeNames = allLibraryTypeNames
+        self.bookTypeVocabulary = bookTypeVocabulary
         self.semanticBindings = semanticBindings
     }
 }
@@ -123,7 +128,7 @@ public enum FormatCompiler {
         func kind(for ref: FieldRef) -> FieldKind {
             switch ref {
             case .volume:      return .volume
-            case .bookType:    return .enumerated(context.allLibraryTypeNames)
+            case .bookType:    return .enumerated(context.bookTypeVocabulary)
             default:           return .free
             }
         }

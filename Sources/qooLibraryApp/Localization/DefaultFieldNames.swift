@@ -28,6 +28,7 @@ enum DefaultFieldNames {
         case .event:   String(localized: "field.default.event", locale: locale)
         case .keyword: String(localized: "field.default.keyword", locale: locale)
         case .series:  String(localized: "field.default.series", locale: locale)
+        case .bookType: String(localized: "field.default.bookType", locale: locale)
         }
     }
 }

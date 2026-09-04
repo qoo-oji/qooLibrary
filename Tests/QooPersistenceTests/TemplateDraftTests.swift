@@ -54,7 +54,6 @@ struct TemplateDraftTests {
 
         let stored = try #require(try await repository.settingsDraft(libraryID: id))
         #expect(stored.displayName == shown.displayName)
-        #expect(stored.libraryTypeName == shown.libraryTypeName)
         #expect(stored.targetExtensions == shown.targetExtensions)
         #expect(stored.delimiters == shown.delimiters)
         #expect(stored.semanticBindings == shown.semanticBindings)
@@ -105,9 +104,9 @@ struct TemplateDraftTests {
         let sets = try Self.sets()
         let repository = SQLiteLibraryRepository(database: db, volumeSets: sets)
 
-        var draft = TemplateInstantiation.blankDraft(
-            volumeSets: sets, displayName: "白紙", defaultFieldNames: ["著者", "サークル", "ジャンル", "イベント", "キーワード"])
-        draft.libraryTypeName = "自作"
+        let draft = TemplateInstantiation.blankDraft(
+            volumeSets: sets, displayName: "白紙",
+            defaultFieldNames: ["著者", "サークル", "ジャンル", "イベント", "キーワード", "本の種別"])
         #expect(draft.validationErrors.isEmpty)
         // フォーマットは 1 本も無い——どのファイル名にも一致しないのが正しい。
         #expect(draft.filenameFormats.isEmpty)
@@ -119,13 +118,12 @@ struct TemplateDraftTests {
                                 libraryTypeID: LibraryTypeID(rawValue: 0)),
             draft: draft, template: nil)
 
-        let summary = try #require(try await repository.library(id: id))
-        #expect(summary.libraryTypeName == "自作")
+        _ = try #require(try await repository.library(id: id))
         let stored = try #require(try await repository.settingsDraft(libraryID: id))
-        // 白紙でも既定フィールド 5 種は入る [§19.2]——フォーマットが 1 本も
+        // 白紙でも既定フィールド 6 種は入る [§19.2]——フォーマットが 1 本も
         // 無いのとは別で、分類の軸は最初から用意しておく。
         #expect(stored.fields.map(\.name)
-                == ["著者", "サークル", "ジャンル", "イベント", "キーワード"])
+                == ["著者", "サークル", "ジャンル", "イベント", "キーワード", "本の種別"])
         for (offset, keyword) in SemanticKeyword.defaultFields.enumerated() {
             #expect(stored.semanticBindings[keyword] == offset + 1)
         }
@@ -140,35 +138,4 @@ struct TemplateDraftTests {
     /// **プリセットの `libraryType` 行は複数ライブラリで共有される** [LT-05]。
     /// 型名を書き換えたまま同じ行を使うと、他のライブラリの `@booktype` の
     /// 照合値まで変わってしまう。
-    @Test("型名を変えて登録すると専用の型ができ、他のライブラリに波及しない [LT-05]")
-    func editingTheTypeNameForksTheLibraryType() async throws {
-        let db = try QooDatabase.inMemory()
-        let sets = try Self.sets()
-        let template = try #require(try BuiltInTemplates.libraryTypes()
-            .first { $0.key == "builtin.doujinshi-a" })
-        let repository = SQLiteLibraryRepository(database: db, volumeSets: sets)
-
-        // 1 件目はテンプレートのまま登録する。
-        let first = try await repository.register(
-            LibraryRegistration(uuid: UUID(), displayName: "そのまま", bookmarkData: Data(),
-                                resolvedPath: "/tmp/a", volumeUUID: "VOL",
-                                libraryTypeID: LibraryTypeID(rawValue: 0)),
-            template: template)
-
-        // 2 件目は型名を書き換えて登録する。
-        var draft = TemplateInstantiation.draft(
-            from: template, volumeSets: sets, displayName: "書き換え")
-        draft.libraryTypeName = "わたしの同人誌"
-        let second = try await repository.register(
-            LibraryRegistration(uuid: UUID(), displayName: "書き換え", bookmarkData: Data(),
-                                resolvedPath: "/tmp/b", volumeUUID: "VOL",
-                                libraryTypeID: LibraryTypeID(rawValue: 0)),
-            draft: draft, template: template)
-
-        let a = try #require(try await repository.library(id: first))
-        let b = try #require(try await repository.library(id: second))
-        #expect(a.libraryTypeName == template.libraryTypeName, "1 件目が巻き添えになっている")
-        #expect(b.libraryTypeName == "わたしの同人誌")
-        #expect(a.libraryTypeID != b.libraryTypeID, "同じ型の行を共有している")
-    }
 }

@@ -19,7 +19,7 @@ struct SearchKeyTests {
     private func fields(title: String?, series: String?) -> ParsedFileFields {
         ParsedFileFields(matchedFormatID: UUID(), title: title, seriesName: series,
                          volume: .none, authorName: nil, labelValues: [:],
-                         libraryTypeMismatch: false, spans: [])
+                         spans: [])
     }
 
     private func count(_ f: Fixture, _ text: String) async throws -> Int {

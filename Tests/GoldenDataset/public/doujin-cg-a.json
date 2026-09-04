@@ -7,13 +7,13 @@
       "expected" : {
         "fields" : {
           "@author" : "著者0",
+          "@booktype" : "同人CG集",
           "@circle" : "サークル値0",
           "@genre" : "ジャンル値0",
           "@keyword" : "キーワード値0",
           "@title" : "作品タイトル0 第01巻"
         },
         "formatIndex" : 0,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品タイトル0",
         "volume" : {
@@ -33,12 +33,12 @@
       "expected" : {
         "fields" : {
           "@author" : "著者1",
+          "@booktype" : "同人CG集",
           "@circle" : "サークル値1",
           "@genre" : "ジャンル値1",
           "@title" : "作品 タイトル 1 vol.2"
         },
         "formatIndex" : 1,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品 タイトル 1",
         "volume" : {
@@ -58,12 +58,12 @@
       "expected" : {
         "fields" : {
           "@author" : "著者2",
+          "@booktype" : "同人CG集",
           "@circle" : "サークル値2",
           "@keyword" : "キーワード値2",
           "@title" : "作品タイトル2ー長音 上巻"
         },
         "formatIndex" : 2,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品タイトル2ー長音",
         "volume" : {
@@ -81,11 +81,11 @@
       "expected" : {
         "fields" : {
           "@author" : "著者3",
+          "@booktype" : "同人CG集",
           "@circle" : "サークル値3",
           "@title" : "作品タイトル3"
         },
         "formatIndex" : 3,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
           "kind" : "none"
@@ -101,13 +101,13 @@
       },
       "expected" : {
         "fields" : {
+          "@booktype" : "同人CG集",
           "@circle" : "サークル値4",
           "@genre" : "ジャンル値4",
           "@keyword" : "キーワード値4",
           "@title" : "サブタイトル付き作品4 第05巻"
         },
         "formatIndex" : 4,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "サブタイトル付き作品4",
         "volume" : {
@@ -126,12 +126,12 @@
       },
       "expected" : {
         "fields" : {
+          "@booktype" : "同人CG集",
           "@circle" : "サークル値5",
           "@genre" : "ジャンル値5",
           "@title" : "作品タイトル5 vol.6"
         },
         "formatIndex" : 5,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品タイトル5",
         "volume" : {
@@ -150,12 +150,12 @@
       },
       "expected" : {
         "fields" : {
+          "@booktype" : "同人CG集",
           "@circle" : "サークル値6",
           "@keyword" : "キーワード値6",
           "@title" : "作品 タイトル 6 上巻"
         },
         "formatIndex" : 6,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品 タイトル 6",
         "volume" : {
@@ -172,11 +172,11 @@
       },
       "expected" : {
         "fields" : {
+          "@booktype" : "同人CG集",
           "@circle" : "サークル値7",
           "@title" : "作品タイトル7ー長音"
         },
         "formatIndex" : 7,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
           "kind" : "none"
@@ -199,7 +199,6 @@
           "@title" : "作品タイトル8 第09巻"
         },
         "formatIndex" : 8,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品タイトル8",
         "volume" : {
@@ -224,7 +223,6 @@
           "@title" : "サブタイトル付き作品9 vol.10"
         },
         "formatIndex" : 9,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "サブタイトル付き作品9",
         "volume" : {
@@ -249,7 +247,6 @@
           "@title" : "作品タイトル10 上巻"
         },
         "formatIndex" : 10,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品タイトル10",
         "volume" : {
@@ -271,7 +268,6 @@
           "@title" : "作品 タイトル 11"
         },
         "formatIndex" : 11,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
           "kind" : "none"
@@ -293,7 +289,6 @@
           "@title" : "作品タイトル12ー長音 第13巻"
         },
         "formatIndex" : 12,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品タイトル12ー長音",
         "volume" : {
@@ -317,7 +312,6 @@
           "@title" : "作品タイトル13 vol.14"
         },
         "formatIndex" : 13,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品タイトル13",
         "volume" : {
@@ -341,7 +335,6 @@
           "@title" : "サブタイトル付き作品14 上巻"
         },
         "formatIndex" : 14,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "サブタイトル付き作品14",
         "volume" : {
@@ -362,7 +355,6 @@
           "@title" : "作品タイトル15"
         },
         "formatIndex" : 15,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
           "kind" : "none"
@@ -379,13 +371,13 @@
       "expected" : {
         "fields" : {
           "@author" : "著者16",
+          "@booktype" : "同人CG集",
           "@circle" : "サークル値16",
           "@genre" : "ジャンル値16",
           "@keyword" : "キーワード値16",
           "@title" : "作品 タイトル 16 第17巻"
         },
         "formatIndex" : 0,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品 タイトル 16",
         "volume" : {
@@ -405,12 +397,12 @@
       "expected" : {
         "fields" : {
           "@author" : "著者17",
+          "@booktype" : "同人CG集",
           "@circle" : "サークル値17",
           "@genre" : "ジャンル値17",
           "@title" : "作品タイトル17ー長音 vol.18"
         },
         "formatIndex" : 1,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品タイトル17ー長音",
         "volume" : {
@@ -430,12 +422,12 @@
       "expected" : {
         "fields" : {
           "@author" : "著者18",
+          "@booktype" : "同人CG集",
           "@circle" : "サークル値18",
           "@keyword" : "キーワード値18",
           "@title" : "作品タイトル18 上巻"
         },
         "formatIndex" : 2,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品タイトル18",
         "volume" : {
@@ -453,11 +445,11 @@
       "expected" : {
         "fields" : {
           "@author" : "著者19",
+          "@booktype" : "同人CG集",
           "@circle" : "サークル値19",
           "@title" : "サブタイトル付き作品19"
         },
         "formatIndex" : 3,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
           "kind" : "none"
@@ -473,13 +465,13 @@
       },
       "expected" : {
         "fields" : {
+          "@booktype" : "同人CG集",
           "@circle" : "サークル値20",
           "@genre" : "ジャンル値20",
           "@keyword" : "キーワード値20",
           "@title" : "作品タイトル20 第21巻"
         },
         "formatIndex" : 4,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品タイトル20",
         "volume" : {
@@ -498,12 +490,12 @@
       },
       "expected" : {
         "fields" : {
+          "@booktype" : "同人CG集",
           "@circle" : "サークル値21",
           "@genre" : "ジャンル値21",
           "@title" : "作品 タイトル 21 vol.22"
         },
         "formatIndex" : 5,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品 タイトル 21",
         "volume" : {

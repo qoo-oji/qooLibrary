@@ -7,58 +7,13 @@
     "`assignment` は singleLabelGroup / format / none のいずれか [AL-01〜AL-03]。",
     "2026-08 改訂: 実蔵書 2,346 件との突き合わせで、同人誌の先頭 `(同人誌)` が イベント名ではなくライブラリタイプの印であること、同人CG の実際の印が `(同人CG集)` であることが分かったため修正した [要件定義書 v2.10]。",
     "2026-08 改訂（v3 ステージ 5）: 既定フィールド 5 種（著者 1・サークル 2・ジャンル 3・イベント 4・キーワード 5）を全プリセットに持たせ、意味予約語 @author/@circle/@genre/@event/@keyword で束縛する [§19.2][RWI-02]。フォーマットからは @labelgroupN ではなく予約語で参照する——番号はフィールドの身元ではないので、番号で書くと並べ替え・改名で意味が変わる。追加フィールドは 6 以降（一般コミックの「シリーズ」・その他の「プレイ」）。同人誌／同人CG の旧「その他」は既定の「キーワード」へ統合した［ユーザー判断］。",
-    "2026-08-30 改訂（v3 ステージ 5 の続き）: 予約語 @librarytype を @booktype へ改名した——値（一般コミック／同人誌…）は本の種別であって、ライブラリの種別ではない。あわせて @labelgroupN と @libraryname を撤去した。前者は番号がフィールドの身元ではなく、後者は表示名がフォルダ名へ追随する [RG3-31] ため照合値が改名で変わってしまうため。"
+    "2026-08-30 改訂（v3 ステージ 5 の続き）: 予約語 @librarytype を @booktype へ改名した——値（一般コミック／同人誌…）は本の種別であって、ライブラリの種別ではない。あわせて @labelgroupN と @libraryname を撤去した。前者は番号がフィールドの身元ではなく、後者は表示名がフォルダ名へ追随する [RG3-31] ため照合値が改名で変わってしまうため。",
+    "2026-09-04 改訂: 本の種別を既定フィールドへ加えた [TY-01]。全プリセットが フィールド 7 =「本の種別」を持ち @booktype で束縛する——照合は語彙（プリセットが持つ本の種別の和集合 ∪ そのライブラリの「本の種別」ラベル）で行い、切り出した値はラベルとして残る。ライブラリ固有の型名は撤去した。**型条件そのものは残す**——自由文字列にすると (@booktype) … が (@event) … と同型になり、先頭の括弧を何でも吸って public ゴールデン 352 件のうち 48 件でイベントが取れなくなる［実測］。"
   ],
   "presets": [
     {
       "key": "builtin.general-comic-a",
       "displayName": "一般コミック(A)",
-      "libraryTypeName": "一般コミック",
-      "version": 3,
-      "labelGroups": [
-        {
-          "index": 1,
-          "name": "著者"
-        },
-        {
-          "index": 2,
-          "name": "サークル"
-        },
-        {
-          "index": 3,
-          "name": "ジャンル"
-        },
-        {
-          "index": 4,
-          "name": "イベント"
-        },
-        {
-          "index": 5,
-          "name": "キーワード"
-        },
-        {
-          "index": 6,
-          "name": "シリーズ"
-        }
-      ],
-      "semanticBindings": {
-        "@author": 1,
-        "@circle": 2,
-        "@genre": 3,
-        "@event": 4,
-        "@keyword": 5,
-        "@series": 6
-      },
-      "folderLevels": {},
-      "filenameFormats": [
-        "(@booktype) [@author] @title",
-        "[@author] @title"
-      ],
-      "volumeSet": "VS-Full"
-    },
-    {
-      "key": "builtin.general-comic-b",
-      "displayName": "一般コミック(B)",
       "libraryTypeName": "一般コミック",
       "version": 4,
       "labelGroups": [
@@ -85,6 +40,10 @@
         {
           "index": 6,
           "name": "シリーズ"
+        },
+        {
+          "index": 7,
+          "name": "本の種別"
         }
       ],
       "semanticBindings": {
@@ -93,7 +52,59 @@
         "@genre": 3,
         "@event": 4,
         "@keyword": 5,
-        "@series": 6
+        "@series": 6,
+        "@booktype": 7
+      },
+      "folderLevels": {},
+      "filenameFormats": [
+        "(@booktype) [@author] @title",
+        "[@author] @title"
+      ],
+      "volumeSet": "VS-Full"
+    },
+    {
+      "key": "builtin.general-comic-b",
+      "displayName": "一般コミック(B)",
+      "libraryTypeName": "一般コミック",
+      "version": 5,
+      "labelGroups": [
+        {
+          "index": 1,
+          "name": "著者"
+        },
+        {
+          "index": 2,
+          "name": "サークル"
+        },
+        {
+          "index": 3,
+          "name": "ジャンル"
+        },
+        {
+          "index": 4,
+          "name": "イベント"
+        },
+        {
+          "index": 5,
+          "name": "キーワード"
+        },
+        {
+          "index": 6,
+          "name": "シリーズ"
+        },
+        {
+          "index": 7,
+          "name": "本の種別"
+        }
+      ],
+      "semanticBindings": {
+        "@author": 1,
+        "@circle": 2,
+        "@genre": 3,
+        "@event": 4,
+        "@keyword": 5,
+        "@series": 6,
+        "@booktype": 7
       },
       "folderLevels": {
         "1": {
@@ -112,104 +123,6 @@
       "key": "builtin.adult-comic-a",
       "displayName": "成年コミック(A)",
       "libraryTypeName": "成年コミック",
-      "version": 3,
-      "labelGroups": [
-        {
-          "index": 1,
-          "name": "著者"
-        },
-        {
-          "index": 2,
-          "name": "サークル"
-        },
-        {
-          "index": 3,
-          "name": "ジャンル"
-        },
-        {
-          "index": 4,
-          "name": "イベント"
-        },
-        {
-          "index": 5,
-          "name": "キーワード"
-        },
-        {
-          "index": 6,
-          "name": "プレイ",
-          "autoAssign": false
-        }
-      ],
-      "semanticBindings": {
-        "@author": 1,
-        "@circle": 2,
-        "@genre": 3,
-        "@event": 4,
-        "@keyword": 5
-      },
-      "folderLevels": {},
-      "filenameFormats": [
-        "(@booktype) [@author] @title",
-        "[@author] @title"
-      ],
-      "volumeSet": "VS-None"
-    },
-    {
-      "key": "builtin.adult-comic-b",
-      "displayName": "成年コミック(B)",
-      "libraryTypeName": "成年コミック",
-      "version": 3,
-      "labelGroups": [
-        {
-          "index": 1,
-          "name": "著者"
-        },
-        {
-          "index": 2,
-          "name": "サークル"
-        },
-        {
-          "index": 3,
-          "name": "ジャンル"
-        },
-        {
-          "index": 4,
-          "name": "イベント"
-        },
-        {
-          "index": 5,
-          "name": "キーワード"
-        },
-        {
-          "index": 6,
-          "name": "プレイ",
-          "autoAssign": false
-        }
-      ],
-      "semanticBindings": {
-        "@author": 1,
-        "@circle": 2,
-        "@genre": 3,
-        "@event": 4,
-        "@keyword": 5
-      },
-      "folderLevels": {
-        "1": {
-          "kind": "singleLabelGroup",
-          "labelGroup": 1
-        }
-      },
-      "filenameFormats": [
-        "(@booktype) [@author] @title",
-        "[@author] @title",
-        "@title"
-      ],
-      "volumeSet": "VS-None"
-    },
-    {
-      "key": "builtin.doujinshi-a",
-      "displayName": "同人誌(A)",
-      "libraryTypeName": "同人誌",
       "version": 4,
       "labelGroups": [
         {
@@ -236,6 +149,10 @@
           "index": 6,
           "name": "プレイ",
           "autoAssign": false
+        },
+        {
+          "index": 7,
+          "name": "本の種別"
         }
       ],
       "semanticBindings": {
@@ -243,7 +160,116 @@
         "@circle": 2,
         "@genre": 3,
         "@event": 4,
-        "@keyword": 5
+        "@keyword": 5,
+        "@booktype": 7
+      },
+      "folderLevels": {},
+      "filenameFormats": [
+        "(@booktype) [@author] @title",
+        "[@author] @title"
+      ],
+      "volumeSet": "VS-None"
+    },
+    {
+      "key": "builtin.adult-comic-b",
+      "displayName": "成年コミック(B)",
+      "libraryTypeName": "成年コミック",
+      "version": 4,
+      "labelGroups": [
+        {
+          "index": 1,
+          "name": "著者"
+        },
+        {
+          "index": 2,
+          "name": "サークル"
+        },
+        {
+          "index": 3,
+          "name": "ジャンル"
+        },
+        {
+          "index": 4,
+          "name": "イベント"
+        },
+        {
+          "index": 5,
+          "name": "キーワード"
+        },
+        {
+          "index": 6,
+          "name": "プレイ",
+          "autoAssign": false
+        },
+        {
+          "index": 7,
+          "name": "本の種別"
+        }
+      ],
+      "semanticBindings": {
+        "@author": 1,
+        "@circle": 2,
+        "@genre": 3,
+        "@event": 4,
+        "@keyword": 5,
+        "@booktype": 7
+      },
+      "folderLevels": {
+        "1": {
+          "kind": "singleLabelGroup",
+          "labelGroup": 1
+        }
+      },
+      "filenameFormats": [
+        "(@booktype) [@author] @title",
+        "[@author] @title",
+        "@title"
+      ],
+      "volumeSet": "VS-None"
+    },
+    {
+      "key": "builtin.doujinshi-a",
+      "displayName": "同人誌(A)",
+      "libraryTypeName": "同人誌",
+      "version": 5,
+      "labelGroups": [
+        {
+          "index": 1,
+          "name": "著者"
+        },
+        {
+          "index": 2,
+          "name": "サークル"
+        },
+        {
+          "index": 3,
+          "name": "ジャンル"
+        },
+        {
+          "index": 4,
+          "name": "イベント"
+        },
+        {
+          "index": 5,
+          "name": "キーワード"
+        },
+        {
+          "index": 6,
+          "name": "プレイ",
+          "autoAssign": false
+        },
+        {
+          "index": 7,
+          "name": "本の種別"
+        }
+      ],
+      "semanticBindings": {
+        "@author": 1,
+        "@circle": 2,
+        "@genre": 3,
+        "@event": 4,
+        "@keyword": 5,
+        "@booktype": 7
       },
       "folderLevels": {},
       "filenameFormats": [
@@ -274,7 +300,7 @@
       "key": "builtin.doujinshi-b",
       "displayName": "同人誌(B)",
       "libraryTypeName": "同人誌",
-      "version": 4,
+      "version": 5,
       "labelGroups": [
         {
           "index": 1,
@@ -300,6 +326,10 @@
           "index": 6,
           "name": "プレイ",
           "autoAssign": false
+        },
+        {
+          "index": 7,
+          "name": "本の種別"
         }
       ],
       "semanticBindings": {
@@ -307,7 +337,8 @@
         "@circle": 2,
         "@genre": 3,
         "@event": 4,
-        "@keyword": 5
+        "@keyword": 5,
+        "@booktype": 7
       },
       "folderLevels": {
         "1": {
@@ -343,7 +374,7 @@
       "key": "builtin.doujin-cg-a",
       "displayName": "同人CG(A)",
       "libraryTypeName": "同人CG集",
-      "version": 4,
+      "version": 5,
       "labelGroups": [
         {
           "index": 1,
@@ -369,6 +400,10 @@
           "index": 6,
           "name": "プレイ",
           "autoAssign": false
+        },
+        {
+          "index": 7,
+          "name": "本の種別"
         }
       ],
       "semanticBindings": {
@@ -376,7 +411,8 @@
         "@circle": 2,
         "@genre": 3,
         "@event": 4,
-        "@keyword": 5
+        "@keyword": 5,
+        "@booktype": 7
       },
       "folderLevels": {},
       "filenameFormats": [
@@ -403,7 +439,7 @@
       "key": "builtin.doujin-cg-b",
       "displayName": "同人CG(B)",
       "libraryTypeName": "同人CG集",
-      "version": 4,
+      "version": 5,
       "labelGroups": [
         {
           "index": 1,
@@ -429,6 +465,10 @@
           "index": 6,
           "name": "プレイ",
           "autoAssign": false
+        },
+        {
+          "index": 7,
+          "name": "本の種別"
         }
       ],
       "semanticBindings": {
@@ -436,7 +476,8 @@
         "@circle": 2,
         "@genre": 3,
         "@event": 4,
-        "@keyword": 5
+        "@keyword": 5,
+        "@booktype": 7
       },
       "folderLevels": {
         "1": {

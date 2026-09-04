@@ -250,12 +250,6 @@ public final class UnresolvedFileModel {
     /// 描画に 50 万回の挿入が走る（このコードベースが既に 2 度直している形）。
     public private(set) var ignoredFileIDs: Set<FileID> = []
 
-    /// ライブラリタイプの型条件を満たさなかった行 [TY-01][UR3-04]。
-    ///
-    /// **未解決の理由そのものではない**（別のフォーマットに一致すれば解決する）
-    /// が、「なぜ当たらないか」の手がかりとしては強いので行に印として出す。
-    public private(set) var typeMismatchFileIDs: Set<FileID> = []
-
     /// 「最も近いフォーマット」のヒント [UR2-05][UR3-04]。行の印のツールチップに使う。
     ///
     /// **`ignoredFileIDs` と同じく索引として持つ**——中央ペインは可視行ごとに
@@ -274,7 +268,6 @@ public final class UnresolvedFileModel {
     /// `files` を入れ替えたときに索引を作り直す。**代入と同じ場所で必ず呼ぶ。**
     private func rebuildIndexes() {
         ignoredFileIDs = Set(files.lazy.filter(\.isIgnored).map(\.row.id))
-        typeMismatchFileIDs = Set(files.lazy.filter(\.libraryTypeMismatch).map(\.row.id))
         nearestFormatByFileID = files.reduce(into: [:]) { out, file in
             if let source = file.nearestFormatSource { out[file.row.id] = source }
         }

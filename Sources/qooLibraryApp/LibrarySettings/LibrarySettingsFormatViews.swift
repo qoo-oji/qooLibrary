@@ -74,7 +74,7 @@ struct LibraryFieldsSettingsView: View {
 
     private func row(_ field: Binding<FieldDraft>) -> some View {
         HStack(spacing: Tokens.spacing.s) {
-            // **フォーマットからの参照名を出す。** 既定フィールド 5 種だけが
+            // **フォーマットからの参照名を出す。** 既定フィールド 6 種だけが
             // 意味予約語（`@author` 等）で参照でき [RWI-02]、追加フィールドは
             // ファイル名から参照できない（`@labelgroupN` は撤去した）——手で
             // 付けるための軸なので、参照名の欄は「—」になる。
@@ -528,8 +528,7 @@ struct FormatMatchPreview: View {
         settings = LibrarySettingsSnapshot(
             libraryID: settings.libraryID,
             displayName: settings.displayName,
-            libraryTypeName: settings.libraryTypeName,
-            allLibraryTypeNames: settings.allLibraryTypeNames,
+            bookTypeVocabulary: settings.bookTypeVocabulary,
             targetExtensions: settings.targetExtensions,
             imageExtensions: settings.imageExtensions,
             delimiters: settings.delimiters,
@@ -542,7 +541,7 @@ struct FormatMatchPreview: View {
             semanticBindings: settings.semanticBindings,
             seriesTitleCompositionFormat: settings.seriesTitleCompositionFormat)
 
-        guard let result = FilenameParser().parse(stem, settings: settings, purpose: .preview)
+        guard let result = FilenameParser().parse(stem, settings: settings)
         else { return nil }
 
         var rows = result.spans.compactMap { span -> (label: String, value: String)? in

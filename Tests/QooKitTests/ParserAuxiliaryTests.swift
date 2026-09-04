@@ -55,7 +55,7 @@ struct NearestFormatTests {
         // 閉じ括弧が欠けた名前（実コーパスに実在する形）。どちらも最後で落ちる。
         let input = "[サークル] 作品名 (ジャンル"
         // 前提: どちらも一致しない。
-        #expect(parser.parse(input, settings: s, purpose: .libraryScan) == nil)
+        #expect(parser.parse(input, settings: s) == nil)
         // 前提: 入力位置だけでは同点になる（この検査が意味を持つ条件）。
         let masked = ProtectedTokenMasker.mask(input, tokens: s.protectedTokens)
         let reaches = s.filenameFormats.map {
@@ -101,7 +101,7 @@ struct NearestFormatTests {
         // 前提: 1 本目は候補として拾われる形である。
         #expect(parser.nearestFormat("[サークル]", settings: s) != nil)
 
-        let attempt = parser.attempt("[サークル] 作品名", settings: s, purpose: .libraryScan)
+        let attempt = parser.attempt("[サークル] 作品名", settings: s)
         #expect(attempt.result != nil)
         #expect(attempt.nearest == nil)
     }
@@ -159,7 +159,7 @@ struct ParseResultHelpersTests {
     func semanticFieldValues() throws {
         let s = try settings(formats: ["[@circle] @title (@keyword)"])
         let r = try #require(FilenameParser().parse("[サークル] タイトル (タグ)",
-                                                     settings: s, purpose: .libraryScan))
+                                                     settings: s))
         #expect(r.fields[.circle]?.text == "サークル")
         #expect(r.fields[.keyword]?.text == "タグ")
         #expect(r.fields[.title]?.text == "タイトル")
@@ -177,7 +177,9 @@ struct ParseResultHelpersTests {
 
         // 抽出値を捨てるもの [RW-02][RW-04]
         #expect(FieldRef.ignore(0).discardsValue)
-        #expect(FieldRef.bookType.discardsValue)
+        // **`@booktype` は捨てない** [TY-01、2026-09-04]——照合した値は
+        // 「本の種別」フィールドのラベルになり、次回以降の照合語彙にもなる。
+        #expect(!FieldRef.bookType.discardsValue)
         #expect(!FieldRef.title.discardsValue)
         #expect(!FieldRef.volume.discardsValue)
 
@@ -195,7 +197,8 @@ struct ParseResultHelpersTests {
         #expect(SemanticKeyword.event.fieldRef == .event)
         #expect(SemanticKeyword.genre.fieldRef == .genre)
         #expect(SemanticKeyword.keyword.fieldRef == .keyword)
-        #expect(SemanticKeyword.allCases.count == 6)        // [RWI-02] で 4 種を追加
+        #expect(SemanticKeyword.bookType.fieldRef == .bookType)
+        #expect(SemanticKeyword.allCases.count == 7)        // [RWI-02] 4 種 ＋ @booktype
         #expect(SemanticKeyword(rawValue: "@series") == .series)
 
         // **綴りは `ReservedWordTable` から導出する。** 2 箇所に書くと、case を
@@ -205,9 +208,11 @@ struct ParseResultHelpersTests {
             #expect(words.contains(keyword.rawValue), "\(keyword.rawValue) が対応表に無い")
         }
 
-        // 既定フィールド 5 種 [§19.2]。`@series` は含まない——シリーズは
-        // 構造化列であってフィールドではない。
-        #expect(SemanticKeyword.defaultFields == [.author, .circle, .genre, .event, .keyword])
+        // 既定フィールド 6 種 [§19.2]。`@series` は含まない——シリーズは
+        // 構造化列であってフィールドではない。`@booktype` は**末尾に足す**
+        // ——既定 1〜5 の番号を動かさないため。
+        #expect(SemanticKeyword.defaultFields
+                == [.author, .circle, .genre, .event, .keyword, .bookType])
         #expect(!SemanticKeyword.defaultFields.contains(.series))
     }
 
@@ -301,7 +306,7 @@ struct SeparatorMatchingTests {
     func separatorConsumesSurroundingSpace() throws {
         let s = try separatorSettings(["@series-@circle"])
         for input in ["シリーズ名-著者名", "シリーズ名 - 著者名", "シリーズ名　－　著者名"] {
-            let r = try #require(parser.parse(input, settings: s, purpose: .libraryScan),
+            let r = try #require(parser.parse(input, settings: s),
                                  "一致しない: \(input)")
             #expect(r.fields[.series]?.text == "シリーズ名")
             #expect(r.fields[.circle]?.text == "著者名")
@@ -319,7 +324,7 @@ struct SeparatorMatchingTests {
         let s = try settings(formats: ["@series（@volume）-@circle"],
                              volume: volume, delimiters: d)
         let r = try #require(parser.parse("作品タイトル（１２） - 著者名",
-                                          settings: s, purpose: .libraryScan))
+                                          settings: s))
         #expect(r.fields[.series]?.text == "作品タイトル")
         #expect(r.fields[.volume]?.volume?.number == 12)
         #expect(r.fields[.circle]?.text == "著者名")

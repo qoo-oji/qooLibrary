@@ -65,25 +65,15 @@ struct TemplateManagerWindow: View {
             if !model.userTemplates.isEmpty {
                 Section("templates.mineHeader") {
                     ForEach(model.userTemplates) { template in
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(template.name)
-                            Text(template.settings.libraryTypeName)
-                                .font(.system(size: Tokens.fontSize.caption))
-                                .foregroundStyle(.secondary)
-                        }
-                        .tag(TemplateManagerModel.Selection.user(id: template.id))
+                        Text(template.name)
+                            .tag(TemplateManagerModel.Selection.user(id: template.id))
                     }
                 }
             }
             Section("templates.presetsHeader") {
                 ForEach(model.presets) { preset in
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(preset.displayName)
-                        Text(preset.libraryTypeName)
-                            .font(.system(size: Tokens.fontSize.caption))
-                            .foregroundStyle(.secondary)
-                    }
-                    .tag(TemplateManagerModel.Selection.preset(key: preset.key))
+                    Text(preset.displayName)
+                        .tag(TemplateManagerModel.Selection.preset(key: preset.key))
                 }
             }
         }

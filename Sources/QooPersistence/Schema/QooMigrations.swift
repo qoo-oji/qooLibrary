@@ -18,7 +18,7 @@ public enum QooMigrations {
         "v5_identityRejection", "v6_duplicateTitleKey", "v7_identityPending",
         "v8_stage1Removals", "v9_reservedWordCleanup", "v10_metadataProtection",
         "v11_orphanedProtectedTokens", "v12_shelf", "v13_seriesSuggestionIgnore",
-        "v14_labelVisibility",
+        "v14_labelVisibility", "v15_bookTypeAsLabel",
     ]
 
     public static var migrator: DatabaseMigrator {
@@ -38,6 +38,7 @@ public enum QooMigrations {
         m.registerMigration(identifiers[11], migrate: v12Shelf)
         m.registerMigration(identifiers[12], migrate: v13SeriesSuggestionIgnore)
         m.registerMigration(identifiers[13], migrate: v14LabelVisibility)
+        m.registerMigration(identifiers[14], migrate: v15BookTypeAsLabel)
         return m
     }
 
@@ -237,6 +238,97 @@ public enum QooMigrations {
         }
         try db.execute(sql: "UPDATE storeMetadata SET schemaVersion = ? WHERE id = 1",
                        arguments: [identifiers[13]])
+    }
+
+    // MARK: - v15
+
+    /// 本の種別を「ライブラリ固有の設定」から「ラベル」へ [TY-01]。
+    ///
+    /// **`@booktype` は本の属性であってライブラリの属性ではない**［ユーザー判断、
+    /// 2026-09-04］。照合は語彙（プリセットの本の種別 ∪ そのライブラリの
+    /// 「本の種別」フィールドのラベル）で行うので、ライブラリごとに 1 つの
+    /// 型名を持つ理由が無くなった。
+    ///
+    /// あわせて `managedFile.libraryTypeMismatch` を落とす——「このファイルの印が
+    /// **このライブラリの型名**と違う」という警告なので、型名が無くなれば
+    /// 計算できない。同じことはラベルフィルタで「本の種別」を絞れば分かる
+    /// （宣言した状態ではなく観測から導く、というフルオート原則 [P4] にも沿う）。
+    ///
+    /// ## 列を落とす前に、型名を語彙へ移す
+    /// **既存ライブラリが型名を編集していた場合、そのまま落とすと
+    /// `(@booktype)` が二度と一致しなくなる**（プリセット由来の語彙にしか
+    /// 当たらないため）——次の走査で全件が未整理になり、自動ラベルが消える。
+    /// そこでライブラリごとに「本の種別」フィールドを用意し、それまでの型名を
+    /// ラベルとして入れてから列を落とす。フィールド名は予約語の綴りを使う
+    /// ——移行は表示言語を知らない [A-01] ためで、**名前は身元ではない**
+    /// ので利用者が後から自由に改名できる [§19.2]。
+    ///
+    /// - Note: **型条件そのものは残る。** 外して自由文字列にすると、プリセットの
+    ///   `(@booktype) …` が `(@event) …` と同型になって先頭の括弧を何でも吸い、
+    ///   public ゴールデン 352 件のうち 48 件でイベントが取れなくなる［実測］。
+    static func v15BookTypeAsLabel(_ db: Database) throws {
+        try carryBookTypeNamesIntoLabels(db)
+        try db.alter(table: "libraryType") { t in
+            t.drop(column: "libraryTypeName")
+        }
+        try db.alter(table: "managedFile") { t in
+            t.drop(column: "libraryTypeMismatch")
+        }
+        try db.execute(sql: "UPDATE storeMetadata SET schemaVersion = ? WHERE id = 1",
+                       arguments: [identifiers[14]])
+    }
+
+    /// 各ライブラリの型名を「本の種別」フィールドのラベルとして残す [TY-01]。
+    private static func carryBookTypeNamesIntoLabels(_ db: Database) throws {
+        let rows = try Row.fetchAll(db, sql: """
+            SELECT library.id AS libraryId, library.settingsJSON AS settingsJSON,
+                   libraryType.libraryTypeName AS typeName
+              FROM library JOIN libraryType ON library.libraryTypeId = libraryType.id
+            """)
+        for row in rows {
+            let libraryID: Int64 = row["libraryId"]
+            let typeName = (row["typeName"] as String?) ?? ""
+            let json = (row["settingsJSON"] as String?) ?? "{}"
+            var payload = ((try? JSONSerialization.jsonObject(with: Data(json.utf8)))
+                           as? [String: Any]) ?? [:]
+            var bindings = (payload["semanticBindings"] as? [String: Int]) ?? [:]
+
+            let index: Int
+            if let bound = bindings[SemanticKeyword.bookType.rawValue] {
+                index = bound
+            } else {
+                index = (try Int.fetchOne(db, sql: """
+                    SELECT COALESCE(MAX(groupIndex), 0) + 1 FROM labelGroup WHERE libraryId = ?
+                    """, arguments: [libraryID])) ?? 1
+                let color = LabelColorPalette.palette(count: index).last
+                try db.execute(sql: """
+                    INSERT INTO labelGroup (libraryId, groupIndex, name,
+                                            colorHexLight, colorHexDark,
+                                            displayOrder, assignsAutomatically)
+                    VALUES (?, ?, ?, ?, ?, ?, 1)
+                    """, arguments: [libraryID, index,
+                                     String(SemanticKeyword.bookType.rawValue.dropFirst()),
+                                     color?.hexLight ?? "#888888",
+                                     color?.hexDark ?? "#888888", index])
+                bindings[SemanticKeyword.bookType.rawValue] = index
+                payload["semanticBindings"] = bindings
+                let encoded = try JSONSerialization.data(withJSONObject: payload,
+                                                         options: [.sortedKeys])
+                try db.execute(sql: "UPDATE library SET settingsJSON = ? WHERE id = ?",
+                               arguments: [String(decoding: encoded, as: UTF8.self), libraryID])
+            }
+
+            guard !typeName.isEmpty else { continue }
+            let fieldID = try Int64.fetchOne(db, sql: """
+                SELECT id FROM labelGroup WHERE libraryId = ? AND groupIndex = ?
+                """, arguments: [libraryID, index])
+            guard let fieldID else { continue }
+            try db.execute(sql: """
+                INSERT OR IGNORE INTO label (labelGroupId, name, normalizedName,
+                                             isPinned, isHidden)
+                VALUES (?, ?, ?, 0, 0)
+                """, arguments: [fieldID, typeName, TextNormalizer.normalize(typeName)])
+        }
     }
 
     // MARK: - v10

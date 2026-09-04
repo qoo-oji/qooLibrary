@@ -49,7 +49,7 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
         throws -> [LibrarySummary]
     {
         var sql = """
-            SELECT library.*, libraryType.libraryTypeName AS typeName,
+            SELECT library.*,
                    (SELECT COUNT(*) FROM managedFile
                      WHERE managedFile.libraryId = library.id
                        AND managedFile.state = 'active') AS fileCount
@@ -70,7 +70,6 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                 resolvedPath: row["resolvedPath"],
                 volumeUUID: row["volumeUUID"],
                 libraryTypeID: LibraryTypeID(rawValue: row["libraryTypeId"]),
-                libraryTypeName: row["typeName"],
                 isOnline: row["isOnline"],
                 isReadOnlyDueToFS: row["isReadOnlyDueToFS"],
                 fileCount: row["fileCount"],
@@ -93,15 +92,14 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
             let payload = (try? JSONDecoder().decode(
                 LibrarySettingsPayload.self, from: Data(library.settingsJSON.utf8)))
                 ?? .empty
-            let allTypeNames = try String.fetchAll(
-                db, sql: "SELECT DISTINCT libraryTypeName FROM libraryType ORDER BY libraryTypeName")
-
             let semantic: [SemanticKeyword: Int] = payload.semanticBindings.reduce(into: [:]) {
                 if let k = SemanticKeyword(rawValue: $1.key) { $0[k] = $1.value }
             }
+            let vocabulary = try Self.bookTypeVocabulary(
+                db, libraryID: libraryID.rawValue, semanticBindings: semantic)
             let context = FormatCompilationContext(
                 delimiters: payload.delimiters,
-                allLibraryTypeNames: allTypeNames,
+                bookTypeVocabulary: vocabulary,
                 semanticBindings: semantic)
 
             // 壊れたフォーマットは黙って落とす——保存時に検証済みなので通常は起こらない
@@ -151,8 +149,7 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                 libraryID: libraryID,
                 settingsRevision: library.settingsRevision,
                 displayName: library.displayName,
-                libraryTypeName: type.libraryTypeName,
-                allLibraryTypeNames: allTypeNames,
+                bookTypeVocabulary: vocabulary,
                 targetExtensions: Set(payload.targetExtensions),
                 imageExtensions: Set(payload.imageExtensions),
                 delimiters: payload.delimiters,
@@ -241,38 +238,51 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                     existing.version = template.version
                     try existing.update(db)
                 }
-                // 型名を編集して登録した場合、プリセット行は共有物なので
-                // 書き換えられない [LT-05]。専用の型へ分岐させる。
-                if existing.libraryTypeName != draft.libraryTypeName {
-                    return try makeCustomType(db, draft: draft, basedOn: template)
-                }
                 return existing.id ?? 0
             }
             var record = LibraryTypeRecord(
                 id: nil, presetKey: template.key, name: template.displayName,
-                libraryTypeName: template.libraryTypeName, isPreset: true,
+                isPreset: true,
                 version: template.version,
                 definitionJSON: String(decoding: try JSONEncoder().encode(template), as: UTF8.self))
             try record.insert(db)
-            // 型名を編集済みなら、作ったプリセット行はそのままに専用型を作る。
-            if record.libraryTypeName != draft.libraryTypeName {
-                return try makeCustomType(db, draft: draft, basedOn: template)
-            }
             return record.id ?? 0
         }
         return try makeCustomType(db, draft: draft, basedOn: nil)
     }
 
+    /// `@booktype` の照合語彙 [TY-01]。
+    ///
+    /// **プリセットが持つ本の種別 ∪ このライブラリの「本の種別」フィールドに
+    /// 既にあるラベル。** ライブラリ固有の 1 値ではないので、設定に型名の欄が
+    /// 要らない。後者があるおかげで、プリセットが知らない種別も**手で 1 件
+    /// ラベルを付ければ次の走査から自動で拾える**——語彙が自分で育つ。
+    static func bookTypeVocabulary(_ db: Database, libraryID: Int64,
+                                   semanticBindings: [SemanticKeyword: Int]) throws -> [String] {
+        var names = Set(builtInBookTypes)
+        if let index = semanticBindings[.bookType] {
+            names.formUnion(try String.fetchAll(db, sql: """
+                SELECT DISTINCT label.name FROM label
+                  JOIN labelGroup ON label.labelGroupId = labelGroup.id
+                 WHERE labelGroup.libraryId = ? AND labelGroup.groupIndex = ?
+                """, arguments: [libraryID, index]))
+        }
+        return names.filter { !$0.isEmpty }.sorted()
+    }
+
+    /// 既定語彙は**プロセスで 1 度だけ読む**——スナップショットは走査のたびに
+    /// 作られるので、そのつどリソースを読み直す理由が無い。
+    private static let builtInBookTypes: [String] = (try? BuiltInTemplates.bookTypes()) ?? []
+
     /// このライブラリ専用の非プリセット型を作る [LT-02][LT-05]。
     ///
     /// **`presetKey` を持たせない。** 持たせると次に同じプリセットから
-    /// 登録したライブラリがこの行を共有し、型名の編集が他へ波及する。
+    /// 登録したライブラリがこの行を共有してしまう。
     private static func makeCustomType(_ db: Database, draft: LibrarySettingsDraft,
                                        basedOn template: LibraryTypeTemplate?) throws -> Int64 {
         var record = LibraryTypeRecord(
             id: nil, presetKey: nil,
-            name: draft.libraryTypeName.isEmpty ? draft.displayName : draft.libraryTypeName,
-            libraryTypeName: draft.libraryTypeName,
+            name: draft.displayName,
             isPreset: false,
             version: template?.version ?? 1,
             definitionJSON: template.map {
@@ -394,13 +404,12 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
             let payload = (try? JSONDecoder().decode(
                 LibrarySettingsPayload.self, from: Data(library.settingsJSON.utf8))) ?? .empty
 
-            // **自分を除いた**他ライブラリの型名・表示名だけを持たせる。編集中の
-            // 値は草案側が足すので、型名を書き換えても列挙候補が取り残されない。
-            let otherTypeNames = try String.fetchAll(db, sql: """
-                SELECT DISTINCT libraryType.libraryTypeName FROM libraryType
-                WHERE libraryType.id <> ?
-                ORDER BY libraryType.libraryTypeName
-                """, arguments: [library.libraryTypeId])
+            let semanticForVocabulary: [SemanticKeyword: Int] =
+                payload.semanticBindings.reduce(into: [:]) {
+                    if let k = SemanticKeyword(rawValue: $1.key) { $0[k] = $1.value }
+                }
+            let vocabulary = try Self.bookTypeVocabulary(
+                db, libraryID: libraryID.rawValue, semanticBindings: semanticForVocabulary)
 
             let fields = try FieldRecord
                 .filter(sql: "libraryId = ?", arguments: [libraryID.rawValue])
@@ -460,7 +469,6 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
 
             return LibrarySettingsDraft(
                 displayName: library.displayName,
-                libraryTypeName: type.libraryTypeName,
                 thumbnailsAlwaysHidden: library.thumbnailsAlwaysHidden,
                 duplicateGrouping: DuplicateGrouping(
                     storedValue: library.duplicateGrouping),
@@ -477,7 +485,7 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                 readsEmbeddedMetadata: payload.readsEmbeddedMetadata,
                 comicInfoVolumeSource: payload.comicInfoVolumeSource,
                 opensBookFolderWithApp: payload.opensBookFolderWithApp,   // [IF-18]
-                otherLibraryTypeNames: otherTypeNames)
+                bookTypeVocabulary: vocabulary)
         }
     }
 
@@ -506,8 +514,6 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                 throw RepositoryError.libraryNotFound(libraryID)
             }
 
-            library.libraryTypeId = try Self.resolveLibraryTypeID(
-                db, library: library, newTypeName: draft.libraryTypeName)
             library.displayName = draft.displayName
             library.thumbnailsAlwaysHidden = draft.thumbnailsAlwaysHidden
             library.duplicateGrouping = draft.duplicateGrouping.rawValue
@@ -591,39 +597,6 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                                               isEnabled: token.isEnabled)
             try record.insert(db)
         }
-    }
-
-    /// ライブラリタイプ名の変更を反映し、必要なら型を分岐させる [LT-05]。
-    ///
-    /// **`libraryType` の行は複数のライブラリで共有される**（同じプリセットから
-    /// 登録すると同じ行を指す）。そのまま書き換えると、他のライブラリの
-    /// `@librarytype` の照合値まで巻き添えで変わる。プリセットは編集不可 [LT-05]
-    /// でもあるので、次のどちらかなら**このライブラリ専用の型へ複製してから**
-    /// 書き換える: ①プリセット由来 ②他のライブラリからも参照されている。
-    ///
-    /// - Note: 複製元の行は残るため、その型名は `@librarytype` の列挙候補
-    ///   [TY-01] に残り続ける。照合が緩くなる方向なので実害は無く、プリセットは
-    ///   将来の登録の種として消してはならない。
-    private static func resolveLibraryTypeID(_ db: Database, library: LibraryRecord,
-                                             newTypeName: String) throws -> Int64 {
-        guard var type = try LibraryTypeRecord.fetchOne(db, key: library.libraryTypeId) else {
-            return library.libraryTypeId
-        }
-        guard type.libraryTypeName != newTypeName else { return library.libraryTypeId }
-
-        let others = try Int.fetchOne(
-            db, sql: "SELECT COUNT(*) FROM library WHERE libraryTypeId = ? AND id <> ?",
-            arguments: [library.libraryTypeId, library.id ?? 0]) ?? 0
-        if type.isPreset || others > 0 {
-            var copy = LibraryTypeRecord(
-                id: nil, presetKey: nil, name: type.name, libraryTypeName: newTypeName,
-                isPreset: false, version: type.version, definitionJSON: type.definitionJSON)
-            try copy.insert(db)
-            return copy.id ?? library.libraryTypeId
-        }
-        type.libraryTypeName = newTypeName
-        try type.update(db)
-        return library.libraryTypeId
     }
 
     /// ラベルフィールドの差分適用。**ラベルを巻き添えにしないための経路** [LB-05]。

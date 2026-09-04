@@ -18,7 +18,6 @@ import Testing
             authorName: "ファイル名の著者",
             matchedFormatID: UUID(),
             nearestFormat: nil,
-            libraryTypeMismatch: false,
             folderProvidedGroups: [])
     }
 
@@ -145,7 +144,7 @@ import Testing
     @Test func aFileWithMetadataIsNotUnresolved() {
         let unmatched = FolderLabelResolver.ResolvedLabels(
             labels: [:], title: nil, seriesName: nil, volume: .none, authorName: nil,
-            matchedFormatID: nil, nearestFormat: nil, libraryTypeMismatch: false,
+            matchedFormatID: nil, nearestFormat: nil,
             folderProvidedGroups: [])
         // メタデータから題が取れているなら「埋もれる」状態ではない。
         #expect(!EmbeddedMetadataMerge.isUnresolved(

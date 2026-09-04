@@ -23,7 +23,7 @@ struct ElasticWhitespaceTests {
           arguments: ["[@circle] @title", "[@circle]@title", "[@circle]　@title"])
     func formatWhitespaceVariantsAgree(_ format: String) throws {
         let settings = try s([format])
-        let r = try #require(parser.parse("[著者名] 作品タイトル", settings: settings, purpose: .libraryScan))
+        let r = try #require(parser.parse("[著者名] 作品タイトル", settings: settings))
         #expect(r.fields[.circle]?.text == "著者名")
         #expect(r.fields[.title]?.text == "作品タイトル")
     }
@@ -34,7 +34,7 @@ struct ElasticWhitespaceTests {
     func trimsLeadingSpaceWhenFormatHasNone() throws {
         let settings = try s(["[@circle]@title"])
         for input in ["[著者名] 作品タイトル", "[著者名]　作品タイトル", "[著者名]   作品タイトル"] {
-            let r = try #require(parser.parse(input, settings: settings, purpose: .libraryScan),
+            let r = try #require(parser.parse(input, settings: settings),
                                  "\(input)")
             #expect(r.fields[.title]?.text == "作品タイトル", "\(input)")
         }
@@ -43,7 +43,7 @@ struct ElasticWhitespaceTests {
     @Test("値の末尾の空白も落とす [WS-05]")
     func trimsTrailingSpace() throws {
         let settings = try s(["@title(@keyword)"])
-        let r = try #require(parser.parse("作品タイトル (タグ)", settings: settings, purpose: .libraryScan))
+        let r = try #require(parser.parse("作品タイトル (タグ)", settings: settings))
         #expect(r.fields[.title]?.text == "作品タイトル")
         #expect(r.fields[.keyword]?.text == "タグ")
     }
@@ -52,14 +52,14 @@ struct ElasticWhitespaceTests {
     func keepsInnerWhitespace() throws {
         let settings = try s(["[@circle]@title"])
         let r = try #require(parser.parse("[著者名] 作品  タイトル",
-                                          settings: settings, purpose: .libraryScan))
+                                          settings: settings))
         #expect(r.fields[.title]?.text == "作品  タイトル")     // 2 つのまま
     }
 
     @Test("入力側に空白が無くても一致する（弾力的空白は 0 個でよい）[WS-01]")
     func zeroWhitespaceMatches() throws {
         let settings = try s(["[@circle] @title"])
-        let r = try #require(parser.parse("[著者名]作品タイトル", settings: settings, purpose: .libraryScan))
+        let r = try #require(parser.parse("[著者名]作品タイトル", settings: settings))
         #expect(r.fields[.title]?.text == "作品タイトル")
     }
 
@@ -67,7 +67,7 @@ struct ElasticWhitespaceTests {
     func fullwidthAndTabAreWhitespace() throws {
         let settings = try s(["[@circle] @title"])
         for input in ["[著者名]　作品", "[著者名]\t作品", "[著者名] \u{00A0}作品"] {
-            let r = try #require(parser.parse(input, settings: settings, purpose: .libraryScan),
+            let r = try #require(parser.parse(input, settings: settings),
                                  "\(input.debugDescription)")
             #expect(r.fields[.title]?.text == "作品", "\(input.debugDescription)")
         }
@@ -86,7 +86,7 @@ struct ElasticWhitespaceTests {
     func seriesTrimsTrailingSpace() throws {
         let settings = try s(["[@circle]@title"])
         let r = try #require(parser.parse("[著者名] 作品名　　第01巻",
-                                          settings: settings, purpose: .libraryScan))
+                                          settings: settings))
         let f = FieldPostProcessor.postProcess(r, settings: settings)
         #expect(f.title == "作品名　　第01巻")      // タイトルは原文のまま [WS-05]
         #expect(f.seriesName == "作品名")            // シリーズは末尾をトリム [SE-02]

@@ -327,8 +327,7 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
             guard let fields else {
                 if basicProtected {
                     try db.execute(sql: """
-                        UPDATE managedFile SET lastParsedFormatID = NULL,
-                            libraryTypeMismatch = 0
+                        UPDATE managedFile SET lastParsedFormatID = NULL
                         WHERE id = ?
                         """, arguments: [id.rawValue])
                 } else {
@@ -336,7 +335,7 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
                         UPDATE managedFile SET seriesName = NULL, seriesKey = NULL,
                             volumeNumber = NULL, volumeKind = 'none', volumeRaw = NULL,
                             authorName = NULL, title = NULL,
-                            lastParsedFormatID = NULL, libraryTypeMismatch = 0
+                            lastParsedFormatID = NULL
                         WHERE id = ?
                         """, arguments: [id.rawValue])
                 }
@@ -345,16 +344,15 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
             }
             if basicProtected {
                 try db.execute(sql: """
-                    UPDATE managedFile SET lastParsedFormatID = ?, libraryTypeMismatch = ?
+                    UPDATE managedFile SET lastParsedFormatID = ?
                     WHERE id = ?
-                    """, arguments: [fields.matchedFormatID.uuidString,
-                                     fields.libraryTypeMismatch, id.rawValue])
+                    """, arguments: [fields.matchedFormatID.uuidString, id.rawValue])
             } else {
                 try db.execute(sql: """
                     UPDATE managedFile SET
                         title = ?, seriesName = ?, seriesKey = ?,
                         volumeNumber = ?, volumeKind = ?, volumeRaw = ?,
-                        authorName = ?, lastParsedFormatID = ?, libraryTypeMismatch = ?
+                        authorName = ?, lastParsedFormatID = ?
                     WHERE id = ?
                     """, arguments: [
                         fields.title,
@@ -365,7 +363,6 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
                         fields.volume.raw,
                         fields.authorName,
                         fields.matchedFormatID.uuidString,
-                        fields.libraryTypeMismatch,
                         id.rawValue])
             }
             // タイトル・シリーズ名も検索対象 [SR-03]。**書いた値ではなく行を

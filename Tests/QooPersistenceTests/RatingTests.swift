@@ -17,7 +17,7 @@ struct RatingTests {
                 matchedFormatID: UUID(), title: nil, seriesName: name,
                 volume: volume.map { VolumeValue(kind: .numeric, number: $0, raw: "\($0)") }
                     ?? VolumeValue.none,
-                authorName: nil, labelValues: [:], libraryTypeMismatch: false, spans: []),
+                authorName: nil, labelValues: [:], spans: []),
             to: id)
     }
 

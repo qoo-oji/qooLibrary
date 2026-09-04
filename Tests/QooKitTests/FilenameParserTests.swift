@@ -30,7 +30,6 @@ func vsDoujin() -> [CompiledVolumePattern] {
 }
 
 func settings(formats: [String],
-              typeName: String = "一般コミック",
               types: [String] = ["一般コミック", "成年コミック", "同人誌", "同人CG"],
               volume: [CompiledVolumePattern] = [],
               protectedTokens: [ProtectedToken] = [],
@@ -42,15 +41,14 @@ func settings(formats: [String],
                                                   .keyword: 4, .author: 5],
               delimiters: DelimiterSet = .default) throws -> LibrarySettingsSnapshot {
     let ctxt = FormatCompilationContext(delimiters: delimiters,
-                                        allLibraryTypeNames: types,
+                                        bookTypeVocabulary: types,
                                         semanticBindings: semantic)
     let compiled = try formats.enumerated().map { i, src in
         try FormatCompiler.compile(src, context: ctxt, priority: i)
     }
     return LibrarySettingsSnapshot(
         libraryID: LibraryID(rawValue: 1),
-        libraryTypeName: typeName,
-        allLibraryTypeNames: types,
+        bookTypeVocabulary: types,
         delimiters: delimiters,
         protectedTokens: ProtectedTokenCompiler.compileAll(protectedTokens),
         filenameFormats: compiled,
@@ -110,7 +108,7 @@ struct PresetTemplateTests {
     @Test("すべてのプリセットのファイル名フォーマットがコンパイルできる",
           arguments: allPresetFormats)
     func presetsCompile(_ preset: (preset: String, formats: [String])) throws {
-        let ctxt = FormatCompilationContext(allLibraryTypeNames: ["一般コミック", "成年コミック", "同人CG"])
+        let ctxt = FormatCompilationContext(bookTypeVocabulary: ["一般コミック", "成年コミック", "同人CG"])
         for src in preset.formats {
             #expect(throws: Never.self, "\(preset.preset): \(src)") {
                 try FormatCompiler.compile(src, context: ctxt)
@@ -137,13 +135,11 @@ struct FilenameParserRealShapeTests {
     @Test("成年コミック: (成年コミック) [作者名] タイトル")
     func adultComic() throws {
         let s = try settings(formats: ["(@booktype) [@circle] @title",
-                                       "[@circle] @title"],
-                             typeName: "成年コミック")
+                                       "[@circle] @title"])
         let r = try #require(parser.parse("(成年コミック) [98765架空社] タイトル名",
-                                          settings: s, purpose: .libraryScan))
+                                          settings: s))
         #expect(r.fields[.circle]?.text == "98765架空社")
         #expect(r.fields[.title]?.text == "タイトル名")
-        #expect(r.libraryTypeMismatch == false)
     }
 
     @Test("同人誌: (同人誌) [サークル (作家)] タイトル (原作) — 入れ子のペア型 [FF-11]")
@@ -151,9 +147,9 @@ struct FilenameParserRealShapeTests {
         let s = try settings(formats: [
             "(@booktype) [@genre (@event)] @title (@keyword)",
             "(@booktype) [@genre] @title (@keyword)",
-        ], typeName: "同人誌", volume: vsDoujin())
+        ], volume: vsDoujin())
         let r = try #require(parser.parse("(同人誌) [サークル名 (作家名)] 作品タイトル (オリジナル)",
-                                          settings: s, purpose: .libraryScan))
+                                          settings: s))
         #expect(r.fields[.genre]?.text == "サークル名")
         #expect(r.fields[.event]?.text == "作家名")
         #expect(r.fields[.title]?.text == "作品タイトル")
@@ -165,9 +161,9 @@ struct FilenameParserRealShapeTests {
         let s = try settings(formats: [
             "(@booktype) [@genre (@event)] @title (@keyword)",
             "(@booktype) [@genre] @title (@keyword)",
-        ], typeName: "同人誌")
+        ])
         let r = try #require(parser.parse("(同人誌) [サークル名] 作品タイトル (オリジナル)",
-                                          settings: s, purpose: .libraryScan))
+                                          settings: s))
         #expect(r.fields[.genre]?.text == "サークル名")
         #expect(r.fields[.event] == nil)
         #expect(r.fields[.title]?.text == "作品タイトル")
@@ -177,7 +173,7 @@ struct FilenameParserRealShapeTests {
     func generalComicVolume() throws {
         let s = try settings(formats: ["[@circle] @title"], volume: vsFull())
         let r = try #require(parser.parse("[佐藤秀峰] ブラックジャックによろしく 第01巻",
-                                          settings: s, purpose: .libraryScan))
+                                          settings: s))
         let f = FieldPostProcessor.postProcess(r, settings: s)
         #expect(f.title == "ブラックジャックによろしく 第01巻")
         #expect(f.seriesName == "ブラックジャックによろしく")
@@ -191,7 +187,7 @@ struct FilenameParserRealShapeTests {
     func delimitersInsideTitle() throws {
         let s = try settings(formats: ["[@circle] @title (@keyword)"])
         let r = try #require(parser.parse("[著者名] 作品 (副題) の話 (オリジナル)",
-                                          settings: s, purpose: .libraryScan))
+                                          settings: s))
         #expect(r.fields[.title]?.text == "作品 (副題) の話")
         #expect(r.fields[.keyword]?.text == "オリジナル")
     }
@@ -200,10 +196,10 @@ struct FilenameParserRealShapeTests {
     @Test("括弧が閉じていないファイル名で落ちない（照合失敗として扱う）")
     func unbalancedBracketsDoNotCrash() throws {
         let s = try settings(formats: ["[@circle] @title"])
-        #expect(parser.parse("[著者名 タイトル", settings: s, purpose: .libraryScan) == nil)
-        #expect(parser.parse("[[[[[[", settings: s, purpose: .libraryScan) == nil)
-        #expect(parser.parse("]]]]]", settings: s, purpose: .libraryScan) == nil)
-        #expect(parser.parse("", settings: s, purpose: .libraryScan) == nil)
+        #expect(parser.parse("[著者名 タイトル", settings: s) == nil)
+        #expect(parser.parse("[[[[[[", settings: s) == nil)
+        #expect(parser.parse("]]]]]", settings: s) == nil)
+        #expect(parser.parse("", settings: s) == nil)
     }
 
     @Test("全角の括弧・スペース・数字を含んでも一致する [N-02][WS-01]")
@@ -211,7 +207,7 @@ struct FilenameParserRealShapeTests {
         let s = try settings(formats: ["[@circle] @title"], volume: vsFull())
         // 全角スペースが 2 つ、全角数字の巻数
         let r = try #require(parser.parse("[著者名]　　タイトル 第０１巻",
-                                          settings: s, purpose: .libraryScan))
+                                          settings: s))
         let f = FieldPostProcessor.postProcess(r, settings: s)
         #expect(f.labelValues[1] == ["著者名"])
         #expect(f.volume.number == 1)
@@ -221,48 +217,51 @@ struct FilenameParserRealShapeTests {
     func formatPriority() throws {
         let s = try settings(formats: ["[@circle] @title (@keyword)",
                                        "[@circle] @title"])
-        let r = try #require(parser.parse("[著者] タイトル (タグ)", settings: s, purpose: .libraryScan))
+        let r = try #require(parser.parse("[著者] タイトル (タグ)", settings: s))
         #expect(r.fields[.keyword]?.text == "タグ")   // 1 番目が勝つ
     }
 
     @Test("空白だけのフィールドは捕捉しない（意味のないラベルを作らない）[WS-05]")
     func whitespaceOnlyFieldRejected() throws {
         let s = try settings(formats: ["[@circle] @title"])
-        #expect(parser.parse("[   ] タイトル", settings: s, purpose: .libraryScan) == nil)
-        #expect(parser.parse("[著者]    ", settings: s, purpose: .libraryScan) == nil)
+        #expect(parser.parse("[   ] タイトル", settings: s) == nil)
+        #expect(parser.parse("[著者]    ", settings: s) == nil)
     }
 }
 
-// MARK: - @booktype の扱い [RW-01]
+// MARK: - @booktype の扱い [TY-01]
 
-@Suite("@booktype の不一致 [RW-01][MV-14b]")
-struct LibraryTypeMismatchTests {
+@Suite("@booktype は語彙で照合し、値はラベルとして残る [TY-01]")
+struct BookTypeMatchingTests {
     let parser = FilenameParser()
 
-    @Test("スキャン時は警告のみでマッチする")
-    func scanWarnsOnly() throws {
-        let s = try settings(formats: ["(@booktype) [@circle] @title"],
-                             typeName: "一般コミック")
-        let r = try #require(parser.parse("(成年コミック) [著者] タイトル",
-                                          settings: s, purpose: .libraryScan))
-        #expect(r.libraryTypeMismatch == true)
+    /// **ライブラリ自身の型名との突き合わせはしない** [2026-09-04]。本の種別は
+    /// 本の属性であってライブラリの属性ではないので、語彙にある種別ならどれでも
+    /// 一致し、切り出した値はそのまま残る。
+    @Test("語彙にある種別なら、どれでも一致して値が残る")
+    func anyKnownBookTypeMatches() throws {
+        let s = try settings(formats: ["(@booktype) [@circle] @title"])
+        let r = try #require(parser.parse("(成年コミック) [著者] タイトル", settings: s))
+        #expect(r.fields[.bookType]?.text == "成年コミック")
+        #expect(r.fields[.title]?.text == "タイトル")
     }
 
-    @Test("移動時はマッチ失敗として次のフォーマットへ進む")
-    func moveRejects() throws {
-        let s = try settings(formats: ["(@booktype) [@circle] @title"],
-                             typeName: "一般コミック")
-        #expect(parser.parse("(成年コミック) [著者] タイトル",
-                             settings: s, purpose: .moveToLibrary) == nil)
+    /// **型条件そのものは残す**——外して自由文字列にすると、プリセットの
+    /// `(@booktype) …` が `(@event) …` と同型になって先頭の括弧を何でも吸い、
+    /// public ゴールデン 352 件のうち 48 件でイベントが取れなくなる［実測］。
+    @Test("語彙に無い語は吸わない（型条件は残る）")
+    func unknownBookTypeDoesNotMatch() throws {
+        let s = try settings(formats: ["(@booktype) [@circle] @title"])
+        #expect(parser.parse("(知らない種別) [著者] タイトル", settings: s) == nil)
     }
 
-    @Test("一致していれば警告は立たない")
-    func matchingTypeIsClean() throws {
-        let s = try settings(formats: ["(@booktype) [@circle] @title"],
-                             typeName: "一般コミック")
-        let r = try #require(parser.parse("(一般コミック) [著者] タイトル",
-                                          settings: s, purpose: .moveToLibrary))
-        #expect(r.libraryTypeMismatch == false)
+    @Test("語彙に無い語は、後続のフォーマットへ落ちる")
+    func unknownBookTypeFallsThroughToTheNextFormat() throws {
+        let s = try settings(formats: ["(@booktype) [@circle] @title",
+                                       "(@event) [@circle] @title"])
+        let r = try #require(parser.parse("(C99) [著者] タイトル", settings: s))
+        #expect(r.fields[.event]?.text == "C99")
+        #expect(r.fields[.bookType] == nil)
     }
 }
 
@@ -279,7 +278,7 @@ struct ProtectedTokenTests {
         let s = try settings(formats: ["@series (@volume) - @circle"],
                              volume: vsFull(), protectedTokens: [token])
         let r = try #require(parser.parse("事件記者コナン (仮) (01) - 著者",
-                                          settings: s, purpose: .libraryScan))
+                                          settings: s))
         #expect(r.fields[.circle]?.text == "著者")
         #expect(r.fields[.volume]?.volume?.number == 1)
         // 復元されて原文が返る [PT-03]
@@ -291,7 +290,7 @@ struct ProtectedTokenTests {
         let suffixOnly = ProtectedToken(pattern: #"\(完全版\)"#, position: .suffix)
         let s = try settings(formats: ["[@circle] @title"], protectedTokens: [suffixOnly])
         // 末尾にあるのでマスクされ、@title に吸収される
-        let r = try #require(parser.parse("[著者] タイトル (完全版)", settings: s, purpose: .libraryScan))
+        let r = try #require(parser.parse("[著者] タイトル (完全版)", settings: s))
         #expect(r.fields[.title]?.text == "タイトル (完全版)")
     }
 

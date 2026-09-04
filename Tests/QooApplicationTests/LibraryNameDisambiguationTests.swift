@@ -16,7 +16,7 @@ import QooKit
     private func library(_ id: Int64, name: String, path: String) -> LibrarySummary {
         LibrarySummary(id: LibraryID(rawValue: id), uuid: UUID(), displayName: name,
                        resolvedPath: path, volumeUUID: "V",
-                       libraryTypeID: LibraryTypeID(rawValue: 0), libraryTypeName: "T",
+                       libraryTypeID: LibraryTypeID(rawValue: 0),
                        isOnline: true, isReadOnlyDueToFS: false, fileCount: 0,
                        settingsRevision: 0)
     }

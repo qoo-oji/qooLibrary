@@ -7,10 +7,10 @@
       "expected" : {
         "fields" : {
           "@author" : "著者0",
+          "@booktype" : "一般コミック",
           "@title" : "作品タイトル0 第01巻"
         },
         "formatIndex" : 0,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品タイトル0",
         "volume" : {
@@ -33,7 +33,6 @@
           "@title" : "作品 タイトル 1 vol.2"
         },
         "formatIndex" : 1,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品 タイトル 1",
         "volume" : {
@@ -53,10 +52,10 @@
       "expected" : {
         "fields" : {
           "@author" : "著者2",
+          "@booktype" : "一般コミック",
           "@title" : "作品タイトル2ー長音 上巻"
         },
         "formatIndex" : 0,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品タイトル2ー長音",
         "volume" : {
@@ -77,7 +76,6 @@
           "@title" : "作品タイトル3"
         },
         "formatIndex" : 1,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
           "kind" : "none"
@@ -94,10 +92,10 @@
       "expected" : {
         "fields" : {
           "@author" : "著者4",
+          "@booktype" : "一般コミック",
           "@title" : "サブタイトル付き作品4 第05巻"
         },
         "formatIndex" : 0,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "サブタイトル付き作品4",
         "volume" : {
@@ -120,7 +118,6 @@
           "@title" : "作品タイトル5 vol.6"
         },
         "formatIndex" : 1,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品タイトル5",
         "volume" : {
@@ -140,10 +137,10 @@
       "expected" : {
         "fields" : {
           "@author" : "著者6",
+          "@booktype" : "一般コミック",
           "@title" : "作品 タイトル 6 上巻"
         },
         "formatIndex" : 0,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品 タイトル 6",
         "volume" : {
@@ -164,7 +161,6 @@
           "@title" : "作品タイトル7ー長音"
         },
         "formatIndex" : 1,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
           "kind" : "none"
@@ -181,10 +177,10 @@
       "expected" : {
         "fields" : {
           "@author" : "著者8",
+          "@booktype" : "一般コミック",
           "@title" : "作品タイトル8 第09巻"
         },
         "formatIndex" : 0,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品タイトル8",
         "volume" : {
@@ -207,7 +203,6 @@
           "@title" : "サブタイトル付き作品9 vol.10"
         },
         "formatIndex" : 1,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "サブタイトル付き作品9",
         "volume" : {
@@ -227,10 +222,10 @@
       "expected" : {
         "fields" : {
           "@author" : "著者10",
+          "@booktype" : "一般コミック",
           "@title" : "作品タイトル10 上巻"
         },
         "formatIndex" : 0,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品タイトル10",
         "volume" : {
@@ -251,7 +246,6 @@
           "@title" : "作品 タイトル 11"
         },
         "formatIndex" : 1,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
           "kind" : "none"
@@ -268,10 +262,10 @@
       "expected" : {
         "fields" : {
           "@author" : "著者12",
+          "@booktype" : "一般コミック",
           "@title" : "作品タイトル12ー長音 第13巻"
         },
         "formatIndex" : 0,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品タイトル12ー長音",
         "volume" : {
@@ -294,7 +288,6 @@
           "@title" : "作品タイトル13 vol.14"
         },
         "formatIndex" : 1,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品タイトル13",
         "volume" : {
@@ -314,10 +307,10 @@
       "expected" : {
         "fields" : {
           "@author" : "著者14",
+          "@booktype" : "一般コミック",
           "@title" : "サブタイトル付き作品14 上巻"
         },
         "formatIndex" : 0,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "サブタイトル付き作品14",
         "volume" : {
@@ -338,7 +331,6 @@
           "@title" : "作品タイトル15"
         },
         "formatIndex" : 1,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
           "kind" : "none"
@@ -355,10 +347,10 @@
       "expected" : {
         "fields" : {
           "@author" : "著者16",
+          "@booktype" : "一般コミック",
           "@title" : "作品 タイトル 16 第17巻"
         },
         "formatIndex" : 0,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品 タイトル 16",
         "volume" : {
@@ -381,7 +373,6 @@
           "@title" : "作品タイトル17ー長音 vol.18"
         },
         "formatIndex" : 1,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品タイトル17ー長音",
         "volume" : {
@@ -401,10 +392,10 @@
       "expected" : {
         "fields" : {
           "@author" : "著者18",
+          "@booktype" : "一般コミック",
           "@title" : "作品タイトル18 上巻"
         },
         "formatIndex" : 0,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品タイトル18",
         "volume" : {
@@ -425,7 +416,6 @@
           "@title" : "サブタイトル付き作品19"
         },
         "formatIndex" : 1,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
           "kind" : "none"
@@ -442,10 +432,10 @@
       "expected" : {
         "fields" : {
           "@author" : "著者20",
+          "@booktype" : "一般コミック",
           "@title" : "作品タイトル20 第21巻"
         },
         "formatIndex" : 0,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品タイトル20",
         "volume" : {
@@ -468,7 +458,6 @@
           "@title" : "作品 タイトル 21 vol.22"
         },
         "formatIndex" : 1,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "series" : "作品 タイトル 21",
         "volume" : {

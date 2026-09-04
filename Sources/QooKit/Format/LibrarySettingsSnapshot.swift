@@ -14,10 +14,9 @@ public struct LibrarySettingsSnapshot: Sendable {
 
     /// `@libraryname` の照合値 [RW-04]。
     public let displayName: String
-    /// `@librarytype` の照合値 [RW-01]。
-    public let libraryTypeName: String
-    /// 型付き照合の列挙候補 [9.2.2][TY-01]。
-    public let allLibraryTypeNames: [String]
+    /// `@booktype` の照合語彙 [9.2.2][TY-01]。プリセットの本の種別 ∪
+    /// このライブラリの「本の種別」ラベル。
+    public let bookTypeVocabulary: [String]
 
     public let targetExtensions: Set<String>
     public let imageExtensions: Set<String>          // [IF-02]
@@ -47,8 +46,7 @@ public struct LibrarySettingsSnapshot: Sendable {
     public init(libraryID: LibraryID,
                 settingsRevision: Int = 0,
                 displayName: String = "",
-                libraryTypeName: String = "",
-                allLibraryTypeNames: [String] = [],
+                bookTypeVocabulary: [String] = [],
                 targetExtensions: Set<String> = [],
                 imageExtensions: Set<String> = [],
                 delimiters: DelimiterSet = .default,
@@ -65,8 +63,7 @@ public struct LibrarySettingsSnapshot: Sendable {
         self.libraryID = libraryID
         self.settingsRevision = settingsRevision
         self.displayName = displayName
-        self.libraryTypeName = libraryTypeName
-        self.allLibraryTypeNames = allLibraryTypeNames
+        self.bookTypeVocabulary = bookTypeVocabulary
         self.targetExtensions = targetExtensions
         self.imageExtensions = imageExtensions
         self.delimiters = delimiters
@@ -86,7 +83,7 @@ public struct LibrarySettingsSnapshot: Sendable {
     public var compilationContext: FormatCompilationContext {
         FormatCompilationContext(delimiters: delimiters,
                                  maxFields: maxFields,
-                                 allLibraryTypeNames: allLibraryTypeNames,
+                                 bookTypeVocabulary: bookTypeVocabulary,
                                  semanticBindings: semanticBindings)
     }
 }

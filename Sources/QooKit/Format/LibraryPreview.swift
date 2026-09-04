@@ -19,11 +19,9 @@ public enum LibraryPreview {
         /// どのフォーマットにも一致しなかった [AL-31]。
         public var isUnresolved: Bool { fields.isEmpty && !matched }
         public let matched: Bool
-        /// **型条件 [TY-01] に反したが警告に留めた**——`@librarytype` の値が
-        /// このライブラリの型名と違う。取り込みはされるが、たいていは
-        /// 型名の設定ミスなので目立たせる価値がある（実蔵書で 146 件が
-        /// これに当たった実例がある）。
-        public let libraryTypeMismatch: Bool
+        /// 切り出せたフィールド。**本の種別 [TY-01] もここに入る**
+        /// ——語彙に無い語で始まるファイル名は型条件で弾かれ、後続の
+        /// フォーマットへ落ちる（当たらなければ未解決 [AL-31]）。
         public let fields: [Field]
 
         public struct Field: Sendable, Hashable {
@@ -37,11 +35,10 @@ public enum LibraryPreview {
         }
 
         public init(id: Int, filename: String, matched: Bool,
-                    libraryTypeMismatch: Bool, fields: [Field]) {
+                    fields: [Field]) {
             self.id = id
             self.filename = filename
             self.matched = matched
-            self.libraryTypeMismatch = libraryTypeMismatch
             self.fields = fields
         }
     }
@@ -52,7 +49,6 @@ public enum LibraryPreview {
         public let total: Int
         public let matched: Int
         public let unresolved: Int
-        public let libraryTypeMismatched: Int
         /// 表示する明細。**未解決を先頭に集める**——調整が要るのはそこなので
         /// [ユーザー判断]。同じ区分の中では入力順を保つ。
         public let items: [Item]
@@ -67,19 +63,18 @@ public enum LibraryPreview {
 
         public var matchRate: Double { total == 0 ? 0 : Double(matched) / Double(total) }
 
-        public init(total: Int, matched: Int, unresolved: Int, libraryTypeMismatched: Int,
+        public init(total: Int, matched: Int, unresolved: Int,
                     excluded: Int = 0, items: [Item], truncated: Bool) {
             self.total = total
             self.matched = matched
             self.unresolved = unresolved
-            self.libraryTypeMismatched = libraryTypeMismatched
             self.excluded = excluded
             self.items = items
             self.truncated = truncated
         }
 
         public static let empty = Outcome(total: 0, matched: 0, unresolved: 0,
-                                          libraryTypeMismatched: 0, items: [], truncated: false)
+                                          items: [], truncated: false)
     }
 
     /// 草案の設定でファイル名を解釈する [HP-05]。
@@ -113,18 +108,16 @@ public enum LibraryPreview {
         var items: [Item] = []
         var matched = 0
         var unresolved = 0
-        var mismatched = 0
 
         for (index, filename) in candidates.enumerated() {
             let stem = (filename as NSString).deletingPathExtension
-            guard let result = parser.parse(stem, settings: settings, purpose: .preview) else {
+            guard let result = parser.parse(stem, settings: settings) else {
                 unresolved += 1
                 items.append(Item(id: index, filename: filename, matched: false,
-                                  libraryTypeMismatch: false, fields: []))
+                                  fields: []))
                 continue
             }
             matched += 1
-            if result.libraryTypeMismatch { mismatched += 1 }
 
             let parsed = FieldPostProcessor.postProcess(result, settings: settings)
             var fields: [Item.Field] = []
@@ -171,14 +164,13 @@ public enum LibraryPreview {
                 }
             }
             items.append(Item(id: index, filename: filename, matched: true,
-                              libraryTypeMismatch: result.libraryTypeMismatch, fields: fields))
+                              fields: fields))
         }
 
         // 未解決 → 型不一致 → 一致 の順。同じ区分では入力順を保つ。
         let ordered = items.sorted { a, b in
             func rank(_ item: Item) -> Int {
                 if !item.matched { return 0 }
-                if item.libraryTypeMismatch { return 1 }
                 return 2
             }
             let (ra, rb) = (rank(a), rank(b))
@@ -186,7 +178,7 @@ public enum LibraryPreview {
         }
 
         return Outcome(total: candidates.count, matched: matched, unresolved: unresolved,
-                       libraryTypeMismatched: mismatched, excluded: excluded,
+                       excluded: excluded,
                        items: Array(ordered.prefix(displayLimit)), truncated: truncated)
     }
 }

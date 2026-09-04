@@ -7,10 +7,10 @@
       "expected" : {
         "fields" : {
           "@author" : "著者0",
+          "@booktype" : "成年コミック",
           "@title" : "作品タイトル0"
         },
         "formatIndex" : 0,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
           "kind" : "none"
@@ -30,7 +30,6 @@
           "@title" : "作品 タイトル 1"
         },
         "formatIndex" : 1,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
           "kind" : "none"
@@ -49,7 +48,6 @@
           "@title" : "作品タイトル2ー長音"
         },
         "formatIndex" : 2,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
           "kind" : "none"
@@ -66,10 +64,10 @@
       "expected" : {
         "fields" : {
           "@author" : "著者3",
+          "@booktype" : "成年コミック",
           "@title" : "作品タイトル3"
         },
         "formatIndex" : 0,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
           "kind" : "none"
@@ -89,7 +87,6 @@
           "@title" : "サブタイトル付き作品4"
         },
         "formatIndex" : 1,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
           "kind" : "none"
@@ -108,7 +105,6 @@
           "@title" : "作品タイトル5"
         },
         "formatIndex" : 2,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
           "kind" : "none"
@@ -125,10 +121,10 @@
       "expected" : {
         "fields" : {
           "@author" : "著者6",
+          "@booktype" : "成年コミック",
           "@title" : "作品 タイトル 6"
         },
         "formatIndex" : 0,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
           "kind" : "none"
@@ -148,7 +144,6 @@
           "@title" : "作品タイトル7ー長音"
         },
         "formatIndex" : 1,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
           "kind" : "none"
@@ -167,7 +162,6 @@
           "@title" : "作品タイトル8"
         },
         "formatIndex" : 2,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
           "kind" : "none"
@@ -184,10 +178,10 @@
       "expected" : {
         "fields" : {
           "@author" : "著者9",
+          "@booktype" : "成年コミック",
           "@title" : "サブタイトル付き作品9"
         },
         "formatIndex" : 0,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
           "kind" : "none"
@@ -207,7 +201,6 @@
           "@title" : "作品タイトル10"
         },
         "formatIndex" : 1,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
           "kind" : "none"
@@ -226,7 +219,6 @@
           "@title" : "作品 タイトル 11"
         },
         "formatIndex" : 2,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
           "kind" : "none"
@@ -243,10 +235,10 @@
       "expected" : {
         "fields" : {
           "@author" : "著者12",
+          "@booktype" : "成年コミック",
           "@title" : "作品タイトル12ー長音"
         },
         "formatIndex" : 0,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
           "kind" : "none"
@@ -266,7 +258,6 @@
           "@title" : "作品タイトル13"
         },
         "formatIndex" : 1,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
           "kind" : "none"
@@ -285,7 +276,6 @@
           "@title" : "サブタイトル付き作品14"
         },
         "formatIndex" : 2,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
           "kind" : "none"
@@ -302,10 +292,10 @@
       "expected" : {
         "fields" : {
           "@author" : "著者15",
+          "@booktype" : "成年コミック",
           "@title" : "作品タイトル15"
         },
         "formatIndex" : 0,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
           "kind" : "none"
@@ -325,7 +315,6 @@
           "@title" : "作品 タイトル 16"
         },
         "formatIndex" : 1,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
           "kind" : "none"
@@ -344,7 +333,6 @@
           "@title" : "作品タイトル17ー長音"
         },
         "formatIndex" : 2,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
           "kind" : "none"
@@ -361,10 +349,10 @@
       "expected" : {
         "fields" : {
           "@author" : "著者18",
+          "@booktype" : "成年コミック",
           "@title" : "作品タイトル18"
         },
         "formatIndex" : 0,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
           "kind" : "none"
@@ -384,7 +372,6 @@
           "@title" : "サブタイトル付き作品19"
         },
         "formatIndex" : 1,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
           "kind" : "none"
@@ -403,7 +390,6 @@
           "@title" : "作品タイトル20"
         },
         "formatIndex" : 2,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
           "kind" : "none"
@@ -420,10 +406,10 @@
       "expected" : {
         "fields" : {
           "@author" : "著者21",
+          "@booktype" : "成年コミック",
           "@title" : "作品 タイトル 21"
         },
         "formatIndex" : 0,
-        "libraryTypeMismatch" : false,
         "matched" : true,
         "volume" : {
           "kind" : "none"
@@ -439,7 +425,6 @@
       },
       "expected" : {
         "formatIndex" : 2,
-        "libraryTypeMismatch" : false,
         "matched" : true
       },
       "id" : "builtin.adult-comic-b.n1",
@@ -452,7 +437,6 @@
       },
       "expected" : {
         "formatIndex" : 2,
-        "libraryTypeMismatch" : false,
         "matched" : true
       },
       "id" : "builtin.adult-comic-b.n2",
@@ -465,7 +449,6 @@
       },
       "expected" : {
         "formatIndex" : 2,
-        "libraryTypeMismatch" : false,
         "matched" : true
       },
       "id" : "builtin.adult-comic-b.n3",
@@ -478,7 +461,6 @@
       },
       "expected" : {
         "formatIndex" : 2,
-        "libraryTypeMismatch" : false,
         "matched" : true
       },
       "id" : "builtin.adult-comic-b.n4",
@@ -491,7 +473,6 @@
       },
       "expected" : {
         "formatIndex" : 2,
-        "libraryTypeMismatch" : false,
         "matched" : true
       },
       "id" : "builtin.adult-comic-b.n5",
@@ -504,7 +485,6 @@
       },
       "expected" : {
         "formatIndex" : 2,
-        "libraryTypeMismatch" : false,
         "matched" : true
       },
       "id" : "builtin.adult-comic-b.n6",
@@ -517,7 +497,6 @@
       },
       "expected" : {
         "formatIndex" : 2,
-        "libraryTypeMismatch" : false,
         "matched" : true
       },
       "id" : "builtin.adult-comic-b.n7",
@@ -530,7 +509,6 @@
       },
       "expected" : {
         "formatIndex" : 2,
-        "libraryTypeMismatch" : false,
         "matched" : true
       },
       "id" : "builtin.adult-comic-b.n8",
@@ -543,7 +521,6 @@
       },
       "expected" : {
         "formatIndex" : 2,
-        "libraryTypeMismatch" : false,
         "matched" : true
       },
       "id" : "builtin.adult-comic-b.n9",
@@ -556,7 +533,6 @@
       },
       "expected" : {
         "formatIndex" : 2,
-        "libraryTypeMismatch" : false,
         "matched" : true
       },
       "id" : "builtin.adult-comic-b.n10",
@@ -569,7 +545,6 @@
       },
       "expected" : {
         "formatIndex" : 2,
-        "libraryTypeMismatch" : false,
         "matched" : true
       },
       "id" : "builtin.adult-comic-b.n11",
@@ -582,7 +557,6 @@
       },
       "expected" : {
         "formatIndex" : 2,
-        "libraryTypeMismatch" : false,
         "matched" : true
       },
       "id" : "builtin.adult-comic-b.n12",
@@ -595,7 +569,6 @@
       },
       "expected" : {
         "formatIndex" : 2,
-        "libraryTypeMismatch" : false,
         "matched" : true
       },
       "id" : "builtin.adult-comic-b.n13",
@@ -608,7 +581,6 @@
       },
       "expected" : {
         "formatIndex" : 2,
-        "libraryTypeMismatch" : false,
         "matched" : true
       },
       "id" : "builtin.adult-comic-b.n14",
@@ -621,7 +593,6 @@
       },
       "expected" : {
         "formatIndex" : 2,
-        "libraryTypeMismatch" : false,
         "matched" : true
       },
       "id" : "builtin.adult-comic-b.n15",
@@ -634,7 +605,6 @@
       },
       "expected" : {
         "formatIndex" : 2,
-        "libraryTypeMismatch" : false,
         "matched" : true
       },
       "id" : "builtin.adult-comic-b.n16",
@@ -647,7 +617,6 @@
       },
       "expected" : {
         "formatIndex" : 2,
-        "libraryTypeMismatch" : false,
         "matched" : true
       },
       "id" : "builtin.adult-comic-b.n17",
@@ -660,7 +629,6 @@
       },
       "expected" : {
         "formatIndex" : 2,
-        "libraryTypeMismatch" : false,
         "matched" : true
       },
       "id" : "builtin.adult-comic-b.n18",
@@ -673,7 +641,6 @@
       },
       "expected" : {
         "formatIndex" : 2,
-        "libraryTypeMismatch" : false,
         "matched" : true
       },
       "id" : "builtin.adult-comic-b.n19",
@@ -697,7 +664,6 @@
       },
       "expected" : {
         "formatIndex" : 2,
-        "libraryTypeMismatch" : false,
         "matched" : true
       },
       "id" : "builtin.adult-comic-b.n21",
@@ -710,7 +676,6 @@
       },
       "expected" : {
         "formatIndex" : 2,
-        "libraryTypeMismatch" : false,
         "matched" : true
       },
       "id" : "builtin.adult-comic-b.n22",

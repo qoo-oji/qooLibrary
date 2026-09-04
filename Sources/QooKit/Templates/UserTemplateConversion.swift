@@ -13,10 +13,9 @@ extension UserTemplateSettings {
     ///
     /// **揮発値（各 draft の `id`・`persistentID`）は落とす**——テンプレートは
     /// 「設定の雛形」であって特定のライブラリの行を指すものではない。
-    /// `displayName` と `otherLibraryTypeNames` も落とす（型の解説の表）。
+    /// `displayName` と照合語彙も落とす（型の解説の表）。
     public init(_ draft: LibrarySettingsDraft) {
         self.init(
-            libraryTypeName: draft.libraryTypeName,
             thumbnailsAlwaysHidden: draft.thumbnailsAlwaysHidden,
             duplicateGrouping: draft.duplicateGrouping,
             targetExtensions: draft.targetExtensions,
@@ -59,8 +58,8 @@ extension UserTemplateSettings {
     ///
     /// - Parameters:
     ///   - displayName: 登録先のフォルダ名 [RG3-31]。テンプレートは持たない。
-    ///   - otherLibraryTypeNames: 自分以外のライブラリの型名。型付き照合
-    ///     [TY-01] の列挙候補に要る。
+    ///   - bookTypeVocabulary: `@booktype` の照合語彙 [TY-01]。プリセットの
+    ///     本の種別 ∪ このライブラリの「本の種別」ラベル。
     ///
     /// **未知の予約語は読み飛ばす**——撤去された `@labelgroupN` / `@libraryname`
     /// を含む古い文書が来ても、その束縛が落ちるだけで文書全体は読める
@@ -69,10 +68,9 @@ extension UserTemplateSettings {
     /// **階層は番号順に並べる**——辞書由来ではないので順序は保たれるが、
     /// 取り込んだ文書が順不同なことはありうる（`draft(from:)` と同じ理由）。
     public func draft(displayName: String,
-                      otherLibraryTypeNames: [String] = []) -> LibrarySettingsDraft {
+                      bookTypeVocabulary: [String] = []) -> LibrarySettingsDraft {
         LibrarySettingsDraft(
             displayName: displayName,
-            libraryTypeName: libraryTypeName,
             thumbnailsAlwaysHidden: thumbnailsAlwaysHidden,
             duplicateGrouping: duplicateGrouping,
             targetExtensions: targetExtensions,
@@ -120,7 +118,7 @@ extension UserTemplateSettings {
             readsEmbeddedMetadata: readsEmbeddedMetadata,
             comicInfoVolumeSource: comicInfoVolumeSource,
             opensBookFolderWithApp: opensBookFolderWithApp,
-            otherLibraryTypeNames: otherLibraryTypeNames)
+            bookTypeVocabulary: bookTypeVocabulary)
     }
 }
 

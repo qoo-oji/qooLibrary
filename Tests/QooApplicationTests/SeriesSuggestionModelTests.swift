@@ -116,7 +116,7 @@ struct SeriesSuggestionModelTests {
     private static func library(_ id: Int64) -> LibrarySummary {
         LibrarySummary(id: LibraryID(rawValue: id), uuid: UUID(), displayName: "L\(id)",
                        resolvedPath: "/tmp/lib\(id)", volumeUUID: "V",
-                       libraryTypeID: LibraryTypeID(rawValue: 0), libraryTypeName: "T",
+                       libraryTypeID: LibraryTypeID(rawValue: 0),
                        isOnline: true, isReadOnlyDueToFS: false, fileCount: 0,
                        settingsRevision: 0)
     }

@@ -117,7 +117,6 @@ extension SQLiteManagedFileRepository {
                         row: record.fileRow,
                         isIgnored: flag.ignored,
                         detectedAt: Date(timeIntervalSinceReferenceDate: flag.detectedAt),
-                        libraryTypeMismatch: record.libraryTypeMismatch,
                         nearestFormatSource: flag.nearest)
                 }
         }

@@ -253,7 +253,7 @@ struct LibraryContentModelTests {
         let library = LibrarySummary(
             id: LibraryID(rawValue: 1), uuid: UUID(), displayName: "x",
             resolvedPath: w.libraryRoot.path, volumeUUID: "v",
-            libraryTypeID: LibraryTypeID(rawValue: 1), libraryTypeName: "t",
+            libraryTypeID: LibraryTypeID(rawValue: 1),
             isOnline: true, isReadOnlyDueToFS: false, fileCount: 0, settingsRevision: 1)
         let model = LibraryContentModel()
         await model.load(library: library, relativePath: "", services: w.services)

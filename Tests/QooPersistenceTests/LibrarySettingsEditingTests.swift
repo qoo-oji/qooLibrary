@@ -17,8 +17,7 @@ struct LibrarySettingsEditingTests {
         let draft = try #require(try await f.libraries.settingsDraft(libraryID: f.libraryID))
 
         #expect(draft.displayName == "テスト")
-        #expect(draft.libraryTypeName == "同人誌")
-        #expect(draft.fields.count == 6)
+        #expect(draft.fields.count == 7)   // 既定 6 種 ＋ プリセット固有の 1 つ
         #expect(draft.fields.allSatisfy { $0.persistentID != nil })
         #expect(draft.filenameFormats.count == 20)
         #expect(!draft.volumeFormats.isEmpty)
@@ -98,29 +97,6 @@ struct LibrarySettingsEditingTests {
         #expect(fields.contains { $0.name == "レーベル" })
     }
 
-    @Test("ライブラリタイプ名を変えても、同じプリセットの他ライブラリは巻き添えにならない [LT-05]")
-    func renamingTheLibraryTypeForksInsteadOfMutatingTheShared() async throws {
-        let f = try await Fixture.make(preset: "builtin.general-comic-a")
-        let sets = try BuiltInTemplates.volumeSets()
-        let template = try #require(try BuiltInTemplates.libraryTypes()
-            .first { $0.key == "builtin.general-comic-a" })
-        // 同じプリセットから 2 つ目を登録する＝同じ libraryType 行を共有する。
-        let secondID = try await f.libraries.register(
-            LibraryRegistration(uuid: UUID(), displayName: "もう一つ", bookmarkData: Data(),
-                                resolvedPath: "/tmp/lib2", volumeUUID: "VOL",
-                                libraryTypeID: LibraryTypeID(rawValue: 0)),
-            template: template)
-        _ = sets
-
-        var draft = try #require(try await f.libraries.settingsDraft(libraryID: f.libraryID))
-        draft.libraryTypeName = "コミックス"
-        try await f.libraries.updateSettings(draft, libraryID: f.libraryID)
-
-        #expect(try #require(try await f.libraries.library(id: f.libraryID)).libraryTypeName == "コミックス")
-        // **巻き添えにしない。** 共有行を直接書き換える実装だとここで落ちる。
-        #expect(try #require(try await f.libraries.library(id: secondID)).libraryTypeName == "一般コミック")
-    }
-
     @Test("検証を通らない設定は保存しない [LS-01]")
     func invalidDraftsAreRejected() async throws {
         let f = try await Fixture.make(preset: "builtin.general-comic-a")
@@ -158,7 +134,7 @@ struct LibrarySettingsValidationTests {
 
     private func base() -> LibrarySettingsDraft {
         LibrarySettingsDraft(
-            displayName: "L", libraryTypeName: "T",
+            displayName: "L",
             targetExtensions: ["cbz"],
             fields: [FieldDraft(index: 1, name: "サークル",
                                           colorHexLight: "#EEE", colorHexDark: "#444")],
@@ -228,15 +204,5 @@ struct LibrarySettingsValidationTests {
         var d = base()
         d.filenameFormats = [FilenameFormatDraft(source: "[@circle @title")]
         #expect(d.validationErrors.contains { $0.section == .filenameFormats })
-    }
-
-    @Test("型名を書き換えると、照合の列挙候補もその場で追随する [TY-01]")
-    func editingTheTypeNameUpdatesTheEnumerationCandidates() {
-        var d = LibrarySettingsDraft(displayName: "L", libraryTypeName: "旧",
-                                     targetExtensions: ["cbz"],
-                                     otherLibraryTypeNames: ["他"])
-        #expect(d.allLibraryTypeNames == ["他", "旧"])
-        d.libraryTypeName = "新"
-        #expect(d.allLibraryTypeNames == ["他", "新"])
     }
 }

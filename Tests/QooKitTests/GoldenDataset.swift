@@ -49,7 +49,6 @@ struct GoldenCase: Codable {
         /// ラベルグループ名 → 付与されるラベル。
         let labels: [String: [String]]?
         /// `@booktype` の不一致が立つか [RW-01]。
-        let libraryTypeMismatch: Bool?
     }
 
     /// `positive` | `negative`。
@@ -98,7 +97,7 @@ enum GoldenRunner {
         for preset in presets {
             guard let s = try? TemplateInstantiation.snapshot(
                 from: preset, volumeSets: sets, libraryID: LibraryID(rawValue: 1),
-                allLibraryTypeNames: typeNames) else { continue }
+                bookTypeVocabulary: typeNames) else { continue }
             out[preset.displayName] = (s, preset)
             out[preset.key] = (s, preset)
         }
@@ -121,7 +120,7 @@ enum GoldenRunner {
         func fail(_ reason: String) { failures.append(Failure(caseID: testCase.id, reason: reason)) }
 
         let name = (testCase.input as NSString).deletingPathExtension
-        let result = FilenameParser().parse(name, settings: settings, purpose: .libraryScan)
+        let result = FilenameParser().parse(name, settings: settings)
 
         guard testCase.expected.matched else {
             if result != nil { fail("一致しないはずが一致した: \(testCase.input)") }
@@ -155,10 +154,6 @@ enum GoldenRunner {
         if let v = testCase.expected.volume {
             let actual = ExpectedVolumeOf(resolved.volume)
             if actual != v { fail("volume 期待 \(v) / 実際 \(actual)") }
-        }
-        if let expectedMismatch = testCase.expected.libraryTypeMismatch,
-           result.libraryTypeMismatch != expectedMismatch {
-            fail("libraryTypeMismatch 期待 \(expectedMismatch) / 実際 \(result.libraryTypeMismatch)")
         }
         if let expectedLabels = testCase.expected.labels {
             let namesByIndex = Dictionary(uniqueKeysWithValues:

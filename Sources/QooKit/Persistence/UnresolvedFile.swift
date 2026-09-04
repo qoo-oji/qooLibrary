@@ -51,12 +51,6 @@ public struct UnresolvedFile: Sendable, Hashable, Identifiable {
     /// 最初に未解決と判定した時刻。**名前が変わっても更新しない**
     /// ——「いつから片付いていないか」を表すため。
     public let detectedAt: Date
-    /// ライブラリタイプの型条件を満たさなかったか [TY-01]。
-    ///
-    /// **未解決の理由ではない**（`libraryTypeMismatch` が真でも、別の
-    /// フォーマットに一致すれば解決する）。一覧に印として出すだけ——
-    /// 「なぜ当たらないか」の手がかりとしては強い。
-    public let libraryTypeMismatch: Bool
     /// 「最も近いフォーマット」のヒント [UR2-05][UR3-04]。`nil` = 1 要素も
     /// 満たしたフォーマットが無い（＝出す手がかりが無い）。
     public let nearestFormatSource: String?
@@ -64,11 +58,10 @@ public struct UnresolvedFile: Sendable, Hashable, Identifiable {
     public var id: FileID { row.id }
 
     public init(row: FileRow, isIgnored: Bool, detectedAt: Date,
-                libraryTypeMismatch: Bool, nearestFormatSource: String? = nil) {
+                nearestFormatSource: String? = nil) {
         self.row = row
         self.isIgnored = isIgnored
         self.detectedAt = detectedAt
-        self.libraryTypeMismatch = libraryTypeMismatch
         self.nearestFormatSource = nearestFormatSource
     }
 }

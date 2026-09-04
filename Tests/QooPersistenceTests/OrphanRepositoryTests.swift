@@ -108,7 +108,7 @@ struct OrphanRepositoryTests {
         let label = try await s.f.labels.ensureLabel(fieldID: s.field.id, name: "サークル値A")
         try await s.f.labels.assign(fileID: s.orphan, labelID: label)
         let before = try await s.f.recordJSON(id: s.orphan)
-        #expect(before.count >= 38, "標本が全列を埋めていない（Optional が nil のまま）")
+        #expect(before.count >= 37, "標本が全列を埋めていない（Optional が nil のまま）")
 
         let snapshots = try await s.f.files.fileSnapshots(ids: [s.orphan])
         try await s.f.files.deleteFiles([s.orphan])
@@ -217,7 +217,7 @@ extension Fixture {
                     isBookFolder = 1,
                     pageCount = ?, subfolderCount = ?,
                     firstImageWidth = ?, firstImageHeight = ?,
-                    trashedAt = ?, lastParsedFormatID = ?, libraryTypeMismatch = 1,
+                    trashedAt = ?, lastParsedFormatID = ?,
                     metadataStamp = ?, metadataSource = ?, metadataJSON = ?,
                     hasVolumeConflict = 1
                 WHERE id = ?

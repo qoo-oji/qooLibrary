@@ -73,13 +73,6 @@ struct LibraryEnablePreviewPane: View {
                         .font(.system(size: Tokens.fontSize.caption))
                         .foregroundStyle(.secondary)
                 }
-                if outcome.libraryTypeMismatched > 0 {
-                    Label(String(format: String(localized: "libraryEnable.preview.mismatch",
-                                                locale: locale), outcome.libraryTypeMismatched),
-                          systemImage: "exclamationmark.triangle.fill")
-                        .font(.system(size: Tokens.fontSize.caption))
-                        .foregroundStyle(.orange)
-                }
                 if outcome.truncated {
                     Text(String(format: String(localized: "libraryEnable.preview.truncated",
                                                locale: locale), outcome.total))
@@ -127,13 +120,11 @@ struct LibraryEnablePreviewPane: View {
 
     private func icon(for item: LibraryPreview.Item) -> String {
         if !item.matched { return "questionmark.circle.fill" }
-        if item.libraryTypeMismatch { return "exclamationmark.triangle.fill" }
         return "checkmark.circle.fill"
     }
 
     private func color(for item: LibraryPreview.Item) -> Color {
         if !item.matched { return .orange }
-        if item.libraryTypeMismatch { return .orange }
         return .green
     }
 

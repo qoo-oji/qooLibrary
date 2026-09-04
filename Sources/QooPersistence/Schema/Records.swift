@@ -16,7 +16,6 @@ struct LibraryTypeRecord: Codable, FetchableRecord, MutablePersistableRecord, Se
     var id: Int64?
     var presetKey: String?
     var name: String
-    var libraryTypeName: String
     var isPreset: Bool
     var version: Int
     var definitionJSON: String
@@ -131,7 +130,6 @@ struct ManagedFileRecord: Codable, FetchableRecord, MutablePersistableRecord, Se
     var trashedAt: Double?
     var state: String
     var lastParsedFormatID: String?
-    var libraryTypeMismatch: Bool
     /// 読んだ時点の "mtime|size" [EM-07]。**読めなかったときも書く**——
     /// 「読んだが無かった」と「まだ読んでいない」を区別しないと、メタデータを
     /// 持たないファイルを毎回開き直すことになる [SE3-25]。
@@ -181,8 +179,7 @@ extension ManagedFileRecord {
             pageCount: nil, subfolderCount: nil,
             firstImageWidth: nil, firstImageHeight: nil,
             trashedAt: nil, state: FileState.active.rawValue,
-            lastParsedFormatID: nil, libraryTypeMismatch: false,
-            metadataStamp: nil, metadataSource: nil, metadataJSON: nil,
+            lastParsedFormatID: nil,            metadataStamp: nil, metadataSource: nil, metadataJSON: nil,
             hasVolumeConflict: false)
     }
 
@@ -259,7 +256,6 @@ extension ManagedFileRecord {
             trashedAt: trashedAt.map { Date(timeIntervalSinceReferenceDate: $0) },
             state: FileState(rawValue: state) ?? .active,
             lastParsedFormatID: lastParsedFormatID,
-            libraryTypeMismatch: libraryTypeMismatch,
             metadataStamp: metadataStamp,
             metadataSource: metadataSource,
             metadataJSON: metadataJSON,
@@ -306,7 +302,6 @@ extension ManagedFileRecord {
             trashedAt: s.trashedAt?.timeIntervalSinceReferenceDate,
             state: s.state.rawValue,
             lastParsedFormatID: s.lastParsedFormatID,
-            libraryTypeMismatch: s.libraryTypeMismatch,
             metadataStamp: s.metadataStamp,
             metadataSource: s.metadataSource,
             metadataJSON: s.metadataJSON,

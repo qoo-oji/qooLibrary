@@ -64,7 +64,7 @@ struct ParserPerformanceTests {
     /// 「興味のあるケースだけ測って一般化した」に当たる。
     static func fiftyFormats() throws -> [CompiledFormat] {
         let ctxt = FormatCompilationContext(
-            allLibraryTypeNames: ["一般コミック", "成年コミック", "同人誌", "同人CG"])
+            bookTypeVocabulary: ["一般コミック", "成年コミック", "同人誌", "同人CG"])
         var sources = PresetTemplateTests.allPresetFormats
             .flatMap(\.formats)
             .filter { $0 != "@title" }
@@ -95,8 +95,7 @@ struct ParserPerformanceTests {
         let formats = try Self.fiftyFormats()
         let settings = LibrarySettingsSnapshot(
             libraryID: LibraryID(rawValue: 1),
-            libraryTypeName: "同人誌",
-            allLibraryTypeNames: ["一般コミック", "成年コミック", "同人誌", "同人CG"],
+            bookTypeVocabulary: ["一般コミック", "成年コミック", "同人誌", "同人CG"],
             filenameFormats: formats,
             volumeFormats: vsDoujin())
         let parser = FilenameParser()
@@ -111,7 +110,7 @@ struct ParserPerformanceTests {
         var matched = 0
         let t0 = DispatchTime.now().uptimeNanoseconds
         for name in samples {
-            if parser.parse(name, settings: settings, purpose: .libraryScan) != nil { matched += 1 }
+            if parser.parse(name, settings: settings) != nil { matched += 1 }
         }
         let ms = Double(DispatchTime.now().uptimeNanoseconds - t0) / 1_000_000
         let perFile = ms / Double(sampleCount)
@@ -140,8 +139,7 @@ struct ParserPerformanceTests {
         let formats = try Self.fiftyFormats()
         let settings = LibrarySettingsSnapshot(
             libraryID: LibraryID(rawValue: 1),
-            libraryTypeName: "同人誌",
-            allLibraryTypeNames: ["一般コミック", "同人誌"],
+            bookTypeVocabulary: ["一般コミック", "同人誌"],
             filenameFormats: formats,
             volumeFormats: vsDoujin())
         let parser = FilenameParser()
@@ -150,7 +148,7 @@ struct ParserPerformanceTests {
         let pathological = String(repeating: "[a(b)c] ", count: 12) + "終わり"
         let t0 = DispatchTime.now().uptimeNanoseconds
         for _ in 0..<200 {
-            _ = parser.parse(pathological, settings: settings, purpose: .libraryScan)
+            _ = parser.parse(pathological, settings: settings)
         }
         let ms = Double(DispatchTime.now().uptimeNanoseconds - t0) / 1_000_000 / 200
         FileHandle.standardError.write(Data(

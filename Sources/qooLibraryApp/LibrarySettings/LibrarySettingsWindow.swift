@@ -293,8 +293,7 @@ struct LibrarySettingsWindow: View {
                     guard let draft = model.draft else { return }
                     TemplateSaveAction.present(
                         draft: draft,
-                        suggestedName: draft.libraryTypeName.isEmpty
-                            ? draft.displayName : draft.libraryTypeName,
+                        suggestedName: draft.displayName,
                         locale: locale)
                 }
                 // 不備のあるテンプレートは保存させない [H1]。

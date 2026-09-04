@@ -53,7 +53,7 @@ public struct SQLiteBackupRepository: BackupRepository, Sendable {
             volumeUUID: record.volumeUUID,
             libraryType: LibraryTypeBackup(
                 presetKey: type.presetKey, name: type.name,
-                libraryTypeName: type.libraryTypeName, isPreset: type.isPreset,
+                isPreset: type.isPreset,
                 version: type.version, definitionJSON: type.definitionJSON),
             duplicateGrouping: record.duplicateGrouping,
             thumbnailsAlwaysHidden: record.thumbnailsAlwaysHidden,

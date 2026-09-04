@@ -17,10 +17,10 @@ import Testing
         return dir
     }
 
-    private func sample(_ name: String, typeName: String = "型") -> UserTemplate {
+    private func sample(_ name: String,
+                        format: String = "[@author] @title") -> UserTemplate {
         var settings = UserTemplateSettings()
-        settings.libraryTypeName = typeName
-        settings.filenameFormats = [.init(source: "[@author] @title", isEnabled: true)]
+        settings.filenameFormats = [.init(source: format, isEnabled: true)]
         return UserTemplate(name: name, settings: settings)
     }
 
@@ -52,7 +52,7 @@ import Testing
         #expect(reloaded.count == 1)
         #expect(reloaded.first?.id == template.id)
         #expect(reloaded.first?.name == "私の同人誌")
-        #expect(reloaded.first?.settings.libraryTypeName == "型")
+        #expect(reloaded.first?.settings.filenameFormats.first?.source == "[@author] @title")
         #expect(reloaded.first?.createdAt == created)
         // 退避ファイルが作られていない＝壊れていると誤判定されていない。
         let siblings = try FileManager.default
@@ -122,12 +122,12 @@ import Testing
         let root = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: root) }
         let store = UserTemplateStore(storageURL: root.appendingPathComponent("t.json"))
-        let mine = sample("私の設定", typeName: "手元で編集した型")
+        let mine = sample("私の設定", format: "手元で編集した@title")
         try await store.save(mine)
 
         // 同じ id・同じ名前で、中身だけ違う文書を取り込む。
         var incoming = mine
-        incoming.settings.libraryTypeName = "取り込んだ型"
+        incoming.settings.filenameFormats = [.init(source: "取り込んだ@title", isEnabled: true)]
         let outcome = try await store.importDocument(
             UserTemplateDocument(templates: [incoming]))
 
@@ -136,8 +136,10 @@ import Testing
         let all = await store.templates()
         #expect(all.count == 2)
         // 手元のものは無傷。
-        #expect(all.first { $0.id == mine.id }?.settings.libraryTypeName == "手元で編集した型")
-        #expect(all.first { $0.id != mine.id }?.settings.libraryTypeName == "取り込んだ型")
+        #expect(all.first { $0.id == mine.id }?.settings.filenameFormats.first?.source
+                == "手元で編集した@title")
+        #expect(all.first { $0.id != mine.id }?.settings.filenameFormats.first?.source
+                == "取り込んだ@title")
     }
 
     /// **何を弾いたかを返す**（黙って一部だけ入れない）。

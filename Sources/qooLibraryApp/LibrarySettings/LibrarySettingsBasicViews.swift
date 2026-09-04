@@ -50,30 +50,13 @@ struct LibraryBasicsSettingsView: View {
         VStack(alignment: .leading, spacing: Tokens.spacing.l) {
             SettingsSectionHeader(title: "librarySettings.section.basics",
                                   explanation: "librarySettings.basics.explanation")
-            // **入力欄には必ず `.editableFieldChrome()` を付ける** [ユーザー指摘、
-            // 2 度目]。`Form` の中の素の `TextField` は、値が右端に寄った
-            // ただのテキストにしか見えず、**そこが入力できる場所だと気づけない**
-            // ——実機で「ライブラリタイプ名を入力するボックスがわからなかった」と
-            // 報告された。地の色が付いて初めて欄だと分かる（`EditableFieldChrome`
-            // の型コメント参照）。
+            // **ブックタイプ名の入力欄は撤去した** [TY-01、2026-09-04]。本の種別は
+            // 本の属性であってライブラリの属性ではないので、ライブラリが固有値を
+            // 持つ理由が無い——`@booktype` はプリセットの語彙とこのライブラリの
+            // 「本の種別」ラベルで照合し、切り出した値はそのフィールドのラベルに
+            // なる。**入力欄には必ず `.editableFieldChrome()` を付ける**という
+            // 作法は他の欄でそのまま生きている [ユーザー指摘、2 度目]。
             Form {
-                Section {
-                    LabeledContent {
-                        VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
-                            TextField("", text: $draft.libraryTypeName)
-                                .labelsHidden()
-                                .editableFieldChrome()
-                            // 実蔵書との突き合わせで、ここの食い違いが 146 件の未解決を
-                            // 生んだ実例がある（同人CG の印は `(同人CG集)` だった）。
-                            Text("librarySettings.basics.typeNameHint")
-                                .font(.system(size: Tokens.fontSize.caption))
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    } label: {
-                        Text("librarySettings.basics.typeName")
-                    }
-                }
                 Section {
                     Toggle("librarySettings.basics.thumbnailsAlwaysHidden",
                            isOn: $draft.thumbnailsAlwaysHidden)

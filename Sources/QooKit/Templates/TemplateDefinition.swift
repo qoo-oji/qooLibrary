@@ -102,6 +102,18 @@ public enum BuiltInTemplates {
     }
 
     /// プリセットのライブラリタイプ [11.4]。
+    /// `@booktype` の照合語彙の**既定部分** [TY-01]。
+    ///
+    /// **プリセットの `libraryTypeName` から導出する**——手書きの一覧にすると、
+    /// プリセットを足したときに片方だけ古くなる（`check-personal-identifiers` が
+    /// 除外語を `library-types.json` から導いているのと同じ考え方）。
+    /// 実際に使う語彙はこれに「そのライブラリの『本の種別』フィールドに既に
+    /// あるラベル」を合わせたもので、後者があるおかげで**利用者独自の種別も育つ**。
+    public static func bookTypes() throws -> [String] {
+        Array(Set(try libraryTypes().map(\.libraryTypeName)))
+            .filter { !$0.isEmpty }.sorted()
+    }
+
     public static func libraryTypes() throws -> [LibraryTypeTemplate] {
         try decode(LibraryTypeTemplateBundle.self, from: libraryTypesResource).presets
     }
@@ -137,7 +149,7 @@ public enum TemplateInstantiation {
                                volumeSets: VolumeSetDefinition,
                                libraryID: LibraryID,
                                displayName: String = "",
-                               allLibraryTypeNames: [String] = [],
+                               bookTypeVocabulary: [String] = [],
                                delimiters: DelimiterSet = .default,
                                /// 省略すると `draft(from:)` と**同じ既定**が入る。
                                /// 揃えないと、ここで測った結果が実際に登録された
@@ -154,8 +166,8 @@ public enum TemplateInstantiation {
         let semantic = template.semanticKeywordBindings
         let context = FormatCompilationContext(
             delimiters: delimiters,
-            allLibraryTypeNames: allLibraryTypeNames.isEmpty
-                ? [template.libraryTypeName] : allLibraryTypeNames,
+            bookTypeVocabulary: bookTypeVocabulary.isEmpty
+                ? [template.libraryTypeName] : bookTypeVocabulary,
             semanticBindings: semantic)
 
         var formats: [CompiledFormat] = []
@@ -200,8 +212,7 @@ public enum TemplateInstantiation {
         return LibrarySettingsSnapshot(
             libraryID: libraryID,
             displayName: displayName,
-            libraryTypeName: template.libraryTypeName,
-            allLibraryTypeNames: context.allLibraryTypeNames,
+            bookTypeVocabulary: context.bookTypeVocabulary,
             delimiters: delimiters,
             protectedTokens: ProtectedTokenCompiler.compileAll(protectedTokens),
             filenameFormats: formats,
@@ -235,7 +246,7 @@ extension TemplateInstantiation {
     public static func draft(from template: LibraryTypeTemplate,
                              volumeSets: VolumeSetDefinition,
                              displayName: String,
-                             otherLibraryTypeNames: [String] = []) -> LibrarySettingsDraft {
+                             bookTypeVocabulary: [String] = []) -> LibrarySettingsDraft {
         let colors = LabelColorPalette.palette(count: max(template.fields.count, 1))
         let fields = template.fields
             .sorted { $0.index < $1.index }
@@ -273,7 +284,6 @@ extension TemplateInstantiation {
 
         return LibrarySettingsDraft(
             displayName: displayName,
-            libraryTypeName: template.libraryTypeName,
             thumbnailsAlwaysHidden: false,
             // **テンプレートは対象拡張子を持たない** [要件定義書 11.4 節:
             // 「対象拡張子は全テンプレート共通」]。空で登録すると走査が
@@ -294,12 +304,12 @@ extension TemplateInstantiation {
             volumeFormats: volumes,
             folderLevels: levels,
             seriesTitleCompositionFormat: "@series @volume",
-            otherLibraryTypeNames: otherLibraryTypeNames)
+            bookTypeVocabulary: bookTypeVocabulary)
     }
 
-    /// 既定フィールド 5 種と、その意味束縛を組み立てる [§19.2][RWI-02]。
+    /// 既定フィールド 6 種と、その意味束縛を組み立てる [§19.2][RWI-02]。
     ///
-    /// **番号は 1〜5 に固定する。** 番号はフィールドの身元ではない（身元は
+    /// **番号は 1〜6 に固定する。** 番号はフィールドの身元ではない（身元は
     /// 予約語）が、既定が毎回違う番号に散ると、追加フィールドの番号取りと
     /// 設定画面の並びが登録のたびに変わって読みにくい。
     public static func defaultFields(named names: [String])
@@ -334,7 +344,7 @@ extension TemplateInstantiation {
     /// 巻数フォーマットだけは既定のセットを入れる——巻数の読み取りは
     /// ライブラリタイプに依らずほぼ共通で、空から手で書かせる意味が薄い。
     /// - Parameters:
-    ///   - defaultFieldNames: 既定フィールド 5 種の名前を
+    ///   - defaultFieldNames: 既定フィールド 6 種の名前を
     ///     `SemanticKeyword.defaultFields` の順で渡す [§19.2]。
     ///     **`QooKit` は表示文字列を持たない** [A-01] ので、UI 層が訳語を渡す。
     ///     件数が足りなければ予約語の綴りで埋める（訳語が無いことは
@@ -345,26 +355,24 @@ extension TemplateInstantiation {
     public static func blankDraft(volumeSets: VolumeSetDefinition,
                                   displayName: String,
                                   defaultFieldNames: [String],
-                                  libraryTypeName: String = "",
                                   volumeSetName: String = "VS-Full",
-                                  otherLibraryTypeNames: [String] = []) -> LibrarySettingsDraft {
+                                  bookTypeVocabulary: [String] = []) -> LibrarySettingsDraft {
         let volumes = (volumeSets.patterns(named: volumeSetName) ?? [])
             .map { VolumeFormatDraft(source: $0.source, isEnabled: true, kind: $0.kind) }
         let (fields, bindings) = defaultFields(named: defaultFieldNames)
         return LibrarySettingsDraft(
             displayName: displayName,
-            libraryTypeName: libraryTypeName,
             targetExtensions: AppDefaults.Library.targetExtensions.sorted(),
             delimiters: .default,
             protectedTokens: AppDefaults.Library.protectedTokenPatterns.map {
                 ProtectedToken(pattern: $0)
             },
-            // **既定フィールド 5 種を置く** [§19.2]。白紙でも、著者・サークル・
-            // ジャンル・イベント・キーワードは最初から使える——「何から始めれば
+            // **既定フィールド 6 種を置く** [§19.2]。白紙でも、著者・サークル・
+            // ジャンル・イベント・キーワード・本の種別は最初から使える——「何から始めれば
             // よいか」が分かるうえ、プリセットから登録した場合と持ち物が揃う。
             fields: fields,
             semanticBindings: bindings,
             volumeFormats: volumes,
-            otherLibraryTypeNames: otherLibraryTypeNames)
+            bookTypeVocabulary: bookTypeVocabulary)
     }
 }

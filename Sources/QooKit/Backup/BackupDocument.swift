@@ -43,7 +43,12 @@ public struct BackupDocument: Codable, Sendable, Equatable {
     ///      要求しており、無いと文書全体の取り込みが失敗する（版 3 と同じ判断）。
     ///      版 3 以前の文書は `isArchived` をそのまま `isHidden` として読む
     ///      （どちらも「フィルタから外す」という同じ効果を持っていたため）。
-    public static let currentSchemaVersion = 4
+    /// 版 5: `LibraryTypeBackup.libraryTypeName` を撤去 [TY-01、2026-09-04]。
+    /// **キーを消したので版を上げる**——古い実装は非 Optional で要求しており、
+    /// 新しい文書を `keyNotFound` で拒む必要がある（キーが増えるだけなら
+    /// 上げない、という `shelves` の判断とは向きが逆）。版 4 以前の文書は
+    /// 余分なキーとして読み飛ばされるのでそのまま読める。
+    public static let currentSchemaVersion = 5
 
     public var schemaVersion: Int
     public var exportedAt: Date
@@ -146,16 +151,14 @@ public struct LibraryBackup: Codable, Sendable, Equatable {
 public struct LibraryTypeBackup: Codable, Sendable, Equatable {
     public var presetKey: String?
     public var name: String
-    public var libraryTypeName: String
     public var isPreset: Bool
     public var version: Int
     public var definitionJSON: String
 
-    public init(presetKey: String?, name: String, libraryTypeName: String,
+    public init(presetKey: String?, name: String,
                 isPreset: Bool, version: Int, definitionJSON: String) {
         self.presetKey = presetKey
         self.name = name
-        self.libraryTypeName = libraryTypeName
         self.isPreset = isPreset
         self.version = version
         self.definitionJSON = definitionJSON

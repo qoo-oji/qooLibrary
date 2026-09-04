@@ -12,19 +12,17 @@ public struct ParsedFileFields: Sendable {
     public let authorName: String?
     /// ラベルグループ番号 → 付与する値。セマンティック予約語ぶんも畳み込み済み。
     public let labelValues: [Int: [String]]
-    public let libraryTypeMismatch: Bool
     public let spans: [FieldSpan]
 
     public init(matchedFormatID: UUID, title: String?, seriesName: String?,
                 volume: VolumeValue, authorName: String?, labelValues: [Int: [String]],
-                libraryTypeMismatch: Bool, spans: [FieldSpan]) {
+                spans: [FieldSpan]) {
         self.matchedFormatID = matchedFormatID
         self.title = title
         self.seriesName = seriesName
         self.volume = volume
         self.authorName = authorName
         self.labelValues = labelValues
-        self.libraryTypeMismatch = libraryTypeMismatch
         self.spans = spans
     }
 }
@@ -91,7 +89,6 @@ public enum FieldPostProcessor {
             volume: volume,
             authorName: authorName,
             labelValues: labels,
-            libraryTypeMismatch: result.libraryTypeMismatch,
             spans: result.spans)
     }
 }

@@ -19,7 +19,7 @@ struct MaintenanceTabTests {
     private func library(_ id: Int64, online: Bool) -> LibrarySummary {
         LibrarySummary(id: LibraryID(rawValue: id), uuid: UUID(), displayName: "L\(id)",
                        resolvedPath: "/Volumes/L\(id)", volumeUUID: "VOL\(id)",
-                       libraryTypeID: LibraryTypeID(rawValue: 1), libraryTypeName: "同人誌",
+                       libraryTypeID: LibraryTypeID(rawValue: 1),
                        isOnline: online, isReadOnlyDueToFS: false, fileCount: 0,
                        settingsRevision: 0)
     }

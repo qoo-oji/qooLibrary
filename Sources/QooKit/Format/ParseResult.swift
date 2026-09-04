@@ -35,14 +35,12 @@ public struct ParseResult: Sendable {
     /// 出現順。フィールド分解表示に使う [CW-16]。
     public let spans: [FieldSpan]
     /// `@librarytype` の不一致。スキャン時は警告のみ、移動時はマッチ失敗 [RW-01]。
-    public var libraryTypeMismatch: Bool
 
     public init(matchedFormatID: UUID, fields: [FieldRef: FieldValue],
-                spans: [FieldSpan], libraryTypeMismatch: Bool = false) {
+                spans: [FieldSpan]) {
         self.matchedFormatID = matchedFormatID
         self.fields = fields
         self.spans = spans
-        self.libraryTypeMismatch = libraryTypeMismatch
     }
 
 }

@@ -241,7 +241,7 @@ struct BackupTests {
             try db.execute(sql: "UPDATE label SET isHidden = 1")
         }
         let document = try await backup.export(scope: .everything, appVersion: nil)
-        #expect(document.schemaVersion == 4)
+        #expect(document.schemaVersion == 5)
 
         // 版 3 の文書に化けさせる——キーを旧しい綴りへ戻す。
         let encoded = try BackupCoding.encode(document)

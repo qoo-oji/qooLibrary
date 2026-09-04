@@ -30,9 +30,8 @@ struct BuiltInTemplateTests {
         for preset in presets {
             let s = try TemplateInstantiation.snapshot(
                 from: preset, volumeSets: sets, libraryID: LibraryID(rawValue: 1),
-                allLibraryTypeNames: typeNames)
+                bookTypeVocabulary: typeNames)
             #expect(!s.filenameFormats.isEmpty, "\(preset.displayName) にフォーマットが無い")
-            #expect(s.libraryTypeName == preset.libraryTypeName)
             #expect(s.filenameFormats.map(\.priority) == Array(0..<preset.filenameFormats.count))
         }
     }
@@ -80,7 +79,7 @@ struct BuiltInTemplateTests {
                                                     libraryID: LibraryID(rawValue: 1))
         #expect(s.volumeFormats.isEmpty)
         let r = try #require(FilenameParser().parse("[著者] 作品名 第01巻",
-                                                     settings: s, purpose: .libraryScan))
+                                                     settings: s))
         let f = FieldPostProcessor.postProcess(r, settings: s)
         #expect(f.volume.kind == .none)
         #expect(f.title == "作品名 第01巻")               // 巻数を切り離さない

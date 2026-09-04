@@ -233,7 +233,7 @@ struct FieldPostProcessorTests {
     @Test("@series を直接書いた場合、@title から巻数を除去しない [RW-08]")
     func directSeriesSkipsStripping() throws {
         let s = try settings(formats: ["[@circle] @series (@volume)"], volume: vsFull())
-        let r = try #require(parser.parse("[著者] シリーズ名 (第03巻)", settings: s, purpose: .libraryScan))
+        let r = try #require(parser.parse("[著者] シリーズ名 (第03巻)", settings: s))
         let f = FieldPostProcessor.postProcess(r, settings: s)
         #expect(f.seriesName == "シリーズ名")
         #expect(f.volume.number == 3)
@@ -243,7 +243,7 @@ struct FieldPostProcessorTests {
     @Test("@volume のみ直接指定なら @title から巻数相当を除去する [RW-10]")
     func volumeOnlyDerivesSeries() throws {
         let s = try settings(formats: ["[@circle] @title (@volume)"], volume: vsFull())
-        let r = try #require(parser.parse("[著者] 作品名 第01巻 (01)", settings: s, purpose: .libraryScan))
+        let r = try #require(parser.parse("[著者] 作品名 第01巻 (01)", settings: s))
         let f = FieldPostProcessor.postProcess(r, settings: s)
         #expect(f.title == "作品名 第01巻")
         #expect(f.seriesName == "作品名")
@@ -254,7 +254,7 @@ struct FieldPostProcessorTests {
     func semanticBindingCreatesLabel() throws {
         let s = try settings(formats: ["[@circle] @title"],
                              volume: vsFull(), semantic: [.circle: 1, .series: 2])
-        let r = try #require(parser.parse("[著者] 作品名 第01巻", settings: s, purpose: .libraryScan))
+        let r = try #require(parser.parse("[著者] 作品名 第01巻", settings: s))
         let f = FieldPostProcessor.postProcess(r, settings: s)
         #expect(f.labelValues[1] == ["著者"])
         #expect(f.labelValues[2] == ["作品名"])     // @series 紐づけ先
@@ -264,7 +264,7 @@ struct FieldPostProcessorTests {
     func noSeriesNoLabel() throws {
         let s = try settings(formats: ["[@circle] @title"],
                              volume: vsFull(), semantic: [.circle: 1, .series: 2])
-        let r = try #require(parser.parse("[著者] 単発作品", settings: s, purpose: .libraryScan))
+        let r = try #require(parser.parse("[著者] 単発作品", settings: s))
         let f = FieldPostProcessor.postProcess(r, settings: s)
         #expect(f.seriesName == nil)
         #expect(f.labelValues[2] == nil)
@@ -275,7 +275,7 @@ struct FieldPostProcessorTests {
         // **束縛を空にして呼ぶ**——ヘルパの既定は 5 種を束縛するので、
         // 「束縛が無い」という前提をここで明示しないと検査にならない。
         let s = try settings(formats: ["[@author] @title"], semantic: [:])
-        let r = try #require(parser.parse("[佐藤秀峰] 作品名", settings: s, purpose: .libraryScan))
+        let r = try #require(parser.parse("[佐藤秀峰] 作品名", settings: s))
         let f = FieldPostProcessor.postProcess(r, settings: s)
         #expect(f.authorName == "佐藤秀峰")
         #expect(f.labelValues.isEmpty)
@@ -284,7 +284,7 @@ struct FieldPostProcessorTests {
     @Test("@ignore は破棄されラベルにも DB にも残らない [RW-02]")
     func ignoreIsDiscarded() throws {
         let s = try settings(formats: ["[@ignore] [@circle] @title"])
-        let r = try #require(parser.parse("[捨てる] [著者] 作品名", settings: s, purpose: .libraryScan))
+        let r = try #require(parser.parse("[捨てる] [著者] 作品名", settings: s))
         let f = FieldPostProcessor.postProcess(r, settings: s)
         #expect(f.labelValues[1] == ["著者"])
         #expect(f.labelValues.count == 1)

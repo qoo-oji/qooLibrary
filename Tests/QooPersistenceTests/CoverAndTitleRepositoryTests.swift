@@ -46,7 +46,7 @@ struct CoverAndTitleRepositoryTests {
             ParsedFileFields(matchedFormatID: UUID(), title: "自動の題",
                              seriesName: "自動のシリーズ",
                              volume: .numeric(1, raw: "第01巻"), authorName: "自動の著者",
-                             labelValues: [:], libraryTypeMismatch: true, spans: []),
+                             labelValues: [:], spans: []),
             to: id)
 
         let row = try #require(try await f.files.row(id: id))
@@ -69,15 +69,14 @@ struct CoverAndTitleRepositoryTests {
         try await f.files.applyParsedFields(
             ParsedFileFields(matchedFormatID: formatID, title: "自動", seriesName: nil,
                              volume: .none, authorName: nil, labelValues: [:],
-                             libraryTypeMismatch: true, spans: []),
+                             spans: []),
             to: id)
         let stored = try await f.database.writer.read { db in
             try Row.fetchOne(db, sql: """
-                SELECT lastParsedFormatID, libraryTypeMismatch FROM managedFile WHERE id = ?
+                SELECT lastParsedFormatID FROM managedFile WHERE id = ?
                 """, arguments: [id.rawValue])
         }
         #expect(stored?["lastParsedFormatID"] == formatID.uuidString)
-        #expect(stored?["libraryTypeMismatch"] == true)
     }
 
     /// **`.userSpecified` 以外では参照を消す。**

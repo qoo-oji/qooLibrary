@@ -27,9 +27,12 @@ struct DefaultFieldTests {
                 #expect(preset.fields.contains { $0.index == index },
                         "\(preset.key): \(keyword.rawValue) の束縛先 \(index) が実在しない")
             }
-            // 既定 5 種は 1〜5 に固定する（追加フィールドは 6 以降）。
+            // 既定 6 種の束縛先は互いに重ならず、実在するフィールドを指す。
+            // **番号は固定しない**——プリセットは 1〜5 と 7、白紙は 1〜6 で、
+            // 番号はフィールドの身元ではない [§19.2]。
             let defaults = SemanticKeyword.defaultFields.compactMap { bindings[$0] }
-            #expect(Set(defaults) == Set(1...5), "\(preset.key): 既定フィールドの番号")
+            #expect(Set(defaults).count == SemanticKeyword.defaultFields.count,
+                    "\(preset.key): 既定フィールドの束縛先が重複している")
         }
     }
 
@@ -66,22 +69,22 @@ struct DefaultFieldTests {
         }
     }
 
-    /// 白紙から始めても既定 5 種は揃う [§19.2]。
-    @Test("白紙の草案も既定フィールド 5 種を持つ")
+    /// 白紙から始めても既定 6 種は揃う [§19.2]。
+    @Test("白紙の草案も既定フィールド 6 種を持つ")
     func blankDraftCarriesTheDefaultFields() throws {
         let sets = try BuiltInTemplates.volumeSets()
         let draft = TemplateInstantiation.blankDraft(
             volumeSets: sets, displayName: "白紙",
-            defaultFieldNames: ["著者", "サークル", "ジャンル", "イベント", "キーワード"])
+            defaultFieldNames: ["著者", "サークル", "ジャンル", "イベント", "キーワード", "本の種別"])
         #expect(draft.fields.map(\.name)
-                == ["著者", "サークル", "ジャンル", "イベント", "キーワード"])
+                == ["著者", "サークル", "ジャンル", "イベント", "キーワード", "本の種別"])
         for (offset, keyword) in SemanticKeyword.defaultFields.enumerated() {
             #expect(draft.semanticBindings[keyword] == offset + 1)
         }
         // 訳語が足りなくても壊れない——予約語の綴りで埋める。
         let sparse = TemplateInstantiation.blankDraft(
             volumeSets: sets, displayName: "白紙", defaultFieldNames: ["著者"])
-        #expect(sparse.fields.count == 5)
+        #expect(sparse.fields.count == 6)
         #expect(sparse.fields[1].name == "circle")
     }
 
@@ -110,8 +113,7 @@ struct DefaultFieldTests {
         let sets = try BuiltInTemplates.volumeSets()
         var draft = TemplateInstantiation.blankDraft(
             volumeSets: sets, displayName: "L",
-            defaultFieldNames: ["著者", "サークル", "ジャンル", "イベント", "キーワード"])
-        draft.libraryTypeName = "T"
+            defaultFieldNames: ["著者", "サークル", "ジャンル", "イベント", "キーワード", "本の種別"])
         draft.filenameFormats = [FilenameFormatDraft(source: "[@circle] @title")]
         #expect(draft.validationErrors.isEmpty)             // 束縛があるうちは通る
 
@@ -172,7 +174,7 @@ struct DefaultFieldTests {
             "(@event) [@circle (@author)] @title (@genre) [@keyword]", bindings: bindings)
         let outcome = FilenameParser().parse(
             "(C99) [サークルA (著者A)] 作品X (ジャンルA) [キーワードA]",
-            settings: settings, purpose: .libraryScan)
+            settings: settings)
         let result = try #require(outcome)
         let parsed = FieldPostProcessor.postProcess(result, settings: settings)
 
@@ -190,8 +192,7 @@ struct DefaultFieldTests {
     @Test("束縛の無い予約語はラベルにならない [RW-16]")
     func unboundKeywordsProduceNoLabels() throws {
         let settings = try snapshot("[@circle] @title", bindings: [:])
-        let result = try #require(FilenameParser().parse("[サークルA] 作品X", settings: settings,
-                                                       purpose: .libraryScan))
+        let result = try #require(FilenameParser().parse("[サークルA] 作品X", settings: settings))
         let parsed = FieldPostProcessor.postProcess(result, settings: settings)
         #expect(parsed.labelValues.isEmpty)
         #expect(parsed.title == "作品X")
@@ -208,8 +209,7 @@ struct DefaultFieldTests {
         let sets = try BuiltInTemplates.volumeSets()
         var draft = TemplateInstantiation.blankDraft(
             volumeSets: sets, displayName: "L",
-            defaultFieldNames: ["著者", "サークル", "ジャンル", "イベント", "キーワード"])
-        draft.libraryTypeName = "T"
+            defaultFieldNames: ["著者", "サークル", "ジャンル", "イベント", "キーワード", "本の種別"])
         draft.filenameFormats = [FilenameFormatDraft(source: "@title")]
 
         // 束縛があるうちは通る

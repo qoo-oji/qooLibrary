@@ -197,8 +197,8 @@ struct SchemaTests {
 
 func seedLibrary(_ d: Database) throws {
     try d.execute(sql: """
-        INSERT INTO libraryType (presetKey, name, libraryTypeName, isPreset, version, definitionJSON)
-        VALUES ('builtin.test', 'テスト', 'テスト', 1, 1, '{}')
+        INSERT INTO libraryType (presetKey, name, isPreset, version, definitionJSON)
+        VALUES ('builtin.test', 'テスト', 1, 1, '{}')
         """)
     try d.execute(sql: """
         INSERT INTO library (uuid, displayName, bookmarkData, resolvedPath, volumeUUID,

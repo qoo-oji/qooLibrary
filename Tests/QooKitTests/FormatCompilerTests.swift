@@ -8,7 +8,7 @@ private func ctx(maxGroups: Int = 10,
                  semantic: [SemanticKeyword: Int] = [:],
                  delimiters: DelimiterSet = .default) -> FormatCompilationContext {
     FormatCompilationContext(delimiters: delimiters, maxFields: maxGroups,
-                             allLibraryTypeNames: types,
+                             bookTypeVocabulary: types,
                              semanticBindings: semantic)
 }
 
@@ -199,8 +199,9 @@ struct FormatValidationTests {
         #expect(throws: FormatCompileError.noFieldAtAll) {
             try FormatCompiler.compile("@ignore", context: ctx())
         }
-        // @booktype だけでは照合はできても抽出できない
-        #expect(throws: FormatCompileError.noFieldAtAll) {
+        // **`@booktype` だけなら通る** [TY-01、2026-09-04]——照合した値は
+        // 捨てずに「本の種別」のラベルとして残るので、抽出できている。
+        #expect(throws: Never.self) {
             try FormatCompiler.compile("(@booktype)", context: ctx(types: ["A"]))
         }
     }

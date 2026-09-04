@@ -17,7 +17,7 @@ struct OrphanCleanupSelectionTests {
     private func library(_ name: String, id: Int64, online: Bool = true) -> LibrarySummary {
         LibrarySummary(id: LibraryID(rawValue: id), uuid: UUID(), displayName: name,
                        resolvedPath: "/Volumes/\(name)", volumeUUID: "VOL\(id)",
-                       libraryTypeID: LibraryTypeID(rawValue: 1), libraryTypeName: "同人誌",
+                       libraryTypeID: LibraryTypeID(rawValue: 1),
                        isOnline: online, isReadOnlyDueToFS: false, fileCount: 0,
                        settingsRevision: 0)
     }

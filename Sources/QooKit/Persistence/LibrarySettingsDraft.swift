@@ -102,10 +102,6 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
 
     // --- 基本 ---
     public var displayName: String
-    /// `@librarytype` の照合値 [RW-01]。表示名とは別物で、こちらが型条件 [TY-01]
-    /// の判定に使われる（実蔵書との突き合わせで、ここの食い違いが 146 件の
-    /// 未解決を生んだ実例がある）。
-    public var libraryTypeName: String
     public var thumbnailsAlwaysHidden: Bool    // [DS-04]
     /// 重複ファイルをまとめて表示するか [DU-01][DU-02]。**既定は `.off`。**
     ///
@@ -149,13 +145,13 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
     public var opensBookFolderWithApp: Bool
 
     // --- 照合の文脈（編集不可） ---
-    /// **この**ライブラリを除いた他ライブラリの型名・表示名。型付き照合 [TY-01]
-    /// の列挙候補を組み立てるのに要る。自分の分は編集中の値から足すので、
-    /// 型名を書き換えても列挙候補が古いまま取り残されない。
-    public let otherLibraryTypeNames: [String]
+    /// `@booktype` の照合語彙 [TY-01]。**ライブラリ固有の 1 値ではない**
+    /// ——プリセットが持つ本の種別の和集合と、このライブラリの「本の種別」
+    /// フィールドに既にあるラベルを合わせたもの。供給するのは永続化層で、
+    /// ここは受け取るだけ（草案を編集しても語彙は動かない）。
+    public let bookTypeVocabulary: [String]
 
     public init(displayName: String = "",
-                libraryTypeName: String = "",
                 thumbnailsAlwaysHidden: Bool = false,
                 duplicateGrouping: DuplicateGrouping = .off,
                 targetExtensions: [String] = [],
@@ -171,9 +167,8 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
                 readsEmbeddedMetadata: Bool = true,
                 comicInfoVolumeSource: ComicInfoVolumeSource = .ask,
                 opensBookFolderWithApp: Bool = false,
-                otherLibraryTypeNames: [String] = []) {
+                bookTypeVocabulary: [String] = []) {
         self.displayName = displayName
-        self.libraryTypeName = libraryTypeName
         self.thumbnailsAlwaysHidden = thumbnailsAlwaysHidden
         self.duplicateGrouping = duplicateGrouping
         self.targetExtensions = targetExtensions
@@ -189,21 +184,17 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
         self.readsEmbeddedMetadata = readsEmbeddedMetadata
         self.comicInfoVolumeSource = comicInfoVolumeSource
         self.opensBookFolderWithApp = opensBookFolderWithApp
-        self.otherLibraryTypeNames = otherLibraryTypeNames
+        self.bookTypeVocabulary = bookTypeVocabulary
     }
 
     // MARK: - 派生
-
-    public var allLibraryTypeNames: [String] {
-        Array(Set(otherLibraryTypeNames + [libraryTypeName])).filter { !$0.isEmpty }.sorted()
-    }
 
     /// フォーマットのコンパイルに渡す文脈。**検証もプレビューもこれを使う**
     /// ——別々に組み立てると、片方だけ設定変更に追随しない形になる。
     public var compilationContext: FormatCompilationContext {
         FormatCompilationContext(delimiters: delimiters,
                                  maxFields: AppLimits.Format.maxFields,
-                                 allLibraryTypeNames: allLibraryTypeNames,
+                                 bookTypeVocabulary: bookTypeVocabulary,
                                  semanticBindings: semanticBindings)
     }
 
@@ -284,9 +275,6 @@ extension LibrarySettingsDraft {
         // --- 基本 ---
         if context == .library, displayName.trimmingCharacters(in: .whitespaces).isEmpty {
             addError(.basics, "表示名を入力してください。")
-        }
-        if libraryTypeName.trimmingCharacters(in: .whitespaces).isEmpty {
-            addError(.basics, "ライブラリタイプ名を入力してください。@librarytype の照合に使われます。")
         }
 
         // --- 対象拡張子 ---
@@ -507,6 +495,13 @@ extension LibrarySettingsDraft {
     func unboundSemanticKeywords(in source: String,
                                  keepsStructuredColumns: Bool) -> [SemanticKeyword] {
         SemanticKeyword.allCases.filter { keyword in
+            // **`@booktype` は束縛が無くても不備ではない** [TY-01、2026-09-04]。
+            // 他の意味予約語と違い、**照合そのものに意味がある**（語彙に無い語で
+            // 始まるファイル名を後続のフォーマットへ落とす型条件）——束縛すれば
+            // 本の種別ラベルにもなる、というのが上乗せの利点にすぎない。
+            // ここを外すと、`(@booktype)` を持つ既存ライブラリが「未束縛の予約語」
+            // として設定を一切保存できなくなる。
+            if keyword == .bookType { return false }
             if keepsStructuredColumns, keyword.hasStructuredColumn { return false }
             guard semanticBindings[keyword] == nil else { return false }
             return source.contains(keyword.rawValue)
@@ -561,8 +556,7 @@ extension LibrarySettingsDraft {
             libraryID: libraryID,
             settingsRevision: settingsRevision,
             displayName: displayName,
-            libraryTypeName: libraryTypeName,
-            allLibraryTypeNames: allLibraryTypeNames,
+            bookTypeVocabulary: bookTypeVocabulary,
             targetExtensions: Set(targetExtensions),
             imageExtensions: Set(imageExtensions),
             delimiters: delimiters,

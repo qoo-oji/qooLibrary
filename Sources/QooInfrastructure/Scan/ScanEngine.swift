@@ -645,7 +645,6 @@ public actor ScanEngine {
             relativePath: relativePath,
             nameWithoutExtension: nameWithoutExtension,
             settings: settings, parser: deps.parser,
-            purpose: .libraryScan,
             endsWithBookFolder: isBookFolder)
         let resolved = EmbeddedMetadataMerge.apply(embedded, to: parsed, settings: settings)
 
@@ -655,7 +654,6 @@ public actor ScanEngine {
                 title: resolved.title, seriesName: resolved.seriesName,
                 volume: resolved.volume, authorName: resolved.authorName,
                 labelValues: resolved.labels,
-                libraryTypeMismatch: resolved.libraryTypeMismatch,
                 spans: []),
             to: id)
         try await applyLabels(resolved.labels, to: id, settings: settings)

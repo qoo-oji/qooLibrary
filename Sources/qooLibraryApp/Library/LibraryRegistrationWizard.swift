@@ -35,7 +35,7 @@ enum LibraryRegistrationWizard {
             templates: services.presetTemplates,
             volumeSets: volumeSets,
             userTemplates: services.userTemplates,
-            otherTypeNames: services.libraries.map(\.libraryTypeName))
+            bookTypeVocabulary: (try? BuiltInTemplates.bookTypes()) ?? [])
         DialogWindowPresenter.shared.present(
             title: String(localized: "libraryWizard.title", locale: locale)
         ) { _ in
@@ -73,7 +73,7 @@ enum LibraryRegistrationWizard {
             templates: services.presetTemplates,
             volumeSets: volumeSets,
             userTemplates: services.userTemplates,
-            otherTypeNames: services.libraries.map(\.libraryTypeName),
+            bookTypeVocabulary: (try? BuiltInTemplates.bookTypes()) ?? [],
             minStep: .template)
         model.step = .template
         // サンプル収集は提示と並行に走らせる。`chooseFolder` は先頭で
@@ -132,7 +132,7 @@ final class LibraryRegistrationWizardModel {
     /// 対象から外すと推奨が本来より悪い側を指す。
     let userTemplates: [UserTemplate]
     private let volumeSets: VolumeSetDefinition
-    private let otherTypeNames: [String]
+    private let bookTypeVocabulary: [String]
 
     /// (A)/(B) を 1 つに畳んだテンプレート [ユーザー指摘: A/B の実差は
     /// フォルダ階層を使うかどうかだけで、それはテンプレートの選択ではなく
@@ -177,11 +177,11 @@ final class LibraryRegistrationWizardModel {
 
     init(templates: [LibraryTypeTemplate], volumeSets: VolumeSetDefinition,
          userTemplates: [UserTemplate] = [],
-         otherTypeNames: [String] = [], minStep: Step = .intro) {
+         bookTypeVocabulary: [String] = [], minStep: Step = .intro) {
         self.templates = templates
         self.userTemplates = userTemplates
         self.volumeSets = volumeSets
-        self.otherTypeNames = otherTypeNames
+        self.bookTypeVocabulary = bookTypeVocabulary
         self.minStep = minStep
         self.merged = Self.mergeVariants(templates)
     }
@@ -219,7 +219,7 @@ final class LibraryRegistrationWizardModel {
             folderName: url.lastPathComponent, folderURL: url,
             templates: templates, volumeSets: volumeSets,
             userTemplates: userTemplates,
-            otherTypeNames: otherTypeNames)
+            bookTypeVocabulary: bookTypeVocabulary)
         enable = model
         isEvaluating = true
         await model.loadSamples()
@@ -243,7 +243,7 @@ final class LibraryRegistrationWizardModel {
             let draft = TemplateInstantiation.draft(
                 from: item.flat, volumeSets: volumeSets,
                 displayName: model.folderName,
-                otherLibraryTypeNames: otherTypeNames)
+                bookTypeVocabulary: bookTypeVocabulary)
             let outcome = LibraryPreview.run(filenames: model.sampleNames, draft: draft,
                                              truncated: model.sampleTruncated)
             map[item.id] = outcome
@@ -263,7 +263,7 @@ final class LibraryRegistrationWizardModel {
         for template in userTemplates {
             let id = Self.selectionID(forUserTemplate: template.id)
             let draft = template.settings.draft(displayName: model.folderName,
-                                                otherLibraryTypeNames: otherTypeNames)
+                                                bookTypeVocabulary: bookTypeVocabulary)
             let outcome = LibraryPreview.run(filenames: model.sampleNames, draft: draft,
                                              truncated: model.sampleTruncated)
             map[id] = outcome
@@ -903,7 +903,7 @@ struct LibraryRegistrationWizardView: View {
                         Button("templates.saveAsTemplateEllipsis") {
                             TemplateSaveAction.present(
                                 draft: enable.draft,
-                                suggestedName: enable.draft.libraryTypeName,
+                                suggestedName: enable.draft.displayName,
                                 locale: locale)
                         }
                         // 不備のあるテンプレートは保存させない [H1]。
@@ -998,7 +998,7 @@ struct LibraryRegistrationWizardView: View {
         return AdvancedSettingsEditor.wizardSections.map { section in
             let summary: String
             switch section {
-            case .basics:            summary = draft.libraryTypeName
+            case .basics:            summary = draft.displayName
             case .extensions:        summary = draft.targetExtensions.joined(separator: ", ")
             case .volumeFormats:     summary = count(draft.volumeFormats.count)
             case .seriesTitle:       summary = draft.seriesTitleCompositionFormat

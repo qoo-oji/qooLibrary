@@ -55,7 +55,6 @@ public enum EmbeddedMetadataMerge {
             authorName: authorName,
             matchedFormatID: resolved.matchedFormatID,
             nearestFormat: resolved.nearestFormat,
-            libraryTypeMismatch: resolved.libraryTypeMismatch,
             folderProvidedGroups: resolved.folderProvidedGroups)
     }
 

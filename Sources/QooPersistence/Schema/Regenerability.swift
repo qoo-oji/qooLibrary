@@ -28,7 +28,7 @@ extension ManagedFileRecord: RegenerabilityDeclaring {
         "seriesKey",
         "isBookFolder",
         "pageCount", "subfolderCount", "firstImageWidth", "firstImageHeight",
-        "lastParsedFormatID", "libraryTypeMismatch",
+        "lastParsedFormatID",
         // 埋め込みメタデータ [EM-10]。ファイルから読み直せるので JSON には持たない
         // ——持つと、書き出した後にファイル側を直しても古い値で上書きされる。
         "metadataStamp", "metadataSource", "metadataJSON", "hasVolumeConflict",

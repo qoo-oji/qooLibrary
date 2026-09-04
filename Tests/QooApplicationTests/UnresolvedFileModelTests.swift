@@ -18,7 +18,7 @@ struct UnresolvedSelectionTests {
     private func library(_ name: String, id: Int64, online: Bool = true) -> LibrarySummary {
         LibrarySummary(id: LibraryID(rawValue: id), uuid: UUID(), displayName: name,
                        resolvedPath: "/Volumes/\(name)", volumeUUID: "VOL\(id)",
-                       libraryTypeID: LibraryTypeID(rawValue: 1), libraryTypeName: "同人誌",
+                       libraryTypeID: LibraryTypeID(rawValue: 1),
                        isOnline: online, isReadOnlyDueToFS: false, fileCount: 0,
                        settingsRevision: 0)
     }
@@ -33,8 +33,7 @@ struct UnresolvedSelectionTests {
                          modifiedAt: Date(timeIntervalSinceReferenceDate: 0),
                          title: nil, seriesName: nil, volume: .none, rating: 0,
                          state: .active, isArchived: false, isBookFolder: false),
-            isIgnored: ignored, detectedAt: Date(timeIntervalSinceReferenceDate: 0),
-            libraryTypeMismatch: mismatch)
+            isIgnored: ignored, detectedAt: Date(timeIntervalSinceReferenceDate: 0))
     }
 
     // MARK: - 絞り込み
@@ -218,8 +217,9 @@ struct UnresolvedFileModelIntegrationTests {
 
         let mine = try #require(try await b.model.settingsDraft(libraryID: b.libraryID))
         let theirs = try #require(try await b.model.settingsDraft(libraryID: other))
-        // 同人誌(A) と一般コミック(A) はライブラリタイプ名が違う。
-        #expect(mine.libraryTypeName != theirs.libraryTypeName)
+        // 同人誌(A) は 20 本、一般コミック(A) は本数が違う——**渡した ID の
+        // ライブラリを読んでいる**ことが観測できる形にしておく。
+        #expect(mine.filenameFormats.count != theirs.filenameFormats.count)
     }
 
     @Test("直近の再マッチング結果は捨てられる [UR3-03]")

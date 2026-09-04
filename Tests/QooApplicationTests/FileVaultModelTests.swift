@@ -31,7 +31,7 @@ struct FileVaultModelTests {
     private static func library(_ id: Int64, online: Bool = true) -> LibrarySummary {
         LibrarySummary(id: LibraryID(rawValue: id), uuid: UUID(), displayName: "L\(id)",
                        resolvedPath: "/tmp/lib\(id)", volumeUUID: "V",
-                       libraryTypeID: LibraryTypeID(rawValue: 0), libraryTypeName: "T",
+                       libraryTypeID: LibraryTypeID(rawValue: 0),
                        isOnline: online, isReadOnlyDueToFS: false, fileCount: 0,
                        settingsRevision: 0)
     }

@@ -366,7 +366,7 @@ struct LegacyBackupDecodingTests {
 struct VolumeFormatValidationTests {
     /// 検証したいのは巻数フォーマットだけなので、他が原因のエラーを混ぜない。
     func draft(_ patterns: [VolumeFormatDraft]) -> LibrarySettingsDraft {
-        LibrarySettingsDraft(displayName: "L", libraryTypeName: "T",
+        LibrarySettingsDraft(displayName: "L",
                              targetExtensions: ["cbz"], volumeFormats: patterns)
     }
 
@@ -425,7 +425,7 @@ struct VolumeFormatValidationTests {
 
     @Test("保護文字列も同じ検証を受ける")
     func protectedTokensAreValidated() {
-        let d = LibrarySettingsDraft(displayName: "L", libraryTypeName: "T",
+        let d = LibrarySettingsDraft(displayName: "L",
                                      targetExtensions: ["cbz"],
                                      protectedTokens: [ProtectedToken(pattern: "(")])
         #expect(d.validate().contains { $0.section == .protectedTokens && $0.severity == .error })

@@ -859,12 +859,6 @@ struct FolderContentView: View {
                     .foregroundStyle(.secondary)
                     .help(String(localized: "unresolvedFiles.ignoredBadge", locale: locale))
             }
-            if unresolvedRescue.typeMismatchFileIDs.contains(id) {
-                Image(systemName: "exclamationmark.triangle")
-                    .font(.system(size: Tokens.fontSize.caption))
-                    .foregroundStyle(.secondary)
-                    .help(String(localized: "unresolvedFiles.typeMismatch", locale: locale))
-            }
             // 「最も近いフォーマット」[UR2-05][UR3-04]。**行には印だけ**で、
             // 本文はツールチップと右ペイン（`InspectorUnresolvedSection`）に出す
             // ［ユーザー判断］——フォーマットの本文は長く、一覧の幅を食う。

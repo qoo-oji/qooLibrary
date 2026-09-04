@@ -374,7 +374,7 @@ public final class LibraryServices {
         // 「見たものが登録される」が経路によらず成り立つ。
         let draft = TemplateInstantiation.draft(
             from: template, volumeSets: volumeSets ?? .empty, displayName: displayName,
-            otherLibraryTypeNames: libraries.map(\.libraryTypeName))
+            bookTypeVocabulary: (try? BuiltInTemplates.bookTypes()) ?? [])
         return try await enable(registrationUUID: uuid, displayName: displayName, url: url,
                                 bookmarkData: bookmarkData, draft: draft, template: template)
     }
@@ -1010,7 +1010,6 @@ public final class LibraryServices {
             relativePath: row.relativePath,
             nameWithoutExtension: nameWithoutExtension,
             settings: settings,
-            purpose: .libraryScan,
             endsWithBookFolder: row.isBookFolder)
         let embedded = try await repository.embeddedMetadataCache(ids: [row.id])[row.id]?.metadata
         let merged = EmbeddedMetadataMerge.apply(embedded, to: resolved, settings: settings)

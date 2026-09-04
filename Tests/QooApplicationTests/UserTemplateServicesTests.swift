@@ -10,10 +10,10 @@ import Testing
 
 @Suite(.serialized) struct UserTemplateServicesTests {
 
-    private func sample(_ name: String, typeName: String = "私の型") -> UserTemplate {
+    private func sample(_ name: String,
+                        format: String = "[@circle] @title") -> UserTemplate {
         var settings = UserTemplateSettings()
-        settings.libraryTypeName = typeName
-        settings.filenameFormats = [.init(source: "[@circle] @title", isEnabled: true)]
+        settings.filenameFormats = [.init(source: format, isEnabled: true)]
         return UserTemplate(name: name, settings: settings)
     }
 
@@ -61,7 +61,7 @@ import Testing
     @Test func importingABackupAddsMissingTemplatesWithoutTouchingLocalOnes() async throws {
         let w = try ServicesWorkspace()
         await w.bootstrap()
-        let mine = sample("手元のもの", typeName: "手元で編集した型")
+        let mine = sample("手元のもの", format: "[@circle] 手元で編集した@title")
         try await w.services.saveUserTemplate(mine)
 
         // 別の環境で書き出された文書（手元に無いものが 1 件）。
@@ -75,7 +75,8 @@ import Testing
         let all = await w.services.userTemplates
         #expect(all.count == 2)
         #expect(all.first { $0.id == mine.id }?.name == "手元のもの")
-        #expect(all.first { $0.id == mine.id }?.settings.libraryTypeName == "手元で編集した型")
+        #expect(all.first { $0.id == mine.id }?.settings.filenameFormats.first?.source
+                == "[@circle] 手元で編集した@title")
         #expect(all.contains { $0.name == "よそのもの" })
     }
 
@@ -169,7 +170,6 @@ import Testing
         let w = try ServicesWorkspace()
         await w.bootstrap()
         var settings = UserTemplateSettings()
-        settings.libraryTypeName = "私のブックタイプ"
         settings.targetExtensions = ["cbz", "pdf"]
         settings.protectedTokens = [.init(pattern: #"\(完結\)"#, position: .suffix,
                                           isEnabled: true)]
@@ -186,7 +186,6 @@ import Testing
             url: w.libraryRoot, bookmarkData: Data(), draft: draft, template: nil)
 
         let stored = try #require(try await w.services.settingsDraft(libraryID: id))
-        #expect(stored.libraryTypeName == "私のブックタイプ")
         #expect(stored.targetExtensions.sorted() == ["cbz", "pdf"])
         #expect(stored.protectedTokens.map(\.pattern) == [#"\(完結\)"#])
         #expect(stored.protectedTokens.map(\.position) == [.suffix])

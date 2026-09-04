@@ -232,6 +232,52 @@ struct ScanIntegrationTests {
             .first?.fileCount == 2)
     }
 
+    /// **本の種別もラベルになる** [TY-01、2026-09-04]。
+    ///
+    /// 以前は `@booktype` の値を照合にだけ使って捨てていた（`discardsValue`）。
+    /// 本の種別は本の属性なので、切り出した値は「本の種別」フィールドの
+    /// ラベルとして残す——**これで語彙が自分で育つ**（次の走査では、この
+    /// ラベルも `@booktype` の照合候補になる）。
+    @Test("本の種別がラベルとして残る [TY-01]")
+    func theBookTypeBecomesALabel() async throws {
+        let w = try await ScanWorkspace()
+        try w.write("(同人誌) [サークルA (作家A)] 作品1 (オリジナル).cbz")
+        _ = try await w.scanFull()
+
+        let bookType = try #require(try await w.field(.bookType))
+        #expect(try await w.labels.labels(fieldID: bookType.id).map(\.name) == ["同人誌"])
+    }
+
+    /// **語彙は自分で育つ** [TY-01、2026-09-04]。
+    ///
+    /// プリセットが知らない種別（`(自炊)` など）は最初は照合できない。
+    /// ライブラリ固有の型名という設定を無くした代わりに、**「本の種別」
+    /// フィールドへ手でラベルを 1 件足せば次の走査から拾える**のが逃げ道
+    /// ——これが無いと、独自の種別を使う人が一切表現できなくなる。
+    ///
+    /// - Note: **サークルの有無では検査できない。** `(自炊) [サークル (作家)] …` は
+    ///   `(@event) [@circle (@author)] …` にも当たるので、語彙に無くても
+    ///   サークルは付いてしまう［実測。最初この形で書いて空振りした］。
+    ///   本の種別ラベルが**実際にファイルへ結びついたか**（`fileCount`）で見る。
+    @Test("「本の種別」に手で足したラベルが、次の走査の照合語彙になる [TY-01]")
+    func theVocabularyGrowsFromLabels() async throws {
+        let w = try await ScanWorkspace()
+        try w.write("(自炊) [サークルA (作家A)] 作品1 (オリジナル).cbz")
+        _ = try await w.scanFull()
+
+        let bookType = try #require(try await w.field(.bookType))
+        // プリセットの語彙に無いので、まだ拾えない。
+        #expect(try await w.labels.labels(fieldID: bookType.id).isEmpty)
+
+        // 手で 1 件足す。この時点ではどのファイルにも結びついていない。
+        _ = try await w.labels.ensureLabel(fieldID: bookType.id, name: "自炊")
+        #expect(try await w.labels.labels(fieldID: bookType.id).first?.fileCount == 0)
+
+        _ = try await w.scanFull()
+        // 語彙に入ったので `(自炊)` が本の種別として照合され、ファイルに付く。
+        #expect(try await w.labels.labels(fieldID: bookType.id).first?.fileCount == 1)
+    }
+
     /// **inode が同じなら同じレコード** [ID-02]。改名しても紐づけは失われない。
     @Test("改名を追従し、ラベルを保つ [ID-02]")
     func renameKeepsIdentityAndLabels() async throws {

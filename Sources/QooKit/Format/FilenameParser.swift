@@ -3,15 +3,6 @@
 //
 import Foundation
 
-public enum ParsePurpose: Sendable, Hashable {
-    /// `@librarytype` 不一致は警告のみ [RW-01]。
-    case libraryScan
-    /// 不一致はマッチ失敗として次のフォーマットへ（結果的にペンディング）[RW-01][MV-14b]。
-    case moveToLibrary
-    case convertRename
-    case preview
-}
-
 /// 「最も近いフォーマット」の推定 [UR2-05][AL-32][PW-02]。
 ///
 /// **比較は「満たした要素の数 → 到達位置」の順**［ユーザー判断、2026-09-01］。
@@ -53,8 +44,7 @@ public protocol FilenameParsing: Sendable {
     /// 登録順に評価し、**最初にマッチしたもの**を採る [FF-03]。
     /// 一致しなければ「最も近いフォーマット」を併せて返す [UR2-05]。
     func attempt(_ nameWithoutExtension: String,
-                 settings: LibrarySettingsSnapshot,
-                 purpose: ParsePurpose) -> ParseAttempt
+                 settings: LibrarySettingsSnapshot) -> ParseAttempt
 
     /// 全フォーマットを試し、すべての結果を返す（編集画面のプレビュー用）[FF-06][HP-05]。
     func parseAll(_ name: String, settings: LibrarySettingsSnapshot) -> [ParseResult]
@@ -62,15 +52,14 @@ public protocol FilenameParsing: Sendable {
 
 extension FilenameParsing {
     public func parse(_ nameWithoutExtension: String,
-                      settings: LibrarySettingsSnapshot,
-                      purpose: ParsePurpose) -> ParseResult? {
-        attempt(nameWithoutExtension, settings: settings, purpose: purpose).result
+                      settings: LibrarySettingsSnapshot) -> ParseResult? {
+        attempt(nameWithoutExtension, settings: settings).result
     }
 
     /// どのフォーマットにも一致しなかったとき、最も惜しかったものを返す [UR2-05]。
     public func nearestFormat(_ name: String,
                               settings: LibrarySettingsSnapshot) -> NearestFormat? {
-        attempt(name, settings: settings, purpose: .libraryScan).nearest
+        attempt(name, settings: settings).nearest
     }
 }
 
@@ -78,34 +67,22 @@ public struct FilenameParser: FilenameParsing, Sendable {
     public init() {}
 
     public func attempt(_ nameWithoutExtension: String,
-                        settings: LibrarySettingsSnapshot,
-                        purpose: ParsePurpose) -> ParseAttempt {
+                        settings: LibrarySettingsSnapshot) -> ParseAttempt {
         let input = makeInput(nameWithoutExtension, settings: settings)
         var nearest: NearestFormat?
 
         for format in enabledFormats(settings) {
             let outcome = FormatMatcher.match(format, input: input,
                                               volumePatterns: settings.volumeFormats)
-            guard var result = outcome.result else {
+            guard let result = outcome.result else {
                 nearest = closer(nearest, than: outcome, of: format, input: input)
                 continue
             }
 
-            // `@librarytype` の扱い [RW-01]
-            if format.usedFields.contains(.bookType),
-               let matched = result.fields[.bookType] {
-                let expected = TextNormalizer.normalize(settings.libraryTypeName)
-                if matched.normalized != expected {
-                    if purpose == .moveToLibrary {
-                        // 次のフォーマットへ。ただし**候補としては残す**——
-                        // 「このフォーマットには当てはまるがブックタイプが違う」は
-                        // 「なぜ当たらないか」の手がかりとしていちばん強い。
-                        nearest = closer(nearest, than: outcome, of: format, input: input)
-                        continue
-                    }
-                    result.libraryTypeMismatch = true           // 警告のみ
-                }
-            }
+            // `@booktype` は語彙で照合するだけ [TY-01]。**ライブラリ自身の型名との
+            // 突き合わせはしない**——本の種別はファイルの属性であってライブラリの
+            // 属性ではないため、切り出した値は「本の種別」フィールドのラベルとして
+            // そのまま残る（束縛があれば）。
             return ParseAttempt(result: result, nearest: nil)
         }
         return ParseAttempt(result: nil, nearest: nearest)

@@ -106,7 +106,7 @@ struct LibraryPreviewTests {
     /// **型不一致は「他のライブラリの型名に当たった」ときに立つ** [TY-01]。
     ///
     /// `@booktype` は型付き照合なので、候補は
-    /// `allLibraryTypeNames`（＝このライブラリの型名 ＋ 他ライブラリの型名）
+    /// `bookTypeVocabulary`（＝このライブラリの型名 ＋ 他ライブラリの型名）
     /// に限られる。どれにも当たらなければ単に不一致（未解決）で、
     /// **当たったが自分の型名ではなかった**ときだけ警告になる——
     /// 「同人誌のライブラリに成年コミックのファイルが混ざっている」形の検出。
@@ -116,19 +116,17 @@ struct LibraryPreviewTests {
             .first { $0.key == "builtin.doujinshi-a" })
         var draft = TemplateInstantiation.draft(
             from: template, volumeSets: try BuiltInTemplates.volumeSets(),
-            displayName: "テスト", otherLibraryTypeNames: ["成年コミック"])
+            displayName: "テスト", bookTypeVocabulary: ["同人誌", "成年コミック"])
         draft.filenameFormats = [FilenameFormatDraft(source: "(@booktype) @title")]
 
-        // 自分の型名なら警告は出ない（対照）。
+        // **語彙にある種別ならどれでも一致する** [TY-01、2026-09-04]。
+        // ライブラリ自身の型名という概念が無くなったので、「別の型名だから警告」
+        // という区別も無い——本の種別はラベルとして残り、ラベルフィルタで見える。
         let ok = LibraryPreview.run(filenames: ["(同人誌) 作品名A.zip"], draft: draft)
         #expect(ok.matched == 1)
-        #expect(ok.libraryTypeMismatched == 0)
 
-        // 他のライブラリの型名に当たった場合。取り込みはされる
-        // （`purpose: .preview` は弾かない）が、印を付けて目立たせる。
-        let mismatched = LibraryPreview.run(filenames: ["(成年コミック) 作品名A.zip"], draft: draft)
-        #expect(mismatched.matched == 1)
-        #expect(mismatched.libraryTypeMismatched == 1)
+        let other = LibraryPreview.run(filenames: ["(成年コミック) 作品名A.zip"], draft: draft)
+        #expect(other.matched == 1)
 
         // どの型名にも当たらなければ未解決。
         let unknown = LibraryPreview.run(filenames: ["(知らない型) 作品名A.zip"], draft: draft)

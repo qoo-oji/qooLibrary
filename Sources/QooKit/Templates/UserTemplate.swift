@@ -141,7 +141,6 @@ public struct UserTemplateSettings: Sendable, Codable, Hashable {
         }
     }
 
-    public var libraryTypeName: String
     public var thumbnailsAlwaysHidden: Bool
     public var duplicateGrouping: DuplicateGrouping
     public var targetExtensions: [String]
@@ -182,8 +181,7 @@ public struct UserTemplateSettings: Sendable, Codable, Hashable {
         }
     }
 
-    public init(libraryTypeName: String = "",
-                thumbnailsAlwaysHidden: Bool = false,
+    public init(thumbnailsAlwaysHidden: Bool = false,
                 duplicateGrouping: DuplicateGrouping = .off,
                 targetExtensions: [String] = [],
                 imageExtensions: [String] = [],
@@ -198,7 +196,6 @@ public struct UserTemplateSettings: Sendable, Codable, Hashable {
                 readsEmbeddedMetadata: Bool = true,
                 comicInfoVolumeSource: ComicInfoVolumeSource = .ask,
                 opensBookFolderWithApp: Bool = false) {
-        self.libraryTypeName = libraryTypeName
         self.thumbnailsAlwaysHidden = thumbnailsAlwaysHidden
         self.duplicateGrouping = duplicateGrouping
         self.targetExtensions = targetExtensions
@@ -229,7 +226,6 @@ public struct UserTemplateSettings: Sendable, Codable, Hashable {
         func value<T: Decodable>(_ key: CodingKeys, _ fallback: T) throws -> T {
             try c.decodeIfPresent(T.self, forKey: key) ?? fallback
         }
-        libraryTypeName = try value(.libraryTypeName, "")
         thumbnailsAlwaysHidden = try value(.thumbnailsAlwaysHidden, false)
         duplicateGrouping = try value(.duplicateGrouping, .off)
         targetExtensions = try value(.targetExtensions, [])
