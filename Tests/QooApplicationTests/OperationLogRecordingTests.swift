@@ -160,6 +160,25 @@ struct OperationLogRecordingTests {
         #expect(store.drafts.last?.detail == "元の場所がありません")
     }
 
+    /// **投入順に書かれる。**
+    ///
+    /// 素の `Task { await store.append(…) }` は**開始順が投入順と一致しない**。
+    /// 上の 3 件（取り消し・部分取り消し・取り消しの失敗）はそれを踏むと落ちるが、
+    /// **実測で 12 回に 4 回しか落ちない**——2〜3 件では偶然そろってしまうため、
+    /// あれだけを守りにすると回帰の半分以上が素通りする。件数を増やして、
+    /// 順序が崩れたら確実に落ちるようにしておく。
+    @Test("記録は投入順に書かれる")
+    func appendsPreserveSubmissionOrder() async throws {
+        let (recorder, store) = await attached()
+        let expected = (0..<50).map(String.init)
+        for summary in expected {
+            recorder.record(OperationLogDraft(commandName: "X", kind: .executed,
+                                              summary: summary))
+        }
+        try await waitForRows(store, count: expected.count)
+        #expect(store.drafts.map(\.summary) == expected)
+    }
+
     // MARK: - 対象 [OH-01]
 
     /// **既定実装は `logDescription` の印付きパスを拾う。** 自由文の推測では

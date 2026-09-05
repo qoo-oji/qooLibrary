@@ -28,6 +28,9 @@ public final class OperationLogRecorder {
     private var pendingBeforeStore: [OperationLogDraft] = []
     private var droppedBeforeStore = 0
 
+    /// 直前の追記。**投入順に書くための鎖**（理由は `record(_:)` の doc）。
+    private var lastAppend: Task<Void, Never>?
+
     public init() {}
 
     /// 1 件記録する。
@@ -36,15 +39,24 @@ public final class OperationLogRecorder {
     /// 理由に、利用者が頼んだ操作を失敗させるのは本末転倒である
     /// （`NotificationRouter.record` と同じ判断）。
     ///
-    /// **並びは `date` が保つ。** 追記は投入順に完了するとは限らないが、
-    /// 日時はここ（メインアクタ上、＝厳密に順序付く）で確定しており、
-    /// 一覧も CSV も `date` の降順で読む。
+    /// **投入順に書く。** 素の `Task { await store.append(…) }` では
+    /// **開始順が投入順と一致しない**——実測で 12 回に 4 回、実行より先に
+    /// 取り消しが書かれた（CI もこれで落ちた）。
+    ///
+    /// **`date` は順序の担保にならない。** `Date()` の分解能はこの機で
+    /// 約 0.95 µs で、**隣り合う 2 回の 89% が同値**になる［実測］。
+    /// 一覧も CSV も `ORDER BY date DESC, id DESC` で読むので、同値のときは
+    /// `id`——すなわち追記順——が並びを決める。直前の追記を待ってから書く
+    /// ことで、その `id` を実際に起きた順序と一致させる
+    /// （`DiagnosticLog` が `AsyncStream` の FIFO を選んだのと同じ理由 [CB-21]）。
     public func record(_ draft: OperationLogDraft) {
         guard let store else {
             bufferBeforeStore(draft)
             return
         }
-        Task { [weak self] in
+        let previous = lastAppend
+        lastAppend = Task { [weak self] in
+            await previous?.value
             do {
                 try await store.append(draft)
             } catch {
