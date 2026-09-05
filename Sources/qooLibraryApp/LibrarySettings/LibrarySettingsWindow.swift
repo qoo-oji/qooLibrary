@@ -42,7 +42,12 @@ struct LibrarySettingsWindow: View {
         // Undo を想定していなかった。合図が世代番号 1 つになった [§19.13 #2]
         // ので、次に導線を足す人が同じ足し忘れを繰り返す余地は減っている。
         .onChange(of: LibraryGeneration.shared.value) { _, _ in
-            Task { await model.loadPendingVolumeDecisions() }
+            // **プリセット改訂の案内も含める** [LT-13][LT-16]——差分の適用を
+            // ⌘Z で取り消すと base が戻るので、含めないとカードが復活しない。
+            Task {
+                await model.loadPendingVolumeDecisions()
+                await model.loadPendingTemplateUpdate()
+            }
         }
         .onChange(of: LibrarySettingsNavigation.shared.pendingLibraryID) {
             guard let pending = LibrarySettingsNavigation.shared.pendingLibraryID else { return }
@@ -240,6 +245,20 @@ struct LibrarySettingsWindow: View {
         }
     }
 
+    /// プリセット改訂の差分ビューを開く [LT-13]。
+    ///
+    /// **差分はダイアログ側が読み直す**——ここで固定して渡さないのは、
+    /// 巻数の判断と違って対象が「設定そのもの」で、開いた時点の最新を
+    /// 見せるほうが正しいため（判断待ちの一覧は走査が増やしうるので固定する）。
+    private func presentTemplateUpdate() {
+        guard let libraryID = model.selectedLibraryID else { return }
+        TemplateUpdateAction.present(libraryID: libraryID, locale: locale,
+                                     openWindow: openWindow) {
+            // 適用したら案内カードと草案を読み直す——設定も書き換わっている。
+            Task { await model.reloadAfterTemplateUpdate() }
+        }
+    }
+
     @ViewBuilder
     private var sectionEditor: some View {
         // 草案は `@Bindable` ではなく `Binding` を組み立てて渡す。`draft` は
@@ -252,7 +271,9 @@ struct LibrarySettingsWindow: View {
             // 埋め込みメタデータの節と、その判断待ちの導線もここに含まれる [§19.7]。
             LibraryBasicsSettingsView(draft: bound,
                                       pending: model.pendingVolumeDecisions,
-                                      onReview: presentVolumeDecision)
+                                      onReview: presentVolumeDecision,
+                                      templateUpdate: model.pendingTemplateUpdate,
+                                      onReviewTemplateUpdate: presentTemplateUpdate)
         case .fields:     LibraryFieldsSettingsView(draft: bound)
         case .folderLevels:    LibraryFolderLevelsSettingsView(draft: bound)
         case .filenameFormats:

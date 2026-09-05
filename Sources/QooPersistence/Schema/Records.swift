@@ -32,7 +32,10 @@ struct LibraryRecord: Codable, FetchableRecord, MutablePersistableRecord, Sendab
     var resolvedPath: String
     var volumeUUID: String
     var libraryTypeId: Int64
-    var libraryTypeVersion: Int
+    /// 登録時のプリセット定義（`LibraryTypeTemplate` の JSON）[LT-10][LT-13]。
+    /// **差分の base。** `nil` なら差分の対象外（プリセット由来でない登録、
+    /// または v17 より前に作られた行）。
+    var registeredTemplateJSON: String?
     var settingsJSON: String
     var duplicateGrouping: String
     var thumbnailsAlwaysHidden: Bool

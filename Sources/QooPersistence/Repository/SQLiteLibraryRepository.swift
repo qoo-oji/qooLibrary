@@ -85,8 +85,10 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
     /// 呼び出し側の責務 [VT-02][VT-03]。
     public func settingsSnapshot(libraryID: LibraryID) async throws -> LibrarySettingsSnapshot? {
         try await database.writer.read { db in
+            // 型の行の**存在だけ**を確かめる（値はもう使わない——`libraryTypeName`
+            // が v15 で消えて以来、参照する項目が 1 つも無くなった）。
             guard let library = try LibraryRecord.fetchOne(db, key: libraryID.rawValue),
-                  let type = try LibraryTypeRecord.fetchOne(db, key: library.libraryTypeId)
+                  try LibraryTypeRecord.fetchOne(db, key: library.libraryTypeId) != nil
             else { return nil }
 
             let payload = (try? JSONDecoder().decode(
@@ -213,7 +215,12 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                 resolvedPath: registration.resolvedPath,
                 volumeUUID: registration.volumeUUID,
                 libraryTypeId: typeID,
-                libraryTypeVersion: template?.version ?? 1,
+                // 差分の base [LT-10][LT-13]。**プリセット由来のときだけ**入る
+                // ——ユーザー定義テンプレート・白紙からの登録は改訂という
+                // 概念を持たないので `nil` のままにする。
+                registeredTemplateJSON: template.flatMap {
+                    try? String(decoding: JSONEncoder().encode($0), as: UTF8.self)
+                },
                 settingsJSON: payloadJSON,
                 duplicateGrouping: draft.duplicateGrouping.rawValue,
                 thumbnailsAlwaysHidden: draft.thumbnailsAlwaysHidden,
@@ -290,6 +297,33 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
             } ?? "{}")
         try record.insert(db)
         return record.id ?? 0
+    }
+
+    // MARK: - 登録時のプリセット定義 [LT-10][LT-13]
+
+    public func registeredTemplate(libraryID: LibraryID) async throws -> LibraryTypeTemplate? {
+        try await database.writer.read { db -> LibraryTypeTemplate? in
+            let json = try String.fetchOne(
+                db, sql: "SELECT registeredTemplateJSON FROM library WHERE id = ?",
+                arguments: [libraryID.rawValue])
+            guard let data = json?.data(using: .utf8) else { return nil }
+            // 読めなければ `nil`。**握りつぶしてよい唯一の理由**は、
+            // 「base が無い」と「base が壊れている」でこの機能の振る舞いが
+            // 同じ（差分を出さない）だからで、どちらも安全側に倒れる。
+            return try? JSONDecoder().decode(LibraryTypeTemplate.self, from: data)
+        }
+    }
+
+    public func setRegisteredTemplate(_ template: LibraryTypeTemplate?,
+                                      libraryID: LibraryID) async throws
+    {
+        let json = try template.map {
+            String(decoding: try JSONEncoder().encode($0), as: UTF8.self)
+        }
+        try await database.writer.write { db in
+            try db.execute(sql: "UPDATE library SET registeredTemplateJSON = ? WHERE id = ?",
+                           arguments: [json, libraryID.rawValue])
+        }
     }
 
     /// 登録解除 [RG-06]。
@@ -397,8 +431,10 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
     /// 編集に使うと保存時に無効な行が消える。
     public func settingsDraft(libraryID: LibraryID) async throws -> LibrarySettingsDraft? {
         try await database.writer.read { db in
+            // 型の行の**存在だけ**を確かめる（値はもう使わない——`libraryTypeName`
+            // が v15 で消えて以来、参照する項目が 1 つも無くなった）。
             guard let library = try LibraryRecord.fetchOne(db, key: libraryID.rawValue),
-                  let type = try LibraryTypeRecord.fetchOne(db, key: library.libraryTypeId)
+                  try LibraryTypeRecord.fetchOne(db, key: library.libraryTypeId) != nil
             else { return nil }
 
             let payload = (try? JSONDecoder().decode(

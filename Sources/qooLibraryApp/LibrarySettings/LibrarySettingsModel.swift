@@ -121,6 +121,10 @@ final class LibrarySettingsModel {
     /// 巻数の判断待ち [EM-31]。設定を開いたときと、判断を確定したあとに読み直す。
     private(set) var pendingVolumeDecisions: [VolumeDecisionCandidate] = []
 
+    /// プリセットの改訂 [LT-10][LT-13]。**無ければ `nil`** ——案内カードは
+    /// そのときだけ出す（常設して「更新はありません」と言わない）。
+    private(set) var pendingTemplateUpdate: TemplateUpdateModel.Pending?
+
     var isDirty: Bool {
         guard let draft, let savedDraft else { return false }
         return draft != savedDraft
@@ -176,6 +180,7 @@ final class LibrarySettingsModel {
             selectedFilenameFormatID = loaded?.filenameFormats.first?.id
             loadFailure = nil
             await loadPendingVolumeDecisions()
+            await loadPendingTemplateUpdate()
         } catch {
             draft = nil
             savedDraft = nil
@@ -206,6 +211,17 @@ final class LibrarySettingsModel {
 
     // MARK: - 巻数の判断 [EM-30〜EM-35]
 
+    /// プリセットの改訂を読み直す [LT-10]。**設定には触れない** [LT-11]。
+    func loadPendingTemplateUpdate() async {
+        guard let id = selectedLibraryID else {
+            pendingTemplateUpdate = nil
+            return
+        }
+        pendingTemplateUpdate = await TemplateUpdateModel
+            .pending(services: LibraryServices.shared)
+            .first { $0.libraryID == id }
+    }
+
     func loadPendingVolumeDecisions() async {
         guard let id = selectedLibraryID else {
             pendingVolumeDecisions = []
@@ -227,6 +243,11 @@ final class LibrarySettingsModel {
     /// **草案も読み直す。**「以降すべてに適用」を選ぶと設定そのものが
     /// 書き換わるので、画面のピッカーが古い値のまま残ってはならない。
     func reloadAfterVolumeDecision() async {
+        await loadDraft()
+    }
+
+    /// 差分を適用したあとに読み直す [LT-13]。設定も案内カードも書き換わっている。
+    func reloadAfterTemplateUpdate() async {
         await loadDraft()
     }
 }

@@ -51,6 +51,10 @@ final class FakeLibraryRepository: LibraryRepository, @unchecked Sendable {
     func setResolvedPath(_ path: String, libraryID: LibraryID) async throws {
         withLock { pathWrites.append((libraryID, path)) }
     }
+    func registeredTemplate(libraryID: LibraryID) async throws -> LibraryTypeTemplate? { nil }
+    func setRegisteredTemplate(_ template: LibraryTypeTemplate?,
+                               libraryID: LibraryID) async throws {}
+
     func setDisplayName(_ name: String, libraryID: LibraryID) async throws {
         withLock {
             displayNameWrites.append((libraryID, name))

@@ -25,6 +25,8 @@ enum NotificationRouteAction {
     static let reviewVolumes = "review-volume-decisions"
     /// 見つからないファイルの整理ウインドウを開く [OR2-05][NT-05]。
     static let reviewOrphans = "review-orphaned-files"
+    /// プリセット改訂の差分ビューを開く [LT-12][LT-13]。
+    static let reviewTemplateUpdate = "review-template-update"
 
     /// - Returns: 開いたら `true`。**知らない識別子では何もしない**——古い
     ///   通知が、いま存在しない画面を指していることがある（履歴は保持期間の
@@ -45,6 +47,13 @@ enum NotificationRouteAction {
             // 既に開いているメインウインドウの中の状態で、開いていなければ
             // 何も起きない（`openWindow` が `nil` のときと同じ扱い）。
             UnresolvedViewNavigation.open(libraryID: libraryID)
+        case reviewTemplateUpdate:
+            // **ダイアログだが `openWindow` が要る**——適用したら続けて
+            // 走査するため（`LibraryEnableAction.rescan` が結果シートから
+            // 整理ウインドウを開けるように受け取る）。
+            guard let openWindow else { return false }
+            TemplateUpdateAction.present(libraryID: libraryID, locale: locale,
+                                         openWindow: openWindow)
         case reviewOrphans:
             guard let openWindow else { return false }
             // ステージ 4 で専用ウインドウからメンテナンスのタブへ移した
@@ -72,7 +81,7 @@ enum NotificationRouteAction {
     static func canPerform(_ link: NotificationLink, target: NotificationTarget?,
                            in libraries: [LibrarySummary]) -> Bool {
         guard library(for: target, in: libraries) != nil else { return false }
-        return [reviewUnresolved, reviewVolumes, reviewOrphans]
+        return [reviewUnresolved, reviewVolumes, reviewOrphans, reviewTemplateUpdate]
             .contains(link.actionID)
     }
 }

@@ -19,6 +19,7 @@ public enum QooMigrations {
         "v8_stage1Removals", "v9_reservedWordCleanup", "v10_metadataProtection",
         "v11_orphanedProtectedTokens", "v12_shelf", "v13_seriesSuggestionIgnore",
         "v14_labelVisibility", "v15_bookTypeAsLabel", "v16_operationLog",
+        "v17_registeredTemplate",
     ]
 
     public static var migrator: DatabaseMigrator {
@@ -40,6 +41,7 @@ public enum QooMigrations {
         m.registerMigration(identifiers[13], migrate: v14LabelVisibility)
         m.registerMigration(identifiers[14], migrate: v15BookTypeAsLabel)
         m.registerMigration(identifiers[15], migrate: v16OperationLog)
+        m.registerMigration(identifiers[16], migrate: v17RegisteredTemplate)
         return m
     }
 
@@ -853,6 +855,44 @@ public enum QooMigrations {
         try db.create(index: "ol_date", on: "operationLog", columns: ["date"])
         try db.execute(sql: "UPDATE storeMetadata SET schemaVersion = ? WHERE id = 1",
                        arguments: [identifiers[15]])
+    }
+
+    // MARK: - v17
+
+    /// 登録時のプリセット定義を持つ [LT-10][LT-13][LT-15]。
+    ///
+    /// ## なぜ列が要るのか
+    /// 差分は三項（登録時の定義 / 最新の定義 / 現在の設定）で取る。1 つ目が
+    /// 無いと「プリセットが改訂した項目」と「利用者が自分で変えた項目」を
+    /// 区別できず、**自分で消したフォーマットが毎回「追加されました」として
+    /// 並び続ける**。
+    ///
+    /// ## `libraryType.definitionJSON` では代用できない［着手前調査］
+    /// あちらは `presetKey` ごとに 1 行で**複数ライブラリが共有**し、しかも
+    /// 行を最初に作ったときの定義で**凍結**される一方 `version` だけは後の
+    /// 登録で上書きされる——つまり `version` と `definitionJSON` が食い違う
+    /// 行が普通にできる。v1 で登録した A と v2 で登録した B が同じ行を共有
+    /// すると、B の差分を v1 起点で計算し、**B の設定を「ローカル編集済み」と
+    /// 誤表示する**。
+    ///
+    /// ## `libraryTypeVersion` を落とす
+    /// 「登録された版」を表す列だが **v1 以来どこからも読まれていない**。
+    /// 版は `registeredTemplateJSON` の中にあるので、残すと同じ事実を 2 箇所で
+    /// 持つことになる——片方だけ更新する経路ができた瞬間に静かに壊れる形で、
+    /// このリポジトリが繰り返し踏んでいる（2-18 のレビュー指摘の最重 2 件が
+    /// どちらもこれ）。**1 つの事実は 1 箇所に置く。**
+    static func v17RegisteredTemplate(_ db: Database) throws {
+        try db.alter(table: "library") { t in
+            // NULL は「登録時の定義を持っていない」＝**差分の対象外**。
+            // 推測で埋めない——`(A)`/`(B)` の統合や白紙からの登録もあり、
+            // どのプリセットのどの版だったかは後からでは決められない。
+            t.add(column: "registeredTemplateJSON", .text)
+        }
+        try db.alter(table: "library") { t in
+            t.drop(column: "libraryTypeVersion")
+        }
+        try db.execute(sql: "UPDATE storeMetadata SET schemaVersion = ? WHERE id = 1",
+                       arguments: [identifiers[16]])
     }
 
 }

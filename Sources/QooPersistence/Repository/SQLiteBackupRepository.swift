@@ -55,6 +55,7 @@ public struct SQLiteBackupRepository: BackupRepository, Sendable {
                 presetKey: type.presetKey, name: type.name,
                 isPreset: type.isPreset,
                 version: type.version, definitionJSON: type.definitionJSON),
+            registeredTemplate: record.registeredTemplateJSON,
             duplicateGrouping: record.duplicateGrouping,
             thumbnailsAlwaysHidden: record.thumbnailsAlwaysHidden,
             settings: record.settingsJSON,
@@ -620,13 +621,20 @@ extension SQLiteBackupRepository {
     /// 設定を置き換える [LS-01][VT-02]。
     private static func replaceSettings(_ db: Database, libraryID: Int64,
                                         backup: LibraryBackup) throws {
+        // **`COALESCE` で書き戻す** [LT-10]。文書が登録時の定義を持たない
+        // （版 4 以前の書き出し）ときに `NULL` で潰すと、いま有効化して
+        // 得たばかりの base を消してしまう——復元したつもりで差分の基準を
+        // 失う、という気づきにくい壊れ方になる。
         try db.execute(sql: """
             UPDATE library
                SET settingsJSON = ?, duplicateGrouping = ?,
-                   thumbnailsAlwaysHidden = ?, settingsRevision = settingsRevision + 1
+                   thumbnailsAlwaysHidden = ?,
+                   registeredTemplateJSON = COALESCE(?, registeredTemplateJSON),
+                   settingsRevision = settingsRevision + 1
              WHERE id = ?
             """, arguments: [backup.settings, backup.duplicateGrouping,
-                             backup.thumbnailsAlwaysHidden, libraryID])
+                             backup.thumbnailsAlwaysHidden, backup.registeredTemplate,
+                             libraryID])
 
         // フォーマット・階層・保護文字列は付随データを持たないのでまとめて
         // 入れ替えてよい（`updateSettings` と同じ判断）。

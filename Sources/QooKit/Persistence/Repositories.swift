@@ -93,6 +93,21 @@ public protocol LibraryRepository: Sendable {
     /// ボリュームの改名で移動した根を書き直す [VD-06]。`volumeUUID` は不変なので
     /// ファイルの紐づけは維持される。
     func setResolvedPath(_ path: String, libraryID: LibraryID) async throws
+    /// 登録時のプリセット定義 [LT-10][LT-13]。**差分の base。**
+    ///
+    /// `nil` は「持っていない」＝**改訂の差分の対象外**。ユーザー定義
+    /// テンプレート・白紙からの登録と、v17 より前に作られた行がこれになる。
+    /// 読めない JSON も `nil` に倒す——推測で埋めると、実際とは違う版を
+    /// 基準にした差分を「正しいもの」として見せることになる。
+    func registeredTemplate(libraryID: LibraryID) async throws -> LibraryTypeTemplate?
+    /// 差分を確認し終えたら base を最新へ進める [LT-16]。
+    ///
+    /// **適用した項目だけでなく、見送った項目も含めて「この改訂は判断済み」**に
+    /// なる——進めないと同じ差分を毎回見せることになり、LT-12 の通知が
+    /// 永久に消えない。取り消しは適用前の値を書き戻す。
+    func setRegisteredTemplate(_ template: LibraryTypeTemplate?,
+                               libraryID: LibraryID) async throws
+
     /// フォルダ名＝表示名 [RG3-31]。リネームへの追随のためにだけ呼ぶ。
     ///
     /// **`settingsRevision` も上げる**——表示名は `@libraryname` の照合値

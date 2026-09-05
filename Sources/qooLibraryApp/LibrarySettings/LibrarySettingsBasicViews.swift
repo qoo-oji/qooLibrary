@@ -45,6 +45,9 @@ struct LibraryBasicsSettingsView: View {
     /// 導線もここへ移った。登録前（ウィザード）は判断待ちが存在しないので既定の空。
     var pending: [VolumeDecisionCandidate] = []
     var onReview: () -> Void = {}
+    /// プリセットの改訂 [LT-13]。登録前（ウィザード）には存在しないので既定は `nil`。
+    var templateUpdate: TemplateUpdateModel.Pending? = nil
+    var onReviewTemplateUpdate: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.l) {
@@ -97,6 +100,8 @@ struct LibraryBasicsSettingsView: View {
             // 描かれ、枠と余白が二重になる（`Form` に `Divider()` を置けない
             // のと同じ事情。`LibraryEmbeddedMetadataViews` のコメント参照）。
             EmbeddedMetadataPendingCard(pending: pending, onReview: onReview)
+                .frame(maxWidth: 560)
+            TemplateUpdateCard(pending: templateUpdate, onReview: onReviewTemplateUpdate)
                 .frame(maxWidth: 560)
         }
     }

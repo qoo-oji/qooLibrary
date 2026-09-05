@@ -92,7 +92,7 @@ extension LibraryRecord: RegenerabilityDeclaring {
         // 取りこぼす。取り込み後は 0/NULL のままフルスキャンへ落ちるのが正しい。
         "lastFSEventID", "fsEventsUUID",
         "lastFullScanAt", "isOnline", "isReadOnlyDueToFS",
-        "settingsRevision", "libraryTypeVersion",
+        "settingsRevision",
     ]
     public static let internalColumns: Set<String> = ["id", "libraryTypeId", "bookmarkData"]
 }

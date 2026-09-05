@@ -102,6 +102,42 @@ struct BackupTests {
 
     // MARK: - 網羅性 [MG-23][BK-05][B-13]
 
+    /// **登録時のプリセット定義は往復する** [LT-10][MG-22]。失うと改訂の
+    /// 差分が二度と正しく取れない——利用者が自分で消した項目まで
+    /// 「追加されました」として並び続ける。
+    @Test("base（登録時のプリセット定義）が書き出され、取り込みで戻る")
+    func theRegisteredTemplateSurvivesTheRoundTrip() async throws {
+        let (f, backup) = try await Self.seeded()
+        let document = try await backup.export(scope: .everything, appVersion: "test")
+        let exported = try #require(document.libraries.first?.registeredTemplate)
+        #expect(exported.contains("builtin.doujinshi-a"))
+
+        // 破壊する: base を捨てる（＝差分の対象外になった状態）。
+        try await f.database.writer.write { db in
+            try db.execute(sql: "UPDATE library SET registeredTemplateJSON = NULL")
+        }
+        #expect(try await f.libraries.registeredTemplate(libraryID: f.libraryID) == nil)
+
+        _ = try await backup.import(document)
+        let restored = try #require(
+            try await f.libraries.registeredTemplate(libraryID: f.libraryID))
+        #expect(restored.key == "builtin.doujinshi-a")
+    }
+
+    /// **版 4 以前の文書は base を持たない。** `NULL` で潰すと、いま有効化して
+    /// 得たばかりの base を「復元」で失うことになる [COALESCE で書き戻す理由]。
+    @Test("base を持たない古い文書を取り込んでも、いまの base を潰さない")
+    func importingAnOlderDocumentKeepsTheExistingBase() async throws {
+        let (f, backup) = try await Self.seeded()
+        var document = try await backup.export(scope: .everything, appVersion: "test")
+        document.libraries[0].registeredTemplate = nil   // 版 4 以前の書き出し
+
+        _ = try await backup.import(document)
+        let kept = try #require(
+            try await f.libraries.registeredTemplate(libraryID: f.libraryID))
+        #expect(kept.key == "builtin.doujinshi-a")
+    }
+
     @Test("再生成不可能な列が JSON の DTO に漏れなく現れる [MG-23][BK-05]")
     func exportCoversEveryNonRegenerableColumn() async throws {
         let (f, backup) = try await Self.seeded()
@@ -120,7 +156,7 @@ struct BackupTests {
         // （行 ID を持ち出さないための翻訳を伴うので、生の JSON は出せない）。
         let renamed: [String: [String: [String]]] = [
             "library": ["resolvedPath": ["rootPath"], "settingsJSON": ["settings"],
-                        "libraryTypeVersion": ["libraryType"]],
+                        "registeredTemplateJSON": ["registeredTemplate"]],
             "managedFile": [:], "label": [:], "labelGroup": [:], "fileLabel": [:],
             // `unresolvedFile` は `managedFile` と 1:1 なので、ファイルの
             // 属性として畳んである [AL-33]。

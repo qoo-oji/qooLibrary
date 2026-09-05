@@ -91,6 +91,16 @@ public struct LibraryBackup: Codable, Sendable, Equatable {
     public var rootPath: String
     public var volumeUUID: String
     public var libraryType: LibraryTypeBackup
+    /// 登録時のプリセット定義 [LT-10][LT-13][MG-22]。**再生成できない**
+    /// ——「どの版で登録したか」は走査からは分からず、失うと改訂の差分が
+    /// 二度と正しく取れない（利用者が自分で消した項目まで「追加されました」
+    /// として並び続ける）。
+    ///
+    /// **`String?` なのは古い文書を読むため**（`shelves` と同じ事情——合成
+    /// された `Decodable` はプロパティの既定値を使わないので、非 Optional に
+    /// するとキーの無い版 1〜4 の文書が `keyNotFound` で全体失敗する [実測]）。
+    /// キーが増えるだけなので `schemaVersion` は上げていない。
+    public var registeredTemplate: String?
     public var duplicateGrouping: String
     public var thumbnailsAlwaysHidden: Bool
     /// `library.settingsJSON` をそのまま持つ [07章 §7.3]。対象拡張子・区切り・
@@ -116,7 +126,7 @@ public struct LibraryBackup: Codable, Sendable, Equatable {
     public var files: [FileBackup]
 
     public init(uuid: UUID, displayName: String, rootPath: String, volumeUUID: String,
-                libraryType: LibraryTypeBackup,
+                libraryType: LibraryTypeBackup, registeredTemplate: String? = nil,
                 duplicateGrouping: String, thumbnailsAlwaysHidden: Bool,
                 settings: String, labelGroups: [FieldBackup],
                 filenameFormats: [FormatBackup], volumeFormats: [VolumeFormatBackup],
@@ -128,6 +138,7 @@ public struct LibraryBackup: Codable, Sendable, Equatable {
         self.rootPath = rootPath
         self.volumeUUID = volumeUUID
         self.libraryType = libraryType
+        self.registeredTemplate = registeredTemplate
         self.duplicateGrouping = duplicateGrouping
         self.thumbnailsAlwaysHidden = thumbnailsAlwaysHidden
         self.settings = settings

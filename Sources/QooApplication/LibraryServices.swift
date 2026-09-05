@@ -502,6 +502,27 @@ public final class LibraryServices {
         LibraryGeneration.shared.bump()
     }
 
+    // MARK: - プリセット改訂の差分 [LT-10〜LT-17]
+
+    /// 登録時のプリセット定義（差分の base）[LT-10]。
+    public func registeredTemplate(libraryID: LibraryID) async throws -> LibraryTypeTemplate? {
+        guard let repository = libraryRepository else { throw ServiceError.notReady }
+        return try await repository.registeredTemplate(libraryID: libraryID)
+    }
+
+    /// base を進める [LT-16]。**差分を確認し終えたときだけ**呼ぶ。
+    public func setRegisteredTemplate(_ template: LibraryTypeTemplate?,
+                                      libraryID: LibraryID) async throws {
+        guard let repository = libraryRepository else { throw ServiceError.notReady }
+        try await repository.setRegisteredTemplate(template, libraryID: libraryID)
+        LibraryGeneration.shared.bump()
+    }
+
+    /// 最新のプリセットを key で引く [LT-17]。
+    public func presetTemplate(key: String) -> LibraryTypeTemplate? {
+        presetTemplates.first { $0.key == key }
+    }
+
     // MARK: - ラベル [LF-01〜LF-14][PN-01〜PN-06]
 
     /// ラベルフィルタに並べるフィールド [LF-01]。
