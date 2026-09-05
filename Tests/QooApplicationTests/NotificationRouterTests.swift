@@ -115,6 +115,46 @@ import Testing
         #expect(await store.purgeCalls() == 1)
     }
 
+    /// **記録は投入順に書かれる。**
+    ///
+    /// 素の `Task { await store.append(…) }` は**開始順が投入順と一致しない**。
+    /// `everySeverityIsRecordedInHistory` も並びを見ているが、3 件では偶然
+    /// そろってしまう——`OperationLogRecorder` は同じ書き方で 3 回に 1 回しか
+    /// 落ちず、CI で初めて表面化した。件数を増やして確実に落ちるようにする。
+    @Test func historyAppendsPreserveSubmissionOrder() async {
+        let router = NotificationRouter()
+        let store = FakeNotificationHistoryStore()
+        await router.attachHistoryStore(store, retentionDays: 0, maxCount: 0)
+
+        let expected = (0..<50).map(String.init)
+        for title in expected {
+            _ = await router.present(NotificationItem(category: .info, severity: .transient,
+                                                      title: title, body: ""))
+        }
+        for _ in 0..<150 where await store.titles().count < expected.count {
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(await store.titles() == expected)
+    }
+
+    /// **1 件の失敗で残りを失わない。** `pendingBeforeStore` は流し込む前に
+    /// 空にしてあるので、ループ全体を `do/catch` で囲むと 2 件目が投げた時点で
+    /// 3 件目以降が**どこにも残らずに消える**。掃除 [NT-07] も同じ catch に
+    /// 入れると、追記が 1 件失敗しただけでその起動ぶんが丸ごと飛ぶ。
+    @Test func oneFailureDuringFlushDoesNotDropTheRest() async {
+        let router = NotificationRouter()
+        for i in 0..<3 {
+            _ = await router.present(NotificationItem(category: .warning, severity: .transient,
+                                                      title: "\(i)", body: ""))
+        }
+        let store = FakeNotificationHistoryStore()
+        await store.failNextAppendOnce()     // 1 件目だけ失敗させる
+        await router.attachHistoryStore(store, retentionDays: 30, maxCount: 1_000)
+
+        #expect(await store.titles() == ["1", "2"])
+        #expect(await store.purgeCalls() == 1)
+    }
+
     @Test func secondModalItemQueuesUntilFirstIsResolved() async {
         let router = NotificationRouter()
         let first = NotificationItem(category: .error, severity: .sheet, title: "1件目", body: "")
@@ -297,12 +337,17 @@ actor FakeNotificationHistoryStore: NotificationHistoryStore {
     private var rows: [StoredNotification] = []
     private var nextID: Int64 = 1
     private var purges = 0
+    private var failNextAppend = false
+
+    struct AppendFailure: Error {}
 
     func titles() -> [String] { rows.map(\.title) }
     func purgeCalls() -> Int { purges }
+    func failNextAppendOnce() { failNextAppend = true }
 
     @discardableResult
     func append(_ item: NotificationItem) async throws -> NotificationID {
+        if failNextAppend { failNextAppend = false; throw AppendFailure() }
         let id = NotificationID(rawValue: nextID)
         nextID += 1
         rows.append(StoredNotification(

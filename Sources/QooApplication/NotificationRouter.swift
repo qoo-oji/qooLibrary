@@ -104,6 +104,10 @@ public final class NotificationRouter {
     @ObservationIgnored
     private var unreadCountGeneration = 0
 
+    /// 直前の追記。**投入順に書くための鎖**（理由は `record(_:)` の doc）。
+    @ObservationIgnored
+    private var lastAppend: Task<Void, Never>?
+
     private var pendingContinuation: CheckedContinuation<RecoveryAction?, Never>?
     private var queue: [(item: NotificationItem, continuation: CheckedContinuation<RecoveryAction?, Never>)] = []
 
@@ -278,12 +282,22 @@ public final class NotificationRouter {
     ///
     /// **書き込みの失敗で通知そのものを止めない。** 履歴に残せなかったことを
     /// 理由に、利用者へ知らせるべきことを知らせないのは本末転倒である。
+    ///
+    /// **投入順に書く。** 素の `Task { await store.append(…) }` では
+    /// **開始順が投入順と一致しない**——`OperationLogRecorder` は同じ書き方で
+    /// CI を落とした（実行より先に取り消しが書かれた）。`date` は担保に
+    /// ならない: `Date()` の分解能はこの機で約 0.95 µs で、**隣り合う 2 回の
+    /// 89% が同値**になる［実測］。一覧も CSV も
+    /// `ORDER BY date DESC, id DESC` で読むので、同値のときは `id`
+    /// ——すなわち追記順——が並びを決める。
     private func record(_ item: NotificationItem) {
         guard let store = historyStore else {
             bufferBeforeStore(item)
             return
         }
-        Task { [weak self] in
+        let previous = lastAppend
+        lastAppend = Task { [weak self] in
+            await previous?.value
             do {
                 try await store.append(item)
             } catch {
@@ -321,13 +335,24 @@ public final class NotificationRouter {
             Log.ui.warning("ストアが繋がる前に \(droppedBeforeStore) 件の通知を捨てた")
             droppedBeforeStore = 0
         }
-        do {
-            for item in buffered {
+        // **1 件ずつ守る**。ループ全体を `do/catch` で囲むと、2 件目が投げた
+        // 時点で 3 件目以降が**どこにも残らずに失われる**（`pendingBeforeStore`
+        // は既に空にしてある）——`OperationLogRecorder.attach` で直したのと
+        // 同じ形が、こちらには残っていた。
+        for item in buffered {
+            do {
                 try await store.append(item)
+            } catch {
+                Log.ui.warning("溜めていた通知を履歴に残せなかった: \(String(describing: error))")
             }
+        }
+        // **掃除は追記と別に守る**。同じ catch に入れると、追記が 1 件失敗した
+        // だけでその起動の掃除 [NT-07] が丸ごと飛ぶ——掃除の契機は起動時
+        // 1 度きりなので、次の起動まで上限が効かない。
+        do {
             try await store.purgeExpired(retentionDays: retentionDays, maxCount: maxCount)
         } catch {
-            Log.ui.warning("通知履歴の初期化に失敗した: \(String(describing: error))")
+            Log.ui.warning("通知履歴を掃除できなかった: \(String(describing: error))")
         }
         await refreshUnreadCount()
         historyRevision &+= 1

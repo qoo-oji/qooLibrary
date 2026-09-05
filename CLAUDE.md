@@ -12829,9 +12829,24 @@ detailJSON`（`undone` は無い）になり、`foreign_key_check` が空・
 ——順序が崩れても 3 回に 1 回しか落ちない。50 件を投入して全順序を見る
 `記録は投入順に書かれる` を足し、**変異（鎖を外す）で 5/5 検出**を確認した。
 
-**`NotificationRouter.record` は同じ書き方のまま**（`ORDER BY date DESC, id DESC`
-も同じ）。実害はほぼ無い（2 件の記録が 1 µs 以内に並ぶ必要がある）が、**同じ
-弱さを抱えている**——直すならこの鎖と同じ形にすること。
+**`NotificationRouter.record` も同じ書き方だった**（`ORDER BY date DESC, id DESC`
+も同じ）ので、**続けて同じ鎖にした**［ユーザー指示、2026-09-05］。実害は
+ほぼ無かった（2 件の記録が 1 µs 以内に並ぶ必要がある）が、同じ弱さを残すと
+次に触る人がどちらの形を写すか分からなくなる。既存の
+`everySeverityIsRecordedInHistory` は 3 件しか並べておらず偶然そろうので、
+50 件を投入する `historyAppendsPreserveSubmissionOrder` を足した
+（変異で 3/3 検出）。
+
+**そのとき `attachHistoryStore` にも「1 件の失敗で残りが消える」形が残って
+いた**——操作履歴では `code-review` が見つけて直した defect が、鏡像である
+こちらには残っていた。ループ全体を `do/catch` で囲んでいるので 2 件目が
+投げると 3 件目以降が失われ、しかも同じ catch に掃除 [NT-07] が入っている
+ので**その起動ぶんの掃除も丸ごと飛ぶ**。1 件ずつ守り、掃除も別に守る形へ
+揃えた（`oneFailureDuringFlushDoesNotDropTheRest`、変異で 3/3 検出）。
+
+> **片方で直した defect は、鏡像の側も見ること。** 操作履歴と通知履歴は
+> `record`／`attach`／`bufferBeforeStore`／`ORDER BY` まで同じ形をしており、
+> **同じ穴が同じ場所に空く**。今回は 2 つとも（順序・流し込み）そうだった。
 
 ##### 私が犯した誤り
 
