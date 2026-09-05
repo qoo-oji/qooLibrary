@@ -77,6 +77,12 @@ public final class SetFileArchivedCommand: Command {
         return "\(verb) (\(targets.count) 件): \(paths)"
     }
 
+    /// 既定実装は `logDescription` の先頭 3 件しか拾えない [OH-01]。
+    /// **保管庫へはフォルダ単位で何十件も動く。**
+    public var logTargets: [String] {
+        targets.map { root.appendingPathComponent($0.relativePath).path }
+    }
+
     public let isUndoable = true
     public let completionSound: SystemSoundEffect? = .operationComplete
 

@@ -84,6 +84,10 @@ public final class SetProtectionCommand: Command {
                             targets.map(\.url))
     }
 
+    /// 既定実装は先頭 5 件しか拾えない [OH-01]。複数選択の一括保護 [PR-05] は
+    /// 1 回で何十件も動く。
+    public var logTargets: [String] { targets.map(\.url.path) }
+
     public let isUndoable = true
 
     public func execute() async throws -> CommandResult {

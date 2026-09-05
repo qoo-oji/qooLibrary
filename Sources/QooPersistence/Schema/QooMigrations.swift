@@ -18,7 +18,7 @@ public enum QooMigrations {
         "v5_identityRejection", "v6_duplicateTitleKey", "v7_identityPending",
         "v8_stage1Removals", "v9_reservedWordCleanup", "v10_metadataProtection",
         "v11_orphanedProtectedTokens", "v12_shelf", "v13_seriesSuggestionIgnore",
-        "v14_labelVisibility", "v15_bookTypeAsLabel",
+        "v14_labelVisibility", "v15_bookTypeAsLabel", "v16_operationLog",
     ]
 
     public static var migrator: DatabaseMigrator {
@@ -39,6 +39,7 @@ public enum QooMigrations {
         m.registerMigration(identifiers[12], migrate: v13SeriesSuggestionIgnore)
         m.registerMigration(identifiers[13], migrate: v14LabelVisibility)
         m.registerMigration(identifiers[14], migrate: v15BookTypeAsLabel)
+        m.registerMigration(identifiers[15], migrate: v16OperationLog)
         return m
     }
 
@@ -805,4 +806,53 @@ public enum QooMigrations {
             t.column("appBuildAtLastWrite", .text).notNull()
         }
     }
+    // MARK: - v16
+
+    /// 操作履歴の器を作り直す [HS-01][OH-01][15章 §15.13]。
+    ///
+    /// **v1 の `operationLog` は 1 度も書かれていない**——テーブルは
+    /// v1 から存在したが書き手が無く（`Records.swift` に対応する struct すら
+    /// 無かった）、実ストアでも常に 0 件である。だから ALTER を積むより
+    /// 作り直すほうが素直で、落とすデータも無い。
+    ///
+    /// v1 から変えた点は 3 つ:
+    ///
+    /// 1. **`undone`（真偽値）を落とす。** 「取り消した」は元の行への印では
+    ///    なく**新しい行として足す**［ユーザー判断、2026-09］——
+    ///    部分的な取り消し・取り消しの失敗・やり直しは印 1 つでは表せず、
+    ///    結局は種別の列が要る。追記なら経緯がそのまま残り、採番した行 ID を
+    ///    コマンドに覚えさせて書き戻す必要も無い（`OperationLogKind` 参照）。
+    /// 2. **`libraryID`（行 ID）を `libraryUUID`（外部識別子）へ。** 行 ID は
+    ///    登録解除で再利用されうるのに、この表は `library` への外部キーを
+    ///    持たず登録解除後も残る——再利用された ID を後から読むと**別の
+    ///    ライブラリの操作に見える**（通知履歴が `NotificationTarget.libraryUUID`
+    ///    を選んだのと同じ理由）。
+    /// 3. **`summary`（表示する 1 行）を足す。** 一覧の「内容」列 [OH-01] は
+    ///    記録した時点の文言をそのまま出す。`detailJSON` に畳まないのは、
+    ///    これが行を開かずに読む主たる列だから——JSON へ入れると一覧を描く
+    ///    たびに全行を復号することになる（`notificationRecord` が題と本文を
+    ///    列に持ち、対象と導線だけを JSON にしているのと同じ線引き）。
+    static func v16OperationLog(_ db: Database) throws {
+        try db.drop(table: "operationLog")
+        try db.create(table: "operationLog") { t in
+            t.autoIncrementedPrimaryKey("id")
+            t.column("date", .double).notNull()
+            /// 安定した識別子（コマンドの型名、または `scan`）。表示名ではない。
+            t.column("commandName", .text).notNull()
+            t.column("kind", .text).notNull()
+            /// 対象の絶対パス [HS-01]。非正規化して持つ——対象は消えうるし、
+            /// 消えた後も履歴として意味を保たなければならない。
+            t.column("targetsJSON", .text).notNull()
+            /// **外部キーは張らない。** ライブラリを登録解除しても、そこで
+            /// 行った操作の記録は残る（残っていなければ「なぜ消えたのか」を
+            /// 後から辿れない）。
+            t.column("libraryUUID", .text)
+            t.column("summary", .text).notNull()
+            t.column("detailJSON", .text)
+        }
+        try db.create(index: "ol_date", on: "operationLog", columns: ["date"])
+        try db.execute(sql: "UPDATE storeMetadata SET schemaVersion = ? WHERE id = 1",
+                       arguments: [identifiers[15]])
+    }
+
 }

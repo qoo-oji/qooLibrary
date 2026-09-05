@@ -2,11 +2,16 @@ import QooApplication
 import QooKit
 import SwiftUI
 
-/// 環境設定「通知」タブ [15.10 節][NT-07]。
+/// 環境設定「履歴」タブ [15.10 節][NT-07][HS-04]。
 ///
-/// 仕様書 §15.10 はこのタブに 2 つを置くと定めている——**システム通知の
-/// 有効／無効 [ER-33]** と**通知履歴の保持期間・上限 [NT-07]**。前者は
-/// 今回の範囲外［ユーザー判断、2026-08］なので、後者だけを実装する。
+/// **通知履歴と操作履歴の保持をここへまとめてある**［ユーザー判断、2026-09］。
+/// どちらも「履歴をいつまで・何件残すか」という同じ性質の設定で、タブを
+/// 分けると探す場所が 2 つになる。タブ名を「通知」から「履歴」へ改めたのは
+/// そのため——内部の識別子（`PreferencesCategory.notifications`）と型名は
+/// 据え置きで、変えたのは表示名だけ。
+///
+/// 仕様書 §15.10 はこのタブに**システム通知の有効／無効 [ER-33]** も置くと
+/// 定めているが、今回の範囲外［ユーザー判断、2026-08］。
 /// `SystemNotificationGate`（ER-30〜34）は権限要求・アプリの活性状態の監視・
 /// 30 秒以上の計測という別の関心事で、サンドボックス下の実機検証も別途要る。
 ///
@@ -17,6 +22,10 @@ struct NotificationPreferencesTab: View {
     private var retentionDays: Int = AppLimits.Notifications.defaultRetentionDays
     @AppStorage(NotificationRouter.maxCountKey)
     private var maxCount: Int = AppLimits.Notifications.defaultMaxCount
+    @AppStorage(OperationLogRecorder.retentionDaysKey)
+    private var opRetentionDays: Int = AppLimits.Operations.defaultRetentionDays
+    @AppStorage(OperationLogRecorder.maxCountKey)
+    private var opMaxCount: Int = AppLimits.Operations.defaultMaxCount
 
     @Environment(\.locale) private var locale
     @Environment(\.openWindow) private var openWindow
@@ -83,9 +92,59 @@ struct NotificationPreferencesTab: View {
             }
 
             Section {
+                Toggle("preferences.operations.limitByAge", isOn: Binding(
+                    get: { opRetentionDays > 0 },
+                    set: { opRetentionDays = $0 ? AppLimits.Operations.defaultRetentionDays : 0 }
+                ))
+                if opRetentionDays > 0 {
+                    HStack {
+                        Text("preferences.operations.retention")
+                        Slider(value: Binding(get: { Double(opRetentionDays) },
+                                              set: { opRetentionDays = Int($0) }),
+                               in: 1...365, step: 1)
+                        Text(String(format: String(localized: "preferences.notifications.days",
+                                                   locale: locale), opRetentionDays))
+                            .monospacedDigit()
+                            .frame(width: 64, alignment: .trailing)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Toggle("preferences.operations.limitByCount", isOn: Binding(
+                    get: { opMaxCount > 0 },
+                    set: { opMaxCount = $0 ? AppLimits.Operations.defaultMaxCount : 0 }
+                ))
+                if opMaxCount > 0 {
+                    HStack {
+                        Text("preferences.operations.maxCount")
+                        Slider(value: Binding(get: { Double(opMaxCount) },
+                                              set: { opMaxCount = Int($0) }),
+                               in: 100...10_000, step: 100)
+                        Text(String(format: String(localized: "preferences.notifications.items",
+                                                   locale: locale), opMaxCount))
+                            .monospacedDigit()
+                            .frame(width: 84, alignment: .trailing)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Button("operations.windowTitle") {
+                    OperationHistoryNavigation.open(openWindow: openWindow)
+                }
+            } header: {
+                Text("preferences.operations.header")
+            } footer: {
+                // **消せないことをここで言う**——一覧に削除が無いのは意図で
+                // あって手抜きではない（`OperationLogStore` の型コメント参照）。
+                // 掃除が起動時に 1 度だけなのは通知履歴と同じ。
+                Text("preferences.operations.footer")
+            }
+
+            Section {
                 Button("preferences.resetToDefaults") {
                     retentionDays = AppLimits.Notifications.defaultRetentionDays
                     maxCount = AppLimits.Notifications.defaultMaxCount
+                    opRetentionDays = AppLimits.Operations.defaultRetentionDays
+                    opMaxCount = AppLimits.Operations.defaultMaxCount
                 }
             }
         }

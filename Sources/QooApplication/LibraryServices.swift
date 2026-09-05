@@ -91,6 +91,9 @@ public final class LibraryServices {
     /// ——`notificationRecord` は `library` への外部キーを持たず、対象は
     /// `targetJSON` に非正規化して持つ [07章 §7.3]。
     public private(set) var notificationHistory: (any NotificationHistoryStore)?
+    /// 操作履歴 [HS-01][OH-01〜06]。通知履歴と同じくライブラリへの外部キーを
+    /// 持たない——登録解除しても「そこで何をしたか」の記録は残る。
+    public private(set) var operationLog: (any OperationLogStore)?
     private var scanEngine: ScanEngine?
     /// ユーザー指定カバーの複製 [CV-06]。DB を開けていなくても場所は決まるので、
     /// リポジトリと違い常に持っている。
@@ -107,10 +110,18 @@ public final class LibraryServices {
     /// - Parameter userTemplateStore: ユーザー定義テンプレートの保管 [LT-02]。
     ///   **テストは独立した一時ディレクトリを渡すこと**（`userCoverStore` と
     ///   同じ理由——既定のままだと開発機の実ファイルを書き換える）。
+    private let operationLogRecorder: OperationLogRecorder
+
+    /// - Parameter operationLogRecorder: 走査の結果を書く先 [OH-03]。
+    ///   **テストは必ず独立したものを渡すこと**——既定の
+    ///   `OperationLogRecorder.shared` はアプリ全体に 1 つしかなく、
+    ///   テスト中はストアへ繋がれない（`userCoverStore` と同じ理由）。
     public init(userCoverStore: any UserCoverStoring = DefaultUserCoverStore.shared,
-                userTemplateStore: UserTemplateStore = .shared) {
+                userTemplateStore: UserTemplateStore = .shared,
+                operationLogRecorder: OperationLogRecorder = .shared) {
         self.userCoverStore = userCoverStore
         self.userTemplateStore = userTemplateStore
+        self.operationLogRecorder = operationLogRecorder
     }
 
     // MARK: - 起動
@@ -158,9 +169,11 @@ public final class LibraryServices {
             backupRepository = SQLiteBackupRepository(database: opened)
             shelfRepository = SQLiteShelfRepository(database: opened)
             notificationHistory = SQLiteNotificationHistoryStore(database: opened)
+            operationLog = SQLiteOperationLogStore(database: opened)
             Log.app.info("ライブラリストアを開いた: \(Log.path(storeURL))")
             makeSyncCoordinator()
             await attachNotificationHistory()
+            await attachOperationLog()
         } catch let error as QooDatabase.StoreError {
             startupFailure = StoreStartupFailure(error)
             Log.app.error("ライブラリストアを開けない: \(String(describing: error))")
@@ -186,6 +199,26 @@ public final class LibraryServices {
             notificationHistory,
             retentionDays: NotificationRouter.configuredRetentionDays(),
             maxCount: NotificationRouter.configuredMaxCount())
+    }
+
+    /// 操作履歴を `OperationLogRecorder` へ繋ぐ [HS-01]。
+    ///
+    /// **`swift test` 中、共有の書き手には繋がない**——
+    /// `OperationLogRecorder.shared` はアプリ全体で 1 つなので、テストが
+    /// 作った一時ストアをそこへ繋ぐと、以後のすべてのテストの操作が
+    /// そこへ落ちて互いに干渉する（`attachNotificationHistory` と同じ理由）。
+    ///
+    /// **注入されたものは繋ぐ。** 作業領域ごとに独立しているので干渉せず、
+    /// これがあるおかげで走査の記録 [OH-03] を end-to-end で固定できる
+    /// ——通知履歴のほうは注入の口が無く、統合の検証ができていない。
+    private func attachOperationLog() async {
+        guard let operationLog else { return }
+        if operationLogRecorder === OperationLogRecorder.shared,
+           RuntimeEnvironment.isRunningTests { return }
+        await operationLogRecorder.attach(
+            operationLog,
+            retentionDays: OperationLogRecorder.configuredRetentionDays(),
+            maxCount: OperationLogRecorder.configuredMaxCount())
     }
 
     /// 実体への追随を組み立てる。**開始はしない**——起動時に走査が始まる前に
@@ -215,6 +248,7 @@ public final class LibraryServices {
                 if summary.added > 0 || summary.updated > 0 || summary.orphaned > 0 {
                     LibraryGeneration.shared.bump()
                 }
+                await self?.recordScan(libraryID: id, summary: summary, manual: false)
                 self?.onAutomaticScanFinished?(id, summary)
             }
         }
@@ -1234,7 +1268,73 @@ public final class LibraryServices {
         }
         await refreshLibraries()
         LibraryGeneration.shared.bump()
+        await recordScan(libraryID: libraryID, summary: summary, manual: true)
         return summary
+    }
+
+    /// 走査の結果を操作履歴へ残す [OH-03][HS-03]。
+    ///
+    /// **走査は `CommandStack` を通らない**ので、`record()` に集約できない
+    /// 唯一の経路。呼び出し元は手動（`scan(libraryID:)`）と自動
+    /// （`sync.onScanFinished`）の 2 つで、**実装はこの 1 つ**にしてある
+    /// ——同じに見える記録に独立した経路を作ると片方だけ直して取り残す。
+    ///
+    /// **1 回の走査を 1 行に畳む** [D2 の判断]。ファイルごとに行を作ると、
+    /// 5 万件の初回走査だけで保持件数 [HS-04] を使い切る。
+    ///
+    /// ## 自動の走査は、変化があったときだけ残す
+    /// 自動走査は FSEvents のたびに走るので、素直に残すと外部でファイルを
+    /// 触るたび履歴が伸びる。**`updated` は変化の証拠にならない**——不変の
+    /// ファイルを再走査しても更新として数えられる（実測: 2 回目の走査が
+    /// 「追加 0 / 更新 12 / 孤立 0」）。手動の走査は利用者が明示的に頼んだ
+    /// 操作なので、結果によらず残す（通知の出し分けと同じ線引き）。
+    private func recordScan(libraryID: LibraryID, summary: ScanSummary, manual: Bool) async {
+        guard Self.shouldRecordScan(summary, manual: manual) else { return }
+        let library = libraries.first { $0.id == libraryID }
+        var parts = ["追加 \(summary.added)", "更新 \(summary.updated)"]
+        if summary.reidentified > 0 { parts.append("引き継ぎ \(summary.reidentified)") }
+        if summary.orphaned > 0 { parts.append("見つからない \(summary.orphaned)") }
+        if summary.unresolvedNames > 0 { parts.append("未整理 \(summary.unresolvedNames)") }
+        if !summary.bookFoldersReleased.isEmpty {
+            parts.append("1 冊扱いを解除 \(summary.bookFoldersReleased.count)")
+        }
+        if summary.cancelled { parts.append("中断") }
+
+        operationLogRecorder.record(OperationLogDraft(
+            // **型名ではなく `scan`。** これはコマンドではないので、
+            // 種別で絞ったときに紛れないよう固有の識別子を与える。
+            commandName: "scan",
+            kind: .scan,
+            // 対象は個々のファイルではなくライブラリの根。5 万件を並べない。
+            targets: library.map { [$0.resolvedPath] } ?? [],
+            libraryUUID: library?.uuid,
+            // **「再スキャン」とは書かない。** この経路は有効化直後の
+            // 初回スキャンも通る（`rescan(libraryID:)` の呼び出し元を参照）
+            // ので、「再」を付けると 1 度目から嘘になる——実機検証で
+            // 初回の記録が「「蔵書」を再スキャン」と出て気づいた。
+            summary: manual
+                ? "「\(library?.displayName ?? "?")」を走査"
+                : "「\(library?.displayName ?? "?")」を自動で走査",
+            detail: parts.joined(separator: " · ")))
+    }
+
+    /// 走査を記録するか [OH-03]。**判定はここ 1 箇所**——自動走査の経路
+    /// （`sync.onScanFinished`）はテストから組み立てにくいので、純粋関数として
+    /// 切り出して固定できるようにしてある。
+    ///
+    /// **`updated` は「変化」に数えない。** 不変のファイルを再走査しても
+    /// 更新として数えられるため（実測: 2 回目の走査が「追加 0 / 更新 12 /
+    /// 孤立 0」）、数えると外部でファイルを触るたびに履歴が伸びる。
+    /// **`nonisolated` を明示する**——`@MainActor` な型の `static` も隔離
+    /// されるので、付けないとテストから同期的に呼べない（`LibraryContentModel
+    /// .makeQuery` で踏んだのと同じ罠）。
+    nonisolated static func shouldRecordScan(_ summary: ScanSummary, manual: Bool) -> Bool {
+        // 走らなかったものは記録しない（オフライン等 [SB-05]）。
+        guard !summary.skipped else { return false }
+        // 手動は利用者が明示的に頼んだ操作なので、結果によらず残す。
+        if manual { return true }
+        return summary.added > 0 || summary.reidentified > 0
+            || summary.orphaned > 0 || !summary.bookFoldersReleased.isEmpty
     }
 
     /// 走査の結果を「どこまで反映したか」として記録する [SY-02][SY-05][WA-10]。

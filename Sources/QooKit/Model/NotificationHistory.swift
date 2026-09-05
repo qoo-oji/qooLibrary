@@ -170,21 +170,16 @@ public protocol NotificationHistoryStore: Sendable {
 
 /// CSV への書き出し [NW-07]。
 ///
-/// **ストアではなく純粋関数にしてある**——書き出すのは「いま一覧に出ている
-/// もの」であって DB 全件ではない（絞り込んでから書き出せないと、
-/// 棚卸しの用途に使えない）。ストアに置くと絞り込みの条件をもう一度
-/// 渡し直すことになり、一覧と食い違う余地が生まれる。
+/// **書式そのものは `CSVDocument` が持つ**——操作履歴 [OH-02] も同じ規則で
+/// 書き出すので、引用規則と BOM を 2 箇所に書かない。ここに残っているのは
+/// 「通知の 1 行をどの列に並べるか」だけ。
 public enum NotificationCSV {
-    /// RFC 4180。**先頭に BOM を付ける**——付けないと Excel が UTF-8 と
-    /// 判定せず、日本語が化ける（利用者が最初に開くのはたいてい Excel か
-    /// 「数値」である）。
     public static func encode(_ rows: [StoredNotification],
                               header: [String],
                               categoryName: (NotificationItem.Category) -> String,
                               dateFormatter: (Date) -> String) -> Data {
-        var text = header.map(escape).joined(separator: ",") + "\r\n"
-        for row in rows {
-            let fields = [
+        CSVDocument.encode(header: header, rows: rows.map { row in
+            [
                 dateFormatter(row.date),
                 categoryName(row.category),
                 row.target?.displayName ?? "",
@@ -192,19 +187,8 @@ public enum NotificationCSV {
                 row.body,
                 row.technicalDetail ?? "",
             ]
-            text += fields.map(escape).joined(separator: ",") + "\r\n"
-        }
-        var data = Data([0xEF, 0xBB, 0xBF])
-        data.append(Data(text.utf8))
-        return data
+        })
     }
 
-    /// 引用符・カンマ・改行を含む値を囲む。**囲むと決めたら引用符は二重にする**
-    /// （RFC 4180）。
-    public static func escape(_ field: String) -> String {
-        guard field.contains(where: { $0 == "\"" || $0 == "," || $0 == "\n" || $0 == "\r" }) else {
-            return field
-        }
-        return "\"" + field.replacingOccurrences(of: "\"", with: "\"\"") + "\""
-    }
+    public static func escape(_ field: String) -> String { CSVDocument.escape(field) }
 }

@@ -27,11 +27,17 @@ public final class CommandStack {
 
     private let soundPlayer: any SystemSoundPlaying
     private let generation: LibraryGeneration
+    /// 永続化される操作履歴 [HS-01][OH-01]。**上の `operationHistory`（メモリ）
+    /// とは別物**——あちらは上限 500 件・アプリ終了で消えるセッション一時状態で、
+    /// Undo メニューと同じ寿命。こちらは 90 日残る [HS-04]。
+    private let operationLog: OperationLogRecorder
 
     public init(soundPlayer: any SystemSoundPlaying = SystemSoundPlayer.shared,
-                generation: LibraryGeneration = .shared) {
+                generation: LibraryGeneration = .shared,
+                operationLog: OperationLogRecorder = .shared) {
         self.soundPlayer = soundPlayer
         self.generation = generation
+        self.operationLog = operationLog
     }
 
     public var undoTitle: String? { undoStack.last?.displayName } // [UD-06]
@@ -73,11 +79,14 @@ public final class CommandStack {
             // なく `info` で残す。`error` にすると、既定のログレベルしか
             // 出していない環境でキャンセルの記録だけが目立ち、本当の失敗が
             // 埋もれる。
-            if Self.isCancellation(error) {
-                Log.command.info("中断しました: \(command.logDescription)")
-            } else {
-                Log.command.error("実行に失敗: \(command.logDescription) — \(error.localizedDescription)")
-            }
+            //
+            // **操作履歴にも残す** [HS-01]。`PartialTransferFailure` のように
+            // 「失敗」でありながら**ファイルは動いている**ものがあるので、
+            // 残さないと履歴が「何も起きなかった」と嘘をつく。
+            // 診断ログへの記録も `record` が行う（1 箇所に集める）。
+            record(command, action: Self.isCancellation(error)
+                   ? .cancelled
+                   : .failed(reason: error.localizedDescription))
             throw error
         }
         record(command, action: .executed)
@@ -182,15 +191,25 @@ public final class CommandStack {
         switch action {
         case .executed, .undone, .redone:
             Log.command.info("\(action.logLabel): \(detail)")
+        case .cancelled:
+            // **中断は失敗ではない**（ユーザー自身の意思）ので `error` にしない。
+            // `error` にすると、既定のログレベルしか出していない環境で
+            // キャンセルの記録だけが目立ち、本当の失敗が埋もれる。
+            Log.command.info("\(action.logLabel): \(detail)")
         case .undonePartially(let succeeded, let failedCount):
             Log.command.warning("\(action.logLabel): \(detail) — 成功 \(succeeded) 件 / 失敗 \(failedCount) 件")
-        case .undoFailed(let reason), .redoFailed(let reason):
+        case .failed(let reason), .undoFailed(let reason), .redoFailed(let reason):
             Log.command.error("\(action.logLabel): \(detail) — \(reason)")
         }
         operationHistory.append(OperationHistoryEntry(date: Date(), displayName: command.displayName, action: action))
         if operationHistory.count > historyLimit {
             operationHistory.removeFirst()
         }
+        // **永続化される操作履歴もここから書く** [HS-01][OH-01]。run / undo /
+        // redo と失敗・中断のすべてがこの関数を通るので、コマンドを足す人が
+        // 記録を配線し忘れる余地が無い（ログ・音・読み直しの合図と同じ理由で
+        // ここへ集めてある）。
+        operationLog.record(Self.draft(for: command, action: action))
         // **画面の読み直しはここ 1 箇所から知らせる** [§19.13 #2]。run / undo /
         // redo のどれもこの関数を通るので、コマンドを足す人が合図を配線し忘れる
         // 余地が無い（ログと操作履歴を 1 箇所に集めているのと同じ考え方）。
@@ -199,6 +218,61 @@ public final class CommandStack {
         // 500 件で頭打ちになるので、501 回目以降の操作では値が動かず、
         // それを観ていた画面が黙って ⌘Z に追随しなくなっていた。
         generation.bump()
+    }
+
+    /// 1 件の操作を永続化する形へ写す [HS-01][OH-01]。
+    ///
+    /// **`static` にしてある**——`CommandStack` の状態に一切依存しない写像で、
+    /// 画面を組み立てずに固定できるようにするため（`DuplicateResolutionModel`
+    /// の `lossReport` / `makeDeleteCommand` と同じ扱い）。
+    static func draft(for command: any Command,
+                      action: OperationHistoryEntry.Action,
+                      date: Date = Date()) -> OperationLogDraft {
+        OperationLogDraft(
+            date: date,
+            // **型名を記録する。** 表示名は言語で変わるので、絞り込みの鍵には
+            // できない（`OperationLogEntry.commandName` のコメント参照）。
+            commandName: String(describing: type(of: command)),
+            kind: action.logKind,
+            targets: command.logTargets,
+            // ファイル操作のコマンドは自分がどのライブラリの中で起きたかを
+            // 知らない（そもそもライブラリの外での操作もある）。走査の行だけが
+            // 埋める [OperationLogEntry.libraryUUID のコメント参照]。
+            libraryUUID: nil,
+            summary: command.displayName,
+            detail: action.logDetail)
+    }
+}
+
+extension OperationHistoryEntry.Action {
+    /// 永続化される種別 [OH-01]。**`logLabel` とは別物**——あちらは診断ログ用の
+    /// 短い日本語で、こちらは DB に焼き付ける生値である。
+    var logKind: OperationLogKind {
+        switch self {
+        case .executed: .executed
+        case .failed: .failed
+        case .cancelled: .cancelled
+        case .undone: .undone
+        case .undonePartially: .undonePartially
+        case .undoFailed: .undoFailed
+        case .redone: .redone
+        case .redoFailed: .redoFailed
+        }
+    }
+
+    /// 行を開いたときにだけ読む内訳 [OH-04]。
+    ///
+    /// **理由の文はそのまま残す。** `UserPresentableError` を通した三要素の
+    /// 文言なので、あとから読んでも「なぜ失敗したか」が分かる。
+    var logDetail: String? {
+        switch self {
+        case .executed, .cancelled, .undone, .redone:
+            nil
+        case .undonePartially(let succeeded, let failedCount):
+            "成功 \(succeeded) 件 / 失敗 \(failedCount) 件"
+        case .failed(let reason), .undoFailed(let reason), .redoFailed(let reason):
+            reason
+        }
     }
 }
 
@@ -228,6 +302,12 @@ public enum UndoOutcome: Sendable {
 public struct OperationHistoryEntry: Sendable, Identifiable {
     public enum Action: Sendable, Equatable {
         case executed
+        /// 実行そのものが失敗した。**`PartialTransferFailure` のように
+        /// 「失敗」でありながらファイルが動いているものがある**ので記録する。
+        case failed(reason: String)
+        /// ユーザー自身が中断した。**失敗とは別に扱う**——`isCancellation` が
+        /// 診断ログで両者を分けているのと同じ理由。
+        case cancelled
         case undone
         case undonePartially(succeeded: Int, failedCount: Int)
         case undoFailed(reason: String)
@@ -239,6 +319,8 @@ public struct OperationHistoryEntry: Sendable, Identifiable {
         public var logLabel: String {
             switch self {
             case .executed: "実行"
+            case .failed: "実行に失敗"
+            case .cancelled: "中断"
             case .undone: "取り消し"
             case .undonePartially: "取り消し（部分）"
             case .undoFailed: "取り消しに失敗"

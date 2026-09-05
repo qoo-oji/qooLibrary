@@ -298,7 +298,40 @@ public enum AppLimits {
         public static let unresolvedBulkThreshold = 500
     }
 
-    /// 通知履歴 [NT-07]。どちらも環境設定「通知」タブで変更できる。
+    /// 操作履歴 [HS-01〜HS-04][OH-01〜OH-06][15章 §15.13]。
+    /// 通知履歴とあわせて環境設定「履歴」タブで変更できる。
+    public enum Operations {
+        /// 保持期間（日）。**既定 90** [HS-04][OH-05]。`0` 以下なら期限では
+        /// 消さない。通知履歴の 30 日 [NT-07] より長いのは要件どおりで、
+        /// 「何をしたか」は「何を知らされたか」より長く遡りたいため。
+        public static let defaultRetentionDays = 90
+        /// 保持件数の上限。`0` 以下なら件数では消さない。
+        ///
+        /// **要件に無いが設ける**——期限だけでは、一括操作を繰り返した日に
+        /// いくらでも伸びる。通知履歴 [NT-07] と同じ理由・同じ既定値。
+        public static let defaultMaxCount = 1_000
+
+        /// ストアが繋がる前に溜めておける件数。
+        ///
+        /// **起動直後の操作を取りこぼさないために要る**——退避記録の復旧
+        /// [NV-92] は `LibraryServices.bootstrap()` より前に走りうる。
+        /// 溢れたら古いものから捨て、**捨てたことは診断ログに残す**。
+        public static let preAttachBufferLimit = 64
+
+        /// 一覧が 1 度に読む行数の上限。掃除 [HS-04] は起動時に 1 度しか
+        /// 走らないので、1 回のセッションの中では件数が伸び続ける。
+        /// 既定の保持件数の 2 倍にしてあるので、既定の設定では 1 件も
+        /// 切り落とされない（通知履歴と同じ考え方）。
+        public static let queryLimit = 2_000
+
+        /// 1 行の「対象」に持つ絶対パスの上限。
+        ///
+        /// **一括リネーム 1 万件を 1 行に畳む**ので、全部持つと 1 行が
+        /// 数 MB になる。詳細には「ほか N 件」と件数で示す。
+        public static let maxTargetsPerEntry = 50
+    }
+
+    /// 通知履歴 [NT-07]。環境設定「履歴」タブで変更できる。
     public enum Notifications {
         /// 保持期間（日）。既定 30 [NT-07]。`0` 以下なら期限では消さない。
         public static let defaultRetentionDays = 30

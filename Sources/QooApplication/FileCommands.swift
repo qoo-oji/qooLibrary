@@ -25,6 +25,8 @@ public final class MoveFilesCommand: Command {
     }
 
     public var logDescription: String { Self.logDescription("move", items, to: destination) }
+    /// 既定実装は `logDescription` の先頭 5 件しか拾えない。
+    public var logTargets: [String] { items.map(\.path) }
     public let isUndoable = true
     /// 移動・コピー（＝ペースト・複製・D&D）の完了音。**Finder も鳴らす**
     /// ［当初「Finder は鳴らさない」と誤って結論し、ユーザーの実機での指摘で
@@ -90,6 +92,7 @@ public final class CopyFilesCommand: Command {
     }
 
     public var logDescription: String { Self.logDescription("copy", items, to: destination) }
+    public var logTargets: [String] { items.map(\.path) }
     public let isUndoable = true
     /// `MoveFilesCommand` と同じ理由・同じ音（ペースト・複製・D&D のコピー）。
     public let completionSound: SystemSoundEffect? = .operationComplete
@@ -171,6 +174,7 @@ public final class TrashCommand: Command {
     }
 
     public var logDescription: String { Self.logDescription("trash", items) }
+    public var logTargets: [String] { items.map(\.path) }
     public let isUndoable = true
     public let completionSound: SystemSoundEffect? = .moveToTrash
 
@@ -246,6 +250,7 @@ public final class DeletePermanentlyCommand: Command {
     }
 
     public var logDescription: String { Self.logDescription("deletePermanently", items) }
+    public var logTargets: [String] { items.map(\.path) }
     /// [UD-10][PD-05] 取り消せない。
     public let isUndoable = false
     /// 実体は Finder の「ゴミ箱を空にする」音。qooLibrary に「ゴミ箱を空にする」
@@ -400,6 +405,7 @@ public final class SetLockedCommand: Command {
     }
 
     public var logDescription: String { Self.logDescription("setLocked(\(locked))", items) }
+    public var logTargets: [String] { items.map(\.path) }
     public let isUndoable = true
     private var receipts: [OpReceipt] = []
 

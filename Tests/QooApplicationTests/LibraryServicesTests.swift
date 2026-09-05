@@ -30,7 +30,10 @@ final class ServicesWorkspace {
 
     let registrationUUID = UUID()
 
-    init() throws {
+    /// - Parameter operationLogRecorder: 走査の記録 [OH-03] を見たいテストが
+    ///   **独立した書き手**を渡す。既定（`.shared`）のままだとテスト中は
+    ///   繋がれない（`LibraryServices.attachOperationLog` 参照）。
+    init(operationLogRecorder: OperationLogRecorder = .shared) throws {
         let base = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("qoo-services-\(UUID().uuidString)")
         storeDirectory = base.appendingPathComponent("store")
@@ -39,7 +42,8 @@ final class ServicesWorkspace {
         templateStoreURL = base.appendingPathComponent("userTemplates.json")
         services = LibraryServices(
             userCoverStore: DefaultUserCoverStore(baseDirectory: coverDirectory),
-            userTemplateStore: UserTemplateStore(storageURL: templateStoreURL))
+            userTemplateStore: UserTemplateStore(storageURL: templateStoreURL),
+            operationLogRecorder: operationLogRecorder)
         try FileManager.default.createDirectory(at: libraryRoot, withIntermediateDirectories: true)
     }
 

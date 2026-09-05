@@ -210,3 +210,56 @@ import Testing
         }
     }
 }
+
+/// 印付きパスの取り出し [OH-01]。`Log.path(_:)` の逆。
+///
+/// **操作履歴の「対象」列がこれに乗っている。** 自由文の推測ではなく、
+/// 書き込み側が明示した範囲だけを読む——`PathAnonymizer` 自身が
+/// 「推測はいずれ破綻する」として印へ移った、その構造をそのまま使う。
+@Suite("印付きパスの取り出し [OH-01]")
+struct MarkedPathExtractionTests {
+
+    @Test("印を付けた絶対パスだけを返す")
+    func returnsMarkedAbsolutePaths() {
+        let text = "move: \(Log.path("/Volumes/X/A.cbz")), \(Log.path("/Volumes/X/B.cbz"))"
+            + " → \(Log.path("/Volumes/X/Sub"))"
+        #expect(Log.paths(in: text) == ["/Volumes/X/A.cbz", "/Volumes/X/B.cbz", "/Volumes/X/Sub"])
+    }
+
+    /// **印の無い文からは何も取らない。** 既定の `logDescription`
+    /// （＝`displayName`）を使うコマンドはここに当たる——対象が無いのでは
+    /// なく、この経路では分からないというだけ。
+    @Test("印の無い素のパスは拾わない")
+    func ignoresUnmarkedPaths() {
+        #expect(Log.paths(in: "move: /Volumes/X/A.cbz → /Volumes/X/Sub").isEmpty)
+    }
+
+    /// `⟨…⟩`（絶対パスを持たない名前）は対象ではない——「どこのファイルか」を
+    /// 表せないものを一覧のパス列に混ぜると嘘になる。
+    @Test("名前の印は拾わない")
+    func ignoresRedactionMarkers() {
+        #expect(Log.paths(in: "rename: \(Log.redactable("作品A"))").isEmpty)
+    }
+
+    /// **相対パスも拾わない。** 匿名化側も同じ判定で分岐しており
+    /// （絶対パスでない中身は丸ごと伏せる）、そこと食い違わせない。
+    @Test("印が付いていても相対パスは拾わない")
+    func ignoresRelativePaths() {
+        #expect(Log.paths(in: "x: \(Log.path("Sub/A.cbz"))").isEmpty)
+    }
+
+    /// macOS のファイル名には印そのものも入りうる。**書き込み側が二重化して
+    /// エスケープする**ので、読む側は 1 文字へ戻す。
+    @Test("ファイル名に印が含まれていても壊れない")
+    func handlesEscapedMarkers() {
+        let odd = "/Volumes/X/⟪変な⟫名前.cbz"
+        #expect(Log.paths(in: "trash: \(Log.path(odd))") == [odd])
+    }
+
+    /// 閉じの無い印は「印ではなかった」として扱う——壊れた 1 行で残りを
+    /// 丸ごと失わない（`scanMarked` の既存の判断と揃える）。
+    @Test("閉じの無い印は無視する")
+    func ignoresUnterminatedMarkers() {
+        #expect(Log.paths(in: "x: ⟪/Volumes/X/A.cbz").isEmpty)
+    }
+}

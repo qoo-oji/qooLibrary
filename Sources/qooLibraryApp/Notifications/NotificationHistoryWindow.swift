@@ -311,6 +311,14 @@ struct NotificationHistoryWindow: View {
                             model.selection.count))
                     .font(.system(size: Tokens.fontSize.caption))
                     .foregroundStyle(.secondary)
+                // 操作履歴への導線 [OH-06][NT-04]。**行ごとではなく窓の水準**
+                // ——通知 1 件と操作 1 件を結び付けるには、通知を出すすべての
+                // 呼び出し元が「どの操作の話か」を持ち回る必要があり、そこまでの
+                // 配線をしていない（`NotificationRecord.operationLogID` 参照）。
+                Button("operations.windowTitle") {
+                    OperationHistoryNavigation.open(openWindow: openWindow)
+                }
+                .buttonStyle(.link)
                 Spacer()
                 Button("notifications.markAllRead") {
                     Task { await model.markAllRead() }

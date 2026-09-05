@@ -45,6 +45,20 @@ public protocol Command: AnyObject {
     /// 必ずオーバーライドすること。**
     var logDescription: String { get }
 
+    /// 操作履歴の「対象」列に出す絶対パス [HS-01][OH-01]。
+    ///
+    /// **既定実装は `logDescription` の印付きパス**（`Log.path(_:)` が付けた
+    /// `⟪…⟫`）を拾う。自由文の推測ではなく、書き込み側が明示した範囲を
+    /// 読んでいる——それでも既定に頼りきらないのは、`logDescription` が
+    /// 1 行を短く保つために**先頭 5 件で打ち切る**ためで、対象の一覧を
+    /// 手元に持つコマンドは**必ずオーバーライドすること**（さもないと
+    /// 1,000 件の一括処理が「5 件」として記録される）。
+    ///
+    /// ファイルを対象に取らない操作（ラベルの改名など）では空でよい。
+    /// 「対象が無い」ことと「この経路では分からない」ことを一覧では
+    /// 区別しない——内容の列がどちらの場合も何をしたかを述べている。
+    var logTargets: [String] { get }
+
     /// `false` の場合は `CommandStack.run` がスタックに積まない
     /// （完全削除等、Undo 不可能な操作用）[UD-10]。
     var isUndoable: Bool { get }
@@ -75,6 +89,8 @@ extension Command {
     }
 
     public var logDescription: String { displayName }
+
+    public var logTargets: [String] { Log.paths(in: logDescription) }
 
     public var completionSound: SystemSoundEffect? { nil }
 
@@ -155,6 +171,14 @@ public final class CompositeCommand: Command {
     /// 埋め込んでいることがあり、書き出し時に匿名化されないため [LG2-06]。
     public var logDescription: String {
         "composite[\(children.map(\.logDescription).joined(separator: " | "))]"
+    }
+
+    /// 子の対象を並べる。**重複は畳む**——「フォルダを作って、そこへ移す」の
+    /// ように同じ対象を 2 度触る組み合わせがあり、そのまま並べると件数が
+    /// 実際の 2 倍に見える。順序は最初に現れた位置を保つ。
+    public var logTargets: [String] {
+        var seen: Set<String> = []
+        return children.flatMap(\.logTargets).filter { seen.insert($0).inserted }
     }
 
     public var isUndoable: Bool { children.allSatisfy(\.isUndoable) }

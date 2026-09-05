@@ -34,6 +34,13 @@ public final class BulkRenameCommand: Command {
         "bulkRename: \(changes.count) 件 in \(Log.path(folder))"
     }
 
+    /// **変更後の名前**を対象にする [OH-01]。取り消し済みでない限り、
+    /// 履歴を読んだ時点でディスクにあるのはこちらの綴りである。
+    /// 既定実装だとフォルダ 1 件しか拾えない。
+    public var logTargets: [String] {
+        changes.map { folder.appendingPathComponent($0.newName).path }
+    }
+
     public let isUndoable = true
     public let completionSound: SystemSoundEffect? = .operationComplete
 

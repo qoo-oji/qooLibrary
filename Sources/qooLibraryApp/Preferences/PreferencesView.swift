@@ -174,7 +174,9 @@ enum PreferencesCategory: CaseIterable, Identifiable {
         case .access: "lock.open"
         case .scan: "arrow.triangle.2.circlepath"
         case .cache: "internaldrive"
-        case .notifications: "bell"
+        // 通知履歴と操作履歴の両方を持つので、鐘ではなく時計
+        // （鍵と型名は据え置き。詳細は `NotificationPreferencesTab` の doc）。
+        case .notifications: "clock"
         case .advanced: "wrench.and.screwdriver"
         case .reset: "arrow.counterclockwise.circle"
         }

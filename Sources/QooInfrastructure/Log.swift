@@ -54,6 +54,19 @@ public enum Log {
         return "\(PathAnonymizer.pathOpen)\(escaped)\(PathAnonymizer.pathClose)"
     }
 
+    /// `path(_:)` で印を付けた絶対パスを取り出す [OH-01]。
+    ///
+    /// **操作履歴の「対象」列がこれを使う。** `logDescription` は 1 本の文
+    /// だが、パスの範囲だけは書き込み側が `path(_:)` で明示している——
+    /// つまり自由文の推測ではなく、置いてある構造を読んでいる。
+    ///
+    /// 印の無い文（`displayName` を既定実装のまま使うコマンド等）からは
+    /// 何も取れない。それは正しい——対象が無いのではなく、**この経路では
+    /// 分からない**というだけで、内容は `displayName` が述べている。
+    public static func paths(in text: String) -> [String] {
+        PathAnonymizer.markedPaths(in: text)
+    }
+
     /// 絶対パスではないユーザー由来の名前（解決できない登録フォルダの表示名、
     /// アーカイブ内のエントリ名など）に、匿名化の対象である印を付ける
     /// [LG2-06]。

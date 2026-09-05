@@ -63,6 +63,12 @@ public struct NotificationID: Hashable, Sendable, Codable, PersistenceID {
     public init(rawValue: Int64) { self.rawValue = rawValue }
 }
 
+/// 操作履歴の行 ID [HS-01][OH-01]。`NotificationID` と同じ理由で `Int64`。
+public struct OperationLogID: Hashable, Sendable, Codable, PersistenceID {
+    public let rawValue: Int64
+    public init(rawValue: Int64) { self.rawValue = rawValue }
+}
+
 public struct ShelfID: Hashable, Sendable, Codable, PersistenceID {
     public let rawValue: Int64
     public init(rawValue: Int64) { self.rawValue = rawValue }

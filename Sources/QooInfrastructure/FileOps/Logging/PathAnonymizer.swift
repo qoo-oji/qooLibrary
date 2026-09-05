@@ -202,6 +202,38 @@ public struct PathAnonymizer: Sendable {
     private func scanMarked(
         _ text: String, from start: String.Index, open: Character, close: Character
     ) -> (content: String, next: String.Index)? {
+        Self.scanMarked(text, from: start, open: open, close: close)
+    }
+
+    /// 印付きパスの取り出し [OH-01]。`Log.path(_:)` の逆で、**書き込み側が
+    /// 明示した範囲だけ**を返す（`⟨…⟩` の名前と、印の無い素のパスは含めない
+    /// ——前者は絶対パスではなく、後者は推測になる）。
+    ///
+    /// **自由文からパスを推測しない**という PathAnonymizer 自身の教訓が
+    /// そのまま効く場所。macOS のファイル名には `/` と NUL 以外のあらゆる
+    /// 文字が入るので、印が無ければ範囲は決められない。
+    static func markedPaths(in text: String) -> [String] {
+        var found: [String] = []
+        var index = text.startIndex
+        while index < text.endIndex {
+            if text[index] == pathOpen,
+               let marked = scanMarked(text, from: index, open: pathOpen, close: pathClose) {
+                // **絶対パスだけを対象とみなす。** 相対パスや素の名前が
+                // `Log.path(_:)` に渡されることがあり（匿名化側も同じ判定で
+                // 分岐している）、それを「対象のフルパス」として一覧に出すと
+                // 嘘になる。
+                if marked.content.hasPrefix("/") { found.append(marked.content) }
+                index = marked.next
+                continue
+            }
+            index = text.index(after: index)
+        }
+        return found
+    }
+
+    private static func scanMarked(
+        _ text: String, from start: String.Index, open: Character, close: Character
+    ) -> (content: String, next: String.Index)? {
         var content = ""
         var index = text.index(after: start)
 

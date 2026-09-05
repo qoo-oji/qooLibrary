@@ -411,9 +411,37 @@ struct NotificationRecord: Codable, FetchableRecord, MutablePersistableRecord, S
     var title: String
     var body: String
     var isRead: Bool
-    /// 操作履歴へのリンク [NT-04]。**まだ誰も書かない**——`operationLog` は
-    /// v1 からあるが書き手が無く、操作履歴はメモリのみ（`CommandStack`）。
+    /// 操作履歴の特定の行へのリンク [NT-04]。**まだ誰も書かない。**
+    ///
+    /// 操作履歴そのものは実装済み（`operationLog`、v16）だが、**通知 1 件と
+    /// 操作 1 件を結び付けるには、通知を出すすべての呼び出し元が「どの操作の
+    /// 話か」を持ち回る必要がある**——現状そこまでの配線をしていない。
+    /// 窓の水準の導線（通知履歴 → 操作履歴）は `OperationHistoryNavigation`
+    /// が担う [OH-06]。
     var operationLogID: Int64?
+    mutating func didInsert(_ inserted: InsertionSuccess) { id = inserted.rowID }
+}
+
+// MARK: - 操作履歴
+
+/// [HS-01][OH-01][15章 §15.13] 操作履歴の 1 行。器は v16 で作り直した
+/// （`undone` 列を落とし、`libraryUUID` と `summary` を足した理由は
+/// `QooMigrations.v16OperationLog` のコメントにある）。
+struct OperationLogRecord: Codable, FetchableRecord, MutablePersistableRecord, Sendable {
+    static let databaseTableName = "operationLog"
+    var id: Int64?
+    var date: Double
+    /// 安定した識別子（コマンドの型名、または `scan`）。**表示名ではない。**
+    var commandName: String
+    /// `OperationLogKind.rawValue`。
+    var kind: String
+    /// 対象の絶対パスの配列を符号化したもの。非正規化して持つ
+    /// [`NotificationTarget` と同じ理由——対象は消えうる]。
+    var targetsJSON: String
+    var libraryUUID: String?
+    var summary: String
+    /// 行を開いたときにだけ読む内訳 [OH-04]。
+    var detailJSON: String?
     mutating func didInsert(_ inserted: InsertionSuccess) { id = inserted.rowID }
 }
 

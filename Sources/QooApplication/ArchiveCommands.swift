@@ -51,6 +51,9 @@ public final class CompressCommand: Command {
         return Self.logDescription("compress(\(options.format)/\(options.encryption))", items, to: target)
     }
 
+    /// 既定実装は `logDescription` の先頭 5 件しか拾えない。
+    public var logTargets: [String] { items.map(\.path) }
+
     public let isUndoable = true
     /// [ユーザー要望] 圧縮は数秒かかることがあり、完了が分かる手がかりが要る
     /// （`QooProgressPresenter` のオーバーレイを追加したのと同じ理由）。

@@ -72,6 +72,10 @@ public final class SetRatingCommand: Command {
         Self.logDescription("setRating(\(stars))", targets.map(\.url))
     }
 
+    /// 既定実装は `logDescription` の先頭 5 件しか拾えない [OH-01]。
+    /// シリーズ全巻への適用 [RA-04] は 1 回で何十冊も動く。
+    public var logTargets: [String] { targets.map(\.url.path) }
+
     public let isUndoable = true
 
     public func execute() async throws -> CommandResult {
@@ -175,6 +179,10 @@ public final class AssignLabelCommand: Command {
         Self.logDescription("\(assigning ? "assignLabel" : "unassignLabel")",
                             previous.map(\.url))
     }
+
+    /// 既定実装は先頭 5 件しか拾えない [OH-01]。複数選択の一括付与 [RP-02] は
+    /// 1 回で何十件も動く。
+    public var logTargets: [String] { previous.map(\.url.path) }
 
     public let isUndoable = true
 

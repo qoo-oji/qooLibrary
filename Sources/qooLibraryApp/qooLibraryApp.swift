@@ -254,6 +254,7 @@ struct QooLibraryApp: App {
             // バッジは何も出さないので、履歴を開く手段がその間だけ消えてしまう。
             CommandGroup(after: .windowList) {
                 NotificationHistoryMenuButton()
+                OperationHistoryMenuButton()
             }
         }
 
@@ -331,6 +332,14 @@ struct QooLibraryApp: App {
         }
         .defaultSize(width: 900, height: 560)
 
+        // 操作履歴 [OH-01〜OH-06][15章 §15.13]。開くのは**ウインドウメニュー**
+        // [13章 §13.7.2] と**通知履歴ウインドウ** [OH-06] の 2 つ。
+        Window("operations.windowTitle", id: "operationHistory") {
+            OperationHistoryWindow()
+                .appLanguageOverride()
+        }
+        .defaultSize(width: 900, height: 560)
+
         Window("preferences.windowTitle", id: "preferences") {
             PreferencesView()
                 .appLanguageOverride()
@@ -346,6 +355,20 @@ private struct NotificationHistoryMenuButton: View {
     var body: some View {
         Button("notifications.windowTitle", systemImage: "bell") {
             NotificationHistoryNavigation.open(openWindow: openWindow)
+        }
+    }
+}
+
+/// ウインドウメニューの「操作履歴」[OH-01][13章 §13.7.2]。
+///
+/// **バッジのような別経路を持たない**ので、ここが主たる入口になる
+/// （通知履歴はステータスバーのバッジからも開ける）。
+private struct OperationHistoryMenuButton: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("operations.windowTitle", systemImage: "clock.arrow.circlepath") {
+            OperationHistoryNavigation.open(openWindow: openWindow)
         }
     }
 }
