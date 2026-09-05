@@ -27,6 +27,13 @@ final class ServicesWorkspace {
     /// ユーザー定義テンプレート [LT-02]。**作業領域ごとに分ける**——共有すると
     /// 互いのテンプレートが混ざる（`coverDirectory` と同じ理由）。
     let templateStoreURL: URL
+    /// 自動バックアップの置き場所 [BK-01]。**作業領域ごとに分ける**——既定の
+    /// 場所はテスト中も一時ディレクトリへ振り替わるが、そこを共有すると
+    /// 互いの世代を剪定し合う（`coverDirectory` と同じ理由）。
+    ///
+    /// **注入すると `LibraryServices` が自動スナップショットを実際に取る**
+    /// （`takesAutomaticSnapshots`）ので、契機の配線を end-to-end で試せる。
+    let backupDirectory: URL
 
     let registrationUUID = UUID()
 
@@ -40,10 +47,13 @@ final class ServicesWorkspace {
         libraryRoot = base.appendingPathComponent("library")
         coverDirectory = base.appendingPathComponent("usercovers")
         templateStoreURL = base.appendingPathComponent("userTemplates.json")
+        backupDirectory = base.appendingPathComponent("backups")
         services = LibraryServices(
             userCoverStore: DefaultUserCoverStore(baseDirectory: coverDirectory),
             userTemplateStore: UserTemplateStore(storageURL: templateStoreURL),
-            operationLogRecorder: operationLogRecorder)
+            operationLogRecorder: operationLogRecorder,
+            backupService: BackupService(
+                store: BackupStore(directory: backupDirectory), appVersion: "test"))
         try FileManager.default.createDirectory(at: libraryRoot, withIntermediateDirectories: true)
     }
 
@@ -52,6 +62,11 @@ final class ServicesWorkspace {
     }
 
     var storeURL: URL { storeDirectory.appendingPathComponent("qooLibrary.sqlite") }
+
+    /// 置いてあるバックアップの世代 [BK-01]。新しい順。
+    func backupGenerations() throws -> [BackupGeneration] {
+        try BackupStore(directory: backupDirectory).generations()
+    }
 
     func bootstrap() async {
         await services.bootstrap(storeURL: storeURL)

@@ -145,6 +145,10 @@ public final class TemplateUpdateModel {
         let command = ApplyTemplateDiffCommand(
             libraryID: libraryID, libraryName: libraryName,
             items: selected, advancedBase: advancedBase, services: services)
+        // [BK-02] テンプレートの適用は設定を丸ごと書き換える。**⌘Z で戻せる
+        // [LT-16] が、それはこのセッションの間だけ**——アプリを閉じれば
+        // `CommandStack` は空になるので、跨いで戻せる控えを残しておく。
+        if !selected.isEmpty { await services.snapshotBeforeDestructive(.templateApply) }
         try await stack.run(command)
         state = .unavailable(.upToDate)
         self.diff = nil

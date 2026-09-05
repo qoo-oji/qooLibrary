@@ -14909,6 +14909,74 @@
         }
       }
     },
+    "preferences.reset.autoBackupCount": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d items"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d 件"
+          }
+        }
+      }
+    },
+    "preferences.reset.autoBackupFooter": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A snapshot is taken on launch, and immediately before operations that cannot be undone (deleting a library, importing JSON, deleting labels in bulk, applying a template, migrating the schema). A copy of the database is kept as well, so a future release can restore it whole."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "起動時と、取り返しのつかない操作（ライブラリの削除・JSON の取り込み・ラベルの一括削除・テンプレートの適用・スキーマの移行）の直前に、自動で控えを取ります。データベースの複製もあわせて保存します（復元の画面は次の段で作ります）。"
+          }
+        }
+      }
+    },
+    "preferences.reset.autoBackupHeader": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatic Backups"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自動バックアップ"
+          }
+        }
+      }
+    },
+    "preferences.reset.autoBackupStored": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stored backups"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存済みの控え"
+          }
+        }
+      }
+    },
     "preferences.reset.backupFooter": {
       "extractionState": "manual",
       "localizations": {
@@ -15079,6 +15147,23 @@
         }
       }
     },
+    "preferences.reset.documentGenerations": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Metadata generations to keep"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "メタデータの世代数"
+          }
+        }
+      }
+    },
     "preferences.reset.exportBackup": {
       "extractionState": "manual",
       "localizations": {
@@ -15228,6 +15313,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "登録が見つかりません"
+          }
+        }
+      }
+    },
+    "preferences.reset.revealBackups": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show in Finder"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Finder で表示"
+          }
+        }
+      }
+    },
+    "preferences.reset.storeGenerations": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Database copy generations to keep"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "データベース複製の世代数"
           }
         }
       }

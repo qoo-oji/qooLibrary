@@ -58,7 +58,7 @@ public final class QooDatabase: Sendable {
     /// - Parameter beforeMigration: 未適用の移行があるときだけ呼ばれる。
     ///   JSON スナップショットとストア複製をここで取る [MG-10]。
     public static func open(at url: URL,
-                            beforeMigration: (@Sendable (any DatabaseWriter) throws -> Void)? = nil)
+                            beforeMigration: (@Sendable (any PreMigrationSource) throws -> Void)? = nil)
         throws -> QooDatabase
     {
         try FileManager.default.createDirectory(
@@ -76,7 +76,7 @@ public final class QooDatabase: Sendable {
             try migrator.appliedIdentifiers(db).count < QooMigrations.identifiers.count
         }
         if pending, let beforeMigration {
-            try beforeMigration(pool)                               // [MG-10]
+            try beforeMigration(PreMigrationSnapshot(writer: pool))  // [MG-10]
         }
         do {
             try migrator.migrate(pool)
@@ -93,6 +93,13 @@ public final class QooDatabase: Sendable {
         return QooDatabase(writer: queue)
     }
 
+    /// 同期で写すための取っ手 [MG-10]。
+    ///
+    /// 移行前フックが受け取るのと**同じもの**。移行を伴わない場面からも
+    /// 同じ経路を通せるように公開している——経路を 2 通り持つと、片方だけ
+    /// 直したときに移行前だけが壊れる。
+    public var synchronousHandle: PreMigrationSnapshot { PreMigrationSnapshot(writer: writer) }
+
     /// 整合性検査 [RB-03]。
     public func integrityCheck() async throws -> Bool {
         try await writer.read { db in
@@ -103,11 +110,33 @@ public final class QooDatabase: Sendable {
     /// オンラインバックアップ [BK-01][BK-02][BK2-01]。
     ///
     /// **ファイルを直接コピーしてはならない**——`-wal` に未反映の内容を取りこぼす。
+    ///
+    /// - Important: **失敗しても宛先ファイルは残る。** 宛先は 1 ページも写す前に
+    ///   作られるためで、後始末は**呼び出し側の仕事** [BK3-09]——この層は
+    ///   削除系の `FileManager` API を呼べない（[B-10]。層の依存方向 [A-01] に
+    ///   より `FileOps` を呼べないので、`createDirectory` だけが許されている）。
+    ///   合成根の `BackupService` が引き取る。
     public func backup(to destination: URL,
                        progress: (@Sendable (Double) -> Void)? = nil) async throws {
+        try Self.backup(writer: writer, to: destination, progress: progress)
+    }
+
+    /// 生の writer からのオンラインバックアップ [MG-10]。
+    ///
+    /// **移行前フックのためだけに切り出してある**——`open` は移行の前に
+    /// `beforeMigration(pool)` を**同期で**呼ぶが、その時点では `QooDatabase`
+    /// がまだ組み上がっていない。中身は ``backup(to:progress:)`` と同じで、
+    /// あちらがこれを呼ぶ（**同じ規則を 2 通りに書かない**）。
+    ///
+    /// 中身が全部同期なので `async` は元から飾りだった——インスタンス側の
+    /// `async` は呼び出し側の作法（`FileIO` 経由）を保つために残してある。
+    public static func backup(writer: any DatabaseWriter, to destination: URL,
+                              progress: (@Sendable (Double) -> Void)? = nil) throws
+    {
         try FileManager.default.createDirectory(
             at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let target = try DatabaseQueue(path: destination.path, configuration: Self.configuration())
+        let target = try DatabaseQueue(path: destination.path,
+                                       configuration: backupTargetConfiguration())
         // `DatabaseReader.backup(to:)` は接続レベルの API。`read { }` の中で
         // `Database.backup(to:)` を呼ぶと宛先も `Database` を要求されて型が合わない。
         try writer.backup(to: target, pagesPerStep: 256) { p in
@@ -116,9 +145,79 @@ public final class QooDatabase: Sendable {
         }
     }
 
+    /// 複製先の設定。**WAL にしない。**
+    ///
+    /// 既定の ``configuration()`` は `journal_mode = WAL` を立てるので、
+    /// 複製のたびに `-wal` / `-shm` が世代の隣にできる——**`generations()`
+    /// からは見えないのに容量を食い、剪定の対象にもならない**
+    /// ［code-review が実測で発見］。複製は読み書きされないファイルなので
+    /// WAL は要らず、復元して開けば ``open(at:beforeMigration:)`` が WAL へ戻す。
+    private static func backupTargetConfiguration() -> Configuration {
+        var config = Configuration()
+        config.prepareDatabase { db in
+            db.add(collation: naturalOrder)
+            try db.execute(sql: "PRAGMA journal_mode = DELETE")
+        }
+        return config
+    }
+
+    /// 整合性検査の同期版 [RB-03]。移行前フックから使う。
+    public static func integrityCheck(writer: any DatabaseWriter) throws -> Bool {
+        try writer.read { db in
+            try String.fetchOne(db, sql: "PRAGMA integrity_check") == "ok"
+        }
+    }
+
     public enum StoreError: Error, Equatable {
         /// アプリが知らない移行が適用済み [MG-12]。起動を中止する。
         case schemaTooNew
         case migrationFailed(String)
+    }
+}
+
+/// 移行前の DB へ触れる唯一の窓口 [MG-10]。
+///
+/// `QooDatabase.open` は移行の**前に**このハンドルを渡す。そこでしか
+/// 「移行前の状態」には触れられない——移行が始まればスキーマは書き換わり、
+/// 失敗しても途中まで進んだ状態が残るため [MG-11][R-14]。
+///
+/// **生の `DatabaseWriter` を外へ出さないためにある**——`GRDB` を import して
+/// よいのは `QooPersistence` だけで [A-01][B-11]、フックを書くのは合成根の
+/// `QooApplication` だから。ここが GRDB の型を包み隠す境界になる。
+///
+/// すべて同期。`open` 自体が同期で、しかも `FileIO.perform` の中から
+/// 呼ばれている [NV6-02] ので、この中で待ってよい。
+public struct PreMigrationSnapshot: PreMigrationSource, Sendable {
+    let writer: any DatabaseWriter
+
+    /// 移行前の状態が**存在するか**。
+    ///
+    /// **新規ストアでは偽**——`open` は移行が未適用なら必ずフックを呼ぶが
+    /// （`SchemaTests` がその契約を固定している）、まだテーブルが 1 つも無い
+    /// ので写すものが無い。**ここを見ずに書き出すと `no such table` で失敗し、
+    /// 「写すものが無い」と「本当に写せなかった」の区別が付かなくなる**
+    /// ——後者だけを異常として報告したい。
+    public var hasExistingSchema: Bool {
+        (try? writer.read { db in try db.tableExists("library") }) ?? false
+    }
+
+    /// 再生成できないデータだけを JSON へ写す [MG-10][BK-05]。
+    public func exportDocument(appVersion: String?) throws -> BackupDocument {
+        try SQLiteBackupRepository(writer: writer)
+            .exportSynchronously(scope: .everything, appVersion: appVersion)
+    }
+
+    /// ストアを丸ごと複製する [MG-10][BK-03]。
+    public func copyStore(to destination: URL) throws {
+        try QooDatabase.backup(writer: writer, to: destination)
+    }
+
+    /// 移行前の DB が健全か [RB-03]。
+    ///
+    /// **壊れた状態を「成功」として保存しないため**［外部調査］——それを
+    /// 押し込むと、良い世代を押し出したうえで、いざ復元しようとして初めて
+    /// 使えないと分かる。
+    public func integrityCheck() throws -> Bool {
+        try QooDatabase.integrityCheck(writer: writer)
     }
 }

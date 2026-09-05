@@ -16,26 +16,60 @@ public struct SQLiteBackupRepository: BackupRepository, Sendable {
         self.database = database
     }
 
+    /// 生の writer から組み立てる。
+    ///
+    /// **[MG-10] の移行前フックのためだけにある**——`QooDatabase.open` は
+    /// 移行の前に `beforeMigration(pool)` を呼ぶが、その時点では
+    /// `QooDatabase` がまだ組み上がっていない（`open` の戻り値だから）。
+    /// このフックが**移行前の DB に触れる唯一の機会**なので、生の writer を
+    /// ここで包む。`QooDatabase.init(writer:)` は internal なので、この
+    /// 包み直しは `QooPersistence` の中でしか書けない [A-01]。
+    public init(writer: any DatabaseWriter) {
+        self.init(database: QooDatabase(writer: writer))
+    }
+
     // MARK: - 書き出し [IE-01][IE-02]
 
     public func export(scope: BackupScope, appVersion: String?) async throws -> BackupDocument {
-        let libraries = try await database.writer.read { db -> [LibraryBackup] in
-            let records: [LibraryRecord]
-            switch scope {
-            case .everything:
-                records = try LibraryRecord.order(sql: "displayName").fetchAll(db)
-            case .libraries(let ids):
-                guard !ids.isEmpty else { return [] }
-                let placeholders = ids.map { _ in "?" }.joined(separator: ", ")
-                records = try LibraryRecord
-                    .filter(sql: "id IN (\(placeholders))",
-                            arguments: StatementArguments(ids.map { $0.rawValue }))
-                    .order(sql: "displayName")
-                    .fetchAll(db)
-            }
-            return try records.map { try Self.exportLibrary(db, record: $0) }
+        let libraries = try await database.writer.read { db in
+            try Self.exportLibraries(db, scope: scope)
         }
         return BackupDocument(exportedAt: Date(), appVersion: appVersion, libraries: libraries)
+    }
+
+    /// 同期版 [MG-10]。
+    ///
+    /// **移行前フックから呼ぶためだけにある**——あのフックは同期のクロージャ
+    /// で、そこでしか移行前の DB に触れない。中身は ``export(scope:appVersion:)``
+    /// と**同じ関数**を通す（`exportLibraries`）——2 通りに書くと、片方だけ
+    /// 直したときに「起動時のバックアップには入るが移行前のには入らない列」が
+    /// 静かに生まれる。
+    ///
+    /// - Important: 呼び出し側は**必ずメインスレッドの外**で使うこと [NV6-02]。
+    ///   `QooDatabase.open` は `FileIO.perform` の中から呼ばれているので、
+    ///   その経路であれば満たされている。
+    public func exportSynchronously(scope: BackupScope, appVersion: String?) throws -> BackupDocument {
+        let libraries = try database.writer.read { db in
+            try Self.exportLibraries(db, scope: scope)
+        }
+        return BackupDocument(exportedAt: Date(), appVersion: appVersion, libraries: libraries)
+    }
+
+    private static func exportLibraries(_ db: Database, scope: BackupScope) throws -> [LibraryBackup] {
+        let records: [LibraryRecord]
+        switch scope {
+        case .everything:
+            records = try LibraryRecord.order(sql: "displayName").fetchAll(db)
+        case .libraries(let ids):
+            guard !ids.isEmpty else { return [] }
+            let placeholders = ids.map { _ in "?" }.joined(separator: ", ")
+            records = try LibraryRecord
+                .filter(sql: "id IN (\(placeholders))",
+                        arguments: StatementArguments(ids.map { $0.rawValue }))
+                .order(sql: "displayName")
+                .fetchAll(db)
+        }
+        return try records.map { try Self.exportLibrary(db, record: $0) }
     }
 
     private static func exportLibrary(_ db: Database, record: LibraryRecord) throws -> LibraryBackup {

@@ -28,6 +28,13 @@ struct ResetPreferencesTab: View {
     @State private var isLoading = true
     @State private var backupState = LibraryBackupAction.State()
     @State private var thumbnailBytes: Int64?
+    @State private var backupGenerations: [BackupGeneration] = []
+    /// 世代数 [BK-01「環境設定で変更可能」]。`BackupService` が**剪定のたびに
+    /// 読み直す**ので、変えたその場から効く（次の起動を待たない）。
+    @AppStorage(BackupService.PreferenceKeys.documentGenerations)
+    private var documentGenerations = AppLimits.Backup.defaultDocumentGenerations
+    @AppStorage(BackupService.PreferenceKeys.storeGenerations)
+    private var storeGenerations = AppLimits.Backup.defaultStoreGenerations
     @State private var isClearingThumbnails = false
 
     /// 一覧の 1 行。DB の行に、登録フォルダ側の状態を重ねたもの。
@@ -42,6 +49,7 @@ struct ResetPreferencesTab: View {
 
     var body: some View {
         Form {
+            automaticBackupSection
             backupSection
             librarySection
             thumbnailSection
@@ -51,10 +59,83 @@ struct ResetPreferencesTab: View {
         .task {
             await reload()
             await refreshThumbnailSize()
+            refreshBackupGenerations()
         }
         // 他の経路（フォルダツリーの有効化・無効化）で増減したときも追随する。
+        // **世代の件数も読み直す**——ライブラリの削除・取り込みはどちらも
+        // スナップショットを取る契機なので、ここが古いままだと
+        // 「安全網が働いたか」を確かめに来た画面で嘘をつく［code-review で発見］。
         .onChange(of: LibraryServices.shared.libraries) {
-            Task { await reload() }
+            Task {
+                await reload()
+                refreshBackupGenerations()
+            }
+        }
+    }
+
+    // MARK: - 自動バックアップ [BK-01][BK-02][BK2-03]
+
+    /// **一番上に置く。** 「消す前に戻せるようにしておく」という、このタブの
+    /// 並びが表している順序 [RS-01 の趣旨] の先頭がここになる——手で書き出す
+    /// 前に、そもそも自動で控えが取られていることを見せる。
+    private var automaticBackupSection: some View {
+        Section {
+            HStack {
+                Text("preferences.reset.autoBackupStored")
+                Spacer()
+                Text(String(format: String(localized: "preferences.reset.autoBackupCount",
+                                           locale: locale), backupGenerations.count))
+                    .foregroundStyle(.secondary)
+                Text(Self.byteCountString(backupGenerations.reduce(0) { $0 + $1.byteCount }))
+                    .foregroundStyle(.secondary)
+            }
+            Stepper(value: $documentGenerations,
+                    in: AppLimits.Backup.minGenerations ... AppLimits.Backup.maxGenerations) {
+                HStack {
+                    Text("preferences.reset.documentGenerations")
+                    Spacer()
+                    Text("\(documentGenerations)").foregroundStyle(.secondary)
+                }
+            }
+            Stepper(value: $storeGenerations,
+                    in: AppLimits.Backup.minGenerations ... AppLimits.Backup.maxGenerations) {
+                HStack {
+                    Text("preferences.reset.storeGenerations")
+                    Spacer()
+                    Text("\(storeGenerations)").foregroundStyle(.secondary)
+                }
+            }
+            Button("preferences.reset.revealBackups", systemImage: "folder") {
+                revealBackupFolder()
+            }
+            // 調整系の設定には必ず「既定に戻す」を付ける
+            // [ユーザー指摘、`CachePreferencesTab` と同じ]。
+            Button("preferences.resetToDefaults") {
+                documentGenerations = AppLimits.Backup.defaultDocumentGenerations
+                storeGenerations = AppLimits.Backup.defaultStoreGenerations
+            }
+        } header: {
+            Text("preferences.reset.autoBackupHeader")
+        } footer: {
+            Text("preferences.reset.autoBackupFooter")
+                .font(.system(size: Tokens.fontSize.caption))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func refreshBackupGenerations() {
+        backupGenerations = (try? BackupStore().generations()) ?? []
+    }
+
+    private func revealBackupFolder() {
+        let directory = BackupStore().directory
+        // 一度もスナップショットを取っていなければディレクトリ自体が無く、
+        // Finder が何も反応しないように見える。その場合は親を開く
+        // [`AdvancedPreferencesTab.revealLogFolder` と同じ]。
+        if FileManager.default.fileExists(atPath: directory.path) {
+            NSWorkspace.shared.activateFileViewerSelecting([directory])
+        } else {
+            NSWorkspace.shared.activateFileViewerSelecting([directory.deletingLastPathComponent()])
         }
     }
 

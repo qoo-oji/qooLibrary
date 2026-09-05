@@ -111,17 +111,41 @@ public final class LibraryServices {
     ///   **テストは独立した一時ディレクトリを渡すこと**（`userCoverStore` と
     ///   同じ理由——既定のままだと開発機の実ファイルを書き換える）。
     private let operationLogRecorder: OperationLogRecorder
+    /// 自動バックアップ [BK-01][BK-02][MG-10]。**DB とは独立**——置き場所は
+    /// ストアを開けなくても決まるので、`userCoverStore` と同じく常に持つ。
+    private let backupService: BackupService
+    private let backupServiceWasInjected: Bool
+
+    /// 自動スナップショットを取ってよいか。
+    ///
+    /// **`swift test` 中、注入されていなければ取らない**——既定の置き場所は
+    /// テストどうしで共有されるので、互いの世代を剪定し合う
+    /// （`attachNotificationHistory` / `userCoverStore` と同じ理由）。
+    /// **注入されたものは作業領域ごとに独立しているので取る**——これがある
+    /// おかげで契機の配線そのものを end-to-end で固定できる。
+    private var takesAutomaticSnapshots: Bool {
+        backupServiceWasInjected || !RuntimeEnvironment.isRunningTests
+    }
 
     /// - Parameter operationLogRecorder: 走査の結果を書く先 [OH-03]。
     ///   **テストは必ず独立したものを渡すこと**——既定の
     ///   `OperationLogRecorder.shared` はアプリ全体に 1 つしかなく、
     ///   テスト中はストアへ繋がれない（`userCoverStore` と同じ理由）。
+    /// - Parameter backupService: 自動バックアップ [BK-01][BK-02]。
+    ///   **テストは独立した一時ディレクトリの `BackupStore` を渡すこと**
+    ///   ——既定のままだと、テストどうしが同じ置き場所を共有して互いの
+    ///   世代を剪定し合う。渡さなければ `swift test` 中は自動スナップショット
+    ///   自体を行わない（``takesAutomaticSnapshots``）。
     public init(userCoverStore: any UserCoverStoring = DefaultUserCoverStore.shared,
                 userTemplateStore: UserTemplateStore = .shared,
-                operationLogRecorder: OperationLogRecorder = .shared) {
+                operationLogRecorder: OperationLogRecorder = .shared,
+                backupService: BackupService? = nil) {
         self.userCoverStore = userCoverStore
         self.userTemplateStore = userTemplateStore
         self.operationLogRecorder = operationLogRecorder
+        self.backupServiceWasInjected = backupService != nil
+        self.backupService = backupService
+            ?? BackupService(store: BackupStore(), appVersion: Self.appVersion())
     }
 
     // MARK: - 起動
@@ -156,8 +180,33 @@ public final class LibraryServices {
             return
         }
         do {
+            let service = backupService
+            let takesSnapshots = takesAutomaticSnapshots
             let opened = try await FileIO.perform {
-                try QooDatabase.open(at: storeURL)
+                // [MG-10] **移行の前に JSON とストア複製の両方を残す。**
+                // ここが移行前の DB へ触れる唯一の機会で、R-14（移行の失敗で
+                // ラベルや評価を失う）への直接の備えになる。
+                try QooDatabase.open(at: storeURL) { handle in
+                    guard takesSnapshots else { return }
+                    do {
+                        // `nil` は「新規ストアで写すものが無い」——失敗ではない。
+                        guard let outcome = try service.snapshotBeforeMigration(handle) else { return }
+                        if outcome.skippedAsUnhealthy {
+                            Log.db.error("移行前のスナップショットを取れなかった（整合性検査に通らない）")
+                        } else {
+                            Log.db.info("""
+                                移行前のスナップショットを取った: 複製 \
+                                \(outcome.storeURL.map { Log.path($0) } ?? "なし") / JSON \
+                                \(outcome.documentURL.map { Log.path($0) } ?? "なし（古いスキーマ）")
+                                """)
+                        }
+                    } catch {
+                        // **移行そのものは止めない**——バックアップを取れない
+                        // ことを理由に起動を断ると、ストアが古いままアプリが
+                        // 二度と使えなくなる。取れなかったことはログに残す。
+                        Log.db.error("移行前のスナップショットに失敗: \(String(describing: error))")
+                    }
+                }
             }
             database = opened
             // `bootstrap()` はここへ来る前に必ず volumeSets を読んでいる
@@ -184,6 +233,62 @@ public final class LibraryServices {
             return
         }
         await refreshLibraries()
+        await snapshotOnLaunchIfDue()                                // [BK-01]
+    }
+
+    // MARK: - 自動バックアップ [BK-01][BK-02]
+
+    /// 起動時スナップショット [BK-01]。**間隔を空けて取る**（`BackupService`）。
+    private func snapshotOnLaunchIfDue() async {
+        guard takesAutomaticSnapshots,
+              let repository = backupRepository, let database else { return }
+        do {
+            guard let outcome = try await backupService.snapshotOnLaunch(
+                repository: repository, database: database) else { return }
+            report(outcome)
+        } catch {
+            await reportSnapshotFailure(.launch, error)
+        }
+    }
+
+    /// 破壊的な操作の直前 [BK-02]。**決して投げない。**
+    ///
+    /// バックアップを取れないことを理由に、利用者が頼んだ操作そのものを
+    /// 断るほうが害が大きい [NV3-01 と同じ判断]。ただし**黙らない**
+    /// ——安全網が働いていないことに気づけないのが、外部調査の言う
+    /// 「誤った安心」そのものだから、通知履歴とバッジへ残す。
+    func snapshotBeforeDestructive(_ reason: BackupReason) async {
+        guard takesAutomaticSnapshots,
+              let repository = backupRepository, let database else { return }
+        do {
+            report(try await backupService.snapshot(
+                reason: reason, repository: repository, database: database))
+        } catch {
+            await reportSnapshotFailure(reason, error)
+        }
+    }
+
+    private func report(_ outcome: BackupOutcome) {
+        if outcome.skippedAsUnhealthy {
+            Log.db.error("整合性検査に通らないのでスナップショットを取らなかった（\(outcome.reason.rawValue)）")
+        } else {
+            Log.db.info("""
+                スナップショットを取った（\(outcome.reason.rawValue)）: JSON \
+                \(outcome.documentURL.map { Log.path($0) } ?? "なし") \
+                / 複製 \(outcome.storeURL == nil ? "なし" : "あり") / 剪定 \(outcome.prunedCount) 件
+                """)
+        }
+    }
+
+    private func reportSnapshotFailure(_ reason: BackupReason, _ error: any Error) async {
+        Log.db.error("スナップショットに失敗（\(reason.rawValue)）: \(String(describing: error))")
+        await NotificationRouter.shared.present(NotificationItem(
+            category: .warning,
+            severity: .transient,
+            title: "自動バックアップを作成できませんでした",
+            body: "この操作の直前の状態を保存できませんでした。操作そのものは続行しています。"
+                + "環境設定の「リセット」で置き場所と空き容量を確認してください。",
+            technicalDetail: String(describing: error)))
     }
 
     /// 通知履歴を `NotificationRouter` へ繋ぐ [NT-01]。
@@ -468,6 +573,10 @@ public final class LibraryServices {
     public func disable(registrationUUID uuid: UUID, keepLabels: Bool = false) async throws {
         guard let repository = libraryRepository else { throw ServiceError.notReady }
         guard let summary = try await repository.library(uuid: uuid) else { return }
+        // [BK-02] **`deleteLibrary` と消す範囲は同じ**（違うのは入口だけ）。
+        // しかも日常的に使われるのはこちら——フォルダツリーの「ライブラリ機能を
+        // 無効にする」と、完全削除に伴う強制解除がここを通る［code-review で発見］。
+        await snapshotBeforeDestructive(.libraryDelete)
         try await repository.unregister(id: summary.id, keepLabels: keepLabels)
         // ユーザー指定カバーの複製を片付ける [CV-06]。行が連鎖削除された時点で
         // 誰も参照していないので、起動時の掃除を待たずにここで捨ててよい
@@ -628,6 +737,13 @@ public final class LibraryServices {
 
     public func deleteLabels(_ ids: [LabelID]) async throws {
         guard let repository = labelRepository else { throw ServiceError.notReady }
+        // [BK-02]「**大規模な**破壊的操作」の直前だけ。1 件の削除でも取ると、
+        // 日常的な編集 10 回で全世代が埋まり、起動時と移行前の世代を押し出す
+        // ——安全網としてかえって弱くなる［code-review で発見］。
+        // 少数の削除は ⌘Z が同じ行 ID へ戻す [LabelSnapshot] ので行き止まりにならない。
+        if ids.count >= AppLimits.Backup.bulkOperationThreshold {
+            await snapshotBeforeDestructive(.bulkLabelDelete)
+        }
         try await repository.deleteLabels(ids)
     }
 
@@ -1213,6 +1329,10 @@ public final class LibraryServices {
     @discardableResult
     public func importBackup(_ document: BackupDocument) async throws -> ImportPlan {
         guard let repository = backupRepository else { throw ServiceError.notReady }
+        // [JS-07][IE-12] 取り込みは既存のラベル・評価を書き換える。**戻せる
+        // ようにしてから始める**——取り込み自体はまだ Undo に載っていない
+        // [IE-13 は未]ので、いまはこのスナップショットが唯一の戻り道である。
+        await snapshotBeforeDestructive(.jsonImport)
         var plan = try await repository.import(document)
         // テンプレートは DB の外なので、永続化層の取り込みでは戻らない [★8]。
         // **`try?` で握りつぶさない**——書き込めない場所（アクセス権・容量）
@@ -1252,6 +1372,10 @@ public final class LibraryServices {
     /// 二度と片付けられない」欠陥を作った前例がある [LibraryMenuVisibility]。
     public func deleteLibrary(id: LibraryID, keepLabels: Bool = false) async throws {
         guard let repository = libraryRepository else { throw ServiceError.notReady }
+        // [BK-02、ユーザー判断で対象に追加、2026-09-05] **要件の一覧には無いが
+        // 実際にはこれが最も破壊的**——連鎖でラベル・評価・手動タイトルが
+        // すべて消え、`keepLabels` を選べる退避先もまだ無い [RG-06]。
+        await snapshotBeforeDestructive(.libraryDelete)
         let summary = try await repository.library(id: id)
         try await repository.unregister(id: id, keepLabels: keepLabels)
         if let summary {
