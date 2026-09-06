@@ -36,7 +36,7 @@ struct InspectorPane: View {
     var body: some View {
         Group {
             if targets.isEmpty {
-                PlaceholderPane(title: String(localized: "inspector.title", locale: locale), subtitle: "")
+                PlaceholderPane(title: AppStrings.text("inspector.title", locale: locale), subtitle: "")
             } else if targets.count == 1 {
                 SingleItemInspector(
                     url: targets[0], thumbnailsHidden: thumbnailsHidden,
@@ -137,7 +137,7 @@ private struct SingleItemInspector: View {
                             // **回り続けるスピナーを見せない** [ER-01 の精神]。
                             // 「数えられなかった」は結果であって、進行中ではない。
                             InspectorRow("inspector.containedFileCount",
-                                         value: String(localized: "inspector.containedUnreadable",
+                                         value: AppStrings.text("inspector.containedUnreadable",
                                                        locale: locale))
                         } else if let containedCounts {
                             InspectorRow("inspector.containedFileCount", value: "\(containedCounts.fileCount)") // [DT-05]
@@ -332,13 +332,13 @@ private struct SingleItemInspector: View {
     ///   `.app` を「フォルダ」と答えないよう、呼び出し側で除いてから渡す。
     nonisolated private static func kindDescription(for url: URL, isDirectory: Bool) -> String {
         let locale = AppLanguage.effectiveLocale
-        if isDirectory { return String(localized: "kind.folder", locale: locale) }
+        if isDirectory { return AppStrings.text("kind.folder", locale: locale) }
         let ext = url.pathExtension
         if !ext.isEmpty, let type = UTType(filenameExtension: ext), let description = type.localizedDescription {
             return description
         }
-        guard !ext.isEmpty else { return String(localized: "kind.document", locale: locale) }
-        return String(format: String(localized: "kind.extensionFile", locale: locale), ext.uppercased())
+        guard !ext.isEmpty else { return AppStrings.text("kind.document", locale: locale) }
+        return String(format: AppStrings.text("kind.extensionFile", locale: locale), ext.uppercased())
     }
 
     /// [DT-05][DT-06] 遅延読み込み。仕様書は DB キャッシュを前提とするが、
@@ -472,7 +472,7 @@ private struct MultiItemInspector: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Tokens.spacing.m) {
-                Text(String(format: String(localized: "inspector.itemsSelected", locale: locale), urls.count))
+                Text(String(format: AppStrings.text("inspector.itemsSelected", locale: locale), urls.count))
                     .font(.system(size: Tokens.fontSize.title2, weight: .semibold))
                 Divider()
                 LabeledContent("inspector.totalSize", value: Self.sizeFormatter.string(fromByteCount: Self.totalSize(of: urls)))

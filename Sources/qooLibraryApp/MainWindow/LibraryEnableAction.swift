@@ -37,7 +37,7 @@ enum LibraryEnableAction {
                   let url = await RegisteredFolderStore.shared.resolvedURL(for: folder) else {
                 await NotificationRouter.shared.presentError(
                     LibraryRootUnavailableError(displayName: library.displayName),
-                    whatHappened: String(localized: "library.scan.failed", locale: locale))
+                    whatHappened: AppStrings.text("library.scan.failed", locale: locale))
                 return
             }
             await scan(libraryID: library.id, displayName: library.displayName,
@@ -60,7 +60,7 @@ enum LibraryEnableAction {
             } catch {
                 await NotificationRouter.shared.presentError(
                     error,
-                    whatHappened: String(localized: "folderTree.registrationFailedTitle",
+                    whatHappened: AppStrings.text("folderTree.registrationFailedTitle",
                                          locale: locale))
                 return
             }
@@ -71,7 +71,7 @@ enum LibraryEnableAction {
             if !result.warnings.isEmpty {
                 await NotificationRouter.shared.present(NotificationItem(
                     category: .warning, severity: .transient,
-                    title: String(localized: "folderTree.registeredWithWarningTitle",
+                    title: AppStrings.text("folderTree.registeredWithWarningTitle",
                                   locale: locale),
                     body: result.warnings
                         .map { registrationWarningDescription($0, locale: locale) }
@@ -90,13 +90,13 @@ enum LibraryEnableAction {
                                                locale: Locale) -> String {
         switch warning {
         case .networkVolumeFSEventsUnreliable:
-            return String(localized: "folderTree.warning.networkVolume", locale: locale)
+            return AppStrings.text("folderTree.warning.networkVolume", locale: locale)
         case let .cloudSyncedLocation(provider):
             guard let provider else {
-                return String(localized: "folderTree.warning.cloudSynced", locale: locale)
+                return AppStrings.text("folderTree.warning.cloudSynced", locale: locale)
             }
             return String(
-                format: String(localized: "folderTree.warning.cloudSyncedNamed", locale: locale),
+                format: AppStrings.text("folderTree.warning.cloudSyncedNamed", locale: locale),
                 provider)
         }
     }
@@ -107,7 +107,7 @@ enum LibraryEnableAction {
                 try await LibraryServices.shared.disable(registrationUUID: folder.id)
             } catch {
                 await NotificationRouter.shared.presentError(
-                    error, whatHappened: String(localized: "library.disable.failed"))
+                    error, whatHappened: AppStrings.text("library.disable.failed"))
             }
         }
     }
@@ -141,7 +141,7 @@ enum LibraryEnableAction {
                        locale: locale, openWindow: openWindow)
         } catch {
             await NotificationRouter.shared.presentError(
-                error, whatHappened: String(localized: "library.enable.failed"))
+                error, whatHappened: AppStrings.text("library.enable.failed"))
         }
     }
 
@@ -155,7 +155,7 @@ enum LibraryEnableAction {
                              openWindow: OpenWindowAction) async {
         let task = ScanTaskBox()
         let handle = OperationProgressCenter.shared.begin(
-            title: String(format: String(localized: "library.scan.progressTitle", locale: locale),
+            title: String(format: AppStrings.text("library.scan.progressTitle", locale: locale),
                           displayName),
             cancel: { task.cancel() })
         defer { OperationProgressCenter.shared.finish(handle) }
@@ -198,7 +198,7 @@ enum LibraryEnableAction {
             // 利用者が止めた。通知しない。
         } catch {
             await NotificationRouter.shared.presentError(
-                error, whatHappened: String(localized: "library.scan.failed"))
+                error, whatHappened: AppStrings.text("library.scan.failed"))
         }
     }
 
@@ -233,17 +233,17 @@ enum LibraryEnableAction {
                                        locale: Locale) -> String? {
         if progress.totalItems > 1 {
             let current = min(max(progress.completedItems, 1), progress.totalItems)
-            var parts = [String(format: String(localized: "progress.itemCount", locale: locale),
+            var parts = [String(format: AppStrings.text("progress.itemCount", locale: locale),
                                current, progress.totalItems)]
             let remaining = progress.totalItems - current
             if remaining > 0 {
-                parts.append(String(format: String(localized: "progress.remainingItems", locale: locale),
+                parts.append(String(format: AppStrings.text("progress.remainingItems", locale: locale),
                                     remaining))
             }
             return parts.joined(separator: " — ")
         }
         if progress.completedItems > 0 {
-            return String(format: String(localized: "progress.scanFound", locale: locale),
+            return String(format: AppStrings.text("progress.scanFound", locale: locale),
                           progress.completedItems)
         }
         return nil
@@ -266,15 +266,15 @@ enum LibraryEnableAction {
         let template: String
         switch subject {
         case .unresolved:
-            template = String(localized: "library.scan.reviewTitleUnresolved", locale: locale)
+            template = AppStrings.text("library.scan.reviewTitleUnresolved", locale: locale)
         case .orphaned:
-            template = String(localized: "library.scan.reviewTitleOrphaned", locale: locale)
+            template = AppStrings.text("library.scan.reviewTitleOrphaned", locale: locale)
         case .bookFoldersReleased:
-            template = String(localized: "library.scan.reviewTitleBookFolders", locale: locale)
+            template = AppStrings.text("library.scan.reviewTitleBookFolders", locale: locale)
         case .volumeConflicts:
-            template = String(localized: "library.scan.reviewTitleVolumes", locale: locale)
+            template = AppStrings.text("library.scan.reviewTitleVolumes", locale: locale)
         case .mixed, nil:
-            template = String(localized: "library.scan.reviewTitle", locale: locale)
+            template = AppStrings.text("library.scan.reviewTitle", locale: locale)
         }
         return String(format: template, displayName)
     }
@@ -286,12 +286,12 @@ enum LibraryEnableAction {
                                            openWindow: OpenWindowAction) async {
         var lines: [String] = []
         if summary.orphaned > 0 {
-            lines.append(String(format: String(localized: "library.scan.orphaned", locale: locale),
+            lines.append(String(format: AppStrings.text("library.scan.orphaned", locale: locale),
                                 summary.orphaned))
         }
         var actions: [RecoveryAction] = []
         if summary.unresolvedNames > 0 {
-            lines.append(String(format: String(localized: "library.scan.unresolved", locale: locale),
+            lines.append(String(format: AppStrings.text("library.scan.unresolved", locale: locale),
                                 summary.unresolvedNames))
             // **整理ウインドウへの導線を出す** [UR2-02][AL-30]。孤立
             // （件数を知らせるだけ）と扱いを変えているのは、未解決は放置すると
@@ -299,22 +299,22 @@ enum LibraryEnableAction {
             // フィルタからは永久に辿り着けない。§4.11 が導線を名指ししている。
             actions.append(RecoveryAction(
                 id: NotificationRouteAction.reviewUnresolved,
-                title: String(localized: "library.scan.reviewUnresolved", locale: locale),
+                title: AppStrings.text("library.scan.reviewUnresolved", locale: locale),
                 kind: .openWindow(NotificationRouteAction.reviewUnresolved)))
         }
         if !summary.bookFoldersReleased.isEmpty {
-            lines.append(String(format: String(localized: "library.scan.bookFoldersReleased", locale: locale),
+            lines.append(String(format: AppStrings.text("library.scan.bookFoldersReleased", locale: locale),
                                 summary.bookFoldersReleased.count))
         }
         // **巻数の判断待ち** [EM-26][EM-31]。`ComicInfo.xml` の `Number` と
         // `Volume` が食い違っていて、どちらが巻数か機械的に決められない。
         // スキャンは止めずに走り切ってから、まとめて聞く。
         if summary.volumeConflicts > 0 {
-            lines.append(String(format: String(localized: "library.scan.volumeConflicts", locale: locale),
+            lines.append(String(format: AppStrings.text("library.scan.volumeConflicts", locale: locale),
                                 summary.volumeConflicts))
             actions.append(RecoveryAction(
                 id: NotificationRouteAction.reviewVolumes,
-                title: String(localized: "library.scan.reviewVolumes", locale: locale),
+                title: AppStrings.text("library.scan.reviewVolumes", locale: locale),
                 kind: .openWindow(NotificationRouteAction.reviewVolumes)))
         }
         guard !lines.isEmpty else { return }
@@ -407,23 +407,23 @@ enum LibraryEnableAction {
         var lines: [String] = []
         var actions: [RecoveryAction] = []
         if summary.orphaned > 0 {
-            lines.append(String(format: String(localized: "library.scan.orphaned", locale: locale),
+            lines.append(String(format: AppStrings.text("library.scan.orphaned", locale: locale),
                                 summary.orphaned))
             actions.append(RecoveryAction(
                 id: NotificationRouteAction.reviewOrphans,
-                title: String(localized: "library.scan.reviewOrphans", locale: locale),
+                title: AppStrings.text("library.scan.reviewOrphans", locale: locale),
                 kind: .openWindow(NotificationRouteAction.reviewOrphans)))
         }
         if summary.unresolvedNames > 0 {
-            lines.append(String(format: String(localized: "library.scan.unresolved", locale: locale),
+            lines.append(String(format: AppStrings.text("library.scan.unresolved", locale: locale),
                                 summary.unresolvedNames))
             actions.append(RecoveryAction(
                 id: NotificationRouteAction.reviewUnresolved,
-                title: String(localized: "library.scan.reviewUnresolved", locale: locale),
+                title: AppStrings.text("library.scan.reviewUnresolved", locale: locale),
                 kind: .openWindow(NotificationRouteAction.reviewUnresolved)))
         }
         if !summary.bookFoldersReleased.isEmpty {
-            lines.append(String(format: String(localized: "library.scan.bookFoldersReleased",
+            lines.append(String(format: AppStrings.text("library.scan.bookFoldersReleased",
                                                locale: locale),
                                 summary.bookFoldersReleased.count))
         }
@@ -443,7 +443,7 @@ enum LibraryEnableAction {
         Task {
             await NotificationRouter.shared.presentError(
                 LibraryUnavailableError(failure: failure),
-                whatHappened: String(localized: "library.unavailable"))
+                whatHappened: AppStrings.text("library.unavailable"))
         }
     }
 }
@@ -469,23 +469,23 @@ private final class ScanTaskBox {
 struct LibraryUnavailableError: Error, UserPresentableError {
     let failure: StoreStartupFailure?
 
-    var whatHappened: String { String(localized: "library.unavailable") }
+    var whatHappened: String { AppStrings.text("library.unavailable") }
 
     var whyItHappened: String {
         switch failure {
         case .schemaTooNew:
-            String(localized: "library.unavailable.schemaTooNew")
+            AppStrings.text("library.unavailable.schemaTooNew")
         case .migrationFailed:
-            String(localized: "library.unavailable.migrationFailed")
+            AppStrings.text("library.unavailable.migrationFailed")
         case .templatesUnavailable:
-            String(localized: "library.unavailable.templates")
+            AppStrings.text("library.unavailable.templates")
         case .storeLocationUnavailable, .openFailed, .none:
-            String(localized: "library.unavailable.openFailed")
+            AppStrings.text("library.unavailable.openFailed")
         }
     }
 
     var recoverySuggestions: [RecoveryAction] { [] }
-    var recoveryHint: String? { String(localized: "library.unavailable.hint") }
+    var recoveryHint: String? { AppStrings.text("library.unavailable.hint") }
     var technicalDetail: String? {
         guard let failure else { return nil }
         return String(describing: failure)
@@ -497,10 +497,10 @@ struct LibraryUnavailableError: Error, UserPresentableError {
 struct LibraryRootUnavailableError: Error, UserPresentableError {
     let displayName: String
 
-    var whatHappened: String { String(localized: "library.rootUnavailable") }
-    var whyItHappened: String { String(localized: "library.rootUnavailable.why") }
+    var whatHappened: String { AppStrings.text("library.rootUnavailable") }
+    var whyItHappened: String { AppStrings.text("library.rootUnavailable.why") }
     var recoverySuggestions: [RecoveryAction] { [] }
-    var recoveryHint: String? { String(localized: "library.rootUnavailable.hint") }
+    var recoveryHint: String? { AppStrings.text("library.rootUnavailable.hint") }
     var technicalDetail: String? { displayName }
     var severity: NotificationSeverity { .sheet }
 }
@@ -521,16 +521,16 @@ struct LibraryUnregisterConfirmationDialog: View {
         DialogScaffold(
             width: 420,
             confirm: DialogButton(
-                title: String(localized: "folderTree.unregister", locale: locale),
+                title: AppStrings.text("folderTree.unregister", locale: locale),
                 role: .destructive
             ) { onConfirm() },
             cancel: DialogButton(
-                title: String(localized: "common.cancel", locale: locale), role: .cancel
+                title: AppStrings.text("common.cancel", locale: locale), role: .cancel
             ) { dismiss() }
         ) {
             VStack(alignment: .leading, spacing: Tokens.spacing.s) {
                 Text(String(
-                    format: String(localized: "library.unregister.explanation", locale: locale),
+                    format: AppStrings.text("library.unregister.explanation", locale: locale),
                     folderName))
                     .fixedSize(horizontal: false, vertical: true)
                 Text("library.unregister.warning")

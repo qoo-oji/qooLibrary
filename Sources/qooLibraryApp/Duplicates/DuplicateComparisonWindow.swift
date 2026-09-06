@@ -58,13 +58,13 @@ struct DuplicateComparisonWindow: View {
         case .loading:
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         case .failed(let reason):
-            PlaceholderPane(title: String(localized: "duplicates.loadFailed", locale: locale),
+            PlaceholderPane(title: AppStrings.text("duplicates.loadFailed", locale: locale),
                             subtitle: reason)
         case .ready where model.rows.count < 2:
             // 組が解けた（別の経路で片付いた）ときはここへ来る。
             PlaceholderPane(
-                title: String(localized: "duplicates.noLongerDuplicated", locale: locale),
-                subtitle: String(localized: "duplicates.noLongerDuplicatedHint", locale: locale))
+                title: AppStrings.text("duplicates.noLongerDuplicated", locale: locale),
+                subtitle: AppStrings.text("duplicates.noLongerDuplicatedHint", locale: locale))
         case .ready:
             comparisonTable
         }

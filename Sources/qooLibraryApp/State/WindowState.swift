@@ -224,7 +224,7 @@ public final class WindowState {
     public init(target: TabTarget = .home) {
         self.folder = target.url
         self.navigationRoot = Self.normalizedRoot(target.navigationRoot, for: target.url)
-        self.title = target.url?.lastPathComponent ?? String(localized: "action.newTab", locale: AppLanguage.effectiveLocale)
+        self.title = target.url?.lastPathComponent ?? AppStrings.text("action.newTab", locale: AppLanguage.effectiveLocale)
         self.listStyle = Self.loadDefaultListStyle()
         self.iconSize = Self.loadDefaultIconSize()
     }

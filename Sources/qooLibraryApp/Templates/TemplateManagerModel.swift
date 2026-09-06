@@ -220,10 +220,10 @@ final class TemplateManagerModel {
         await perform {
             let outcome = try await LibraryServices.shared.importUserTemplates(at: url)
             if outcome.rejections.isEmpty {
-                return String(format: String(localized: "templates.importedCount",
+                return String(format: AppStrings.text("templates.importedCount",
                                              locale: locale), outcome.added.count)
             }
-            return String(format: String(localized: "templates.importedCountWithRejections",
+            return String(format: AppStrings.text("templates.importedCountWithRejections",
                                          locale: locale),
                           outcome.added.count, outcome.rejections.count)
         }

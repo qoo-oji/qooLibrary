@@ -6,10 +6,10 @@ import SwiftUI
 /// libarchive（BSD-2-Clause）についても併記する。全文は
 /// `THIRD-PARTY-NOTICES.md` を参照。
 struct AboutView: View {
-    /// `String(localized:)`/`String(format:)` は `Text` の
-    /// `LocalizedStringKey` 解決と違い `.environment(\.locale)` を自動的には
-    /// 見ないため、動的に値を埋め込む文字列向けに明示的に読んで渡す
-    /// [1-12 ローカライズ方針、CLAUDE.md 参照]。
+    /// `Text` の `LocalizedStringKey` 解決と違い、View の外で組み立てる
+    /// 文字列は `.environment(\.locale)` を自動的には見ないため、ここで読んで
+    /// `AppStrings` へ渡す。**`String(localized:locale:)` は使えない**
+    /// ——`locale:` は書式にしか効かず `.lproj` を選ばない［実測 2026-09-06］。
     @Environment(\.locale) private var locale
 
     private var appVersion: String {
@@ -67,6 +67,6 @@ struct AboutView: View {
     /// `String(format:)` を使う（複数値の埋め込みが必要な箇所は
     /// `KeyboardPreferencesTab.swift` と同じ理由で同じ方式にしている）。
     private func localized(_ key: String, _ value: String) -> String {
-        String(format: String(localized: String.LocalizationValue(key), locale: locale), value)
+        String(format: AppStrings.text(key, locale: locale), value)
     }
 }

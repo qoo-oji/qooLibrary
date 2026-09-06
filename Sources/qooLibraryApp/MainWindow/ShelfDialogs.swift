@@ -41,16 +41,16 @@ enum ShelfDialogs {
                             locale: Locale) {
         guard condition.isActive else { return }
         DialogWindowPresenter.shared.present(
-            title: String(localized: "labelFilter.shelfSaveTitle", locale: locale)
+            title: AppStrings.text("labelFilter.shelfSaveTitle", locale: locale)
         ) { _ in
             NameInputDialog(
-                placeholder: String(localized: "labelFilter.shelfNamePlaceholder", locale: locale),
-                confirmTitle: String(localized: "common.save", locale: locale),
+                placeholder: AppStrings.text("labelFilter.shelfNamePlaceholder", locale: locale),
+                confirmTitle: AppStrings.text("common.save", locale: locale),
                 initialName: ""
             ) { name in
                 run(CreateShelfCommand(libraryID: libraryID, name: name,
                                        condition: condition, services: services),
-                    whatHappened: String(localized: "labelFilter.shelfSaveTitle", locale: locale))
+                    whatHappened: AppStrings.text("labelFilter.shelfSaveTitle", locale: locale))
             }
         }
     }
@@ -63,17 +63,17 @@ enum ShelfDialogs {
                               services: LibraryServices,
                               locale: Locale) {
         DialogWindowPresenter.shared.present(
-            title: String(localized: "labelFilter.shelfRenameTitle", locale: locale)
+            title: AppStrings.text("labelFilter.shelfRenameTitle", locale: locale)
         ) { _ in
             NameInputDialog(
-                placeholder: String(localized: "labelFilter.shelfNamePlaceholder", locale: locale),
-                confirmTitle: String(localized: "action.rename", locale: locale),
+                placeholder: AppStrings.text("labelFilter.shelfNamePlaceholder", locale: locale),
+                confirmTitle: AppStrings.text("action.rename", locale: locale),
                 initialName: shelf.name
             ) { name in
                 guard name != shelf.name else { return }
                 run(RenameShelfCommand(shelfID: shelf.id, previousName: shelf.name,
                                        newName: name, services: services),
-                    whatHappened: String(localized: "labelFilter.shelfRenameTitle", locale: locale))
+                    whatHappened: AppStrings.text("labelFilter.shelfRenameTitle", locale: locale))
             }
         }
     }

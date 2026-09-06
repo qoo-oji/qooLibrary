@@ -332,7 +332,7 @@ struct MainWindowView: View {
     /// 同じく独立したウインドウとして出す（`DialogWindowPresenter` 参照）。
     private func presentGoToFolderDialog() {
         DialogWindowPresenter.shared.present(
-            title: String(localized: "goToFolder.title", locale: locale)
+            title: AppStrings.text("goToFolder.title", locale: locale)
         ) { _ in
             GoToFolderDialog { url in
                 // 入口は「ボリューム」扱いにする — 入力されたパスが結果的に
@@ -368,7 +368,7 @@ struct MainWindowView: View {
         if isSearchFieldExpanded {
             ToolbarSearchField(
                 text: $windowState.searchText,
-                placeholder: String(localized: "folder.searchPrompt", locale: locale),
+                placeholder: AppStrings.text("folder.searchPrompt", locale: locale),
                 onCancel: { collapseSearchField(clearingText: true) },
                 onEndEditingWhileEmpty: { collapseSearchField(clearingText: false) }
             )

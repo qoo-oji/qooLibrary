@@ -1,0 +1,64 @@
+/* QooKit の利用者可視文字列 [A-01: Foundation のみ]。
+   引くのは QooKitStrings 経由。String(localized:locale:) は効かない
+   （理由は LocalizedStrings の型コメント）。 */
+
+"fileName.error.empty" = "名前を入力してください。";
+"fileName.error.forbiddenCharacter" = "名前に「%@」は使えません。この文字はフォルダの区切りとして予約されています。別の文字に置き換えてください。";
+"fileName.error.reservedDotName" = "「.」と「..」はファイルシステムが使う名前のため、項目の名前には使えません。";
+"fileName.error.tooLong" = "名前が長すぎます（%1$d 文字ぶん、上限 %2$d 文字ぶん）。短い名前を入力してください。";
+
+/* 展開の失敗 [ER-03 の三要素: 何が / なぜ / 次に何ができるか] */
+"extract.unsupportedFormat.what" = "この形式のアーカイブには対応していません。";
+"extract.passwordProtected.what" = "このアーカイブはパスワードで保護されています。";
+"extract.incorrectPassphrase.what" = "アーカイブを復号できませんでした。";
+"extract.insufficientFreeSpace.what" = "展開先の空き容量が足りません。";
+"extract.insufficientStagingSpace.what" = "起動ディスクの空き容量が足りません。";
+"extract.tooManyEntries.what" = "アーカイブに含まれる項目が多すぎます。";
+"extract.expansionLimitExceeded.what" = "展開後の大きさが上限を超えました。";
+"extract.compressionRatioExceeded.what" = "圧縮率が上限を超えました。";
+"extract.cancelled.what" = "処理を中断しました。";
+"extract.writeFailed.what" = "展開先へ書き込めませんでした。";
+"extract.backendFailure.what" = "アーカイブを読み書きできませんでした。";
+"extract.entryNotFound.what" = "アーカイブ内に「%@」が見つかりません。";
+"extract.entryReadLimitExceeded.what" = "アーカイブ内の項目が大きすぎて読み込めません。";
+
+"extract.unsupportedFormat.why" = "zip・7z・rar・tar.gz のいずれでもないか、ファイルが壊れている可能性があります。";
+"extract.passwordProtected.why" = "中身を取り出すにはパスワードが要ります。";
+"extract.incorrectPassphrase.why" = "パスワードが違うか、アーカイブが壊れています。";
+"extract.insufficientFreeSpace.why" = "%1$@ が必要ですが、空きは %2$@ しかありません。";
+"extract.insufficientStagingSpace.why" = "展開はいったん起動ディスク上の作業領域へ書き出すため、展開先とは別に %1$@ が必要ですが、空きは %2$@ しかありません。";
+"extract.tooManyEntries.why" = "上限は %@ 件です。";
+"extract.expansionLimitExceeded.why" = "上限は %@ です。";
+"extract.compressionRatioExceeded.why" = "上限は %@ 倍です。壊れているか、極端に膨らむアーカイブの可能性があります。";
+"extract.backendFailure.why" = "アーカイブが壊れているか、対応していない機能が使われている可能性があります。";
+"extract.entryNotFound.why" = "アーカイブの中身が変わったか、一覧が古くなっている可能性があります。";
+"extract.entryReadLimitExceeded.why" = "1 項目あたりの読み込みは %@ までです。";
+
+"extract.unsupportedFormat.hint" = "別のアプリで開けるか確認してください。";
+"extract.password.hint" = "パスワードを確認して、もう一度お試しください。";
+"extract.insufficientFreeSpace.hint" = "不要な項目を削除して空きを増やすか、別の場所へ展開してください。";
+"extract.insufficientStagingSpace.hint" = "起動ディスクの不要な項目を削除してから、もう一度お試しください。";
+"extract.limits.hint" = "この上限は環境設定の「圧縮／展開」で変更できます。";
+"extract.backendFailure.hint" = "アーカイブを作り直すか、別のアプリで開けるか確認してください。";
+"extract.entryNotFound.hint" = "一覧を最新にしてから、もう一度お試しください。";
+
+/* ファイル名フォーマットの不備 [HP-04: 編集画面のその場に出す] */
+"format.unbalancedDelimiter.what" = "フォーマットの括弧の対応が取れていません。";
+"format.duplicateTitle.what" = "@title が複数あります。";
+"format.duplicateField.what" = "%@ が複数あります。";
+"format.adjacentFreeFields.what" = "%1$@ と %2$@ が隣り合っています。";
+"format.unknownReservedWord.what" = "「%@」は予約語ではありません。";
+"format.emptyFormat.what" = "フォーマットが空です。";
+"format.noFieldAtAll.what" = "フォーマットに予約語が 1 つもありません。";
+
+"format.unbalancedDelimiter.why" = "開き括弧と閉じ括弧の数が合っていないか、対応する相手がありません。";
+"format.duplicate.why" = "同じ予約語を 1 つのフォーマットに 2 回以上書くと、どちらへ割り当てるかを決められません。";
+"format.adjacentFreeFields.why" = "どちらも自由文字列のため、境目が決まりません。";
+"format.unknownReservedWord.why" = "綴りが違うか、この版では使えない予約語です。";
+"format.empty.why" = "照合しても取り出せる情報がありません。";
+
+"format.unbalancedDelimiter.hint" = "括弧を追加するか、余分な括弧を削除してください。";
+"format.duplicate.hint" = "片方を削除するか、別の予約語に置き換えてください。";
+"format.adjacentFreeFields.hint" = "間に区切り文字やリテラル文字を挟んでください（空白だけでは境目になりません）。";
+"format.unknownReservedWord.hint" = "予約語パレットから選び直してください。";
+"format.empty.hint" = "@title などの予約語を 1 つ以上書いてください。";

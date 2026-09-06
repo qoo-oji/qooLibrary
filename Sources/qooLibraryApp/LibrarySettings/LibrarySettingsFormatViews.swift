@@ -159,7 +159,7 @@ struct LibraryFieldsSettingsView: View {
         let color = colors[min(draft.fields.count, colors.count - 1)]
         draft.fields.append(FieldDraft(
             index: index,
-            name: String(format: String(localized: "librarySettings.fields.newName"), index),
+            name: String(format: AppStrings.text("librarySettings.fields.newName"), index),
             colorHexLight: color.hexLight, colorHexDark: color.hexDark))
     }
 
@@ -175,7 +175,7 @@ struct LibraryFieldsSettingsView: View {
     private func removeGroup(_ field: FieldDraft) {
         guard !isDefaultField(field) else { return }        // ボタンと二重の守り
         DialogWindowPresenter.shared.present(
-            title: String(localized: "librarySettings.fields.removeTitle")
+            title: AppStrings.text("librarySettings.fields.removeTitle")
         ) { _ in
             RemoveFieldDialog(groupName: field.name) {
                 draft.fields.removeAll { $0.id == field.id }
@@ -197,16 +197,16 @@ private struct RemoveFieldDialog: View {
     var body: some View {
         DialogScaffold(
             width: 440,
-            confirm: DialogButton(title: String(localized: "librarySettings.fields.remove",
+            confirm: DialogButton(title: AppStrings.text("librarySettings.fields.remove",
                                                 locale: locale), role: .destructive) {
                 onConfirm()
                 dismiss()
             },
-            cancel: DialogButton(title: String(localized: "common.cancel", locale: locale),
+            cancel: DialogButton(title: AppStrings.text("common.cancel", locale: locale),
                                  role: .cancel) { dismiss() }
         ) {
             VStack(alignment: .leading, spacing: Tokens.spacing.s) {
-                Text(String(format: String(localized: "librarySettings.fields.removeExplanation",
+                Text(String(format: AppStrings.text("librarySettings.fields.removeExplanation",
                                            locale: locale), groupName))
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -244,7 +244,7 @@ struct LibraryFilenameFormatsSettingsView: View {
         let format = draft.filenameFormats[index]
         let context = draft
         DialogWindowPresenter.shared.present(
-            title: String(localized: "librarySettings.filenameFormats.editorTitle")
+            title: AppStrings.text("librarySettings.filenameFormats.editorTitle")
         ) { _ in
             FilenameFormatEditorDialog(source: format.source, draft: context) { edited in
                 // 添字ではなく id で引き直す。ダイアログを開いている間に
@@ -278,7 +278,7 @@ struct LibraryFilenameFormatsSettingsView: View {
                             .labelsHidden()
                             .help(Text("librarySettings.filenameFormats.enabledHelp"))
                         Text(verbatim: format.source.isEmpty
-                             ? String(localized: "librarySettings.filenameFormats.empty")
+                             ? AppStrings.text("librarySettings.filenameFormats.empty")
                              : format.source)
                             .font(.system(size: Tokens.fontSize.body, design: .monospaced))
                             .foregroundStyle(format.isEnabled ? .primary : .secondary)
@@ -386,11 +386,11 @@ struct FilenameFormatEditorDialog: View {
     var body: some View {
         DialogScaffold(
             width: 560,
-            confirm: DialogButton(title: String(localized: "common.ok", locale: locale)) {
+            confirm: DialogButton(title: AppStrings.text("common.ok", locale: locale)) {
                 onCommit(source)
                 dismiss()
             },
-            cancel: DialogButton(title: String(localized: "common.cancel", locale: locale),
+            cancel: DialogButton(title: AppStrings.text("common.cancel", locale: locale),
                                  role: .cancel) { dismiss() }
         ) {
             editorBody
@@ -471,10 +471,10 @@ struct FilenameFormatEditorDialog: View {
 
     private var paletteEntries: [(word: String, note: String?)] {
         var entries: [(String, String?)] = [
-            ("@title", String(localized: "librarySettings.word.title")),
-            ("@volume", String(localized: "librarySettings.word.volume")),
-            ("@booktype", String(localized: "librarySettings.word.bookType")),
-            ("@ignore", String(localized: "librarySettings.word.ignore")),
+            ("@title", AppStrings.text("librarySettings.word.title")),
+            ("@volume", AppStrings.text("librarySettings.word.volume")),
+            ("@booktype", AppStrings.text("librarySettings.word.bookType")),
+            ("@ignore", AppStrings.text("librarySettings.word.ignore")),
         ]
         // **ファイル名から参照できるフィールドだけを出す。** 束縛の無い
         // フィールド（追加分）は `@labelgroupN` を撤去した [v3 ステージ 5] ので
@@ -554,12 +554,12 @@ struct FormatMatchPreview: View {
         // 記録される値を出す。
         let fields = FieldPostProcessor.postProcess(result, settings: settings)
         if let series = fields.seriesName, result.fields[.series] == nil {
-            rows.append((label: String(localized: "librarySettings.word.series"), value: series))
+            rows.append((label: AppStrings.text("librarySettings.word.series"), value: series))
         }
         if fields.volume.kind != .none, result.fields[.volume] == nil {
             // 原文表記（`第01巻` `上巻`）を出す。数値へ畳んだ値だけだと
             // 「どこを巻数と読んだか」が分からない。
-            rows.append((label: String(localized: "librarySettings.word.volume"),
+            rows.append((label: AppStrings.text("librarySettings.word.volume"),
                          value: fields.volume.raw ?? ""))
         }
         return rows
@@ -597,16 +597,16 @@ struct FormatMatchPreview: View {
 
     static func label(for field: FieldRef, draft: LibrarySettingsDraft) -> String {
         switch field {
-        case .title:       String(localized: "librarySettings.word.title")
+        case .title:       AppStrings.text("librarySettings.word.title")
         // **予約語の綴りではなく訳語を出す。** `@author` と書くと、
         // 意味束縛でラベルにも流れたとき「@author: 著者値A ・ 著者: 著者値A」と
         // 並び、同じ値が 2 回出ている理由が読み取れない。訳語なら
         // 「著者名（＝ファイルの属性）」と「著者（＝ラベル）」の違いが分かる。
-        case .series:      String(localized: "librarySettings.word.series")
-        case .author:      String(localized: "librarySettings.word.author")
-        case .volume:      String(localized: "librarySettings.word.volume")
-        case .bookType:    String(localized: "librarySettings.word.bookType")
-        case .ignore:      String(localized: "librarySettings.word.ignore")
+        case .series:      AppStrings.text("librarySettings.word.series")
+        case .author:      AppStrings.text("librarySettings.word.author")
+        case .volume:      AppStrings.text("librarySettings.word.volume")
+        case .bookType:    AppStrings.text("librarySettings.word.bookType")
+        case .ignore:      AppStrings.text("librarySettings.word.ignore")
         // サークル・ジャンル・イベント・キーワード [RWI-02] は**束縛先の
         // フィールド名**を出す。構造化列を持たずラベルにしかならないので、
         // 予約語の綴りを出すと利用者が見ている「分類の軸」と繋がらない。
@@ -698,7 +698,7 @@ struct LibraryFolderLevelsSettingsView: View {
 
     private func row(_ level: Binding<FolderLevelDraft>) -> some View {
         HStack(spacing: Tokens.spacing.s) {
-            Text(String(format: String(localized: "librarySettings.folderLevels.level"),
+            Text(String(format: AppStrings.text("librarySettings.folderLevels.level"),
                         level.wrappedValue.level))
                 .frame(width: 110, alignment: .leading)
             FixedWidthPopUp(items: kindItems, selection: kindBinding(level))
@@ -729,9 +729,9 @@ struct LibraryFolderLevelsSettingsView: View {
     }
 
     private var kindItems: [FixedWidthPopUp<String>.Item] {
-        [.init(title: String(localized: "librarySettings.folderLevels.kindNone"), tag: "none"),
-         .init(title: String(localized: "librarySettings.folderLevels.kindGroup"), tag: "field"),
-         .init(title: String(localized: "librarySettings.folderLevels.kindFormat"), tag: "format")]
+        [.init(title: AppStrings.text("librarySettings.folderLevels.kindNone"), tag: "none"),
+         .init(title: AppStrings.text("librarySettings.folderLevels.kindGroup"), tag: "field"),
+         .init(title: AppStrings.text("librarySettings.folderLevels.kindFormat"), tag: "format")]
     }
 
     private var groupItems: [FixedWidthPopUp<Int>.Item] {
@@ -859,11 +859,11 @@ struct LibraryVolumeFormatsSettingsView: View {
         if pattern.kind == .volume, let regex = try? SafeRegex(pattern.source) {
             if regex.captureGroupCount == 0 {
                 return RegexSafetyFinding(kind: .invalidSyntax(
-                    String(localized: "librarySettings.volumeFormats.noCaptureGroup")))
+                    AppStrings.text("librarySettings.volumeFormats.noCaptureGroup")))
             }
             if regex.captureGroupCount > 1, !regex.hasNamedVolumeGroup {
                 return RegexSafetyFinding(kind: .invalidSyntax(
-                    String(localized: "librarySettings.volumeFormats.ambiguousCaptureGroup")))
+                    AppStrings.text("librarySettings.volumeFormats.ambiguousCaptureGroup")))
             }
         }
         return findings.first
@@ -873,8 +873,8 @@ struct LibraryVolumeFormatsSettingsView: View {
 extension VolumePatternKind {
     /// 種別の選択肢。**序列巻数は廃止した**ので、巻数か区切りかの 2 択になる。
     static var popUpItems: [FixedWidthPopUp<VolumePatternKind>.Item] {
-        [.init(title: String(localized: "librarySettings.volumeFormats.kindVolume"), tag: .volume),
-         .init(title: String(localized: "librarySettings.volumeFormats.kindSeparator"), tag: .separator)]
+        [.init(title: AppStrings.text("librarySettings.volumeFormats.kindVolume"), tag: .volume),
+         .init(title: AppStrings.text("librarySettings.volumeFormats.kindSeparator"), tag: .separator)]
     }
 }
 

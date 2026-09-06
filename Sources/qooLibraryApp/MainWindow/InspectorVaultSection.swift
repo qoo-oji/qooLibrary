@@ -72,7 +72,7 @@ struct InspectorVaultSection: View {
                 guard !CommandStack.isCancellation(error) else { return }
                 await NotificationRouter.shared.presentError(
                     error,
-                    whatHappened: String(localized: archived
+                    whatHappened: AppStrings.text(archived
                                          ? "error.vaultRestoreFailed"
                                          : "error.vaultArchiveFailed", locale: locale))
             }

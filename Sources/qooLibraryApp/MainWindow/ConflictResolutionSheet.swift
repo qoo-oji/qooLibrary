@@ -51,7 +51,7 @@ struct ConflictResolutionSheet: View {
         VStack(alignment: .leading, spacing: Tokens.spacing.m) {
             Text("conflict.title")
                 .font(.system(size: Tokens.fontSize.title2, weight: .semibold))
-            Text(String(format: String(localized: "conflict.message", locale: locale), pending.destination.lastPathComponent))
+            Text(String(format: AppStrings.text("conflict.message", locale: locale), pending.destination.lastPathComponent))
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(alignment: .top, spacing: Tokens.spacing.l) {
@@ -76,14 +76,14 @@ struct ConflictResolutionSheet: View {
             // （下の `.onDisappear`）のまま。
             QooDialogFooter(
                 confirm: DialogButton(
-                    title: String(localized: "conflict.replace", locale: locale)
+                    title: AppStrings.text("conflict.replace", locale: locale)
                 ) { resolve(.replace) },
                 cancel: DialogButton(
-                    title: String(localized: "conflict.keepBoth", locale: locale)
+                    title: AppStrings.text("conflict.keepBoth", locale: locale)
                 ) { resolve(.keepBoth) },
                 extra: [
                     DialogButton(
-                        title: String(localized: "conflict.skip", locale: locale)
+                        title: AppStrings.text("conflict.skip", locale: locale)
                     ) { resolve(.skip) }
                 ]
             )
@@ -132,7 +132,7 @@ struct ConflictResolutionSheet: View {
         dateFormatter.dateStyle = .medium
         dateFormatter.timeStyle = .short
         let size = info.isDirectory
-            ? String(localized: "kind.folder", locale: locale)
+            ? AppStrings.text("kind.folder", locale: locale)
             : ByteCountFormatter().string(fromByteCount: Int64(info.fileSize))
         return FileSummary(
             size: size,

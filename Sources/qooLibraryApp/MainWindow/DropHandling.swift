@@ -31,7 +31,7 @@ enum DropHandling {
             Task {
                 await NotificationRouter.shared.present(NotificationItem(
                     category: .error, severity: .sheet,
-                    title: String(localized: "error.operationFailed", locale: AppLanguage.effectiveLocale),
+                    title: AppStrings.text("error.operationFailed", locale: AppLanguage.effectiveLocale),
                     body: message
                 ))
             }
@@ -93,7 +93,7 @@ enum DropHandling {
         let command: any Command = children.count == 1
             ? children[0]
             : CompositeCommand(
-                displayName: String(localized: "command.dragAndDrop", locale: AppLanguage.effectiveLocale),
+                displayName: AppStrings.text("command.dragAndDrop", locale: AppLanguage.effectiveLocale),
                 children: children
             )
         // **`CommandStack` を直に呼ばない** — 進捗・キャンセル・エラー提示を

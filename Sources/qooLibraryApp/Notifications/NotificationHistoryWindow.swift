@@ -307,7 +307,7 @@ struct NotificationHistoryWindow: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             HStack(spacing: Tokens.spacing.s) {
-                Text(String(format: String(localized: "labelEditor.selectedCount", locale: locale),
+                Text(String(format: AppStrings.text("labelEditor.selectedCount", locale: locale),
                             model.selection.count))
                     .font(.system(size: Tokens.fontSize.caption))
                     .foregroundStyle(.secondary)
@@ -344,7 +344,7 @@ struct NotificationHistoryWindow: View {
     /// 毎回確認を出すと本当に見てほしい 1 枚まで読み飛ばされる。
     private func confirmDeleteAll() {
         DialogWindowPresenter.shared.present(
-            title: String(localized: "notifications.deleteAllTitle", locale: locale)
+            title: AppStrings.text("notifications.deleteAllTitle", locale: locale)
         ) { _ in
             DeleteAllNotificationsDialog(count: model.rows.count) {
                 Task { await model.deleteAll() }
@@ -361,12 +361,12 @@ struct NotificationHistoryWindow: View {
         panel.nameFieldStringValue = "qooLibrary-notifications.csv"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let header = [
-            String(localized: "notifications.column.date", locale: locale),
-            String(localized: "notifications.column.category", locale: locale),
-            String(localized: "notifications.column.target", locale: locale),
-            String(localized: "notifications.column.title", locale: locale),
-            String(localized: "notifications.column.body", locale: locale),
-            String(localized: "notifications.column.detail", locale: locale),
+            AppStrings.text("notifications.column.date", locale: locale),
+            AppStrings.text("notifications.column.category", locale: locale),
+            AppStrings.text("notifications.column.target", locale: locale),
+            AppStrings.text("notifications.column.title", locale: locale),
+            AppStrings.text("notifications.column.body", locale: locale),
+            AppStrings.text("notifications.column.detail", locale: locale),
         ]
         let formatter = Self.csvDateFormatter
         let data = NotificationCSV.encode(
@@ -402,7 +402,7 @@ struct NotificationHistoryWindow: View {
     }
 
     static func categoryName(_ category: NotificationItem.Category, locale: Locale) -> String {
-        String(localized: String.LocalizationValue(categoryKey(category)), locale: locale)
+        AppStrings.text(categoryKey(category), locale: locale)
     }
 
     static func categoryIcon(_ category: NotificationItem.Category?) -> String {
@@ -454,16 +454,16 @@ struct DeleteAllNotificationsDialog: View {
     var body: some View {
         DialogScaffold(
             width: 420,
-            confirm: DialogButton(title: String(localized: "notifications.deleteAll", locale: locale),
+            confirm: DialogButton(title: AppStrings.text("notifications.deleteAll", locale: locale),
                                   role: .destructive) {
                 onConfirm()
                 dismiss()
             },
-            cancel: DialogButton(title: String(localized: "common.cancel", locale: locale),
+            cancel: DialogButton(title: AppStrings.text("common.cancel", locale: locale),
                                  role: .cancel) { dismiss() }
         ) {
             VStack(alignment: .leading, spacing: Tokens.spacing.s) {
-                Text(String(format: String(localized: "notifications.deleteAllBody", locale: locale),
+                Text(String(format: AppStrings.text("notifications.deleteAllBody", locale: locale),
                             count))
                     .fixedSize(horizontal: false, vertical: true)
                 Text("notifications.deleteAllIrreversible")

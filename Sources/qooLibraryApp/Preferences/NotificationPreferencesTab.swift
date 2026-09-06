@@ -43,7 +43,7 @@ struct NotificationPreferencesTab: View {
                         Slider(value: Binding(get: { Double(retentionDays) },
                                               set: { retentionDays = Int($0) }),
                                in: 1...365, step: 1)
-                        Text(String(format: String(localized: "preferences.notifications.days",
+                        Text(String(format: AppStrings.text("preferences.notifications.days",
                                                    locale: locale), retentionDays))
                             .monospacedDigit()
                             .frame(width: 64, alignment: .trailing)
@@ -61,7 +61,7 @@ struct NotificationPreferencesTab: View {
                         Slider(value: Binding(get: { Double(maxCount) },
                                               set: { maxCount = Int($0) }),
                                in: 100...10_000, step: 100)
-                        Text(String(format: String(localized: "preferences.notifications.items",
+                        Text(String(format: AppStrings.text("preferences.notifications.items",
                                                    locale: locale), maxCount))
                             .monospacedDigit()
                             .frame(width: 84, alignment: .trailing)
@@ -80,7 +80,7 @@ struct NotificationPreferencesTab: View {
 
             Section {
                 LabeledContent("preferences.notifications.unread") {
-                    Text(String(format: String(localized: "preferences.notifications.unreadCount",
+                    Text(String(format: AppStrings.text("preferences.notifications.unreadCount",
                                                locale: locale),
                                 NotificationRouter.shared.unreadCount))
                         .monospacedDigit()
@@ -102,7 +102,7 @@ struct NotificationPreferencesTab: View {
                         Slider(value: Binding(get: { Double(opRetentionDays) },
                                               set: { opRetentionDays = Int($0) }),
                                in: 1...365, step: 1)
-                        Text(String(format: String(localized: "preferences.notifications.days",
+                        Text(String(format: AppStrings.text("preferences.notifications.days",
                                                    locale: locale), opRetentionDays))
                             .monospacedDigit()
                             .frame(width: 64, alignment: .trailing)
@@ -120,7 +120,7 @@ struct NotificationPreferencesTab: View {
                         Slider(value: Binding(get: { Double(opMaxCount) },
                                               set: { opMaxCount = Int($0) }),
                                in: 100...10_000, step: 100)
-                        Text(String(format: String(localized: "preferences.notifications.items",
+                        Text(String(format: AppStrings.text("preferences.notifications.items",
                                                    locale: locale), opMaxCount))
                             .monospacedDigit()
                             .frame(width: 84, alignment: .trailing)

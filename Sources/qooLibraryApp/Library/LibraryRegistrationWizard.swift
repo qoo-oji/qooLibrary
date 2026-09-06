@@ -37,7 +37,7 @@ enum LibraryRegistrationWizard {
             userTemplates: services.userTemplates,
             bookTypeVocabulary: (try? BuiltInTemplates.bookTypes()) ?? [])
         DialogWindowPresenter.shared.present(
-            title: String(localized: "libraryWizard.title", locale: locale)
+            title: AppStrings.text("libraryWizard.title", locale: locale)
         ) { _ in
             LibraryRegistrationWizardView(model: model) { url, name, draft, template in
                 LibraryEnableAction.registerAndEnable(
@@ -81,7 +81,7 @@ enum LibraryRegistrationWizard {
         // （適合率と推奨はサンプルが揃った時点で埋まる）。
         Task { await model.chooseFolder(url) }
         DialogWindowPresenter.shared.present(
-            title: String(localized: "libraryWizard.title", locale: locale)
+            title: AppStrings.text("libraryWizard.title", locale: locale)
         ) { _ in
             LibraryRegistrationWizardView(model: model) { _, _, draft, template in
                 Task {
@@ -413,7 +413,7 @@ final class LibraryRegistrationWizardModel {
                 case .none:
                     what = "—"
                 }
-                return String(format: String(localized: "libraryWizard.folderUsage.level",
+                return String(format: AppStrings.text("libraryWizard.folderUsage.level",
                                              locale: locale),
                               Int(level) ?? 0, what)
             }
@@ -631,7 +631,7 @@ struct LibraryRegistrationWizardView: View {
                                 .foregroundStyle(.secondary)
                         }
                     } else if let enable = model.enable {
-                        Text(String(format: String(localized: "libraryWizard.folder.sampled",
+                        Text(String(format: AppStrings.text("libraryWizard.folder.sampled",
                                                    locale: locale),
                                     enable.sampleNames.count))
                             .font(.system(size: Tokens.fontSize.caption))
@@ -660,8 +660,8 @@ struct LibraryRegistrationWizardView: View {
         panel.allowsMultipleSelection = false
         // ボタンは「選択」——この時点では登録されない [RG3-25]
         // ［ユーザー指摘: 「登録」だとこの時点で登録されるように見える］。
-        panel.prompt = String(localized: "libraryWizard.folder.panelPrompt", locale: locale)
-        panel.message = String(localized: "folderTree.chooseLibraryFolder", locale: locale)
+        panel.prompt = AppStrings.text("libraryWizard.folder.panelPrompt", locale: locale)
+        panel.message = AppStrings.text("folderTree.chooseLibraryFolder", locale: locale)
         guard panel.runModal() == .OK, let url = panel.url else { return }
         Task { await model.chooseFolder(url) }
     }
@@ -740,7 +740,7 @@ struct LibraryRegistrationWizardView: View {
                 Spacer(minLength: 0)
             }
             if let outcome {
-                Text(String(format: String(localized: "libraryWizard.template.matchCount",
+                Text(String(format: AppStrings.text("libraryWizard.template.matchCount",
                                            locale: locale),
                             outcome.total, outcome.matched))
                     .font(.system(size: Tokens.fontSize.caption))
@@ -774,7 +774,7 @@ struct LibraryRegistrationWizardView: View {
             }
             if let outcome {
                 // 実ファイルでの適合率が「どれを選ぶべきか」の答え [HP-05]。
-                Text(String(format: String(localized: "libraryWizard.template.matchCount",
+                Text(String(format: AppStrings.text("libraryWizard.template.matchCount",
                                            locale: locale),
                             outcome.total, outcome.matched))
                     .font(.system(size: Tokens.fontSize.caption))
@@ -943,7 +943,7 @@ struct LibraryRegistrationWizardView: View {
             }
             if hasFolders {
                 viewerRow(key: LibraryRegistrationWizardModel.folderViewerKey,
-                          title: String(localized: "libraryWizard.customize.viewerFolderRow",
+                          title: AppStrings.text("libraryWizard.customize.viewerFolderRow",
                                         locale: locale),
                           candidates: AppAssociationStore.shared.candidatesForFolders())
             }
@@ -976,7 +976,7 @@ struct LibraryRegistrationWizardView: View {
     private func presentAdvanced() {
         guard let enable = model.enable else { return }
         DialogWindowPresenter.shared.present(
-            title: String(localized: "librarySettings.advanced.title", locale: locale)
+            title: AppStrings.text("librarySettings.advanced.title", locale: locale)
         ) { _ in
             AdvancedDraftSettingsDialog(model: enable)
         }
@@ -992,7 +992,7 @@ struct LibraryRegistrationWizardView: View {
     private func advancedCatalog(draft: LibrarySettingsDraft)
         -> [(LibrarySettingsSection, String)] {
         func count(_ n: Int) -> String {
-            String(format: String(localized: "libraryWizard.customize.countItems",
+            String(format: AppStrings.text("libraryWizard.customize.countItems",
                                   locale: locale), n)
         }
         return AdvancedSettingsEditor.wizardSections.map { section in
@@ -1005,7 +1005,7 @@ struct LibraryRegistrationWizardView: View {
             case .delimiters:        summary = ""
             case .protectedTokens:   summary = count(draft.protectedTokens.count)
             case .bookFolderOpening:
-                summary = String(localized: draft.opensBookFolderWithApp
+                summary = AppStrings.text(draft.opensBookFolderWithApp
                     ? "libraryWizard.customize.bookFolderApp"
                     : "libraryWizard.customize.bookFolderInline", locale: locale)
             case .fields, .folderLevels, .filenameFormats: summary = ""
@@ -1022,18 +1022,18 @@ struct LibraryRegistrationWizardView: View {
             let outcome = enable.preview
             VStack(alignment: .leading, spacing: Tokens.spacing.m) {
                 VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
-                    Text(String(format: String(localized: "libraryWizard.confirm.header",
+                    Text(String(format: AppStrings.text("libraryWizard.confirm.header",
                                                locale: locale),
                                 enable.draft.displayName,
                                 model.originName(blankTitle: String(
                                     localized: "libraryEnable.blank", locale: locale))))
                         .font(.system(size: Tokens.fontSize.title3, weight: .semibold))
-                    Text(String(format: String(localized: "libraryWizard.confirm.summary",
+                    Text(String(format: AppStrings.text("libraryWizard.confirm.summary",
                                                locale: locale),
                                 outcome.total, outcome.matched))
                         .font(.system(size: Tokens.fontSize.body))
                     if outcome.unresolved > 0 {
-                        Label(String(format: String(localized: "libraryWizard.confirm.unresolved",
+                        Label(String(format: AppStrings.text("libraryWizard.confirm.unresolved",
                                                     locale: locale), outcome.unresolved),
                               systemImage: "tray")
                             .font(.system(size: Tokens.fontSize.caption))
@@ -1042,11 +1042,11 @@ struct LibraryRegistrationWizardView: View {
                     if let item = model.currentMerged, item.foldered != nil {
                         // フォルダの扱いも確認に出す [ユーザー指摘]。
                         Label(model.folderUsageOn
-                              ? String(format: String(localized: "libraryWizard.confirm.folderUsageOn",
+                              ? String(format: AppStrings.text("libraryWizard.confirm.folderUsageOn",
                                                       locale: locale),
                                        model.folderLevelsDescription(item.foldered!,
                                                                      locale: locale))
-                              : String(localized: "libraryWizard.confirm.folderUsageOff",
+                              : AppStrings.text("libraryWizard.confirm.folderUsageOff",
                                        locale: locale),
                               systemImage: "folder")
                             .font(.system(size: Tokens.fontSize.caption))
@@ -1213,8 +1213,8 @@ struct LibraryRegistrationWizardView: View {
             QooDialogFooter(
                 confirm: DialogButton(
                     title: model.step == .confirm
-                        ? String(localized: "libraryWizard.register", locale: locale)
-                        : String(localized: "libraryWizard.next", locale: locale)
+                        ? AppStrings.text("libraryWizard.register", locale: locale)
+                        : AppStrings.text("libraryWizard.next", locale: locale)
                 ) {
                     if model.step == .confirm {
                         commit()
@@ -1222,10 +1222,10 @@ struct LibraryRegistrationWizardView: View {
                         model.goNext()
                     }
                 },
-                cancel: DialogButton(title: String(localized: "common.cancel", locale: locale),
+                cancel: DialogButton(title: AppStrings.text("common.cancel", locale: locale),
                                      role: .cancel) { dismiss() },
                 extra: model.step == model.minStep ? [] : [
-                    DialogButton(title: String(localized: "libraryWizard.back", locale: locale)) {
+                    DialogButton(title: AppStrings.text("libraryWizard.back", locale: locale)) {
                         model.goBack()
                     }
                 ],
@@ -1277,7 +1277,7 @@ private struct AdvancedDraftSettingsDialog: View {
             Divider()
             QooDialogFooter(
                 confirm: DialogButton(
-                    title: String(localized: "librarySettings.advanced.done", locale: locale)
+                    title: AppStrings.text("librarySettings.advanced.done", locale: locale)
                 ) { dismiss() },
                 cancel: nil)
                 .padding(Tokens.spacing.m)

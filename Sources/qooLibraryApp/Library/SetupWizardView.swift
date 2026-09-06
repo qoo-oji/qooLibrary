@@ -55,7 +55,7 @@ struct SetupWizardView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
-            Text(String(format: String(localized: "setupWizard.stepIndicator", locale: locale),
+            Text(String(format: AppStrings.text("setupWizard.stepIndicator", locale: locale),
                         model.step.position, SetupStep.count))
                 .font(.system(size: Tokens.fontSize.caption))
                 .foregroundStyle(.secondary)
@@ -66,9 +66,9 @@ struct SetupWizardView: View {
 
     private var stepTitle: String {
         switch model.step {
-        case .welcome:         String(localized: "setupWizard.step.welcome", locale: locale)
-        case .accessGrant:     String(localized: "setupWizard.step.accessGrant", locale: locale)
-        case .appAssociations: String(localized: "setupWizard.step.appAssociations", locale: locale)
+        case .welcome:         AppStrings.text("setupWizard.step.welcome", locale: locale)
+        case .accessGrant:     AppStrings.text("setupWizard.step.accessGrant", locale: locale)
+        case .appAssociations: AppStrings.text("setupWizard.step.appAssociations", locale: locale)
         }
     }
 
@@ -166,7 +166,7 @@ struct SetupWizardView: View {
                     .font(.system(size: Tokens.fontSize.body))
                 // タグは bundle ID。空文字が「システムの既定」[AS2-01]。
                 FixedWidthPopUp<String>(
-                    items: [.init(title: String(localized: "setupWizard.viewer.systemDefault",
+                    items: [.init(title: AppStrings.text("setupWizard.viewer.systemDefault",
                                                 locale: locale),
                                   tag: "")]
                         + viewerCandidates.map { .init(title: $0.name, tag: $0.bundleID) },
@@ -188,8 +188,8 @@ struct SetupWizardView: View {
         QooDialogFooter(
             confirm: DialogButton(
                 title: model.step.isLast
-                    ? String(localized: "setupWizard.done", locale: locale)
-                    : String(localized: "setupWizard.next", locale: locale)
+                    ? AppStrings.text("setupWizard.done", locale: locale)
+                    : AppStrings.text("setupWizard.next", locale: locale)
             ) {
                 // **「続ける」は常に押せる** [OB-02]。何も設定せずに次へ進めば
                 // それがスキップで、後からの案内は既存の導線が現在の状態を
@@ -203,7 +203,7 @@ struct SetupWizardView: View {
                     model.advance()
                 }
             },
-            cancel: DialogButton(title: String(localized: "setupWizard.later", locale: locale),
+            cancel: DialogButton(title: AppStrings.text("setupWizard.later", locale: locale),
                                  role: .cancel) {
                 // **完了印は立てない** [SW-06]。次回の起動で続きから出る
                 // [OB-03]。登録が 1 件でもあれば出なくなる [SW-01] ので、
@@ -211,7 +211,7 @@ struct SetupWizardView: View {
                 dismiss()
             },
             extra: model.step.isFirst ? [] : [
-                DialogButton(title: String(localized: "setupWizard.back", locale: locale)) {
+                DialogButton(title: AppStrings.text("setupWizard.back", locale: locale)) {
                     model.goBack()
                 }
             ])
@@ -268,7 +268,7 @@ struct SetupWizardView: View {
                 } catch {
                     await NotificationRouter.shared.presentError(
                         error,
-                        whatHappened: String(localized: "error.operationFailed", locale: locale))
+                        whatHappened: AppStrings.text("error.operationFailed", locale: locale))
                     return
                 }
             }

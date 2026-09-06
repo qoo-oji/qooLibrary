@@ -159,9 +159,9 @@ struct OperationProgressWindowContent: View {
     private var buttonLabelWidth: CGFloat {
         DialogButtonMetrics.maxLabelWidth(
             [
-                String(localized: "progress.pause", locale: locale),
-                String(localized: "progress.resume", locale: locale),
-                String(localized: "common.cancel", locale: locale),
+                AppStrings.text("progress.pause", locale: locale),
+                AppStrings.text("progress.resume", locale: locale),
+                AppStrings.text("common.cancel", locale: locale),
             ],
             controlSize: .small
         )
@@ -172,10 +172,10 @@ struct OperationProgressWindowContent: View {
     /// 残り時間だけはここで時刻を読んで足す（表示のたびに計算し直す）。
     private func detailText(for operation: OperationProgressCenter.ActiveOperation) -> String? {
         var parts: [String] = []
-        if operation.isPaused { parts.append(String(localized: "progress.paused", locale: locale)) }
+        if operation.isPaused { parts.append(AppStrings.text("progress.paused", locale: locale)) }
         if let detail = operation.detail { parts.append(detail) }
         if let remaining = operation.estimatedRemaining, let text = Self.durationText(remaining, locale: locale) {
-            parts.append(String(format: String(localized: "progress.remaining", locale: locale), text))
+            parts.append(String(format: AppStrings.text("progress.remaining", locale: locale), text))
         }
         return parts.isEmpty ? nil : parts.joined(separator: " — ")
     }

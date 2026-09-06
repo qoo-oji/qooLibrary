@@ -23,24 +23,24 @@ struct DeleteLabelsDialog: View {
     var body: some View {
         DialogScaffold(
             width: 440,
-            confirm: DialogButton(title: String(localized: "labelEditor.delete", locale: locale),
+            confirm: DialogButton(title: AppStrings.text("labelEditor.delete", locale: locale),
                                   role: .destructive) {
                 onConfirm()
                 dismiss()
             },
-            cancel: DialogButton(title: String(localized: "common.cancel", locale: locale),
+            cancel: DialogButton(title: AppStrings.text("common.cancel", locale: locale),
                                  role: .cancel) { dismiss() }
         ) {
             VStack(alignment: .leading, spacing: Tokens.spacing.s) {
                 Text(labels.count == 1
-                     ? String(format: String(localized: "labelEditor.deleteOne", locale: locale),
+                     ? String(format: AppStrings.text("labelEditor.deleteOne", locale: locale),
                               labels[0].name)
-                     : String(format: String(localized: "labelEditor.deleteMany", locale: locale),
+                     : String(format: AppStrings.text("labelEditor.deleteMany", locale: locale),
                               labels.count))
                     .fixedSize(horizontal: false, vertical: true)
 
                 if affected > 0 {
-                    Text(String(format: String(localized: "labelEditor.deleteAffects",
+                    Text(String(format: AppStrings.text("labelEditor.deleteAffects",
                                                locale: locale), affected))
                         .foregroundStyle(Color("DangerText"))
                         .fixedSize(horizontal: false, vertical: true)
@@ -71,18 +71,18 @@ struct MergeLabelsDialog: View {
     var body: some View {
         DialogScaffold(
             width: 440,
-            confirm: DialogButton(title: String(localized: "labelEditor.merge", locale: locale)) {
+            confirm: DialogButton(title: AppStrings.text("labelEditor.merge", locale: locale)) {
                 onConfirm()
                 dismiss()
             },
-            cancel: DialogButton(title: String(localized: "common.cancel", locale: locale),
+            cancel: DialogButton(title: AppStrings.text("common.cancel", locale: locale),
                                  role: .cancel) { dismiss() }
         ) {
             VStack(alignment: .leading, spacing: Tokens.spacing.s) {
-                Text(String(format: String(localized: "labelEditor.mergeBody", locale: locale),
+                Text(String(format: AppStrings.text("labelEditor.mergeBody", locale: locale),
                             source.name, target.name))
                     .fixedSize(horizontal: false, vertical: true)
-                Text(String(format: String(localized: "labelEditor.mergeCounts", locale: locale),
+                Text(String(format: AppStrings.text("labelEditor.mergeCounts", locale: locale),
                             source.fileCount, target.fileCount))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

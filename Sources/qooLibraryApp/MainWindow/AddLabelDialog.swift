@@ -32,9 +32,9 @@ struct AddLabelDialog: View {
     var body: some View {
         DialogScaffold(
             width: 420,
-            confirm: DialogButton(title: String(localized: "inspector.labels.addConfirm",
+            confirm: DialogButton(title: AppStrings.text("inspector.labels.addConfirm",
                                                 locale: locale)) { add() },
-            cancel: DialogButton(title: String(localized: "common.cancel", locale: locale),
+            cancel: DialogButton(title: AppStrings.text("common.cancel", locale: locale),
                                  role: .cancel) { dismiss() },
             confirmDisabled: !canConfirm
         ) {
@@ -148,7 +148,7 @@ struct AddLabelDialog: View {
                 onChanged()
             } catch {
                 await NotificationRouter.shared.presentError(
-                    error, whatHappened: String(localized: "error.setLabelFailed", locale: locale))
+                    error, whatHappened: AppStrings.text("error.setLabelFailed", locale: locale))
             }
         }
     }

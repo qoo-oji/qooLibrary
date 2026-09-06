@@ -53,7 +53,7 @@ enum SetupWizard {
     private static func present(model: SetupWizardModel, locale: Locale,
                                 openWindow: OpenWindowAction) {
         DialogWindowPresenter.shared.present(
-            title: String(localized: "setupWizard.title", locale: locale)
+            title: AppStrings.text("setupWizard.title", locale: locale)
         ) { _ in
             SetupWizardView(model: model) {
                 // 最後まで進んだら**登録ウィザードへ引き渡す** [SW-02][RG3-28]。

@@ -89,8 +89,8 @@ struct LabelChip: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(isPinned ? Color.accentColor : Color.secondary)
                 .help(isPinned
-                      ? String(localized: "labelFilter.unpin")
-                      : String(localized: "labelFilter.pin"))
+                      ? AppStrings.text("labelFilter.unpin")
+                      : AppStrings.text("labelFilter.pin"))
             }
         }
     }

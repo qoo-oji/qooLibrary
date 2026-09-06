@@ -180,7 +180,7 @@ struct AdvancedPreferencesTab: View {
             } catch {
                 await NotificationRouter.shared.presentError(
                     error,
-                    whatHappened: String(localized: "preferences.advanced.checkIntegrityFailed",
+                    whatHappened: AppStrings.text("preferences.advanced.checkIntegrityFailed",
                                          locale: locale))
             }
         }
@@ -197,13 +197,13 @@ struct AdvancedPreferencesTab: View {
                 integrityReport = try await LibraryServices.shared.checkIntegrity()
                 await NotificationRouter.shared.present(NotificationItem(
                     category: .info, severity: .transient,
-                    title: String(localized: "preferences.advanced.repairedTitle", locale: locale),
-                    body: String(format: String(localized: "preferences.advanced.repairedBody",
+                    title: AppStrings.text("preferences.advanced.repairedTitle", locale: locale),
+                    body: String(format: AppStrings.text("preferences.advanced.repairedBody",
                                                 locale: locale), repaired)))
             } catch {
                 await NotificationRouter.shared.presentError(
                     error,
-                    whatHappened: String(localized: "preferences.advanced.repairFailed",
+                    whatHappened: AppStrings.text("preferences.advanced.repairFailed",
                                          locale: locale))
             }
         }

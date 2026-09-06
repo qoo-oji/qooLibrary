@@ -1,0 +1,64 @@
+/* User-facing strings for QooKit [A-01: Foundation only].
+   Resolve through QooKitStrings. String(localized:locale:) does not work
+   (see the LocalizedStrings type comment). */
+
+"fileName.error.empty" = "Enter a name.";
+"fileName.error.forbiddenCharacter" = "The name can't contain “%@”. That character is reserved as a folder separator. Replace it with another character.";
+"fileName.error.reservedDotName" = "“.” and “..” are names the file system uses, so they can't be used for items.";
+"fileName.error.tooLong" = "The name is too long (%1$d units; the limit is %2$d). Enter a shorter name.";
+
+/* Extraction failures [ER-03 three parts: what / why / what you can do next] */
+"extract.unsupportedFormat.what" = "This archive format isn't supported.";
+"extract.passwordProtected.what" = "This archive is password-protected.";
+"extract.incorrectPassphrase.what" = "The archive couldn't be decrypted.";
+"extract.insufficientFreeSpace.what" = "There isn't enough free space at the destination.";
+"extract.insufficientStagingSpace.what" = "There isn't enough free space on the startup disk.";
+"extract.tooManyEntries.what" = "The archive contains too many items.";
+"extract.expansionLimitExceeded.what" = "The expanded size exceeded the limit.";
+"extract.compressionRatioExceeded.what" = "The compression ratio exceeded the limit.";
+"extract.cancelled.what" = "The operation was stopped.";
+"extract.writeFailed.what" = "Nothing could be written to the destination.";
+"extract.backendFailure.what" = "The archive couldn't be read or written.";
+"extract.entryNotFound.what" = "“%@” wasn't found in the archive.";
+"extract.entryReadLimitExceeded.what" = "An item in the archive is too large to read.";
+
+"extract.unsupportedFormat.why" = "It may not be a zip, 7z, rar, or tar.gz file, or the file may be damaged.";
+"extract.passwordProtected.why" = "A password is required to extract its contents.";
+"extract.incorrectPassphrase.why" = "The password is wrong, or the archive is damaged.";
+"extract.insufficientFreeSpace.why" = "%1$@ is required, but only %2$@ is free.";
+"extract.insufficientStagingSpace.why" = "Extraction writes to a staging area on the startup disk first, so %1$@ is required there in addition to the destination, but only %2$@ is free.";
+"extract.tooManyEntries.why" = "The limit is %@ items.";
+"extract.expansionLimitExceeded.why" = "The limit is %@.";
+"extract.compressionRatioExceeded.why" = "The limit is %@×. The archive may be damaged, or it may expand extremely.";
+"extract.backendFailure.why" = "The archive may be damaged, or it may use a feature that isn't supported.";
+"extract.entryNotFound.why" = "The archive's contents may have changed, or the listing may be out of date.";
+"extract.entryReadLimitExceeded.why" = "Up to %@ can be read per item.";
+
+"extract.unsupportedFormat.hint" = "Check whether another app can open it.";
+"extract.password.hint" = "Check the password and try again.";
+"extract.insufficientFreeSpace.hint" = "Delete items you no longer need to free up space, or extract to another location.";
+"extract.insufficientStagingSpace.hint" = "Delete items you no longer need from the startup disk, then try again.";
+"extract.limits.hint" = "You can change this limit in Settings, under Compress & Extract.";
+"extract.backendFailure.hint" = "Re-create the archive, or check whether another app can open it.";
+"extract.entryNotFound.hint" = "Refresh the listing, then try again.";
+
+/* Filename format problems [HP-04: shown inline in the editor] */
+"format.unbalancedDelimiter.what" = "The brackets in the format don't match.";
+"format.duplicateTitle.what" = "@title appears more than once.";
+"format.duplicateField.what" = "%@ appears more than once.";
+"format.adjacentFreeFields.what" = "%1$@ and %2$@ are next to each other.";
+"format.unknownReservedWord.what" = "“%@” isn't a reserved word.";
+"format.emptyFormat.what" = "The format is empty.";
+"format.noFieldAtAll.what" = "The format contains no reserved words.";
+
+"format.unbalancedDelimiter.why" = "The number of opening and closing brackets doesn't match, or one of them has no counterpart.";
+"format.duplicate.why" = "When the same reserved word appears more than once in a format, there's no way to decide which one a value belongs to.";
+"format.adjacentFreeFields.why" = "Both are free text, so there's no way to tell where one ends and the next begins.";
+"format.unknownReservedWord.why" = "It may be misspelled, or it may be a reserved word this version doesn't support.";
+"format.empty.why" = "Matching it would extract no information.";
+
+"format.unbalancedDelimiter.hint" = "Add the missing bracket, or remove the extra one.";
+"format.duplicate.hint" = "Remove one of them, or replace it with a different reserved word.";
+"format.adjacentFreeFields.hint" = "Put a delimiter or a literal character between them (whitespace alone isn't a boundary).";
+"format.unknownReservedWord.hint" = "Choose one from the reserved-word palette.";
+"format.empty.hint" = "Write at least one reserved word, such as @title.";

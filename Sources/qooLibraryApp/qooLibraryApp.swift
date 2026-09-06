@@ -571,7 +571,7 @@ private struct FileMenuCommands: View {
         // メニューバーの `.commands` はシーンルートの `.appLanguageOverride()` の
         // 外側にあるため、`AppLanguage.effectiveLocale` を明示的に渡す
         // [CLAUDE.md「表示言語」節の方針]。
-        let format = String(localized: "folder.extractToNamed", locale: AppLanguage.effectiveLocale)
+        let format = AppStrings.text("folder.extractToNamed", locale: AppLanguage.effectiveLocale)
         return LocalizedStringKey(String(format: format, name))
     }
 }
@@ -1003,12 +1003,12 @@ private struct UndoRedoMenuCommands: View {
         case let .partial(operationName, succeeded, failed):
             var lines = [operationName, ""]
             lines.append(String(
-                format: String(localized: "error.partialCounts", locale: locale), succeeded, failed.count
+                format: AppStrings.text("error.partialCounts", locale: locale), succeeded, failed.count
             ))
             for item in failed.prefix(5) { lines.append("• \(item.item): \(item.reason)") }
             if failed.count > 5 {
                 lines.append(String(
-                    format: String(localized: "error.partialMore", locale: locale), failed.count - 5
+                    format: AppStrings.text("error.partialMore", locale: locale), failed.count - 5
                 ))
             }
             body = lines.joined(separator: "\n")
@@ -1023,14 +1023,14 @@ private struct UndoRedoMenuCommands: View {
     }
 
     private func undoTitle(_ operationName: String?) -> String {
-        guard let operationName else { return String(localized: "action.undo", locale: locale) }
-        let template = String(localized: "menu.undoWithName", locale: locale)
+        guard let operationName else { return AppStrings.text("action.undo", locale: locale) }
+        let template = AppStrings.text("menu.undoWithName", locale: locale)
         return String(format: template, operationName)
     }
 
     private func redoTitle(_ operationName: String?) -> String {
-        guard let operationName else { return String(localized: "action.redo", locale: locale) }
-        let template = String(localized: "menu.redoWithName", locale: locale)
+        guard let operationName else { return AppStrings.text("action.redo", locale: locale) }
+        let template = AppStrings.text("menu.redoWithName", locale: locale)
         return String(format: template, operationName)
     }
 }

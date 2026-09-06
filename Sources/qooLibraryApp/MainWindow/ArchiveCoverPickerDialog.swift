@@ -33,9 +33,9 @@ struct ArchiveCoverPickerDialog: View {
     var body: some View {
         DialogScaffold(
             width: 560,
-            confirm: DialogButton(title: String(localized: "inspector.cover.usePage",
+            confirm: DialogButton(title: AppStrings.text("inspector.cover.usePage",
                                                 locale: locale)) { pick() },
-            cancel: DialogButton(title: String(localized: "common.cancel", locale: locale),
+            cancel: DialogButton(title: AppStrings.text("common.cancel", locale: locale),
                                  role: .cancel) { dismiss() },
             confirmDisabled: selection == nil || isFetching
         ) {
@@ -118,7 +118,7 @@ struct ArchiveCoverPickerDialog: View {
             guard let data else {
                 await NotificationRouter.shared.presentError(
                     CoverReplacementError.notAnImage,
-                    whatHappened: String(localized: "error.setCoverFailed", locale: locale))
+                    whatHappened: AppStrings.text("error.setCoverFailed", locale: locale))
                 return
             }
             dismiss()

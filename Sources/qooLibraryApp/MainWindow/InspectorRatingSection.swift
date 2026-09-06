@@ -76,7 +76,7 @@ struct InspectorRatingSection: View {
             Button {
                 Task { await applyToSeries() }
             } label: {
-                Text(String(format: String(localized: subject.stars == 0
+                Text(String(format: AppStrings.text(subject.stars == 0
                                            ? "inspector.rating.clearSeries"
                                            : "inspector.rating.applySeries", locale: locale),
                             "\(count)"))
@@ -96,7 +96,7 @@ struct InspectorRatingSection: View {
             try await model.setStars(tapped: star)
         } catch {
             await NotificationRouter.shared.presentError(
-                error, whatHappened: String(localized: "error.setRatingFailed", locale: locale))
+                error, whatHappened: AppStrings.text("error.setRatingFailed", locale: locale))
         }
     }
 
@@ -105,7 +105,7 @@ struct InspectorRatingSection: View {
             try await model.applyToSeries()
         } catch {
             await NotificationRouter.shared.presentError(
-                error, whatHappened: String(localized: "error.setRatingFailed", locale: locale))
+                error, whatHappened: AppStrings.text("error.setRatingFailed", locale: locale))
         }
     }
 }

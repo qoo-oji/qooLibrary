@@ -304,8 +304,8 @@ enum StandardLocationOpener {
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
         panel.directoryURL = url
-        panel.message = String(localized: "access.grantPanelMessage", locale: locale)
-        panel.prompt = String(localized: "access.grantPanelPrompt", locale: locale)
+        panel.message = AppStrings.text("access.grantPanelMessage", locale: locale)
+        panel.prompt = AppStrings.text("access.grantPanelPrompt", locale: locale)
         guard panel.runModal() == .OK, let chosen = panel.url else { return false }
         do {
             _ = try await VolumeAccessStore.shared.grantAccess(to: chosen, displayName: nil)
@@ -315,7 +315,7 @@ enum StandardLocationOpener {
             return true
         } catch {
             await NotificationRouter.shared.presentError(
-                error, whatHappened: String(localized: "error.operationFailed", locale: locale)
+                error, whatHappened: AppStrings.text("error.operationFailed", locale: locale)
             )
             return false
         }

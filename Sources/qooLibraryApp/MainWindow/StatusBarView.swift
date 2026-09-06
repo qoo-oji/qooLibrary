@@ -108,7 +108,7 @@ struct StatusBarView<Trailing: View>: View {
             .buttonStyle(.borderless)
             .controlSize(.small)
             .foregroundStyle(Color.accentColor)
-            .help(String(format: String(localized: "statusBar.unreadNotifications", locale: locale),
+            .help(String(format: AppStrings.text("statusBar.unreadNotifications", locale: locale),
                          unread))
         }
     }
@@ -142,13 +142,13 @@ struct StatusBarView<Trailing: View>: View {
         switch thumbnailHiddenReason {
         case .registeredFolder(let displayName):
             String(
-                format: String(localized: "statusBar.thumbnailsHiddenByFolder", locale: locale),
+                format: AppStrings.text("statusBar.thumbnailsHiddenByFolder", locale: locale),
                 displayName
             )
         case .globalToggle:
-            String(localized: "statusBar.showThumbnails", locale: locale)
+            AppStrings.text("statusBar.showThumbnails", locale: locale)
         case nil:
-            String(localized: "statusBar.hideThumbnails", locale: locale)
+            AppStrings.text("statusBar.hideThumbnails", locale: locale)
         }
     }
 
@@ -157,25 +157,25 @@ struct StatusBarView<Trailing: View>: View {
     /// （ネットワーク等）では容量の節を落とす。
     private var summary: String {
         var parts: [String] = []
-        parts.append(String(format: String(localized: "statusBar.itemCount", locale: locale), itemCount))
+        parts.append(String(format: AppStrings.text("statusBar.itemCount", locale: locale), itemCount))
         if isSearching {
-            parts.append(String(localized: "statusBar.searching", locale: locale))
+            parts.append(AppStrings.text("statusBar.searching", locale: locale))
         } else if searchTruncated {
             parts.append(String(
-                format: String(localized: "statusBar.searchTruncated", locale: locale),
+                format: AppStrings.text("statusBar.searchTruncated", locale: locale),
                 AppLimits.Search.maxResults
             ))
         }
         if selectedCount > 0 {
-            parts.append(String(format: String(localized: "statusBar.selectedCount", locale: locale), selectedCount))
+            parts.append(String(format: AppStrings.text("statusBar.selectedCount", locale: locale), selectedCount))
         }
         if let availableCapacity {
             let formatter = ByteCountFormatter()
             formatter.countStyle = .file
             let formatted = formatter.string(fromByteCount: availableCapacity)
-            parts.append(String(format: String(localized: "statusBar.available", locale: locale), formatted))
+            parts.append(String(format: AppStrings.text("statusBar.available", locale: locale), formatted))
         }
-        return parts.joined(separator: String(localized: "statusBar.separator", locale: locale))
+        return parts.joined(separator: AppStrings.text("statusBar.separator", locale: locale))
     }
 
     /// `.task(id:)` は 1 つの値しか取れないため、フォルダと再読み込み信号を束ねる。

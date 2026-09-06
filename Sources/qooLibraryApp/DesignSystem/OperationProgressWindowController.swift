@@ -65,7 +65,7 @@ final class OperationProgressWindowController {
             backing: .buffered,
             defer: false
         )
-        panel.title = String(localized: "progress.windowTitle", locale: AppLanguage.effectiveLocale)
+        panel.title = AppStrings.text("progress.windowTitle", locale: AppLanguage.effectiveLocale)
         panel.contentView = hosting
         hosting.onDeferredLayout = { [weak panel, weak hosting] in
             guard let panel, let hosting else { return }

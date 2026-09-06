@@ -22,14 +22,14 @@ struct DuplicateDeleteConfirmationSheet: View {
         DialogScaffold(
             width: 460,
             confirm: DialogButton(
-                title: String(localized: "duplicates.confirmButton", locale: locale),
+                title: AppStrings.text("duplicates.confirmButton", locale: locale),
                 role: .destructive, action: onConfirm),
             cancel: DialogButton(
-                title: String(localized: "common.cancel", locale: locale),
+                title: AppStrings.text("common.cancel", locale: locale),
                 role: .cancel, action: onCancel)
         ) {
             VStack(alignment: .leading, spacing: Tokens.spacing.m) {
-                Text(String(format: String(localized: "duplicates.confirmBody", locale: locale),
+                Text(String(format: AppStrings.text("duplicates.confirmBody", locale: locale),
                             plan.doomed.count,
                             DuplicateResolutionModel.subjectName(plan.keeper)))
                     .fixedSize(horizontal: false, vertical: true)

@@ -112,7 +112,7 @@ struct AdvancedSettingsDialog: View {
             Divider()
             QooDialogFooter(
                 confirm: DialogButton(
-                    title: String(localized: "librarySettings.advanced.done", locale: locale)
+                    title: AppStrings.text("librarySettings.advanced.done", locale: locale)
                 ) { dismiss() },
                 cancel: nil)
                 .padding(Tokens.spacing.m)

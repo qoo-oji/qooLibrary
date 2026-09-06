@@ -170,7 +170,7 @@ struct TemplateManagerWindow: View {
     private func presentAdvanced(initial: LibrarySettingsSection? = nil) {
         guard model.hasSelection else { return }
         DialogWindowPresenter.shared.present(
-            title: String(localized: "librarySettings.advanced.title", locale: locale)
+            title: AppStrings.text("librarySettings.advanced.title", locale: locale)
         ) { _ in
             AdvancedSettingsDialog(draft: $model.draft, initialSection: initial)
         }
@@ -314,7 +314,7 @@ struct TemplateManagerWindow: View {
     /// 別名の既定。**プリセットからなら「〈名前〉のコピー」**——同じ名前で
     /// 保存できてしまうと、一覧でどちらがプリセットか読めなくなる。
     private func defaultSaveAsName() -> String {
-        String(format: String(localized: "templates.copyName", locale: locale), model.name)
+        String(format: AppStrings.text("templates.copyName", locale: locale), model.name)
     }
 
     /// 白紙から新規作成 [LT-02]。
@@ -325,7 +325,7 @@ struct TemplateManagerWindow: View {
             defaultFieldNames: DefaultFieldNames.localized)
         TemplateSaveAction.present(
             draft: draft,
-            suggestedName: String(localized: "templates.newName", locale: locale),
+            suggestedName: AppStrings.text("templates.newName", locale: locale),
             locale: locale
         ) { saved in
             Task {
@@ -343,14 +343,14 @@ struct TemplateManagerWindow: View {
             let panel = NSSavePanel()
             panel.nameFieldStringValue = "qooLibrary-templates.json"
             panel.allowedContentTypes = [.json]
-            panel.prompt = String(localized: "templates.export", locale: locale)
+            panel.prompt = AppStrings.text("templates.export", locale: locale)
             guard panel.runModal() == .OK, let url = panel.url else { return }
             do {
                 try UserTemplateDocument.makeEncoder().encode(document).write(to: url)
             } catch {
                 await NotificationRouter.shared.presentError(
                     error,
-                    whatHappened: String(localized: "templates.exportFailed", locale: locale))
+                    whatHappened: AppStrings.text("templates.exportFailed", locale: locale))
             }
         }
     }
@@ -359,7 +359,7 @@ struct TemplateManagerWindow: View {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = false
-        panel.prompt = String(localized: "templates.import", locale: locale)
+        panel.prompt = AppStrings.text("templates.import", locale: locale)
         guard panel.runModal() == .OK, let url = panel.url else { return }
         Task { await model.importTemplates(at: url, locale: locale) }
     }

@@ -76,7 +76,7 @@ struct InspectorProtectionSection: View {
             try await model.toggleAll()
         } catch {
             await NotificationRouter.shared.presentError(
-                error, whatHappened: String(localized: "error.setProtectionFailed",
+                error, whatHappened: AppStrings.text("error.setProtectionFailed",
                                             locale: locale))
         }
     }

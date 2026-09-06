@@ -23,7 +23,7 @@ enum BackupRestoreAction {
     static func confirmRestore(_ generation: BackupGeneration, locale: Locale,
                                onFinished: @escaping () -> Void) {
         DialogWindowPresenter.shared.present(
-            title: String(localized: "preferences.reset.restoreConfirmTitle", locale: locale)
+            title: AppStrings.text("preferences.reset.restoreConfirmTitle", locale: locale)
         ) { _ in
             BackupRestoreConfirmationDialog(generation: generation) {
                 restore(generation, locale: locale, onFinished: onFinished)
@@ -43,7 +43,7 @@ enum BackupRestoreAction {
                 onFinished()
                 await NotificationRouter.shared.presentError(
                     error,
-                    whatHappened: String(localized: "preferences.reset.restoreFailed",
+                    whatHappened: AppStrings.text("preferences.reset.restoreFailed",
                                          locale: locale))
                 return
             }
@@ -96,13 +96,13 @@ enum BackupRestoreAction {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
-        panel.prompt = String(localized: "preferences.reset.exportGenerationPrompt", locale: locale)
-        panel.message = String(localized: "preferences.reset.exportGenerationMessage", locale: locale)
+        panel.prompt = AppStrings.text("preferences.reset.exportGenerationPrompt", locale: locale)
+        panel.message = AppStrings.text("preferences.reset.exportGenerationMessage", locale: locale)
         guard panel.runModal() == .OK, let folder = panel.url else { return }
         let destination = folder.appendingPathComponent(generation.fileName, isDirectory: false)
 
         let handle = OperationProgressCenter.shared.begin(
-            title: String(localized: "preferences.reset.exportingGeneration", locale: locale))
+            title: AppStrings.text("preferences.reset.exportingGeneration", locale: locale))
         Task {
             defer { OperationProgressCenter.shared.finish(handle) }
             do {
@@ -114,7 +114,7 @@ enum BackupRestoreAction {
             } catch {
                 await NotificationRouter.shared.presentError(
                     error,
-                    whatHappened: String(localized: "preferences.reset.exportGenerationFailed",
+                    whatHappened: AppStrings.text("preferences.reset.exportGenerationFailed",
                                          locale: locale))
             }
         }
@@ -125,7 +125,7 @@ enum BackupRestoreAction {
     static func confirmDelete(_ generation: BackupGeneration, locale: Locale,
                               onFinished: @escaping () -> Void) {
         DialogWindowPresenter.shared.present(
-            title: String(localized: "preferences.reset.deleteGenerationTitle", locale: locale)
+            title: AppStrings.text("preferences.reset.deleteGenerationTitle", locale: locale)
         ) { _ in
             BackupGenerationDeleteDialog(generation: generation) {
                 do {
@@ -195,14 +195,14 @@ enum BackupRestoreAction {
         if let failure = outcome.failure {
             item = NotificationItem(
                 category: .error, severity: .sheet,
-                title: String(localized: "preferences.reset.restoreFailedTitle", locale: locale),
+                title: AppStrings.text("preferences.reset.restoreFailedTitle", locale: locale),
                 body: message(for: failure, locale: locale),
                 technicalDetail: String(describing: failure))
         } else {
             item = NotificationItem(
                 category: .info, severity: .sheet,
-                title: String(localized: "preferences.reset.restoredTitle", locale: locale),
-                body: String(localized: "preferences.reset.restoredBody", locale: locale))
+                title: AppStrings.text("preferences.reset.restoredTitle", locale: locale),
+                body: AppStrings.text("preferences.reset.restoredBody", locale: locale))
         }
         await NotificationRouter.shared.present(item)
     }
@@ -232,12 +232,12 @@ enum BackupRestoreAction {
         if hasStoreCopy {
             actions.append(RecoveryAction(
                 id: openRestore,
-                title: String(localized: "preferences.reset.openRestore", locale: locale),
+                title: AppStrings.text("preferences.reset.openRestore", locale: locale),
                 kind: .openWindow(openRestore)))
         }
         let chosen = await NotificationRouter.shared.present(NotificationItem(
             category: .error, severity: .appModal,
-            title: String(localized: "library.storeUnhealthyTitle", locale: locale),
+            title: AppStrings.text("library.storeUnhealthyTitle", locale: locale),
             body: body(for: health, hasStoreCopy: hasStoreCopy, locale: locale),
             technicalDetail: String(describing: services.startupFailure),
             actions: actions))
@@ -258,7 +258,7 @@ enum BackupRestoreAction {
 
     private static func body(for health: StoreHealth, hasStoreCopy: Bool,
                              locale: Locale) -> String {
-        let cause: String.LocalizationValue = switch health {
+        let cause: String = switch health {
         case .corrupt: "library.storeCorrupt"
         // **中身は読めた**ことを必ず言う [RB-06]——「データは残っている」と
         // 分かるかどうかで、利用者の次の一手がまったく変わる。
@@ -266,23 +266,23 @@ enum BackupRestoreAction {
         case .tooNew: "library.storeTooNew"
         case .healthy: "library.storeCorrupt"
         }
-        let next: String.LocalizationValue = health == .tooNew
+        let next: String = health == .tooNew
             ? "library.storeUpdateApp"
             : (hasStoreCopy ? "library.storeRestoreAvailable" : "library.storeNoBackup")
-        return String(localized: cause, locale: locale) + "\n\n"
-            + String(localized: next, locale: locale)
+        return AppStrings.text(cause, locale: locale) + "\n\n"
+            + AppStrings.text(next, locale: locale)
     }
 
     private static func message(for failure: RestoreOutcome.Failure, locale: Locale) -> String {
         switch failure {
         case .generationMissing:
-            String(localized: "preferences.reset.restoreFailedMissing", locale: locale)
+            AppStrings.text("preferences.reset.restoreFailedMissing", locale: locale)
         case .sourceCorrupt:
-            String(localized: "preferences.reset.restoreFailedCorrupt", locale: locale)
+            AppStrings.text("preferences.reset.restoreFailedCorrupt", locale: locale)
         case .sourceTooNew:
-            String(localized: "preferences.reset.restoreFailedTooNew", locale: locale)
+            AppStrings.text("preferences.reset.restoreFailedTooNew", locale: locale)
         case .swapFailed:
-            String(localized: "preferences.reset.restoreFailedSwap", locale: locale)
+            AppStrings.text("preferences.reset.restoreFailedSwap", locale: locale)
         }
     }
 }
@@ -303,14 +303,14 @@ struct BackupRestoreConfirmationDialog: View {
         DialogScaffold(
             width: 460,
             confirm: DialogButton(
-                title: String(localized: "preferences.reset.restoreConfirm", locale: locale),
+                title: AppStrings.text("preferences.reset.restoreConfirm", locale: locale),
                 role: .destructive
             ) {
                 dismiss()
                 onConfirm()
             },
             cancel: DialogButton(
-                title: String(localized: "common.cancel", locale: locale), role: .cancel
+                title: AppStrings.text("common.cancel", locale: locale), role: .cancel
             ) { dismiss() }
         ) {
             VStack(alignment: .leading, spacing: Tokens.spacing.s) {
@@ -343,17 +343,17 @@ struct BackupGenerationDeleteDialog: View {
         DialogScaffold(
             width: 420,
             confirm: DialogButton(
-                title: String(localized: "common.delete", locale: locale), role: .destructive
+                title: AppStrings.text("common.delete", locale: locale), role: .destructive
             ) {
                 onConfirm()
                 dismiss()
             },
             cancel: DialogButton(
-                title: String(localized: "common.cancel", locale: locale), role: .cancel
+                title: AppStrings.text("common.cancel", locale: locale), role: .cancel
             ) { dismiss() }
         ) {
             VStack(alignment: .leading, spacing: Tokens.spacing.s) {
-                Text(String(format: String(localized: "preferences.reset.deleteGenerationBody",
+                Text(String(format: AppStrings.text("preferences.reset.deleteGenerationBody",
                                            locale: locale),
                             BackupGenerationFormatting.date(generation.date, locale: locale)))
                     .fixedSize(horizontal: false, vertical: true)
@@ -378,11 +378,11 @@ enum BackupGenerationFormatting {
     }
 
     static func reason(_ reason: BackupReason, locale: Locale) -> String {
-        String(localized: key(for: reason), locale: locale)
+        AppStrings.text(key(for: reason), locale: locale)
     }
 
     /// **網羅的な `switch`**——契機を足した人がここで必ず言葉を決めることになる。
-    private static func key(for reason: BackupReason) -> String.LocalizationValue {
+    private static func key(for reason: BackupReason) -> String {
         switch reason {
         case .launch: "backup.reason.launch"
         case .schemaMigration: "backup.reason.schemaMigration"
@@ -396,8 +396,8 @@ enum BackupGenerationFormatting {
 
     static func kind(_ kind: BackupGeneration.Kind, locale: Locale) -> String {
         switch kind {
-        case .document: String(localized: "backup.kind.document", locale: locale)
-        case .store: String(localized: "backup.kind.store", locale: locale)
+        case .document: AppStrings.text("backup.kind.document", locale: locale)
+        case .store: AppStrings.text("backup.kind.store", locale: locale)
         }
     }
 }

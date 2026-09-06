@@ -27,7 +27,7 @@ enum VolumeEjectAction {
             let action = await NotificationRouter.shared.presentError(
                 error,
                 whatHappened: String(
-                    format: String(localized: "eject.failed", locale: locale),
+                    format: AppStrings.text("eject.failed", locale: locale),
                     error.volumeName
                 )
             )
@@ -39,7 +39,7 @@ enum VolumeEjectAction {
         } catch {
             await NotificationRouter.shared.presentError(
                 error,
-                whatHappened: String(localized: "eject.failedGeneric", locale: locale)
+                whatHappened: AppStrings.text("eject.failedGeneric", locale: locale)
             )
         }
     }
@@ -66,8 +66,8 @@ enum VolumeEjectAction {
         await NotificationRouter.shared.present(NotificationItem(
             category: .error,
             severity: .sheet,
-            title: String(localized: "eject.someFailed", locale: locale),
-            body: failedNames.joined(separator: String(localized: "statusBar.separator", locale: locale))
+            title: AppStrings.text("eject.someFailed", locale: locale),
+            body: failedNames.joined(separator: AppStrings.text("statusBar.separator", locale: locale))
         ))
     }
 

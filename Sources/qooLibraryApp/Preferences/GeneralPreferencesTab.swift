@@ -125,7 +125,7 @@ struct GeneralPreferencesTab: View {
                     registeredFolderSubPicker(libraryFolders, category: .library)
                 case .volumeFolder:
                     HStack {
-                        Text(startupVolumeDisplayName.isEmpty ? String(localized: "preferences.general.startupFolderNoneChosen", locale: locale) : startupVolumeDisplayName)
+                        Text(startupVolumeDisplayName.isEmpty ? AppStrings.text("preferences.general.startupFolderNoneChosen", locale: locale) : startupVolumeDisplayName)
                             .foregroundStyle(.secondary)
                         Spacer()
                         Button("preferences.general.startupFolderChooseEllipsis") { chooseVolumeFolder() }
@@ -257,7 +257,7 @@ struct GeneralPreferencesTab: View {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
-        panel.prompt = String(localized: "preferences.general.startupFolderChoosePrompt", locale: locale)
+        panel.prompt = AppStrings.text("preferences.general.startupFolderChoosePrompt", locale: locale)
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             let bookmarkData = try SecurityScopedBookmarkResolver().makeBookmark(for: url)
@@ -266,7 +266,7 @@ struct GeneralPreferencesTab: View {
             startupFolderKind = StartupFolderKind.volumeFolder.rawValue
         } catch {
             Task {
-                await NotificationRouter.shared.presentError(error, whatHappened: String(localized: "error.operationFailed", locale: locale))
+                await NotificationRouter.shared.presentError(error, whatHappened: AppStrings.text("error.operationFailed", locale: locale))
             }
         }
     }

@@ -18,7 +18,7 @@ struct BulkRenameDialog: View {
     /// ウインドウのタイトル。件数を含むため提示側と同じ組み立てをここに置き、
     /// 文言が 2 か所へ散らないようにする。
     static func windowTitle(count: Int, locale: Locale) -> String {
-        String(format: String(localized: "bulkRename.title", locale: locale), count)
+        String(format: AppStrings.text("bulkRename.title", locale: locale), count)
     }
 
     let names: [String]
@@ -75,14 +75,14 @@ struct BulkRenameDialog: View {
     var body: some View {
         DialogScaffold(
             width: 620,
-            confirm: DialogButton(title: String(localized: "bulkRename.rename", locale: locale)) {
+            confirm: DialogButton(title: AppStrings.text("bulkRename.rename", locale: locale)) {
                 // 先に閉じてから実行する（`NameInputDialog.commit()` と同じ順序）。
                 let planned = changes
                 dismiss()
                 onCommit(planned)
             },
             cancel: DialogButton(
-                title: String(localized: "common.cancel", locale: locale), role: .cancel
+                title: AppStrings.text("common.cancel", locale: locale), role: .cancel
             ) { dismiss() },
             // [BR-09] 衝突が 1 件でもあれば実行させない。
             confirmDisabled: hasConflict || !hasAnyChange
@@ -141,9 +141,9 @@ struct BulkRenameDialog: View {
                 // 要望はそのまま］。
                 FixedWidthPopUp(
                     items: [
-                        .init(title: String(localized: "bulkRename.style.numberOnly", locale: locale), tag: BulkRename.FormatStyle.numberOnly),
-                        .init(title: String(localized: "bulkRename.style.index", locale: locale), tag: BulkRename.FormatStyle.nameAndIndex),
-                        .init(title: String(localized: "bulkRename.style.date", locale: locale), tag: BulkRename.FormatStyle.nameAndDate),
+                        .init(title: AppStrings.text("bulkRename.style.numberOnly", locale: locale), tag: BulkRename.FormatStyle.numberOnly),
+                        .init(title: AppStrings.text("bulkRename.style.index", locale: locale), tag: BulkRename.FormatStyle.nameAndIndex),
+                        .init(title: AppStrings.text("bulkRename.style.date", locale: locale), tag: BulkRename.FormatStyle.nameAndDate),
                     ],
                     selection: $formatStyle
                 )
@@ -190,10 +190,10 @@ struct BulkRenameDialog: View {
                     // 揃わない（`FixedWidthPopUp` のコメント参照）。
                     FixedWidthPopUp(
                         items: [
-                            .init(title: String(localized: "bulkRename.separator.underscore", locale: locale), tag: BulkRename.Separator.underscore),
-                            .init(title: String(localized: "bulkRename.separator.hyphen", locale: locale), tag: BulkRename.Separator.hyphen),
-                            .init(title: String(localized: "bulkRename.separator.space", locale: locale), tag: BulkRename.Separator.space),
-                            .init(title: String(localized: "bulkRename.separator.none", locale: locale), tag: BulkRename.Separator.none),
+                            .init(title: AppStrings.text("bulkRename.separator.underscore", locale: locale), tag: BulkRename.Separator.underscore),
+                            .init(title: AppStrings.text("bulkRename.separator.hyphen", locale: locale), tag: BulkRename.Separator.hyphen),
+                            .init(title: AppStrings.text("bulkRename.separator.space", locale: locale), tag: BulkRename.Separator.space),
+                            .init(title: AppStrings.text("bulkRename.separator.none", locale: locale), tag: BulkRename.Separator.none),
                         ],
                         selection: $separator,
                         titleAlignment: .right // 表示値は右揃え［ユーザー要望］
@@ -250,10 +250,10 @@ struct BulkRenameDialog: View {
     /// `NSString` 計測をわずかに上回ったときの切り詰め（`…`）を防ぐ余裕。
     private var formatLeadingLabelWidth: CGFloat {
         DialogButtonMetrics.maxLabelWidth([
-            String(localized: "bulkRename.formatStyle", locale: locale),
-            String(localized: "bulkRename.customFormat", locale: locale),
-            String(localized: "bulkRename.placement", locale: locale),
-            String(localized: "bulkRename.startNumber", locale: locale),
+            AppStrings.text("bulkRename.formatStyle", locale: locale),
+            AppStrings.text("bulkRename.customFormat", locale: locale),
+            AppStrings.text("bulkRename.placement", locale: locale),
+            AppStrings.text("bulkRename.startNumber", locale: locale),
         ]) + 4
     }
 
@@ -263,16 +263,16 @@ struct BulkRenameDialog: View {
     /// を基準にする。
     private var formatStyleControlWidth: CGFloat {
         DialogButtonMetrics.maxLabelWidth([
-            String(localized: "bulkRename.style.numberOnly", locale: locale),
-            String(localized: "bulkRename.style.index", locale: locale),
-            String(localized: "bulkRename.style.date", locale: locale),
+            AppStrings.text("bulkRename.style.numberOnly", locale: locale),
+            AppStrings.text("bulkRename.style.index", locale: locale),
+            AppStrings.text("bulkRename.style.date", locale: locale),
         ]) + 44
     }
 
     private var formatSecondLabelWidth: CGFloat {
         DialogButtonMetrics.maxLabelWidth([
-            String(localized: "bulkRename.separator", locale: locale),
-            String(localized: "bulkRename.digits", locale: locale),
+            AppStrings.text("bulkRename.separator", locale: locale),
+            AppStrings.text("bulkRename.digits", locale: locale),
         ]) + 4
     }
 

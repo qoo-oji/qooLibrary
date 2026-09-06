@@ -33,7 +33,7 @@ struct ScanPreferencesTab: View {
                     HStack {
                         Text("preferences.scan.interval")
                         Slider(value: $fullScanIntervalDays, in: 1...90, step: 1)
-                        Text(String(format: String(localized: "preferences.scan.intervalDays",
+                        Text(String(format: AppStrings.text("preferences.scan.intervalDays",
                                                    locale: locale),
                                     Int(fullScanIntervalDays)))
                             .monospacedDigit()

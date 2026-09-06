@@ -71,7 +71,7 @@ struct AccessPreferencesTab: View {
             } catch {
                 // 保存失敗を握りつぶさない [ER-01、2026-08 既知の不具合の一掃]。
                 await NotificationRouter.shared.presentError(
-                    error, whatHappened: String(localized: "error.operationFailed", locale: locale)
+                    error, whatHappened: AppStrings.text("error.operationFailed", locale: locale)
                 )
             }
             await reload()

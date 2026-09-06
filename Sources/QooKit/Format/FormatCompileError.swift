@@ -31,43 +31,51 @@ public enum FormatCompileError: Error, Equatable, Sendable {
 extension FormatCompileError: UserPresentableError {
     public var whatHappened: String {
         switch self {
-        case .unbalancedDelimiter: return "フォーマットの括弧の対応が取れていません。"
-        case .duplicateTitle: return "@title が複数あります。"
-        case .duplicateField(let f): return "\(Self.label(f)) が複数あります。"
+        case .unbalancedDelimiter:
+            return QooKitStrings.text("format.unbalancedDelimiter.what")
+        case .duplicateTitle:
+            return QooKitStrings.text("format.duplicateTitle.what")
+        case .duplicateField(let f):
+            return QooKitStrings.format("format.duplicateField.what", Self.label(f))
         case .adjacentFreeFields(let a, let b):
-            return "\(Self.label(a)) と \(Self.label(b)) が隣り合っています。"
-        case .unknownReservedWord(let w, _): return "「\(w)」は予約語ではありません。"
-        case .emptyFormat: return "フォーマットが空です。"
-        case .noFieldAtAll: return "フォーマットに予約語が 1 つもありません。"
+            return QooKitStrings.format("format.adjacentFreeFields.what",
+                                        Self.label(a), Self.label(b))
+        case .unknownReservedWord(let w, _):
+            return QooKitStrings.format("format.unknownReservedWord.what", w)
+        case .emptyFormat:
+            return QooKitStrings.text("format.emptyFormat.what")
+        case .noFieldAtAll:
+            return QooKitStrings.text("format.noFieldAtAll.what")
         }
     }
 
     public var whyItHappened: String {
         switch self {
         case .unbalancedDelimiter:
-            return "開き括弧と閉じ括弧の数が合っていないか、対応する相手がありません。"
+            return QooKitStrings.text("format.unbalancedDelimiter.why")
         case .duplicateTitle, .duplicateField:
-            return "同じ予約語を 1 つのフォーマットに 2 回以上書くと、どちらへ割り当てるかを決められません。"
+            return QooKitStrings.text("format.duplicate.why")
         case .adjacentFreeFields:
-            return "どちらも自由文字列のため、境目が決まりません。"
+            return QooKitStrings.text("format.adjacentFreeFields.why")
         case .unknownReservedWord:
-            return "綴りが違うか、この版では使えない予約語です。"
+            return QooKitStrings.text("format.unknownReservedWord.why")
         case .emptyFormat, .noFieldAtAll:
-            return "照合しても取り出せる情報がありません。"
+            return QooKitStrings.text("format.empty.why")
         }
     }
 
     public var recoveryHint: String? {
         switch self {
-        case .unbalancedDelimiter: return "括弧を追加するか、余分な括弧を削除してください。"
+        case .unbalancedDelimiter:
+            return QooKitStrings.text("format.unbalancedDelimiter.hint")
         case .duplicateTitle, .duplicateField:
-            return "片方を削除するか、別の予約語に置き換えてください。"
+            return QooKitStrings.text("format.duplicate.hint")
         case .adjacentFreeFields:
-            return "間に区切り文字やリテラル文字を挟んでください（空白だけでは境目になりません）。"
+            return QooKitStrings.text("format.adjacentFreeFields.hint")
         case .unknownReservedWord:
-            return "予約語パレットから選び直してください。"
+            return QooKitStrings.text("format.unknownReservedWord.hint")
         case .emptyFormat, .noFieldAtAll:
-            return "@title などの予約語を 1 つ以上書いてください。"
+            return QooKitStrings.text("format.empty.hint")
         }
     }
 

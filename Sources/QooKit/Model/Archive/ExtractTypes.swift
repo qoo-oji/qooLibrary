@@ -165,24 +165,25 @@ public enum ExtractError: Error, Sendable, Equatable {
 /// すべてを詰めており、libarchive の英語（「Write error」）がそのまま本文に
 /// 混ざる・対処法が無いケースが 9 件ある、といった穴があった［棚卸しで発見］。
 ///
-/// 文言は日本語のリテラル。この層は文字列カタログ（アプリターゲットの
-/// リソース）を参照できないため［既知の限界、`FileOperationError` と同じ］。
+/// 文言はこの層のカタログ（`Resources/<lang>.lproj/Localizable.strings`）から
+/// 引く。**`String(localized:locale:)` は使わない**——`locale:` は書式にしか
+/// 効かず `.lproj` を選ばない［実測］。理由は `LocalizedStrings` の型コメント。
 extension ExtractError: UserPresentableError {
     public var whatHappened: String {
         switch self {
-        case .unsupportedFormat: "この形式のアーカイブには対応していません。"
-        case .passwordProtected: "このアーカイブはパスワードで保護されています。"
-        case .incorrectPassphrase: "アーカイブを復号できませんでした。"
-        case .insufficientFreeSpace: "展開先の空き容量が足りません。"
-        case .insufficientStagingSpace: "起動ディスクの空き容量が足りません。"
-        case .tooManyEntries: "アーカイブに含まれる項目が多すぎます。"
-        case .expansionLimitExceeded: "展開後の大きさが上限を超えました。"
-        case .compressionRatioExceeded: "圧縮率が上限を超えました。"
-        case .cancelled: "処理を中断しました。"
-        case .writeFailed: "展開先へ書き込めませんでした。"
-        case .backendFailure: "アーカイブを読み書きできませんでした。"
-        case let .entryNotFound(name): "アーカイブ内に「\(name)」が見つかりません。"
-        case .entryReadLimitExceeded: "アーカイブ内の項目が大きすぎて読み込めません。"
+        case .unsupportedFormat: QooKitStrings.text("extract.unsupportedFormat.what")
+        case .passwordProtected: QooKitStrings.text("extract.passwordProtected.what")
+        case .incorrectPassphrase: QooKitStrings.text("extract.incorrectPassphrase.what")
+        case .insufficientFreeSpace: QooKitStrings.text("extract.insufficientFreeSpace.what")
+        case .insufficientStagingSpace: QooKitStrings.text("extract.insufficientStagingSpace.what")
+        case .tooManyEntries: QooKitStrings.text("extract.tooManyEntries.what")
+        case .expansionLimitExceeded: QooKitStrings.text("extract.expansionLimitExceeded.what")
+        case .compressionRatioExceeded: QooKitStrings.text("extract.compressionRatioExceeded.what")
+        case .cancelled: QooKitStrings.text("extract.cancelled.what")
+        case .writeFailed: QooKitStrings.text("extract.writeFailed.what")
+        case .backendFailure: QooKitStrings.text("extract.backendFailure.what")
+        case let .entryNotFound(name): QooKitStrings.format("extract.entryNotFound.what", name)
+        case .entryReadLimitExceeded: QooKitStrings.text("extract.entryReadLimitExceeded.what")
         }
     }
 
@@ -190,37 +191,41 @@ extension ExtractError: UserPresentableError {
         let formatter = ByteCountFormatter()
         switch self {
         case .unsupportedFormat:
-            return "zip・7z・rar・tar.gz のいずれでもないか、ファイルが壊れている可能性があります。"
+            return QooKitStrings.text("extract.unsupportedFormat.why")
         case .passwordProtected:
-            return "中身を取り出すにはパスワードが要ります。"
+            return QooKitStrings.text("extract.passwordProtected.why")
         case .incorrectPassphrase:
             // 断定しない — 復号したデータが読めないことは分かっても、
             // 原因がパスワード違いか破損かはこの時点で区別できない
             // （従来型の ZIP 暗号化は 1 バイトの検査値しか持たないため特に）。
-            return "パスワードが違うか、アーカイブが壊れています。"
+            return QooKitStrings.text("extract.incorrectPassphrase.why")
         case let .insufficientFreeSpace(required, available):
-            return "\(formatter.string(fromByteCount: required)) が必要ですが、"
-                + "空きは \(formatter.string(fromByteCount: available)) しかありません。"
+            return QooKitStrings.format("extract.insufficientFreeSpace.why",
+                                        formatter.string(fromByteCount: required),
+                                        formatter.string(fromByteCount: available))
         case let .insufficientStagingSpace(required, available):
-            return "展開はいったん起動ディスク上の作業領域へ書き出すため、展開先とは別に "
-                + "\(formatter.string(fromByteCount: required)) が必要ですが、"
-                + "空きは \(formatter.string(fromByteCount: available)) しかありません。"
+            return QooKitStrings.format("extract.insufficientStagingSpace.why",
+                                        formatter.string(fromByteCount: required),
+                                        formatter.string(fromByteCount: available))
         case let .tooManyEntries(limit):
-            return "上限は \(Self.grouped(limit)) 件です。"
+            return QooKitStrings.format("extract.tooManyEntries.why", Self.grouped(limit))
         case let .expansionLimitExceeded(limit):
-            return "上限は \(formatter.string(fromByteCount: limit)) です。"
+            return QooKitStrings.format("extract.expansionLimitExceeded.why",
+                                        formatter.string(fromByteCount: limit))
         case let .compressionRatioExceeded(limit):
-            return "上限は \(Self.grouped(Int(limit))) 倍です。壊れているか、極端に膨らむアーカイブの可能性があります。"
+            return QooKitStrings.format("extract.compressionRatioExceeded.why",
+                                        Self.grouped(Int(limit)))
         case .cancelled:
             return ""
         case let .writeFailed(reason):
             return reason
         case .backendFailure:
-            return "アーカイブが壊れているか、対応していない機能が使われている可能性があります。"
+            return QooKitStrings.text("extract.backendFailure.why")
         case .entryNotFound:
-            return "アーカイブの中身が変わったか、一覧が古くなっている可能性があります。"
+            return QooKitStrings.text("extract.entryNotFound.why")
         case let .entryReadLimitExceeded(limit):
-            return "1 項目あたりの読み込みは \(formatter.string(fromByteCount: Int64(limit))) までです。"
+            return QooKitStrings.format("extract.entryReadLimitExceeded.why",
+                                        formatter.string(fromByteCount: Int64(limit)))
         }
     }
 
@@ -231,23 +236,23 @@ extension ExtractError: UserPresentableError {
     public var recoveryHint: String? {
         switch self {
         case .unsupportedFormat:
-            return "別のアプリで開けるか確認してください。"
+            return QooKitStrings.text("extract.unsupportedFormat.hint")
         case .passwordProtected, .incorrectPassphrase:
-            return "パスワードを確認して、もう一度お試しください。"
+            return QooKitStrings.text("extract.password.hint")
         case .insufficientFreeSpace:
-            return "不要な項目を削除して空きを増やすか、別の場所へ展開してください。"
+            return QooKitStrings.text("extract.insufficientFreeSpace.hint")
         case .insufficientStagingSpace:
-            return "起動ディスクの不要な項目を削除してから、もう一度お試しください。"
+            return QooKitStrings.text("extract.insufficientStagingSpace.hint")
         case .tooManyEntries, .expansionLimitExceeded, .compressionRatioExceeded:
-            return "この上限は環境設定の「圧縮／展開」で変更できます。"
+            return QooKitStrings.text("extract.limits.hint")
         case .cancelled:
             return nil // 中断は失敗ではない。次の手を促さない
         case .writeFailed:
             return nil // 理由の側（`PosixFailure`）が既に対処を含む
         case .backendFailure:
-            return "アーカイブを作り直すか、別のアプリで開けるか確認してください。"
+            return QooKitStrings.text("extract.backendFailure.hint")
         case .entryNotFound:
-            return "一覧を最新にしてから、もう一度お試しください。"
+            return QooKitStrings.text("extract.entryNotFound.hint")
         case .entryReadLimitExceeded:
             return nil
         }

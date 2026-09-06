@@ -105,8 +105,7 @@ extension SQLiteManagedFileRepository {
                 try db.execute(sql: """
                     UPDATE managedFile SET seriesSuggestionIgnoredTitle = NULL
                     WHERE id IN (\(Self.placeholders(chunk.count)))
-                    """, arguments: StatementArguments(chunk.map(\.rawValue))
-                        ?? StatementArguments())
+                    """, arguments: StatementArguments(chunk.map(\.rawValue)))
             }
         }
     }
@@ -121,8 +120,7 @@ extension SQLiteManagedFileRepository {
                     SELECT id, seriesSuggestionIgnoredTitle FROM managedFile
                     WHERE seriesSuggestionIgnoredTitle IS NOT NULL
                       AND id IN (\(Self.placeholders(chunk.count)))
-                    """, arguments: StatementArguments(chunk.map(\.rawValue))
-                        ?? StatementArguments()) {
+                    """, arguments: StatementArguments(chunk.map(\.rawValue))) {
                     out[FileID(rawValue: row["id"])] = row["seriesSuggestionIgnoredTitle"]
                 }
             }

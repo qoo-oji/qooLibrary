@@ -351,11 +351,11 @@ struct FolderContentView: View {
                 // 失敗したこの 1 箇所**から同じ導線を出すことで経路によらず
                 // 拾える（フォルダツリーの `AccessDeniedRow` と揃う）。
                 PlaceholderPane(
-                    title: String(localized: "folder.loadError", locale: locale),
+                    title: AppStrings.text("folder.loadError", locale: locale),
                     subtitle: loadError,
                     action: loadErrorIsAccessDenied
                         ? PlaceholderPane.Action(
-                            title: String(localized: "folderTree.grantAccessEllipsis", locale: locale),
+                            title: AppStrings.text("folderTree.grantAccessEllipsis", locale: locale),
                             perform: { requestAccessForCurrentFolder() }
                         )
                         : nil
@@ -624,7 +624,7 @@ struct FolderContentView: View {
                             localized: isSearching ? "folder.searching" : "folder.noSearchResults",
                             locale: locale
                         ),
-                        subtitle: isSearching ? "" : String(localized: "folder.noSearchResultsHint", locale: locale)
+                        subtitle: isSearching ? "" : AppStrings.text("folder.noSearchResultsHint", locale: locale)
                     )
                     .background(.background)
                 }
@@ -635,13 +635,13 @@ struct FolderContentView: View {
                     switch libraryContent.state {
                     case .failed(let message):
                         PlaceholderPane(
-                            title: String(localized: "library.listFailed", locale: locale),
+                            title: AppStrings.text("library.listFailed", locale: locale),
                             subtitle: message)
                             .background(.background)
                     case .ready where libraryContent.rows.isEmpty:
                         PlaceholderPane(
-                            title: String(localized: "library.listEmpty", locale: locale),
-                            subtitle: String(localized: "library.listEmptyHint", locale: locale))
+                            title: AppStrings.text("library.listEmpty", locale: locale),
+                            subtitle: AppStrings.text("library.listEmptyHint", locale: locale))
                             .background(.background)
                     case .inactive, .loading, .ready:
                         EmptyView()
@@ -857,7 +857,7 @@ struct FolderContentView: View {
                 Image(systemName: "eye.slash")
                     .font(.system(size: Tokens.fontSize.caption))
                     .foregroundStyle(.secondary)
-                    .help(String(localized: "unresolvedFiles.ignoredBadge", locale: locale))
+                    .help(AppStrings.text("unresolvedFiles.ignoredBadge", locale: locale))
             }
             // 「最も近いフォーマット」[UR2-05][UR3-04]。**行には印だけ**で、
             // 本文はツールチップと右ペイン（`InspectorUnresolvedSection`）に出す
@@ -866,7 +866,7 @@ struct FolderContentView: View {
                 Image(systemName: "lightbulb")
                     .font(.system(size: Tokens.fontSize.caption))
                     .foregroundStyle(.secondary)
-                    .help(String(format: String(localized: "unresolvedFiles.nearestBadge",
+                    .help(String(format: AppStrings.text("unresolvedFiles.nearestBadge",
                                                 locale: locale), source))
             }
         }
@@ -909,7 +909,7 @@ struct FolderContentView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
-                .help(String(localized: "unresolvedBar.exit", locale: locale))
+                .help(AppStrings.text("unresolvedBar.exit", locale: locale))
             }
             .padding(.horizontal, Tokens.spacing.m)
             .padding(.vertical, Tokens.spacing.s)
@@ -938,7 +938,7 @@ struct FolderContentView: View {
                         .font(.system(size: Tokens.fontSize.body, weight: .semibold))
                         .lineLimit(1)
                         .truncationMode(.middle)
-                    Text(String(format: String(localized: "seriesStack.volumeCount", locale: locale),
+                    Text(String(format: AppStrings.text("seriesStack.volumeCount", locale: locale),
                                 libraryContent.totalCount))
                         .font(.system(size: Tokens.fontSize.caption))
                         .foregroundStyle(.secondary)
@@ -952,7 +952,7 @@ struct FolderContentView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
-                .help(String(localized: "seriesStack.showAll", locale: locale))
+                .help(AppStrings.text("seriesStack.showAll", locale: locale))
             }
             .padding(.horizontal, Tokens.spacing.m)
             .padding(.vertical, Tokens.spacing.s)
@@ -966,7 +966,7 @@ struct FolderContentView: View {
     /// 足す → 数える → また足す、を画面を行き来しながらやることになる。
     private var unresolvedSubtitle: String {
         if let outcome = unresolvedRescue.lastRematch {
-            return String(format: String(localized: "unresolvedFiles.rematchResult", locale: locale),
+            return String(format: AppStrings.text("unresolvedFiles.rematchResult", locale: locale),
                           outcome.resolved, outcome.attempted)
         }
         // 500 件超は 1 件ずつ片付けられる規模ではない [UR2-08][OB-08]
@@ -974,10 +974,10 @@ struct FolderContentView: View {
         // **`files.count` を使わない**［code-review の指摘］——索引としては
         // 無視済みも読んでいるので、左ペイン・一覧と数字が食い違う。
         if unresolvedRescue.pendingCount > AppLimits.Library.unresolvedBulkThreshold {
-            return String(format: String(localized: "unresolvedFiles.bulkHint", locale: locale),
+            return String(format: AppStrings.text("unresolvedFiles.bulkHint", locale: locale),
                           unresolvedRescue.pendingCount)
         }
-        return String(localized: "unresolvedBar.subtitle", locale: locale)
+        return AppStrings.text("unresolvedBar.subtitle", locale: locale)
     }
 
     /// フォーマット編集ダイアログ [UR-04]。設定ウインドウと同じ実装を共有する
@@ -992,7 +992,7 @@ struct FolderContentView: View {
                 guard let draft = try await unresolvedRescue.settingsDraft(libraryID: libraryID)
                 else { return }
                 DialogWindowPresenter.shared.present(
-                    title: String(localized: "librarySettings.filenameFormats.editorTitle",
+                    title: AppStrings.text("librarySettings.filenameFormats.editorTitle",
                                   locale: locale)
                 ) { _ in
                     FilenameFormatEditorDialog(source: "", draft: draft) { source in
@@ -1370,8 +1370,8 @@ struct FolderContentView: View {
         // [raw-entries] モードで明示的に振り分けている。
         let measured = displayMode == .library ? displayedEntries : entries
 
-        func fitWidth(header: String.LocalizationValue, values: [String]) -> CGFloat {
-            let headerWidth = Self.measuredWidth(String(localized: header, locale: locale))
+        func fitWidth(header: String, values: [String]) -> CGFloat {
+            let headerWidth = Self.measuredWidth(AppStrings.text(header, locale: locale))
             let contentWidth = values.map(Self.measuredWidth).max() ?? 0
             return max(headerWidth, contentWidth) + padding
         }
@@ -2353,7 +2353,7 @@ struct FolderContentView: View {
                     Divider()
                     Button("folder.extractInPlace", systemImage: "shippingbox.and.arrow.backward") { extractInPlace(targets) } // [AR-20]
                     if targets.count == 1, let single = targets.first {
-                        Button(String(format: String(localized: "folder.extractToNamed", locale: locale), archiveBaseName(single)), systemImage: "shippingbox.and.arrow.backward") { extractToNamedFolders(targets) } // [AR-21]
+                        Button(String(format: AppStrings.text("folder.extractToNamed", locale: locale), archiveBaseName(single)), systemImage: "shippingbox.and.arrow.backward") { extractToNamedFolders(targets) } // [AR-21]
                     } else {
                         Button("folder.extractEachToOwnFolder", systemImage: "shippingbox.and.arrow.backward") { extractToNamedFolders(targets) } // [AR-23]
                     }
@@ -2445,7 +2445,7 @@ struct FolderContentView: View {
                     if targets.count < targetEntries.count {
                         // 対象外の混在を黙って起こさない［ユーザー判断]。
                         // `Text` はメニューの中では無効な注記行になる。
-                        Text(String(format: String(localized: "folder.labelTargetNote",
+                        Text(String(format: AppStrings.text("folder.labelTargetNote",
                                                    locale: locale),
                                     targetEntries.count, targets.count))
                         Divider()
@@ -2501,7 +2501,7 @@ struct FolderContentView: View {
                 try await labelMenu.toggleProtection(targets: targets, libraryID: library.id)
             } catch {
                 await NotificationRouter.shared.presentError(
-                    error, whatHappened: String(localized: "error.setProtectionFailed",
+                    error, whatHappened: AppStrings.text("error.setProtectionFailed",
                                                 locale: locale))
             }
         }
@@ -2533,7 +2533,7 @@ struct FolderContentView: View {
                 try await labelMenu.toggle(label, targets: targets)
             } catch {
                 await NotificationRouter.shared.presentError(
-                    error, whatHappened: String(localized: "error.setLabelFailed", locale: locale))
+                    error, whatHappened: AppStrings.text("error.setLabelFailed", locale: locale))
             }
         }
     }
@@ -2640,7 +2640,7 @@ struct FolderContentView: View {
             // 突き合わせるだけで当のパスには触れない [NV6-02]。
             if MountTable.current().isOnAnUnmountedVolume(folder) {
                 return .failed(
-                    String(localized: "folder.volumeNotConnected", locale: AppLanguage.effectiveLocale),
+                    AppStrings.text("folder.volumeNotConnected", locale: AppLanguage.effectiveLocale),
                     isAccessDenied: false
                 )
             }
@@ -2735,7 +2735,7 @@ struct FolderContentView: View {
     private func presentFailureMessage(_ message: String) {
         Task {
             await NotificationRouter.shared.present(
-                NotificationItem(category: .error, severity: .sheet, title: String(localized: "error.operationFailed", locale: locale), body: message)
+                NotificationItem(category: .error, severity: .sheet, title: AppStrings.text("error.operationFailed", locale: locale), body: message)
             )
         }
     }
@@ -2941,7 +2941,7 @@ struct FolderContentView: View {
                     .primary(for: AppAssociationKeys.folder)?.bundleID
                 try await appAssociationService.open([url], with: folderApp)
             } catch {
-                presentError(error, whatHappened: String(localized: "error.openFailed", locale: locale))
+                presentError(error, whatHappened: AppStrings.text("error.openFailed", locale: locale))
             }
         }
     }
@@ -2985,12 +2985,12 @@ struct FolderContentView: View {
     private func presentNewFolderDialog() {
         guard let folder = currentFolder() else { return }
         DialogWindowPresenter.shared.present(
-            title: String(localized: "action.newFolder", locale: locale)
+            title: AppStrings.text("action.newFolder", locale: locale)
         ) { _ in
             NameInputDialog(
-                placeholder: String(localized: "folder.namePlaceholder", locale: locale),
-                confirmTitle: String(localized: "common.create", locale: locale),
-                initialName: String(localized: "action.newFolder", locale: locale)
+                placeholder: AppStrings.text("folder.namePlaceholder", locale: locale),
+                confirmTitle: AppStrings.text("common.create", locale: locale),
+                initialName: AppStrings.text("action.newFolder", locale: locale)
             ) { name in
                 operations.createFolder(named: name, in: folder) { reload() }
             }
@@ -3144,7 +3144,7 @@ struct OpenWithMenu: View {
                     try await service.setPrimary(bundleID, for: url.pathExtension)
                 } catch {
                     await NotificationRouter.shared.presentError(
-                        error, whatHappened: String(localized: "error.setDefaultApplicationFailed", locale: locale)
+                        error, whatHappened: AppStrings.text("error.setDefaultApplicationFailed", locale: locale)
                     )
                 }
             }
@@ -3154,7 +3154,7 @@ struct OpenWithMenu: View {
                 // 以前はここで `try?` により黙って握りつぶしていた
                 // [ER-01: 失敗はすべて `NotificationRouter` 経由で提示する]。
                 await NotificationRouter.shared.presentError(
-                    error, whatHappened: String(localized: "error.openWithApplicationFailed", locale: locale)
+                    error, whatHappened: AppStrings.text("error.openWithApplicationFailed", locale: locale)
                 )
             }
         }
@@ -3169,7 +3169,7 @@ struct OpenWithMenu: View {
         panel.canChooseDirectories = false
         panel.allowedContentTypes = [.application]
         panel.directoryURL = URL(fileURLWithPath: "/Applications")
-        panel.prompt = String(localized: "folder.openWithChoosePrompt", locale: locale)
+        panel.prompt = AppStrings.text("folder.openWithChoosePrompt", locale: locale)
         guard panel.runModal() == .OK, let appURL = panel.url,
               let bundle = Bundle(url: appURL), let bundleID = bundle.bundleIdentifier
         else { return }
@@ -3285,13 +3285,13 @@ struct FolderEntry: Identifiable {
         let locale = AppLanguage.effectiveLocale
         // パッケージは実体の種別で答える（`.app` なら「アプリケーション」）。
         // 拡張子から引けるので、ここでファイルシステムへ問い合わせ直さない。
-        if isDirectory, !isPackage { return String(localized: "kind.folder", locale: locale) }
+        if isDirectory, !isPackage { return AppStrings.text("kind.folder", locale: locale) }
         let ext = url.pathExtension
         if !ext.isEmpty, let type = UTType(filenameExtension: ext), let description = type.localizedDescription {
             return description
         }
-        guard !ext.isEmpty else { return String(localized: "kind.document", locale: locale) }
-        return String(format: String(localized: "kind.extensionFile", locale: locale), ext.uppercased())
+        guard !ext.isEmpty else { return AppStrings.text("kind.document", locale: locale) }
+        return String(format: AppStrings.text("kind.extensionFile", locale: locale), ext.uppercased())
     }
 }
 

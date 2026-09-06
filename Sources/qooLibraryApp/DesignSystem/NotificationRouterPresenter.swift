@@ -64,8 +64,8 @@ final class NotificationRouterPresenterController {
         // ——ここ（アプリターゲット）に書くと `swift test` で固定できない。
         let buttons = NotificationAlertButtons.actions(
             for: item,
-            okTitle: String(localized: "action.ok", locale: AppLanguage.effectiveLocale),
-            dismissTitle: String(localized: "action.close", locale: AppLanguage.effectiveLocale))
+            okTitle: AppStrings.text("action.ok", locale: AppLanguage.effectiveLocale),
+            dismissTitle: AppStrings.text("action.close", locale: AppLanguage.effectiveLocale))
         for action in buttons {
             alert.addButton(withTitle: action.title)
         }
@@ -80,7 +80,7 @@ final class NotificationRouterPresenterController {
         // のときにユーザーがそのまま貼れる形にしておくのが実際に役に立つ。
         let detailButtonIndex = item.technicalDetail == nil ? -1 : alert.buttons.count
         if item.technicalDetail != nil {
-            alert.addButton(withTitle: String(localized: "action.copyDetails", locale: AppLanguage.effectiveLocale))
+            alert.addButton(withTitle: AppStrings.text("action.copyDetails", locale: AppLanguage.effectiveLocale))
         }
 
         let handleResponse: (NSApplication.ModalResponse) -> Void = { [weak self] response in

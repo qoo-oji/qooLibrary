@@ -183,7 +183,7 @@ struct MaintenanceWindow: View {
                             // 同名のライブラリはパスで区別する [RG3-31]。
                             LibraryPathCaption(annotation: nameAnnotations[library.id])
                             if status.showsCount {
-                                Text(String(format: String(localized: countKey(for: tab),
+                                Text(String(format: AppStrings.text(countKey(for: tab),
                                                            locale: locale), status.count))
                                     .font(.system(size: Tokens.fontSize.caption))
                                     .foregroundStyle(.secondary)
@@ -214,7 +214,7 @@ struct MaintenanceWindow: View {
         }
     }
 
-    private func countKey(for tab: MaintenanceTab) -> String.LocalizationValue {
+    private func countKey(for tab: MaintenanceTab) -> String {
         switch tab {
         case .orphans: "orphanCleanup.count"
         case .vault: "fileVault.archivedCount"
@@ -251,7 +251,7 @@ struct MaintenanceWindow: View {
     }
 
     private func tabTitle(_ candidate: MaintenanceTab) -> String {
-        let title = String(localized: String.LocalizationValue(candidate.titleKey), locale: locale)
+        let title = AppStrings.text(candidate.titleKey, locale: locale)
         guard let library = orphans.libraries.first(where: { $0.id == orphans.selectedLibraryID })
         else { return title }
         let status = candidate.status(for: library, counts: counts(for: candidate))

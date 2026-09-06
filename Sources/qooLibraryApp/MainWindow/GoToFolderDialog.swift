@@ -29,9 +29,9 @@ struct GoToFolderDialog: View {
         // `.onSubmit` は不要）。
         DialogScaffold(
             width: 460,
-            confirm: DialogButton(title: String(localized: "goToFolder.go", locale: locale)) { go() },
+            confirm: DialogButton(title: AppStrings.text("goToFolder.go", locale: locale)) { go() },
             cancel: DialogButton(
-                title: String(localized: "common.cancel", locale: locale), role: .cancel
+                title: AppStrings.text("common.cancel", locale: locale), role: .cancel
             ) { dismiss() },
             confirmDisabled: resolvedInput == nil
         ) {
@@ -80,11 +80,11 @@ struct GoToFolderDialog: View {
                 dismiss()
                 onGo(url)
             case .notFound:
-                errorMessage = String(localized: "goToFolder.notFound", locale: locale)
+                errorMessage = AppStrings.text("goToFolder.notFound", locale: locale)
             case .notAFolder:
-                errorMessage = String(localized: "goToFolder.notAFolder", locale: locale)
+                errorMessage = AppStrings.text("goToFolder.notAFolder", locale: locale)
             case .noAccess:
-                errorMessage = String(localized: "goToFolder.noAccess", locale: locale)
+                errorMessage = AppStrings.text("goToFolder.noAccess", locale: locale)
             }
         }
     }

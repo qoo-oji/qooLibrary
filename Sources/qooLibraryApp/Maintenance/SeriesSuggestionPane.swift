@@ -116,7 +116,7 @@ struct SeriesSuggestionPane: View {
                 }
             }
             HStack(spacing: Tokens.spacing.s) {
-                Text(String(format: String(localized: "seriesSuggestions.bookCount",
+                Text(String(format: AppStrings.text("seriesSuggestions.bookCount",
                                            locale: locale),
                             group.suggestion.members.count))
                 Text(folderLabel(group.suggestion.folderPath))
@@ -147,13 +147,13 @@ struct SeriesSuggestionPane: View {
 
     private func volumeLabel(_ volume: VolumeValue) -> String {
         guard volume.kind == .numeric, let raw = volume.raw else {
-            return String(localized: "seriesSuggestions.noVolume", locale: locale)
+            return AppStrings.text("seriesSuggestions.noVolume", locale: locale)
         }
-        return String(format: String(localized: "seriesSuggestions.volume", locale: locale), raw)
+        return String(format: AppStrings.text("seriesSuggestions.volume", locale: locale), raw)
     }
 
     private func folderLabel(_ folder: String) -> String {
-        folder.isEmpty ? String(localized: "fileVault.libraryRoot", locale: locale) : folder
+        folder.isEmpty ? AppStrings.text("fileVault.libraryRoot", locale: locale) : folder
     }
 
     /// **「提案はありません」と「検索に一致しない」と「無視で隠れている」を
@@ -167,7 +167,7 @@ struct SeriesSuggestionPane: View {
             ContentUnavailableView {
                 Label("seriesSuggestions.empty", systemImage: "books.vertical")
             } description: {
-                Text(String(format: String(localized: "seriesSuggestions.hiddenIgnored",
+                Text(String(format: AppStrings.text("seriesSuggestions.hiddenIgnored",
                                            locale: locale), model.hiddenIgnoredCount))
             }
         } else {
@@ -214,7 +214,7 @@ struct SeriesSuggestionPane: View {
                 .frame(maxHeight: 44)
             }
             HStack(spacing: Tokens.spacing.s) {
-                Text(String(format: String(localized: "labelEditor.selectedCount", locale: locale),
+                Text(String(format: AppStrings.text("labelEditor.selectedCount", locale: locale),
                             model.selection.count))
                     .font(.system(size: Tokens.fontSize.caption))
                     .foregroundStyle(.secondary)

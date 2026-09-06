@@ -166,7 +166,7 @@ struct InspectorTitleSection: View {
                 try await model.commitTitle(draft)
             } catch {
                 await NotificationRouter.shared.presentError(
-                    error, whatHappened: String(localized: "error.setTitleFailed", locale: locale))
+                    error, whatHappened: AppStrings.text("error.setTitleFailed", locale: locale))
             }
         }
     }
@@ -176,7 +176,7 @@ struct InspectorTitleSection: View {
             try await model.commitSeriesName(text)
         } catch {
             await NotificationRouter.shared.presentError(
-                error, whatHappened: String(localized: "error.setTitleFailed", locale: locale))
+                error, whatHappened: AppStrings.text("error.setTitleFailed", locale: locale))
         }
     }
 
@@ -185,7 +185,7 @@ struct InspectorTitleSection: View {
             try await model.commitVolume(text)
         } catch {
             await NotificationRouter.shared.presentError(
-                error, whatHappened: String(localized: "error.setTitleFailed", locale: locale))
+                error, whatHappened: AppStrings.text("error.setTitleFailed", locale: locale))
         }
     }
 
@@ -194,7 +194,7 @@ struct InspectorTitleSection: View {
             try await model.rederive()
         } catch {
             await NotificationRouter.shared.presentError(
-                error, whatHappened: String(localized: "error.setTitleFailed", locale: locale))
+                error, whatHappened: AppStrings.text("error.setTitleFailed", locale: locale))
         }
     }
 }

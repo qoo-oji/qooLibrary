@@ -128,7 +128,7 @@ struct ResetPreferencesTab: View {
             HStack {
                 Text("preferences.reset.autoBackupStored")
                 Spacer()
-                Text(String(format: String(localized: "preferences.reset.autoBackupCount",
+                Text(String(format: AppStrings.text("preferences.reset.autoBackupCount",
                                            locale: locale), backupGenerations.count))
                     .foregroundStyle(.secondary)
                 Text(Self.byteCountString(backupGenerations.reduce(0) { $0 + $1.byteCount }))
@@ -253,7 +253,7 @@ struct ResetPreferencesTab: View {
     private func confirmDelete() {
         guard let id = selection, let row = libraries.first(where: { $0.id == id }) else { return }
         DialogWindowPresenter.shared.present(
-            title: String(localized: "preferences.reset.deleteConfirmTitle", locale: locale)
+            title: AppStrings.text("preferences.reset.deleteConfirmTitle", locale: locale)
         ) { _ in
             LibraryDeleteConfirmationDialog(row: row) {
                 Task {
@@ -264,7 +264,7 @@ struct ResetPreferencesTab: View {
                     } catch {
                         await NotificationRouter.shared.presentError(
                             error,
-                            whatHappened: String(localized: "preferences.reset.deleteFailed",
+                            whatHappened: AppStrings.text("preferences.reset.deleteFailed",
                                                  locale: locale))
                     }
                 }
@@ -395,7 +395,7 @@ private struct LibraryRowView: View {
                     .truncationMode(.middle)
             }
             Spacer()
-            Text(String(format: String(localized: "preferences.reset.fileCount"),
+            Text(String(format: AppStrings.text("preferences.reset.fileCount"),
                         row.summary.fileCount))
                 .font(.system(size: Tokens.fontSize.caption))
                 .foregroundStyle(.secondary)
@@ -419,19 +419,19 @@ struct LibraryDeleteConfirmationDialog: View {
         DialogScaffold(
             width: 440,
             confirm: DialogButton(
-                title: String(localized: "preferences.reset.deleteLibraryConfirm", locale: locale),
+                title: AppStrings.text("preferences.reset.deleteLibraryConfirm", locale: locale),
                 role: .destructive
             ) {
                 onConfirm()
                 dismiss()
             },
             cancel: DialogButton(
-                title: String(localized: "common.cancel", locale: locale), role: .cancel
+                title: AppStrings.text("common.cancel", locale: locale), role: .cancel
             ) { dismiss() }
         ) {
             VStack(alignment: .leading, spacing: Tokens.spacing.s) {
                 Text(String(
-                    format: String(localized: "preferences.reset.deleteExplanation", locale: locale),
+                    format: AppStrings.text("preferences.reset.deleteExplanation", locale: locale),
                     row.summary.displayName, row.summary.fileCount))
                     .fixedSize(horizontal: false, vertical: true)
                 Text("preferences.reset.deleteWarning")

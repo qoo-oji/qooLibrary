@@ -1,0 +1,2 @@
+/* User-facing strings for QooInfrastructure. Resolve through QooInfrastructureStrings.
+   String(localized:locale:) does not select .lproj (see LocalizedStrings). */

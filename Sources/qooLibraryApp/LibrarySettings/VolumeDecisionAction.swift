@@ -27,7 +27,7 @@ enum VolumeDecisionAction {
                     .filesAwaitingVolumeDecision(libraryID: libraryID)
             } catch {
                 await NotificationRouter.shared.presentError(
-                    error, whatHappened: String(localized: "librarySettings.volumeDecision.failed",
+                    error, whatHappened: AppStrings.text("librarySettings.volumeDecision.failed",
                                                 locale: locale))
                 return
             }
@@ -45,7 +45,7 @@ enum VolumeDecisionAction {
                         locale: Locale, onFinished: (@MainActor () -> Void)? = nil) {
         guard !candidates.isEmpty else { return }
         DialogWindowPresenter.shared.present(
-            title: String(localized: "librarySettings.volumeDecision.title", locale: locale)
+            title: AppStrings.text("librarySettings.volumeDecision.title", locale: locale)
         ) { _ in
             VolumeDecisionDialog(candidates: candidates) { choices, remembered in
                 Task {
@@ -78,7 +78,7 @@ enum VolumeDecisionAction {
             }
         } catch {
             await NotificationRouter.shared.presentError(
-                error, whatHappened: String(localized: "librarySettings.volumeDecision.failed",
+                error, whatHappened: AppStrings.text("librarySettings.volumeDecision.failed",
                                             locale: locale))
         }
     }

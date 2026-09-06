@@ -145,7 +145,7 @@ struct FolderTreePane: View {
                     }
                 } header: {
                     GroupHeader(
-                        title: String(localized: "folderTree.volumes", locale: locale),
+                        title: AppStrings.text("folderTree.volumes", locale: locale),
                         isExpanded: persistedExpansion(.volumes, $volumesExpanded))
                 }
 
@@ -174,7 +174,7 @@ struct FolderTreePane: View {
                     }
                 } header: {
                     GroupHeader(
-                        title: String(localized: "folderTree.favorites", locale: locale),
+                        title: AppStrings.text("folderTree.favorites", locale: locale),
                         isExpanded: persistedExpansion(.favorites, $favoritesExpanded))
                 }
 
@@ -184,7 +184,7 @@ struct FolderTreePane: View {
                     }
                 } header: {
                     GroupHeader(
-                        title: String(localized: "folderTree.temporaryFolders", locale: locale),
+                        title: AppStrings.text("folderTree.temporaryFolders", locale: locale),
                         isExpanded: persistedExpansion(.temporary, $temporaryExpanded),
                         showsAddButton: true
                     ) {
@@ -198,7 +198,7 @@ struct FolderTreePane: View {
                     }
                 } header: {
                     GroupHeader(
-                        title: String(localized: "folderTree.libraryFolders", locale: locale),
+                        title: AppStrings.text("folderTree.libraryFolders", locale: locale),
                         isExpanded: persistedExpansion(.library, $libraryExpanded),
                         showsAddButton: true
                     ) {
@@ -528,7 +528,7 @@ struct FolderTreePane: View {
     @ViewBuilder
     private func registeredFolderRows(_ entries: [RegisteredFolderEntry], kind: RegisteredFolderKind) -> some View {
         if entries.isEmpty {
-            EmptyGroupRow(message: String(localized: "folderTree.noneRegistered", locale: locale))
+            EmptyGroupRow(message: AppStrings.text("folderTree.noneRegistered", locale: locale))
         } else {
             registeredRowsForEach(entries, kind: kind)
                 // D&D で並べ替えられる [RG3-33]。順序はストアに保存され、
@@ -587,9 +587,9 @@ struct FolderTreePane: View {
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
-        panel.prompt = String(localized: "folderTree.relocatePanelPrompt", locale: locale)
+        panel.prompt = AppStrings.text("folderTree.relocatePanelPrompt", locale: locale)
         panel.message = String(
-            format: String(localized: "folderTree.relocatePanelMessage", locale: locale), folder.displayName
+            format: AppStrings.text("folderTree.relocatePanelMessage", locale: locale), folder.displayName
         )
         // **最後に分かっている場所の「親」から開く** [1-17]。当のフォルダ自身は
         // もう無いので、そこを指しても Finder 側で無視される。
@@ -611,13 +611,13 @@ struct FolderTreePane: View {
                 if !result.warnings.isEmpty {
                     await NotificationRouter.shared.present(NotificationItem(
                         category: .warning, severity: .transient,
-                        title: String(localized: "folderTree.registeredWithWarningTitle", locale: locale),
+                        title: AppStrings.text("folderTree.registeredWithWarningTitle", locale: locale),
                         body: result.warnings.map(Self.description(for:)).joined(separator: "\n")
                     ))
                 }
             } catch {
                 await NotificationRouter.shared.presentError(
-                    error, whatHappened: String(localized: "folderTree.relocateFailedTitle", locale: locale)
+                    error, whatHappened: AppStrings.text("folderTree.relocateFailedTitle", locale: locale)
                 )
             }
         }
@@ -676,11 +676,11 @@ struct FolderTreePane: View {
     /// 実フォルダの名前を変更する [FM-05]。
     private func presentRenameFolderDialog(_ url: URL) {
         DialogWindowPresenter.shared.present(
-            title: String(localized: "folderTree.renameFolder", locale: locale)
+            title: AppStrings.text("folderTree.renameFolder", locale: locale)
         ) { _ in
             NameInputDialog(
-                placeholder: String(localized: "folder.namePlaceholder", locale: locale),
-                confirmTitle: String(localized: "action.rename", locale: locale),
+                placeholder: AppStrings.text("folder.namePlaceholder", locale: locale),
+                confirmTitle: AppStrings.text("action.rename", locale: locale),
                 initialName: url.lastPathComponent
             ) { name in
                 operations.rename(url, to: name) { reloadTreeAfterMutation() }
@@ -691,12 +691,12 @@ struct FolderTreePane: View {
     /// `parent` の中に新規フォルダを作る [FM-01]。
     private func presentNewFolderDialog(in parent: URL, branch: FolderTreeBranch) {
         DialogWindowPresenter.shared.present(
-            title: String(localized: "action.newFolder", locale: locale)
+            title: AppStrings.text("action.newFolder", locale: locale)
         ) { _ in
             NameInputDialog(
-                placeholder: String(localized: "folder.namePlaceholder", locale: locale),
-                confirmTitle: String(localized: "common.create", locale: locale),
-                initialName: String(localized: "action.newFolder", locale: locale)
+                placeholder: AppStrings.text("folder.namePlaceholder", locale: locale),
+                confirmTitle: AppStrings.text("common.create", locale: locale),
+                initialName: AppStrings.text("action.newFolder", locale: locale)
             ) { name in
                 operations.createFolder(named: name, in: parent) {
                     // 作成先の行を開いておく——折りたたんだ行に対して実行した場合、
@@ -713,11 +713,11 @@ struct FolderTreePane: View {
     /// 登録フォルダの表示名を変更する [RG-05]。実フォルダ名は変えない。
     private func presentRenameDisplayNameDialog(_ folder: RegisteredFolder) {
         DialogWindowPresenter.shared.present(
-            title: String(localized: "folderTree.renameDisplayName", locale: locale)
+            title: AppStrings.text("folderTree.renameDisplayName", locale: locale)
         ) { _ in
             NameInputDialog(
-                placeholder: String(localized: "folderTree.displayName", locale: locale),
-                confirmTitle: String(localized: "action.rename", locale: locale),
+                placeholder: AppStrings.text("folderTree.displayName", locale: locale),
+                confirmTitle: AppStrings.text("action.rename", locale: locale),
                 initialName: folder.displayName
             ) { name in
                 Task {
@@ -728,7 +728,7 @@ struct FolderTreePane: View {
                         // 一掃] — 以前は `try?` で、次回起動時に変更が消えていても
                         // 気づく手段が無かった。
                         await NotificationRouter.shared.presentError(
-                            error, whatHappened: String(localized: "error.operationFailed", locale: locale)
+                            error, whatHappened: AppStrings.text("error.operationFailed", locale: locale)
                         )
                     }
                     await reloadRegisteredFolders()
@@ -756,10 +756,10 @@ struct FolderTreePane: View {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
-        panel.prompt = String(localized: "folderTree.registerPanelPrompt", locale: locale)
+        panel.prompt = AppStrings.text("folderTree.registerPanelPrompt", locale: locale)
         panel.message = kind == .library
-            ? String(localized: "folderTree.chooseLibraryFolder", locale: locale)
-            : String(localized: "folderTree.chooseTemporaryFolder", locale: locale)
+            ? AppStrings.text("folderTree.chooseLibraryFolder", locale: locale)
+            : AppStrings.text("folderTree.chooseTemporaryFolder", locale: locale)
         guard panel.runModal() == .OK, let url = panel.url else { return }
         Task {
             do {
@@ -773,7 +773,7 @@ struct FolderTreePane: View {
                 if !result.warnings.isEmpty {
                     await NotificationRouter.shared.present(NotificationItem(
                         category: .warning, severity: .transient,
-                        title: String(localized: "folderTree.registeredWithWarningTitle", locale: locale),
+                        title: AppStrings.text("folderTree.registeredWithWarningTitle", locale: locale),
                         body: result.warnings.map(Self.description(for:))
                             .joined(separator: "\n")
                     ))
@@ -781,7 +781,7 @@ struct FolderTreePane: View {
             } catch {
                 await NotificationRouter.shared.present(NotificationItem(
                     category: .error, severity: .sheet,
-                    title: String(localized: "folderTree.registrationFailedTitle", locale: locale), body: Self.errorMessage(for: error)
+                    title: AppStrings.text("folderTree.registrationFailedTitle", locale: locale), body: Self.errorMessage(for: error)
                 ))
             }
         }
@@ -806,7 +806,7 @@ struct FolderTreePane: View {
             } catch {
                 await NotificationRouter.shared.presentError(
                     error,
-                    whatHappened: String(localized: "folderTree.thumbnailSettingFailed", locale: locale)
+                    whatHappened: AppStrings.text("folderTree.thumbnailSettingFailed", locale: locale)
                 )
                 return
             }
@@ -835,7 +835,7 @@ struct FolderTreePane: View {
             return
         }
         DialogWindowPresenter.shared.present(
-            title: String(localized: "folderTree.unregister", locale: locale)
+            title: AppStrings.text("folderTree.unregister", locale: locale)
         ) { dismiss in
             LibraryUnregisterConfirmationDialog(folderName: folder.displayName) {
                 dismiss()
@@ -875,7 +875,7 @@ struct FolderTreePane: View {
             } catch {
                 // 保存失敗を握りつぶさない [ER-01、2026-08 既知の不具合の一掃]。
                 await NotificationRouter.shared.presentError(
-                    error, whatHappened: String(localized: "error.operationFailed", locale: locale)
+                    error, whatHappened: AppStrings.text("error.operationFailed", locale: locale)
                 )
             }
             await reloadRegisteredFolders()
@@ -886,7 +886,7 @@ struct FolderTreePane: View {
     private func presentFailureMessage(_ message: String) {
         Task {
             await NotificationRouter.shared.present(
-                NotificationItem(category: .error, severity: .sheet, title: String(localized: "error.operationFailed", locale: locale), body: message)
+                NotificationItem(category: .error, severity: .sheet, title: AppStrings.text("error.operationFailed", locale: locale), body: message)
             )
         }
     }
@@ -1049,11 +1049,11 @@ struct FolderTreePane: View {
         let locale = AppLanguage.effectiveLocale
         switch error {
         case RegisteredFolderError.nestedRegistration:
-            return String(localized: "folderTree.nestedRegistrationError", locale: locale)
+            return AppStrings.text("folderTree.nestedRegistrationError", locale: locale)
         case RegisteredFolderError.unsupportedFileSystem(let reason):
             switch reason {
             case .noPersistentFileID(let fileSystem), .persistentIDNotPreserved(let fileSystem):
-                return String(format: String(localized: "folderTree.unsupportedFileSystemError", locale: locale), fileSystem)
+                return String(format: AppStrings.text("folderTree.unsupportedFileSystemError", locale: locale), fileSystem)
             }
         default:
             return error.localizedDescription
@@ -1174,10 +1174,10 @@ private struct GroupHeader: View {
                     Image(systemName: "plus")
                 }
                 .buttonStyle(.borderless)
-                .help(String(format: String(localized: "folderTree.registerGroup", locale: locale), title))
+                .help(String(format: AppStrings.text("folderTree.registerGroup", locale: locale), title))
                 Image(systemName: "gearshape")
                     .foregroundStyle(.secondary)
-                    .help(String(format: String(localized: "folderTree.groupSettings", locale: locale), title))
+                    .help(String(format: AppStrings.text("folderTree.groupSettings", locale: locale), title))
             }
         }
         // ＋/歯車をボリューム行の取り出しボタンと同じ大きさに揃える
@@ -1284,13 +1284,13 @@ private struct RegisteredFolderRootRow: View {
     /// ツールチップに出す説明。**「何が起きたか」と「次に何ができるか」を
     /// 併せて言う** [ER-03 の考え方をこの行にも当てる]。
     private var hint: String {
-        let key: String.LocalizationValue = switch entry.state.status {
+        let key: String = switch entry.state.status {
         case .offline: "folderTree.status.offlineHint"
         case .inTrash: "folderTree.status.inTrashHint"
         case .missing: "folderTree.status.missingHint"
         case .online, .unsupportedFileSystem: "folderTree.status.missingHint"
         }
-        let message = String(localized: key, locale: locale)
+        let message = AppStrings.text(key, locale: locale)
         // 最後に分かっている場所を添える。「どのボリュームを繋げばよいか」が
         // 分からないと、オフラインの行は手の打ちようが無い。
         guard let path = entry.state.status.lastKnownPath else { return message }
@@ -1382,8 +1382,9 @@ private struct FolderTreeRow: View {
     var allowsWriting: Bool = true
 
     /// 縮退の警告文言を組み立てるのに要る [1-17]。`Text` のリテラルと違い
-    /// `String(localized:)` は環境のロケールを自動では見ないため、明示的に
-    /// 読んで渡す必要がある [CLAUDE.md「表示言語」節の区別]。
+    /// View の外で組み立てる文字列は環境のロケールを自動では見ないので、
+    /// ここで読んで `AppStrings` へ渡す。**`String(localized:locale:)` に
+    /// 渡しても効かない**——`locale:` は `.lproj` を選ばない［実測 2026-09-06］。
     @Environment(\.locale) private var locale
 
     @State private var children: [FolderTreeNode]?
@@ -1586,15 +1587,15 @@ private struct FolderTreeRow: View {
     static func warningMessage(for annotation: RegisteredRootAnnotation, locale: Locale) -> String? {
         if case .unsupportedFileSystem(_, let fileSystemName) = annotation.status {
             guard let fileSystemName else {
-                return String(localized: "folderTree.status.unsupportedFileSystem", locale: locale)
+                return AppStrings.text("folderTree.status.unsupportedFileSystem", locale: locale)
             }
             return String(
-                format: String(localized: "folderTree.status.unsupportedFileSystemNamed", locale: locale),
+                format: AppStrings.text("folderTree.status.unsupportedFileSystemNamed", locale: locale),
                 fileSystemName
             )
         }
         if annotation.isNested {
-            return String(localized: "folderTree.status.nested", locale: locale)
+            return AppStrings.text("folderTree.status.nested", locale: locale)
         }
         return nil
     }

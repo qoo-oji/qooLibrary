@@ -164,7 +164,7 @@ struct FieldEditorWindow: View {
                             Text(library.displayName)
                             // 同名のライブラリはパスで区別する [RG3-31]。
                             LibraryPathCaption(annotation: nameAnnotations[library.id])
-                            Text(String(format: String(localized: "librarySettings.fileCount",
+                            Text(String(format: AppStrings.text("librarySettings.fileCount",
                                                        locale: locale), library.fileCount))
                                 .font(.system(size: Tokens.fontSize.caption))
                                 .foregroundStyle(.secondary)
@@ -198,7 +198,7 @@ struct FieldEditorWindow: View {
             return
         }
         DialogWindowPresenter.shared.present(
-            title: String(localized: "librarySettings.unsavedTitle", locale: locale)
+            title: AppStrings.text("librarySettings.unsavedTitle", locale: locale)
         ) { _ in
             UnsavedChangesDialog(
                 libraryName: settings.selectedLibraryName,

@@ -55,7 +55,7 @@ struct PermanentDeleteConfirmationSheet: View {
                 // [PD-06] 実行中に 1 件ずつ確認が入ることを予告しておく。
                 calloutRow(
                     icon: "lock.fill",
-                    text: String(format: String(localized: "permanentDelete.lockedNotice", locale: locale), preflight.lockedCount)
+                    text: String(format: AppStrings.text("permanentDelete.lockedNotice", locale: locale), preflight.lockedCount)
                 )
             }
 
@@ -74,7 +74,7 @@ struct PermanentDeleteConfirmationSheet: View {
                 // 完全削除になる、という食い違いをここで必ず埋める。
                 calloutRow(
                     icon: "trash.slash",
-                    text: String(localized: "permanentDelete.noTrashOnVolume", locale: locale),
+                    text: AppStrings.text("permanentDelete.noTrashOnVolume", locale: locale),
                     isWarning: true
                 )
             }
@@ -85,13 +85,13 @@ struct PermanentDeleteConfirmationSheet: View {
 
             QooDialogFooter(
                 confirm: DialogButton(
-                    title: String(localized: "permanentDelete.confirmButton", locale: locale),
+                    title: AppStrings.text("permanentDelete.confirmButton", locale: locale),
                     role: .destructive
                 ) {
                     onConfirm()
                     dismiss()
                 },
-                cancel: DialogButton(title: String(localized: "common.cancel", locale: locale), role: .cancel) {
+                cancel: DialogButton(title: AppStrings.text("common.cancel", locale: locale), role: .cancel) {
                     dismiss()
                 },
                 // **集計が終わるまで決定できないようにする** [レビューで発見]。
@@ -126,11 +126,11 @@ struct PermanentDeleteConfirmationSheet: View {
     private var titleText: String {
         if request.urls.count == 1 {
             return String(
-                format: String(localized: "permanentDelete.titleSingle", locale: locale),
+                format: AppStrings.text("permanentDelete.titleSingle", locale: locale),
                 request.urls[0].lastPathComponent
             )
         }
-        return String(format: String(localized: "permanentDelete.titleMultiple", locale: locale), request.urls.count)
+        return String(format: AppStrings.text("permanentDelete.titleMultiple", locale: locale), request.urls.count)
     }
 
     /// 何を消すのかを具体的に見せる。多すぎるときは先頭数件＋残数にする
@@ -147,7 +147,7 @@ struct PermanentDeleteConfirmationSheet: View {
             }
             if request.urls.count > Self.maxListedTargets {
                 Text(String(
-                    format: String(localized: "permanentDelete.andMore", locale: locale),
+                    format: AppStrings.text("permanentDelete.andMore", locale: locale),
                     request.urls.count - Self.maxListedTargets
                 ))
                 .font(.system(size: Tokens.fontSize.caption))
@@ -162,7 +162,7 @@ struct PermanentDeleteConfirmationSheet: View {
 
     private var registeredWarningText: String {
         let names = preflight.registeredFolders.map(\.folder.displayName).joined(separator: ", ")
-        return String(format: String(localized: "permanentDelete.registeredWarning", locale: locale), names)
+        return String(format: AppStrings.text("permanentDelete.registeredWarning", locale: locale), names)
     }
 
     private func calloutRow(icon: String, text: String, isWarning: Bool = false) -> some View {

@@ -43,9 +43,9 @@ enum ReplaceBackupRecovery {
             await NotificationRouter.shared.present(NotificationItem(
                 category: .info,
                 severity: .transient,
-                title: String(localized: "replaceBackup.restored.title"),
+                title: AppStrings.text("replaceBackup.restored.title"),
                 body: String(
-                    format: String(localized: "replaceBackup.restored.body"),
+                    format: AppStrings.text("replaceBackup.restored.body"),
                     restored.count, restored.map(\.lastPathComponent).joined(separator: "\n")
                 ),
                 technicalDetail: restored.map(\.path).joined(separator: "\n")
@@ -58,9 +58,9 @@ enum ReplaceBackupRecovery {
             await NotificationRouter.shared.present(NotificationItem(
                 category: .error,
                 severity: .sheet,
-                title: String(localized: "replaceBackup.orphaned.title"),
+                title: AppStrings.text("replaceBackup.orphaned.title"),
                 body: String(
-                    format: String(localized: "replaceBackup.orphaned.body"),
+                    format: AppStrings.text("replaceBackup.orphaned.body"),
                     orphaned.count,
                     orphaned.map { "\($0.target.lastPathComponent) ← \($0.backup.lastPathComponent)" }
                         .joined(separator: "\n")

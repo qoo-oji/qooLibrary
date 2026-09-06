@@ -39,14 +39,14 @@ struct ArchivePasswordDialog: View {
     var body: some View {
         DialogScaffold(
             width: 320,
-            confirm: DialogButton(title: String(localized: "common.ok", locale: locale)) {
+            confirm: DialogButton(title: AppStrings.text("common.ok", locale: locale)) {
                 // 先に閉じてから返す（`NameInputDialog.commit()` と同じ順序）。
                 let value = password
                 dismiss()
                 onSubmit(value)
             },
             cancel: DialogButton(
-                title: String(localized: "common.cancel", locale: locale), role: .cancel
+                title: AppStrings.text("common.cancel", locale: locale), role: .cancel
             ) { dismiss() },
             confirmDisabled: !canSubmit
         ) {

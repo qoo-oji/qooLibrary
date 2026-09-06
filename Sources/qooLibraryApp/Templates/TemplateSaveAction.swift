@@ -36,17 +36,17 @@ enum TemplateSaveAction {
             Task {
                 await NotificationRouter.shared.present(NotificationItem(
                     category: .warning, severity: .sheet,
-                    title: String(localized: "templates.saveBlockedTitle", locale: locale),
+                    title: AppStrings.text("templates.saveBlockedTitle", locale: locale),
                     body: errors.map(\.message).joined(separator: "\n")))
             }
             return
         }
         DialogWindowPresenter.shared.present(
-            title: String(localized: "templates.saveAsTitle", locale: locale)
+            title: AppStrings.text("templates.saveAsTitle", locale: locale)
         ) { _ in
             NameInputDialog(
-                placeholder: String(localized: "templates.name", locale: locale),
-                confirmTitle: String(localized: "templates.saveAsConfirm", locale: locale),
+                placeholder: AppStrings.text("templates.name", locale: locale),
+                confirmTitle: AppStrings.text("templates.saveAsConfirm", locale: locale),
                 initialName: suggestedName
             ) { name in
                 Task {
@@ -59,13 +59,13 @@ enum TemplateSaveAction {
                         // 保存できたことをどこかで言わないと成否が分からない。
                         await NotificationRouter.shared.present(NotificationItem(
                             category: .info, severity: .transient,
-                            title: String(format: String(localized: "templates.savedTitle",
+                            title: String(format: AppStrings.text("templates.savedTitle",
                                                          locale: locale), name),
                             body: ""))
                     } catch {
                         await NotificationRouter.shared.presentError(
                             error,
-                            whatHappened: String(localized: "templates.saveFailed",
+                            whatHappened: AppStrings.text("templates.saveFailed",
                                                  locale: locale))
                     }
                 }

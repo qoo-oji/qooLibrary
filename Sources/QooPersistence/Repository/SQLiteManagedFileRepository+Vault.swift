@@ -31,7 +31,7 @@ extension SQLiteManagedFileRepository {
                 SELECT managedFileId, COUNT(*) AS n FROM fileLabel
                 WHERE managedFileId IN (\(Self.placeholders(ids.count)))
                 GROUP BY managedFileId
-                """, arguments: StatementArguments(ids) ?? StatementArguments()) {
+                """, arguments: StatementArguments(ids)) {
                 labelCounts[row["managedFileId"]] = row["n"]
             }
 

@@ -106,10 +106,10 @@ struct KeyboardPreferencesTab: View {
             // 自動抽出が実際に生成する `%1$@`/`%2$@` 形式のプレースホルダ表記を
             // 手書きで正確に再現する必要があり事故りやすいため。`%@` テンプレート
             // + `String(format:)` の方が明確で安全 [1-12 ローカライズ方針]。
-            let key: String.LocalizationValue = alert.canReassign
+            let key: String = alert.canReassign
                 ? "preferences.keyboard.conflictMessage"
                 : "preferences.keyboard.conflictWithFixedMessage"
-            let template = String(localized: key, locale: locale)
+            let template = AppStrings.text(key, locale: locale)
             Text(String(format: template, conflictNames, actionName))
         }
     }
@@ -166,7 +166,7 @@ struct KeyboardPreferencesTab: View {
     /// environment を自動的に見ないため、`self.locale`（`@Environment`）を
     /// 明示的に渡す [1-12 ローカライズ方針、CLAUDE.md 参照]。
     private func displayName(for action: ActionID) -> String {
-        let key: String.LocalizationValue = switch action {
+        let key: String = switch action {
         case .newTab: "action.newTab"
         case .open: "action.open"
         case .openSelection: "menu.go.openSelection" // 移動メニューの表記を再利用
@@ -221,7 +221,7 @@ struct KeyboardPreferencesTab: View {
         case .compress: "action.compress"
         case .newFolderWithSelection: "action.newFolderWithSelection"
         }
-        return String(localized: key, locale: locale)
+        return AppStrings.text(key, locale: locale)
     }
 }
 

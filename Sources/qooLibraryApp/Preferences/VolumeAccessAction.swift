@@ -25,7 +25,7 @@ enum VolumeAccessAction {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
-        panel.message = String(localized: "preferences.access.panelMessage", locale: locale)
+        panel.message = AppStrings.text("preferences.access.panelMessage", locale: locale)
         panel.directoryURL = URL(fileURLWithPath: "/")
         guard panel.runModal() == .OK, let url = panel.url else { return false }
         do {
@@ -38,7 +38,7 @@ enum VolumeAccessAction {
         } catch {
             await NotificationRouter.shared.presentError(
                 error,
-                whatHappened: String(localized: "error.operationFailed", locale: locale))
+                whatHappened: AppStrings.text("error.operationFailed", locale: locale))
             return false
         }
     }

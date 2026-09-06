@@ -55,7 +55,7 @@ struct InspectorCoverSection: View {
                 // 上端はファイル名より上で、下に続く欄との関係も無い。
                 // カバーそのものに付ければ対象が自明になる。
                 .contextMenu { if let subject { coverMenu(subject) } }
-                .help(subject == nil ? "" : String(localized: "inspector.cover.hint",
+                .help(subject == nil ? "" : AppStrings.text("inspector.cover.hint",
                                                    locale: locale))
             if let subject { sourceCaption(subject) }
         }
@@ -86,7 +86,7 @@ struct InspectorCoverSection: View {
                 // 幅が狭く、ページの一覧を縦に積むと必ず隠れる。
                 // `AddLabelDialog` と同じ約束）。
                 DialogWindowPresenter.shared.present(
-                    title: String(localized: "inspector.cover.choosePageTitle", locale: locale)
+                    title: AppStrings.text("inspector.cover.choosePageTitle", locale: locale)
                 ) { _ in
                     ArchiveCoverPickerDialog(url: subject.url) { data in
                         Task { await replace(withData: data) }
@@ -121,7 +121,7 @@ struct InspectorCoverSection: View {
         panel.canChooseFiles = true
         panel.allowsMultipleSelection = false
         panel.allowedContentTypes = [.image]
-        panel.message = String(localized: "inspector.cover.panelMessage", locale: locale)
+        panel.message = AppStrings.text("inspector.cover.panelMessage", locale: locale)
         guard panel.runModal() == .OK, let chosen = panel.url else { return }
         await replace(fromFile: chosen)
     }
@@ -134,13 +134,13 @@ struct InspectorCoverSection: View {
         guard PreviewableFileKind.of(source) == .image else {
             await NotificationRouter.shared.presentError(
                 CoverReplacementError.notAnImage,
-                whatHappened: String(localized: "error.setCoverFailed", locale: locale))
+                whatHappened: AppStrings.text("error.setCoverFailed", locale: locale))
             return
         }
         guard let data = await CoverImageSourceResolver.firstImageData(for: source) else {
             await NotificationRouter.shared.presentError(
                 CoverReplacementError.notAnImage,
-                whatHappened: String(localized: "error.setCoverFailed", locale: locale))
+                whatHappened: AppStrings.text("error.setCoverFailed", locale: locale))
             return
         }
         await replace(withData: data)
@@ -151,7 +151,7 @@ struct InspectorCoverSection: View {
             try await model.replace(withImageData: data)
         } catch {
             await NotificationRouter.shared.presentError(
-                error, whatHappened: String(localized: "error.setCoverFailed", locale: locale))
+                error, whatHappened: AppStrings.text("error.setCoverFailed", locale: locale))
         }
     }
 
@@ -160,7 +160,7 @@ struct InspectorCoverSection: View {
             try await model.revert()
         } catch {
             await NotificationRouter.shared.presentError(
-                error, whatHappened: String(localized: "error.setCoverFailed", locale: locale))
+                error, whatHappened: AppStrings.text("error.setCoverFailed", locale: locale))
         }
     }
 }
@@ -170,10 +170,10 @@ enum CoverReplacementError: LocalizedError {
     case notAnImage
 
     var errorDescription: String? {
-        String(localized: "error.cover.notAnImage", locale: AppLanguage.effectiveLocale)
+        AppStrings.text("error.cover.notAnImage", locale: AppLanguage.effectiveLocale)
     }
 
     var recoverySuggestion: String? {
-        String(localized: "error.cover.notAnImage.recovery", locale: AppLanguage.effectiveLocale)
+        AppStrings.text("error.cover.notAnImage.recovery", locale: AppLanguage.effectiveLocale)
     }
 }

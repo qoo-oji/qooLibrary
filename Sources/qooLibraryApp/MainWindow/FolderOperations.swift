@@ -83,8 +83,8 @@ final class FolderOperations {
     /// 呼び出し元だけがやりたいこと**のために残してある。
     private func run(
         _ command: (any Command)?,
-        failure: String.LocalizationValue,
-        busyMessageKey: String.LocalizationValue? = nil,
+        failure: String,
+        busyMessageKey: String? = nil,
         onSuccess: @escaping @MainActor () -> Void
     ) {
         guard let command else { return }
@@ -137,12 +137,12 @@ final class FolderOperations {
             if showsProgress { endProgress() }
             if let failed {
                 await NotificationRouter.shared.presentError(
-                    failed, whatHappened: String(localized: failure, locale: locale)
+                    failed, whatHappened: AppStrings.text(failure, locale: locale)
                 )
             } else if case let .partial(succeeded, failures)? = partial {
                 await NotificationRouter.shared.present(NotificationItem(
                     category: .warning, severity: .sheet,
-                    title: String(localized: "error.partiallyCompleted", locale: locale),
+                    title: AppStrings.text("error.partiallyCompleted", locale: locale),
                     body: Self.partialSummary(command: command, succeeded: succeeded, failed: failures)
                 ))
             }
@@ -152,7 +152,7 @@ final class FolderOperations {
             // 中断手段は**この時点で**渡す。あとから差し込む形にすると、
             // 窓が出た最初の描画でボタンが出ない。
             beginProgress(
-                String(localized: busyMessageKey, locale: locale),
+                AppStrings.text(busyMessageKey, locale: locale),
                 cancel: { task.cancel() }, pauseToken: pauseToken
             )
         }
@@ -167,14 +167,14 @@ final class FolderOperations {
         let locale = AppLanguage.effectiveLocale
         var lines = [command.displayName, ""]
         lines.append(String(
-            format: String(localized: "error.partialCounts", locale: locale), succeeded, failed.count
+            format: AppStrings.text("error.partialCounts", locale: locale), succeeded, failed.count
         ))
         for item in failed.prefix(5) {
             lines.append("• \(item.item): \(item.reason)")
         }
         if failed.count > 5 {
             lines.append(String(
-                format: String(localized: "error.partialMore", locale: locale), failed.count - 5
+                format: AppStrings.text("error.partialMore", locale: locale), failed.count - 5
             ))
         }
         return lines.joined(separator: "\n")
@@ -286,7 +286,7 @@ final class FolderOperations {
             // 素朴に +1 すると「150 件中 151 件目」と出る（実機で確認）。
             let current = min(progress.completedItems + 1, progress.totalItems)
             parts.append(String(
-                format: String(localized: "progress.itemCount", locale: locale),
+                format: AppStrings.text("progress.itemCount", locale: locale),
                 current, progress.totalItems
             ))
             // **残り件数も明示する**［ユーザー要望: 総数と残り数が知りたい］。
@@ -295,7 +295,7 @@ final class FolderOperations {
             let remaining = max(0, progress.totalItems - progress.completedItems)
             if remaining > 0 {
                 parts.append(String(
-                    format: String(localized: "progress.remainingItems", locale: locale), remaining
+                    format: AppStrings.text("progress.remainingItems", locale: locale), remaining
                 ))
             }
         }
@@ -341,8 +341,8 @@ final class FolderOperations {
             Task {
                 await NotificationRouter.shared.present(NotificationItem(
                     category: .error, severity: .sheet,
-                    title: String(localized: "error.operationFailed", locale: locale),
-                    body: String(localized: "bulkRename.sameFolderOnly", locale: locale)
+                    title: AppStrings.text("error.operationFailed", locale: locale),
+                    body: AppStrings.text("bulkRename.sameFolderOnly", locale: locale)
                 ))
             }
             return
@@ -466,8 +466,8 @@ final class FolderOperations {
                 guard !targets.isEmpty else {
                     await NotificationRouter.shared.present(NotificationItem(
                         category: .warning, severity: .sheet,
-                        title: String(localized: "error.operationFailed", locale: locale),
-                        body: String(localized: "vault.notInLibrary", locale: locale)))
+                        title: AppStrings.text("error.operationFailed", locale: locale),
+                        body: AppStrings.text("vault.notInLibrary", locale: locale)))
                     return
                 }
                 run(SetFileArchivedCommand(targets: targets, archived: archived, root: root),
@@ -475,7 +475,7 @@ final class FolderOperations {
                     onSuccess: onSuccess)
             } catch {
                 await NotificationRouter.shared.presentError(
-                    error, whatHappened: String(localized: "error.operationFailed", locale: locale))
+                    error, whatHappened: AppStrings.text("error.operationFailed", locale: locale))
             }
         }
     }
@@ -512,7 +512,7 @@ final class FolderOperations {
         // 「以降すべてに適用」は 1 回の削除操作ごとにリセットする [ER-11]。
         lockedItemBlanketDecision = nil
         // 完全削除は中断できない [PD-05] ので、キャンセル手段は渡さない。
-        beginProgress(String(localized: "permanentDelete.deleting", locale: locale))
+        beginProgress(AppStrings.text("permanentDelete.deleting", locale: locale))
         let command = DeletePermanentlyCommand(
             items: request.urls,
             options: DeletePermanentlyOptions(lockedItemResolver: { [self] url in
@@ -534,7 +534,7 @@ final class FolderOperations {
                 await presentDeletionSummaryIfNeeded(command)
             } catch {
                 await NotificationRouter.shared.presentError(
-                    error, whatHappened: String(localized: "error.deletePermanentlyFailed", locale: locale)
+                    error, whatHappened: AppStrings.text("error.deletePermanentlyFailed", locale: locale)
                 )
                 SessionState.shared.reloadToken += 1
             }
@@ -586,7 +586,7 @@ final class FolderOperations {
         var lines: [String] = []
         if !outcome.failures.isEmpty || !outcome.skipped.isEmpty {
             lines.append(String(
-                format: String(localized: "permanentDelete.summaryCounts", locale: locale),
+                format: AppStrings.text("permanentDelete.summaryCounts", locale: locale),
                 outcome.succeededCount, outcome.failures.count, outcome.skipped.count
             ))
             // [ER-14] 失敗は理由別の内訳が分かるようにまとめる。
@@ -597,7 +597,7 @@ final class FolderOperations {
         }
         if !command.unregisteredFolders.isEmpty {
             lines.append(String(
-                format: String(localized: "permanentDelete.summaryUnregistered", locale: locale),
+                format: AppStrings.text("permanentDelete.summaryUnregistered", locale: locale),
                 command.unregisteredFolders.map(\.displayName).joined(separator: ", ")
             ))
         }
@@ -605,7 +605,7 @@ final class FolderOperations {
         await NotificationRouter.shared.present(NotificationItem(
             category: outcome.failures.isEmpty ? .info : .warning,
             severity: .sheet,
-            title: String(localized: "permanentDelete.summaryTitle", locale: locale),
+            title: AppStrings.text("permanentDelete.summaryTitle", locale: locale),
             body: lines.joined(separator: "\n")
         ))
     }
@@ -639,13 +639,13 @@ final class FolderOperations {
     /// `FileOperationService` 側でも同じ検証をしているが、あちらは URL を
     /// 受け取る段階なので「ユーザーが何と入力したか」を復元できない。
     /// 正確な文言を出すために入口でも見る（二重だが、片方だけでは足りない）。
-    private func validatedName(_ raw: String, whatHappened: String.LocalizationValue) -> String? {
+    private func validatedName(_ raw: String, whatHappened: String) -> String? {
         do {
             return try FileNameValidation.sanitized(raw)
         } catch {
             Task {
                 await NotificationRouter.shared.presentError(
-                    error, whatHappened: String(localized: whatHappened, locale: locale)
+                    error, whatHappened: AppStrings.text(whatHappened, locale: locale)
                 )
             }
             return nil
@@ -655,7 +655,7 @@ final class FolderOperations {
     /// Finder の「エイリアスを作成」。書き込み先は呼び出し側が決める。
     func createAliases(for urls: [URL], in destination: URL, onSuccess: @escaping @MainActor () -> Void = {}) {
         let children: [any Command] = urls.map { CreateAliasCommand(source: $0, destinationFolder: destination) }
-        let command = Self.singleOrComposite(children, displayName: String(localized: "folder.createAlias", locale: locale))
+        let command = Self.singleOrComposite(children, displayName: AppStrings.text("folder.createAlias", locale: locale))
         run(command, failure: "error.createAliasFailed", onSuccess: onSuccess)
     }
 
@@ -678,8 +678,8 @@ final class FolderOperations {
         onSuccess: @escaping @MainActor (URL) -> Void = { _ in }
     ) {
         guard !urls.isEmpty else { return }
-        let baseName = String(localized: "action.newFolderWithSelection.baseName", locale: locale)
-        let displayName = String(localized: "action.newFolderWithSelection", locale: locale)
+        let baseName = AppStrings.text("action.newFolderWithSelection.baseName", locale: locale)
+        let displayName = AppStrings.text("action.newFolderWithSelection", locale: locale)
         Task {
             // **空き名探しは 1 回ごとにボリュームへの問い合わせ**になる。
             // `@MainActor` のここで回すとメインスレッドが止まるので、
@@ -732,7 +732,7 @@ final class FolderOperations {
     /// これは本アプリが表示できているフォルダなら満たされている。
     func openInTerminal(_ urls: [URL]) {
         guard let terminal = NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.terminalBundleID) else {
-            let message = String(localized: "folder.openInTerminalFailed", locale: locale)
+            let message = AppStrings.text("folder.openInTerminalFailed", locale: locale)
             Task {
                 await NotificationRouter.shared.present(NotificationItem(
                     category: .error, severity: .sheet, title: message, body: ""
@@ -757,7 +757,7 @@ final class FolderOperations {
             Task { @MainActor in
                 await NotificationRouter.shared.presentError(
                     error,
-                    whatHappened: String(localized: "folder.openInTerminalFailed", locale: AppLanguage.effectiveLocale)
+                    whatHappened: AppStrings.text("folder.openInTerminalFailed", locale: AppLanguage.effectiveLocale)
                 )
             }
         }
@@ -961,8 +961,8 @@ final class FolderOperations {
         panel.nameFieldStringValue = "\(defaultName).\(ext)"
         panel.allowedContentTypes = options.format == .zip ? [.zip] : []
         panel.directoryURL = folder
-        panel.prompt = String(localized: "folder.compressPanelPrompt", locale: locale)
-        panel.message = String(localized: "folder.chooseSaveDestination", locale: locale)
+        panel.prompt = AppStrings.text("folder.compressPanelPrompt", locale: locale)
+        panel.message = AppStrings.text("folder.chooseSaveDestination", locale: locale)
         guard panel.runModal() == .OK, let destinationURL = panel.url else { return }
         beginCompression(PendingCompression(
             items: urls,
@@ -983,7 +983,7 @@ final class FolderOperations {
             return
         }
         DialogWindowPresenter.shared.present(
-            title: String(localized: "archivePassword.setTitle", locale: locale)
+            title: AppStrings.text("archivePassword.setTitle", locale: locale)
         ) { _ in
             ArchivePasswordDialog(mode: .setPassword) { password in
                 self.runCompression(request, passphrase: password)
@@ -1023,14 +1023,14 @@ final class FolderOperations {
                 // 理由 — `presentError` はダイアログが閉じられるまで返らない）。
                 endProgress()
                 await NotificationRouter.shared.presentError(
-                    error, whatHappened: String(localized: "error.compressFailed", locale: locale)
+                    error, whatHappened: AppStrings.text("error.compressFailed", locale: locale)
                 )
             }
         }
         cancellableTask = task
         // 中断手段は**この時点で**渡す（`run()` と同じ理由）。
         beginProgress(
-            String(localized: "folder.compressing", locale: locale),
+            AppStrings.text("folder.compressing", locale: locale),
             cancel: { task.cancel() }, pauseToken: pauseToken
         )
     }
@@ -1052,16 +1052,16 @@ final class FolderOperations {
     ) {
         guard !urls.isEmpty else { return }
         let busyTitle = urls.count == 1
-            ? String(localized: "folder.extractingOne", locale: locale)
-            : String(format: String(localized: "folder.extractingCount", locale: locale), urls.count)
+            ? AppStrings.text("folder.extractingOne", locale: locale)
+            : String(format: AppStrings.text("folder.extractingCount", locale: locale), urls.count)
         let limits = extractLimits
         let pauseToken = currentPauseToken
         // 展開先の算出はパス演算だけなので、ここ（`@MainActor`）で済ませてよい。
         // **存在確認はボリュームへの問い合わせ**なので、まとめてタスクの中で行う。
         let targets = urls.map(destination)
         let name = urls.count == 1
-            ? String(format: String(localized: "folder.extractCommandName", locale: locale), urls[0].lastPathComponent)
-            : String(format: String(localized: "folder.extractCommandNameCount", locale: locale), urls.count)
+            ? String(format: AppStrings.text("folder.extractCommandName", locale: locale), urls[0].lastPathComponent)
+            : String(format: AppStrings.text("folder.extractCommandNameCount", locale: locale), urls.count)
         let entryPassphrase = urls.count == 1 ? passphrase : nil
         let reporter = progressReporter
         let task = Task {
@@ -1092,11 +1092,11 @@ final class FolderOperations {
                 // 同上（バックエンドは `Task.isCancelled` を見て [EX-24] の
                 // 専用エラーを投げるため、両方を受ける）。
             } catch let error as ExtractError where urls.count == 1 && (error == .passwordProtected || error == .incorrectPassphrase) {
-                let retryMessage = error == .incorrectPassphrase ? String(localized: "error.incorrectPassphrase", locale: locale) : nil
+                let retryMessage = error == .incorrectPassphrase ? AppStrings.text("error.incorrectPassphrase", locale: locale) : nil
                 let archiveURL = urls[0]
                 let target = destination(archiveURL)
                 DialogWindowPresenter.shared.present(
-                    title: String(localized: "archivePassword.unlockTitle", locale: locale)
+                    title: AppStrings.text("archivePassword.unlockTitle", locale: locale)
                 ) { _ in
                     ArchivePasswordDialog(mode: .unlock(retryErrorMessage: retryMessage)) { password in
                         self.extract(
@@ -1110,7 +1110,7 @@ final class FolderOperations {
                 // エラーを見せる**前に**進捗表示を片付ける（`run()` と同じ理由）。
                 endProgress()
                 await NotificationRouter.shared.presentError(
-                    error, whatHappened: String(localized: "error.extractFailed", locale: locale)
+                    error, whatHappened: AppStrings.text("error.extractFailed", locale: locale)
                 )
                 onSuccess()
             }
@@ -1125,8 +1125,8 @@ final class FolderOperations {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
-        panel.prompt = String(localized: "folder.extractPanelPrompt", locale: locale)
-        panel.message = String(localized: "folder.chooseExtractDestination", locale: locale)
+        panel.prompt = AppStrings.text("folder.extractPanelPrompt", locale: locale)
+        panel.message = AppStrings.text("folder.chooseExtractDestination", locale: locale)
         guard panel.runModal() == .OK, let destination = panel.url else { return }
         extract(urls, destination: { _ in destination }, onSuccess: onSuccess)
     }

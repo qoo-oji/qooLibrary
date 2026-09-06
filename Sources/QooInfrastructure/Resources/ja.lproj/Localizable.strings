@@ -1,0 +1,2 @@
+/* QooInfrastructure の利用者可視文字列。引くのは QooInfrastructureStrings 経由。
+   String(localized:locale:) は .lproj を選ばない（LocalizedStrings 参照）。 */

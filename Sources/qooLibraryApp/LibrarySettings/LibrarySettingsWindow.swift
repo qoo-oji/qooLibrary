@@ -76,7 +76,7 @@ struct LibrarySettingsWindow: View {
                             Text(library.displayName)
                             // 同名のライブラリはパスで区別する [RG3-31]。
                             LibraryPathCaption(annotation: nameAnnotations[library.id])
-                            Text(String(format: String(localized: "librarySettings.fileCount",
+                            Text(String(format: AppStrings.text("librarySettings.fileCount",
                                                        locale: locale), library.fileCount))
                                 .font(.system(size: Tokens.fontSize.caption))
                                 .foregroundStyle(.secondary)
@@ -109,7 +109,7 @@ struct LibrarySettingsWindow: View {
             return
         }
         DialogWindowPresenter.shared.present(
-            title: String(localized: "librarySettings.unsavedTitle", locale: locale)
+            title: AppStrings.text("librarySettings.unsavedTitle", locale: locale)
         ) { _ in
             UnsavedChangesDialog(
                 libraryName: model.selectedLibraryName,
@@ -200,7 +200,7 @@ struct LibrarySettingsWindow: View {
     private func presentAdvanced(initial: LibrarySettingsSection? = nil) {
         guard model.draft != nil else { return }
         DialogWindowPresenter.shared.present(
-            title: String(localized: "librarySettings.advanced.title", locale: locale)
+            title: AppStrings.text("librarySettings.advanced.title", locale: locale)
         ) { _ in
             AdvancedSettingsDialog(
                 draft: Binding(
@@ -410,19 +410,19 @@ struct UnsavedChangesDialog: View {
     var body: some View {
         DialogScaffold(
             width: 420,
-            confirm: DialogButton(title: String(localized: "librarySettings.save", locale: locale)) {
+            confirm: DialogButton(title: AppStrings.text("librarySettings.save", locale: locale)) {
                 onSave()
                 dismiss()
             },
-            cancel: DialogButton(title: String(localized: "common.cancel", locale: locale),
+            cancel: DialogButton(title: AppStrings.text("common.cancel", locale: locale),
                                  role: .cancel) { dismiss() },
-            extra: [DialogButton(title: String(localized: "librarySettings.discard", locale: locale),
+            extra: [DialogButton(title: AppStrings.text("librarySettings.discard", locale: locale),
                                  role: .destructive) {
                 onDiscard()
                 dismiss()
             }]
         ) {
-            Text(String(format: String(localized: "librarySettings.unsavedExplanation",
+            Text(String(format: AppStrings.text("librarySettings.unsavedExplanation",
                                        locale: locale), libraryName))
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -439,15 +439,15 @@ private struct RescanPromptDialog: View {
     var body: some View {
         DialogScaffold(
             width: 440,
-            confirm: DialogButton(title: String(localized: "librarySettings.rescanNow", locale: locale)) {
+            confirm: DialogButton(title: AppStrings.text("librarySettings.rescanNow", locale: locale)) {
                 onRescan()
                 dismiss()
             },
-            cancel: DialogButton(title: String(localized: "librarySettings.rescanLater", locale: locale),
+            cancel: DialogButton(title: AppStrings.text("librarySettings.rescanLater", locale: locale),
                                  role: .cancel) { dismiss() }
         ) {
             VStack(alignment: .leading, spacing: Tokens.spacing.s) {
-                Text(String(format: String(localized: "librarySettings.rescanExplanation",
+                Text(String(format: AppStrings.text("librarySettings.rescanExplanation",
                                            locale: locale), libraryName))
                     .fixedSize(horizontal: false, vertical: true)
                 Text("librarySettings.rescanNote")

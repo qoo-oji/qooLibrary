@@ -130,7 +130,7 @@ struct OrphanCleanupPane: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
                     if file.labelCount > 0 {
-                        Text(String(format: String(localized: "orphanCleanup.labelCount",
+                        Text(String(format: AppStrings.text("orphanCleanup.labelCount",
                                                    locale: locale), file.labelCount))
                     }
                     if file.row.rating > 0 {
@@ -169,7 +169,7 @@ struct OrphanCleanupPane: View {
                 .frame(maxHeight: 44)
             }
             HStack(spacing: Tokens.spacing.s) {
-                Text(String(format: String(localized: "labelEditor.selectedCount", locale: locale),
+                Text(String(format: AppStrings.text("labelEditor.selectedCount", locale: locale),
                             model.selection.count))
                     .font(.system(size: Tokens.fontSize.caption))
                     .foregroundStyle(.secondary)
@@ -193,7 +193,7 @@ struct OrphanCleanupPane: View {
     private func confirmDelete(_ targets: [OrphanedFile]) {
         guard !targets.isEmpty else { return }
         DialogWindowPresenter.shared.present(
-            title: String(localized: "orphanCleanup.deleteTitle", locale: locale)
+            title: AppStrings.text("orphanCleanup.deleteTitle", locale: locale)
         ) { _ in
             DeleteOrphansDialog(files: targets) {
                 perform { try await model.delete(targets) }

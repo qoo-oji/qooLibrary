@@ -22,13 +22,13 @@ enum DefaultFieldNames {
     static func name(for keyword: SemanticKeyword) -> String {
         let locale = AppLanguage.effectiveLocale
         return switch keyword {
-        case .author:  String(localized: "field.default.author", locale: locale)
-        case .circle:  String(localized: "field.default.circle", locale: locale)
-        case .genre:   String(localized: "field.default.genre", locale: locale)
-        case .event:   String(localized: "field.default.event", locale: locale)
-        case .keyword: String(localized: "field.default.keyword", locale: locale)
-        case .series:  String(localized: "field.default.series", locale: locale)
-        case .bookType: String(localized: "field.default.bookType", locale: locale)
+        case .author:  AppStrings.text("field.default.author", locale: locale)
+        case .circle:  AppStrings.text("field.default.circle", locale: locale)
+        case .genre:   AppStrings.text("field.default.genre", locale: locale)
+        case .event:   AppStrings.text("field.default.event", locale: locale)
+        case .keyword: AppStrings.text("field.default.keyword", locale: locale)
+        case .series:  AppStrings.text("field.default.series", locale: locale)
+        case .bookType: AppStrings.text("field.default.bookType", locale: locale)
         }
     }
 }

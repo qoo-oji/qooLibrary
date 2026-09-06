@@ -34,13 +34,13 @@ enum LibraryBackupAction {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = defaultFilename()
         panel.allowedContentTypes = [.json]
-        panel.prompt = String(localized: "backup.exportPanelPrompt", locale: locale)
-        panel.message = String(localized: "backup.exportPanelMessage", locale: locale)
+        panel.prompt = AppStrings.text("backup.exportPanelPrompt", locale: locale)
+        panel.message = AppStrings.text("backup.exportPanelMessage", locale: locale)
         guard panel.runModal() == .OK, let destination = panel.url else { return }
 
         state?.isBusy = true
         let handle = OperationProgressCenter.shared.begin(
-            title: String(localized: "backup.exporting", locale: locale))
+            title: AppStrings.text("backup.exporting", locale: locale))
         Task {
             defer {
                 state?.isBusy = false
@@ -59,7 +59,7 @@ enum LibraryBackupAction {
                 NSWorkspace.shared.activateFileViewerSelecting([destination])
             } catch {
                 await NotificationRouter.shared.presentError(
-                    error, whatHappened: String(localized: "backup.exportFailed", locale: locale))
+                    error, whatHappened: AppStrings.text("backup.exportFailed", locale: locale))
             }
         }
     }
@@ -92,8 +92,8 @@ enum LibraryBackupAction {
             panel.allowedContentTypes = [.json]
             panel.allowsMultipleSelection = false
             panel.canChooseDirectories = false
-            panel.prompt = String(localized: "backup.importPanelPrompt", locale: locale)
-            panel.message = String(localized: "backup.importPanelMessage", locale: locale)
+            panel.prompt = AppStrings.text("backup.importPanelPrompt", locale: locale)
+            panel.message = AppStrings.text("backup.importPanelMessage", locale: locale)
             guard panel.runModal() == .OK, let chosen = panel.url else { return }
             source = chosen
         }
@@ -124,7 +124,7 @@ enum LibraryBackupAction {
             } catch {
                 state?.isBusy = false
                 await NotificationRouter.shared.presentError(
-                    error, whatHappened: String(localized: "backup.importFailed", locale: locale))
+                    error, whatHappened: AppStrings.text("backup.importFailed", locale: locale))
             }
         }
     }
@@ -137,9 +137,9 @@ enum LibraryBackupAction {
     private static func presentNothingToImport(_ plan: ImportPlan, locale: Locale) {
         let lines: [String]
         if plan.libraries.isEmpty {
-            lines = [String(localized: "backup.importPlanEmpty", locale: locale)]
+            lines = [AppStrings.text("backup.importPlanEmpty", locale: locale)]
         } else {
-            lines = [String(format: String(localized: "backup.importResultMissing", locale: locale),
+            lines = [String(format: AppStrings.text("backup.importResultMissing", locale: locale),
                             plan.missingLibraries.count),
                      plan.missingLibraries.map(\.displayName).joined(separator: "\n")]
         }
@@ -147,7 +147,7 @@ enum LibraryBackupAction {
             await NotificationRouter.shared.present(NotificationItem(
                 category: .warning,
                 severity: .sheet,
-                title: String(localized: "backup.nothingToImportTitle", locale: locale),
+                title: AppStrings.text("backup.nothingToImportTitle", locale: locale),
                 body: lines.joined(separator: "\n")))
         }
     }
@@ -155,12 +155,12 @@ enum LibraryBackupAction {
     private static func presentConfirmation(plan: ImportPlan, document: BackupDocument,
                                             locale: Locale, state: State?) {
         DialogWindowPresenter.shared.present(
-            title: String(localized: "backup.importConfirmTitle", locale: locale)
+            title: AppStrings.text("backup.importConfirmTitle", locale: locale)
         ) { _ in
             BackupImportConfirmationDialog(plan: plan) {
                 state?.isBusy = true
                 let handle = OperationProgressCenter.shared.begin(
-                    title: String(localized: "backup.importing", locale: locale))
+                    title: AppStrings.text("backup.importing", locale: locale))
                 Task {
                     defer {
                         state?.isBusy = false
@@ -172,7 +172,7 @@ enum LibraryBackupAction {
                     } catch {
                         await NotificationRouter.shared.presentError(
                             error,
-                            whatHappened: String(localized: "backup.importFailed", locale: locale))
+                            whatHappened: AppStrings.text("backup.importFailed", locale: locale))
                     }
                 }
             }
@@ -183,32 +183,32 @@ enum LibraryBackupAction {
     /// 必ず言う**——黙って一部だけ取り込むと、戻ったつもりで戻っていない
     /// 状態になる。
     private static func presentResult(_ plan: ImportPlan, locale: Locale) {
-        var lines = [String(format: String(localized: "backup.importResultBody", locale: locale),
+        var lines = [String(format: AppStrings.text("backup.importResultBody", locale: locale),
                             plan.filesUpdated, plan.labelsAdded, plan.fileLabelsAdded)]
         if !plan.missingLibraries.isEmpty {
             lines.append("")
             lines.append(String(
-                format: String(localized: "backup.importResultMissing", locale: locale),
+                format: AppStrings.text("backup.importResultMissing", locale: locale),
                 plan.missingLibraries.count))
             lines.append(plan.missingLibraries.map(\.displayName).joined(separator: "\n"))
         }
         if plan.filesMissing > 0 {
             lines.append("")
             lines.append(String(
-                format: String(localized: "backup.importResultFilesMissing", locale: locale),
+                format: AppStrings.text("backup.importResultFilesMissing", locale: locale),
                 plan.filesMissing))
         }
         if plan.templatesAdded > 0 {
             lines.append("")
             lines.append(String(
-                format: String(localized: "backup.importResultTemplates", locale: locale),
+                format: AppStrings.text("backup.importResultTemplates", locale: locale),
                 plan.templatesAdded))
         }
         Task {
             await NotificationRouter.shared.present(NotificationItem(
                 category: plan.missingLibraries.isEmpty ? .info : .warning,
                 severity: .sheet,
-                title: String(localized: "backup.importResultTitle", locale: locale),
+                title: AppStrings.text("backup.importResultTitle", locale: locale),
                 body: lines.joined(separator: "\n")))
         }
     }
@@ -217,7 +217,7 @@ enum LibraryBackupAction {
         Task {
             await NotificationRouter.shared.presentError(
                 LibraryUnavailableError(failure: failure),
-                whatHappened: String(localized: "library.unavailable"))
+                whatHappened: AppStrings.text("library.unavailable"))
         }
     }
 }
@@ -233,12 +233,12 @@ struct BackupImportConfirmationDialog: View {
     var body: some View {
         DialogScaffold(
             width: 460,
-            confirm: DialogButton(title: String(localized: "backup.importConfirm", locale: locale)) {
+            confirm: DialogButton(title: AppStrings.text("backup.importConfirm", locale: locale)) {
                 onConfirm()
                 dismiss()
             },
             cancel: DialogButton(
-                title: String(localized: "common.cancel", locale: locale), role: .cancel
+                title: AppStrings.text("common.cancel", locale: locale), role: .cancel
             ) { dismiss() },
         ) {
             VStack(alignment: .leading, spacing: Tokens.spacing.m) {
@@ -269,9 +269,9 @@ struct BackupImportConfirmationDialog: View {
     private func detail(for change: ImportPlan.LibraryChange) -> String {
         switch change.kind {
         case .missing:
-            String(localized: "backup.importPlanMissing", locale: locale)
+            AppStrings.text("backup.importPlanMissing", locale: locale)
         case .update:
-            String(format: String(localized: "backup.importPlanUpdate", locale: locale),
+            String(format: AppStrings.text("backup.importPlanUpdate", locale: locale),
                    change.filesUpdated, change.labelsAdded, change.fileLabelsAdded,
                    change.filesMissing)
         }

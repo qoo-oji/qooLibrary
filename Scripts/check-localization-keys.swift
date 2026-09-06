@@ -82,6 +82,10 @@ while let relative = enumerator?.nextObject() as? String {
             // 関わらず検査する——新しい機能が新しい接頭辞で鍵を使い始めた
             // ときに見落とさないため。
             let isDefinitelyAKey = ["String(localized: \"", "String(localized:\"",
+                                    // アプリ本体は `AppStrings` を通す [2026-09-06]。
+                                    // **`String(localized:locale:)` は使わない**——
+                                    // `locale:` は `.lproj` を選ばないため［実測］。
+                                    "AppStrings.text(\"", "AppStrings.format(\"",
                                     "LocalizedStringKey(\"", "titleKey: \""]
                 .contains { before.hasSuffix($0) }
             if !isDefinitelyAKey {
@@ -154,6 +158,79 @@ if !reservedIssues.isEmpty {
         print("  \(i.word)  — \(i.key) [\(i.lang)]")
     }
     exit(1)
+}
+
+
+// MARK: - 下位 3 層のカタログ [2026-09-06 追加]
+//
+// アプリターゲット以外にも利用者可視の文字列がある（エラー文言・Undo メニューの
+// 文言・操作履歴の要約）。それらは `.xcstrings` ではなく
+// `Resources/<lang>.lproj/Localizable.strings` から引く——**SwiftPM は
+// `.xcstrings` をコンパイルせず生のままバンドルへコピーする**ので、
+// `swift build` / `swift test` では 1 件も解決できないため［実測］。
+//
+// **両方の言語に鍵があることまで見る。** 片方だけだと、その言語のときに
+// 生の鍵が画面へ出る——ここで捕まえたいのはまさにそれ。
+
+struct LayerCatalog {
+    let sources: String
+    let catalogs: [String]   // 言語ごと
+}
+
+let layers = [
+    LayerCatalog(sources: "Sources/QooKit",
+                 catalogs: ["Sources/QooKit/Resources/en.lproj/Localizable.strings",
+                            "Sources/QooKit/Resources/ja.lproj/Localizable.strings"]),
+    LayerCatalog(sources: "Sources/QooInfrastructure",
+                 catalogs: ["Sources/QooInfrastructure/Resources/en.lproj/Localizable.strings",
+                            "Sources/QooInfrastructure/Resources/ja.lproj/Localizable.strings"]),
+    LayerCatalog(sources: "Sources/QooApplication",
+                 catalogs: ["Sources/QooApplication/Resources/en.lproj/Localizable.strings",
+                            "Sources/QooApplication/Resources/ja.lproj/Localizable.strings"]),
+]
+
+/// `"key" = "value";` を読む。値は見ないので、素朴な正規表現で足りる。
+func definedKeys(inStringsFile path: String) -> Set<String>? {
+    guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
+    let re = try! NSRegularExpression(pattern: #"^\s*"([^"]+)"\s*="#, options: [.anchorsMatchLines])
+    var keys = Set<String>()
+    for m in re.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+        if let r = Range(m.range(at: 1), in: text) { keys.insert(String(text[r])) }
+    }
+    return keys
+}
+
+// `〜Strings.text("key")` / `.format("key", …)` を拾う。
+let layerCallPattern = try! NSRegularExpression(pattern: #"\w*Strings\.(?:text|format)\(\s*"([^"]+)""#)
+
+for layer in layers {
+    // カタログがまだ無い層は飛ばす（移行の途中でも検査を落とさない）。
+    var perLanguage: [(path: String, keys: Set<String>)] = []
+    for catalog in layer.catalogs {
+        guard let keys = definedKeys(inStringsFile: catalog) else { continue }
+        perLanguage.append((catalog, keys))
+    }
+    guard !perLanguage.isEmpty else { continue }
+
+    let walker = FileManager.default.enumerator(atPath: layer.sources)
+    while let relative = walker?.nextObject() as? String {
+        guard relative.hasSuffix(".swift") else { continue }
+        let path = "\(layer.sources)/\(relative)"
+        guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { continue }
+        for (index, line) in text.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
+            let s = String(line)
+            guard !s.trimmingCharacters(in: .whitespaces).hasPrefix("//") else { continue }
+            for m in layerCallPattern.matches(in: s, range: NSRange(s.startIndex..., in: s)) {
+                guard let r = Range(m.range(at: 1), in: s) else { continue }
+                let key = String(s[r])
+                for entry in perLanguage where !entry.keys.contains(key) {
+                    let lang = (entry.path as NSString).deletingLastPathComponent
+                    missing.append((key: "\(key) [\((lang as NSString).lastPathComponent)]",
+                                    file: path, line: index + 1))
+                }
+            }
+        }
+    }
 }
 
 if missing.isEmpty {

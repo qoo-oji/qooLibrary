@@ -82,7 +82,7 @@ struct LabelFilterPane: View {
                         ? Color(nsColor: .selectedContentBackgroundColor) : Color.clear)
             .foregroundStyle(isShowingUnresolved
                              ? Color(nsColor: .alternateSelectedControlTextColor) : Color.primary)
-            .help(String(localized: "labelFilter.unresolvedHint", locale: locale))
+            .help(AppStrings.text("labelFilter.unresolvedHint", locale: locale))
         }
     }
 
@@ -110,7 +110,7 @@ struct LabelFilterPane: View {
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
             .disabled(!model.isActive)
-            .help(String(localized: "labelFilter.clearAll", locale: locale))
+            .help(AppStrings.text("labelFilter.clearAll", locale: locale))
         }
         .font(.system(size: Tokens.fontSize.caption))
         .padding(.horizontal, Tokens.spacing.m)
@@ -282,7 +282,7 @@ struct LabelFilterPane: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
                     .disabled(currentShelfCondition?.isActive != true)
-                    .help(String(localized: "labelFilter.shelfSaveHint", locale: locale))
+                    .help(AppStrings.text("labelFilter.shelfSaveHint", locale: locale))
                 }
             }
         }
@@ -347,8 +347,8 @@ struct LabelFilterPane: View {
     }
 
     /// 実行は `ShelfDialogs.run`（メニューバーと共有。失敗の提示もそこ）。
-    private func run(_ command: some Command, _ whatHappened: String.LocalizationValue) {
-        ShelfDialogs.run(command, whatHappened: String(localized: whatHappened, locale: locale))
+    private func run(_ command: some Command, _ whatHappened: String) {
+        ShelfDialogs.run(command, whatHappened: AppStrings.text(whatHappened, locale: locale))
     }
 
     // MARK: - フィールド [LF-04][LF-05][PN-02〜PN-06]
@@ -389,7 +389,7 @@ struct LabelFilterPane: View {
             // 左ペインから [RL3-04]——本に対する操作（付け外し）は中央ペインと
             // 役割を分ける。編集ウインドウを**そのフィールドを選んだ状態で**開く。
             .contextMenu {
-                Button(String(format: String(localized: "labelFilter.editFieldEllipsis",
+                Button(String(format: AppStrings.text("labelFilter.editFieldEllipsis",
                                              locale: locale), field.name),
                        systemImage: "tag") {
                     LabelEditorNavigation.open(libraryID: field.libraryID,
@@ -529,7 +529,7 @@ struct LabelFilterPane: View {
                     .monospacedDigit()
             } else if let total = model.totalCount {
                 Spacer()
-                Text(String(format: String(localized: "labelFilter.totalCount", locale: locale),
+                Text(String(format: AppStrings.text("labelFilter.totalCount", locale: locale),
                             total.formatted(.number.locale(locale))))
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
@@ -552,7 +552,7 @@ struct LabelFilterPane: View {
             if !names.isEmpty { parts.append(names.joined(separator: ", ")) }
         }
         if let rating = model.ratingFilter {
-            let mode = String(localized: rating.mode == .exact
+            let mode = AppStrings.text(rating.mode == .exact
                               ? "labelFilter.ratingExact" : "labelFilter.ratingAtLeast",
                               locale: locale)
             parts.append("★\(rating.stars) \(mode)")
@@ -562,10 +562,10 @@ struct LabelFilterPane: View {
 
     private var countText: String {
         guard let matched = model.matchedCount else {
-            return String(localized: "labelFilter.counting", locale: locale)
+            return AppStrings.text("labelFilter.counting", locale: locale)
         }
         let total = model.totalCount ?? matched
-        return String(format: String(localized: "labelFilter.matchedCount", locale: locale),
+        return String(format: AppStrings.text("labelFilter.matchedCount", locale: locale),
                       matched.formatted(.number.locale(locale)),
                       total.formatted(.number.locale(locale)))
     }

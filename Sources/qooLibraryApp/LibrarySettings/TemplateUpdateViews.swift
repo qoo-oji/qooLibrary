@@ -29,7 +29,7 @@ struct TemplateUpdateCard: View {
                 Image(systemName: "arrow.triangle.2.circlepath")
                     .foregroundStyle(.blue)
                 VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
-                    Text(String(format: String(localized: "librarySettings.templateUpdate.available"),
+                    Text(String(format: AppStrings.text("librarySettings.templateUpdate.available"),
                                 pending.presetName))
                     Text("librarySettings.templateUpdate.hint")
                         .font(.system(size: Tokens.fontSize.caption))
@@ -65,11 +65,11 @@ struct TemplateUpdateDialog: View {
                 onApply()
                 dismiss()
             },
-            cancel: DialogButton(title: String(localized: "common.cancel", locale: locale),
+            cancel: DialogButton(title: AppStrings.text("common.cancel", locale: locale),
                                  role: .cancel) { dismiss() }
         ) {
             VStack(alignment: .leading, spacing: Tokens.spacing.m) {
-                Text(String(format: String(localized: "librarySettings.templateUpdate.summary",
+                Text(String(format: AppStrings.text("librarySettings.templateUpdate.summary",
                                            locale: locale),
                             pending.presetName, pending.fromVersion, pending.toVersion))
                     .fixedSize(horizontal: false, vertical: true)
@@ -96,8 +96,8 @@ struct TemplateUpdateDialog: View {
 
     private var confirmTitle: String {
         model.selectedCount == 0
-            ? String(localized: "librarySettings.templateUpdate.acknowledge", locale: locale)
-            : String(format: String(localized: "librarySettings.templateUpdate.apply",
+            ? AppStrings.text("librarySettings.templateUpdate.acknowledge", locale: locale)
+            : String(format: AppStrings.text("librarySettings.templateUpdate.apply",
                                     locale: locale), model.selectedCount)
     }
 
@@ -139,7 +139,7 @@ struct TemplateUpdateDialog: View {
                     .font(.system(size: Tokens.fontSize.body, design: .monospaced))
                     .textSelection(.enabled)
                 if let previous = item.previous {
-                    Text(String(format: String(localized: "librarySettings.templateUpdate.previous",
+                    Text(String(format: AppStrings.text("librarySettings.templateUpdate.previous",
                                                locale: locale), previous))
                         .font(.system(size: Tokens.fontSize.caption, design: .monospaced))
                         .foregroundStyle(.secondary)
@@ -154,20 +154,20 @@ struct TemplateUpdateDialog: View {
     /// 「何の、どんな変更か」を 1 行で。**訳語はここで付ける**——`QooKit` の
     /// 差分は表示言語を知らないので、値そのものしか持たない [A-01]。
     private func categoryTitle(_ item: TemplateDiff.Item) -> String {
-        let category: String.LocalizationValue = switch item.category {
+        let category: String = switch item.category {
         case .field:               "librarySettings.templateUpdate.category.field"
         case .filenameFormat:      "librarySettings.templateUpdate.category.filenameFormat"
         case .filenameFormatOrder: "librarySettings.templateUpdate.category.formatOrder"
         case .volumeFormat:        "librarySettings.templateUpdate.category.volumeFormat"
         case .folderLevel:         "librarySettings.templateUpdate.category.folderLevel"
         }
-        let change: String.LocalizationValue = switch item.change {
+        let change: String = switch item.change {
         case .added:     "librarySettings.templateUpdate.change.added"
         case .removed:   "librarySettings.templateUpdate.change.removed"
         case .modified:  "librarySettings.templateUpdate.change.modified"
         case .reordered: "librarySettings.templateUpdate.change.reordered"
         }
-        return String(localized: category, locale: locale)
-            + " · " + String(localized: change, locale: locale)
+        return AppStrings.text(category, locale: locale)
+            + " · " + AppStrings.text(change, locale: locale)
     }
 }

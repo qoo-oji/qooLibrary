@@ -24,24 +24,24 @@ struct DeleteOrphansDialog: View {
     var body: some View {
         DialogScaffold(
             width: 460,
-            confirm: DialogButton(title: String(localized: "orphanCleanup.delete", locale: locale),
+            confirm: DialogButton(title: AppStrings.text("orphanCleanup.delete", locale: locale),
                                   role: .destructive) {
                 onConfirm()
                 dismiss()
             },
-            cancel: DialogButton(title: String(localized: "common.cancel", locale: locale),
+            cancel: DialogButton(title: AppStrings.text("common.cancel", locale: locale),
                                  role: .cancel) { dismiss() }
         ) {
             VStack(alignment: .leading, spacing: Tokens.spacing.s) {
                 Text(files.count == 1
-                     ? String(format: String(localized: "orphanCleanup.deleteOne", locale: locale),
+                     ? String(format: AppStrings.text("orphanCleanup.deleteOne", locale: locale),
                               files[0].row.filename)
-                     : String(format: String(localized: "orphanCleanup.deleteMany", locale: locale),
+                     : String(format: AppStrings.text("orphanCleanup.deleteMany", locale: locale),
                               files.count))
                     .fixedSize(horizontal: false, vertical: true)
 
                 if affected > 0 {
-                    Text(String(format: String(localized: "orphanCleanup.deleteAffects",
+                    Text(String(format: AppStrings.text("orphanCleanup.deleteAffects",
                                                locale: locale), affected))
                         .foregroundStyle(Color("DangerText"))
                         .fixedSize(horizontal: false, vertical: true)

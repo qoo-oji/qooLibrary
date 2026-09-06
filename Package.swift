@@ -79,6 +79,10 @@ targets.append(
     .target(
         name: "QooInfrastructure",
         dependencies: infrastructureDependencies,
+        // 利用者可視の文言（ファイル操作の失敗・登録の失敗）はここのカタログから
+        // 引く。`.xcstrings` ではなく `.lproj/*.strings` にしてあるのは、SwiftPM が
+        // 前者をコンパイルせず生のままコピーするため［実測］。
+        resources: [.process("Resources")],
         swiftSettings: permissiveOnlyBuild ? [.define("PERMISSIVE_ONLY_BUILD")] : []
     )
 )
@@ -87,7 +91,9 @@ targets.append(
     // MARK: - Application layer
     .target(
         name: "QooApplication",
-        dependencies: ["QooKit", "QooPersistence", "QooInfrastructure"]
+        dependencies: ["QooKit", "QooPersistence", "QooInfrastructure"],
+        // Undo メニューの文言 [UD-06] と操作履歴の要約 [OH-02] はここから引く。
+        resources: [.process("Resources")]
     )
 )
 
@@ -161,6 +167,9 @@ if !permissiveOnlyBuild {
 
 let package = Package(
     name: "qooLibrary",
+    // ローカライズされたリソース（各層の Localizable.xcstrings）を
+    // 解決するために要る。宣言が無いと SwiftPM は .lproj を作らない。
+    defaultLocalization: "en",
     platforms: [
         .macOS(.v15) // [C-01]
     ],

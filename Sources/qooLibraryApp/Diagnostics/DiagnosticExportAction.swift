@@ -27,8 +27,8 @@ enum DiagnosticExportAction {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "\(DiagnosticLog.bundleName()).zip"
         panel.allowedContentTypes = [.zip]
-        panel.prompt = String(localized: "diagnostics.exportPanelPrompt", locale: locale)
-        panel.message = String(localized: "diagnostics.exportPanelMessage", locale: locale)
+        panel.prompt = AppStrings.text("diagnostics.exportPanelPrompt", locale: locale)
+        panel.message = AppStrings.text("diagnostics.exportPanelMessage", locale: locale)
         guard panel.runModal() == .OK, let destination = panel.url else { return }
 
         let anonymize = UserDefaults.standard.bool(forKey: DiagnosticLogPreferences.anonymizePathsKey)
@@ -37,7 +37,7 @@ enum DiagnosticExportAction {
         // すべてウインドウへ］。中断手段は持たない（書き出しは短く、
         // 途中で止めても半端な zip が残るだけで得が無い）。
         let handle = OperationProgressCenter.shared.begin(
-            title: String(localized: "diagnostics.exporting", locale: locale)
+            title: AppStrings.text("diagnostics.exporting", locale: locale)
         )
         Task {
             defer {
@@ -55,7 +55,7 @@ enum DiagnosticExportAction {
             } catch {
                 _ = await NotificationRouter.shared.presentError(
                     error,
-                    whatHappened: String(localized: "diagnostics.exportFailed", locale: locale)
+                    whatHappened: AppStrings.text("diagnostics.exportFailed", locale: locale)
                 )
             }
         }

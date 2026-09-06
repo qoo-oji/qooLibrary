@@ -396,8 +396,8 @@ struct LibraryProtectedTokensSettingsView: View {
 extension ProtectedToken.Position {
     /// 位置条件の選択肢 [PT-05]。
     static var popUpItems: [FixedWidthPopUp<Self>.Item] {
-        [.init(title: String(localized: "librarySettings.protectedTokens.anywhere"), tag: .anywhere),
-         .init(title: String(localized: "librarySettings.protectedTokens.prefix"), tag: .prefix),
-         .init(title: String(localized: "librarySettings.protectedTokens.suffix"), tag: .suffix)]
+        [.init(title: AppStrings.text("librarySettings.protectedTokens.anywhere"), tag: .anywhere),
+         .init(title: AppStrings.text("librarySettings.protectedTokens.prefix"), tag: .prefix),
+         .init(title: AppStrings.text("librarySettings.protectedTokens.suffix"), tag: .suffix)]
     }
 }

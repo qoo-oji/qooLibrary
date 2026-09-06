@@ -75,7 +75,7 @@ struct EmbeddedMetadataPendingCard: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
                 VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
-                    Text(String(format: String(localized: "librarySettings.embeddedMetadata.pendingCount"),
+                    Text(String(format: AppStrings.text("librarySettings.embeddedMetadata.pendingCount"),
                                 pending.count))
                     Text("librarySettings.embeddedMetadata.pendingHint")
                         .font(.system(size: Tokens.fontSize.caption))
@@ -119,11 +119,11 @@ struct VolumeDecisionDialog: View {
     var body: some View {
         DialogScaffold(
             width: 640,
-            confirm: DialogButton(title: String(localized: "common.apply", locale: locale)) {
+            confirm: DialogButton(title: AppStrings.text("common.apply", locale: locale)) {
                 onConfirm(resolvedChoices, remember ? unanimousChoice : nil)
                 dismiss()
             },
-            cancel: DialogButton(title: String(localized: "common.cancel", locale: locale),
+            cancel: DialogButton(title: AppStrings.text("common.cancel", locale: locale),
                                  role: .cancel) { dismiss() }
         ) {
             VStack(alignment: .leading, spacing: Tokens.spacing.m) {

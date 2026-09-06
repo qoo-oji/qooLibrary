@@ -27,19 +27,19 @@ struct DeleteVaultFilesDialog: View {
     var body: some View {
         DialogScaffold(
             width: 460,
-            confirm: DialogButton(title: String(localized: "labelEditor.delete", locale: locale),
+            confirm: DialogButton(title: AppStrings.text("labelEditor.delete", locale: locale),
                                   role: .destructive) {
                 onConfirm()
                 dismiss()
             },
-            cancel: DialogButton(title: String(localized: "common.cancel", locale: locale),
+            cancel: DialogButton(title: AppStrings.text("common.cancel", locale: locale),
                                  role: .cancel) { dismiss() }
         ) {
             VStack(alignment: .leading, spacing: Tokens.spacing.s) {
                 Text(files.count == 1
-                     ? String(format: String(localized: "fileVault.deleteOne", locale: locale),
+                     ? String(format: AppStrings.text("fileVault.deleteOne", locale: locale),
                               files[0].row.filename)
-                     : String(format: String(localized: "fileVault.deleteMany", locale: locale),
+                     : String(format: AppStrings.text("fileVault.deleteMany", locale: locale),
                               files.count))
                     .fixedSize(horizontal: false, vertical: true)
 
@@ -52,7 +52,7 @@ struct DeleteVaultFilesDialog: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 if affectedLabels > 0 {
-                    Text(String(format: String(localized: "fileVault.deleteAffectsLabels",
+                    Text(String(format: AppStrings.text("fileVault.deleteAffectsLabels",
                                                locale: locale), affectedLabels))
                         .fixedSize(horizontal: false, vertical: true)
                 }

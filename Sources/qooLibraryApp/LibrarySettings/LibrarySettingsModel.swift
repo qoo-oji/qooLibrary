@@ -200,7 +200,7 @@ final class LibrarySettingsModel {
             return true
         } catch {
             await NotificationRouter.shared.presentError(
-                error, whatHappened: String(localized: "librarySettings.saveFailed"))
+                error, whatHappened: AppStrings.text("librarySettings.saveFailed"))
             return false
         }
     }

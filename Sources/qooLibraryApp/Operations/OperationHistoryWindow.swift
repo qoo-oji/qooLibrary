@@ -156,7 +156,7 @@ struct OperationHistoryWindow: View {
                 // **1 件ならファイル名、複数なら件数** [OH-01]。絶対パスを
                 // そのまま並べると列が読めない——全体は下の詳細で見る。
                 Text(row.targetsDisplayName(pluralized: { count in
-                    String(format: String(localized: "operations.targetCount", locale: locale),
+                    String(format: AppStrings.text("operations.targetCount", locale: locale),
                            count)
                 }))
                     .lineLimit(1)
@@ -225,7 +225,7 @@ struct OperationHistoryWindow: View {
                             .truncationMode(.middle)
                     }
                     if detail.truncatedTargets > 0 {
-                        Text(String(format: String(localized: "operations.truncatedTargets",
+                        Text(String(format: AppStrings.text("operations.truncatedTargets",
                                                    locale: locale), detail.truncatedTargets))
                             .font(.system(size: Tokens.fontSize.caption))
                             .foregroundStyle(.secondary)
@@ -247,7 +247,7 @@ struct OperationHistoryWindow: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             HStack(spacing: Tokens.spacing.s) {
-                Text(String(format: String(localized: "operations.rowCount", locale: locale),
+                Text(String(format: AppStrings.text("operations.rowCount", locale: locale),
                             model.rows.count))
                     .font(.system(size: Tokens.fontSize.caption))
                     .foregroundStyle(.secondary)
@@ -271,11 +271,11 @@ struct OperationHistoryWindow: View {
         panel.nameFieldStringValue = "qooLibrary-operations.csv"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let header = [
-            String(localized: "operations.column.date", locale: locale),
-            String(localized: "operations.column.kind", locale: locale),
-            String(localized: "operations.column.summary", locale: locale),
-            String(localized: "operations.column.target", locale: locale),
-            String(localized: "operations.column.detail", locale: locale),
+            AppStrings.text("operations.column.date", locale: locale),
+            AppStrings.text("operations.column.kind", locale: locale),
+            AppStrings.text("operations.column.summary", locale: locale),
+            AppStrings.text("operations.column.target", locale: locale),
+            AppStrings.text("operations.column.detail", locale: locale),
         ]
         let formatter = Self.csvDateFormatter
         let data = OperationLogCSV.encode(
@@ -283,7 +283,7 @@ struct OperationHistoryWindow: View {
             kindName: { Self.kindName($0, locale: locale) },
             dateFormatter: { formatter.string(from: $0) },
             truncationNote: {
-                String(format: String(localized: "operations.truncatedTargets", locale: locale), $0)
+                String(format: AppStrings.text("operations.truncatedTargets", locale: locale), $0)
             })
         do {
             try data.write(to: url, options: .atomic)
@@ -347,7 +347,7 @@ struct OperationHistoryWindow: View {
     }
 
     static func kindName(_ kind: OperationLogKind, locale: Locale) -> String {
-        String(localized: String.LocalizationValue(kindKey(kind)), locale: locale)
+        AppStrings.text(kindKey(kind), locale: locale)
     }
 
     private static let dateFormatter: DateFormatter = {

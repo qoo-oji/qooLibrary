@@ -183,7 +183,7 @@ struct LabelListPane: View {
     /// 複数まとめて扱えるもの [LE-07][LE-09]。
     private var batchRow: some View {
         HStack(spacing: Tokens.spacing.s) {
-            Text(String(format: String(localized: "labelEditor.selectedCount", locale: locale),
+            Text(String(format: AppStrings.text("labelEditor.selectedCount", locale: locale),
                         model.selection.count))
                 .font(.system(size: Tokens.fontSize.caption))
                 .foregroundStyle(.secondary)
@@ -242,7 +242,7 @@ struct LabelListPane: View {
         let targets = model.selectedLabels
         guard !targets.isEmpty else { return }
         DialogWindowPresenter.shared.present(
-            title: String(localized: "labelEditor.deleteTitle", locale: locale)
+            title: AppStrings.text("labelEditor.deleteTitle", locale: locale)
         ) { _ in
             DeleteLabelsDialog(labels: targets) {
                 perform { try await model.deleteSelected() }
@@ -252,7 +252,7 @@ struct LabelListPane: View {
 
     private func confirmMerge(_ source: LabelSummary, into target: LabelSummary) {
         DialogWindowPresenter.shared.present(
-            title: String(localized: "labelEditor.mergeTitle", locale: locale)
+            title: AppStrings.text("labelEditor.mergeTitle", locale: locale)
         ) { _ in
             MergeLabelsDialog(source: source, target: target) {
                 perform { try await model.merge(source, into: target) }
@@ -282,12 +282,12 @@ struct LabelListPane: View {
     static func message(for error: LabelEditError, locale: Locale) -> String {
         switch error {
         case .nameAlreadyExists(_, let name):
-            return String(format: String(localized: "labelEditor.error.nameExists",
+            return String(format: AppStrings.text("labelEditor.error.nameExists",
                                          locale: locale), name)
         case .crossFieldMerge:
-            return String(localized: "labelEditor.error.crossFieldMerge", locale: locale)
+            return AppStrings.text("labelEditor.error.crossFieldMerge", locale: locale)
         case .labelNotFound:
-            return String(localized: "labelEditor.error.notFound", locale: locale)
+            return AppStrings.text("labelEditor.error.notFound", locale: locale)
         }
     }
 }

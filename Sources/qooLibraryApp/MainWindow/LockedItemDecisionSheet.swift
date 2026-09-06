@@ -25,7 +25,7 @@ struct LockedItemDecisionSheet: View {
                     .foregroundStyle(.secondary)
                 VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
                     Text(String(
-                        format: String(localized: "permanentDelete.lockedTitle", locale: locale),
+                        format: AppStrings.text("permanentDelete.lockedTitle", locale: locale),
                         request.url.lastPathComponent
                     ))
                     .font(.system(size: Tokens.fontSize.title2, weight: .semibold))
@@ -41,7 +41,7 @@ struct LockedItemDecisionSheet: View {
 
             QooDialogFooter(
                 confirm: DialogButton(
-                    title: String(localized: "permanentDelete.deleteAnyway", locale: locale),
+                    title: AppStrings.text("permanentDelete.deleteAnyway", locale: locale),
                     role: .destructive
                 ) {
                     request.resolve(.delete, applyToAll: applyToAll)
@@ -51,7 +51,7 @@ struct LockedItemDecisionSheet: View {
                 // （`.cancelAction`）をキャンセルの意味を持つボタンにだけ
                 // 結び付けるため、無指定だと Esc でスキップできなくなる。
                 cancel: DialogButton(
-                    title: String(localized: "permanentDelete.skipItem", locale: locale),
+                    title: AppStrings.text("permanentDelete.skipItem", locale: locale),
                     role: .cancel
                 ) {
                     request.resolve(.skip, applyToAll: applyToAll)

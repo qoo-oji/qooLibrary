@@ -73,14 +73,14 @@ enum TemplateUpdateAction {
                 category: .info,
                 severity: .transient,
                 target: .library(uuid: pending.libraryUUID, name: pending.libraryName),
-                title: String(localized: "library.templateUpdate.title", locale: locale),
-                body: String(format: String(localized: "library.templateUpdate.body",
+                title: AppStrings.text("library.templateUpdate.title", locale: locale),
+                body: String(format: AppStrings.text("library.templateUpdate.body",
                                             locale: locale),
                              pending.presetName, pending.fromVersion, pending.toVersion,
                              pending.libraryName),
                 actions: [RecoveryAction(
                     id: NotificationRouteAction.reviewTemplateUpdate,
-                    title: String(localized: "library.templateUpdate.review", locale: locale),
+                    title: AppStrings.text("library.templateUpdate.review", locale: locale),
                     kind: .openWindow(NotificationRouteAction.reviewTemplateUpdate))]))
         }
     }
@@ -109,9 +109,9 @@ enum TemplateUpdateAction {
                 // 伝わる必要がある［code-review の指摘］。
                 _ = await NotificationRouter.shared.present(NotificationItem(
                     category: .info, severity: .sheet,
-                    title: String(localized: "librarySettings.templateUpdate.title",
+                    title: AppStrings.text("librarySettings.templateUpdate.title",
                                   locale: locale),
-                    body: String(localized: "librarySettings.templateUpdate.alreadyReviewed",
+                    body: AppStrings.text("librarySettings.templateUpdate.alreadyReviewed",
                                  locale: locale)))
                 return
             }
@@ -124,7 +124,7 @@ enum TemplateUpdateAction {
             case .failed(let message):
                 await NotificationRouter.shared.present(NotificationItem(
                     category: .error, severity: .sheet,
-                    title: String(localized: "librarySettings.templateUpdate.failed",
+                    title: AppStrings.text("librarySettings.templateUpdate.failed",
                                   locale: locale),
                     body: message))
                 return
@@ -133,7 +133,7 @@ enum TemplateUpdateAction {
             }
 
             DialogWindowPresenter.shared.present(
-                title: String(localized: "librarySettings.templateUpdate.title", locale: locale)
+                title: AppStrings.text("librarySettings.templateUpdate.title", locale: locale)
             ) { _ in
                 TemplateUpdateDialog(pending: pending, model: model) {
                     Task {
@@ -167,7 +167,7 @@ enum TemplateUpdateAction {
             LibraryEnableAction.rescan(library: library, locale: locale, openWindow: openWindow)
         } catch {
             await NotificationRouter.shared.presentError(
-                error, whatHappened: String(localized: "librarySettings.templateUpdate.failed",
+                error, whatHappened: AppStrings.text("librarySettings.templateUpdate.failed",
                                             locale: locale))
         }
     }

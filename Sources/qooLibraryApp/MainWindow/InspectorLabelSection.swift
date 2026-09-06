@@ -48,7 +48,7 @@ struct InspectorLabelSection: View {
                 // **対象外が混ざったことを黙って隠さない** [RP-02]。
                 // 「10 件選んだのに 8 件にしか付かなかった」を数字で見せる。
                 if subject.skippedCount > 0 {
-                    Text(String(format: String(localized: "inspector.labels.skipped",
+                    Text(String(format: AppStrings.text("inspector.labels.skipped",
                                                locale: locale), "\(subject.skippedCount)"))
                         .font(.system(size: Tokens.fontSize.caption))
                         .foregroundStyle(.secondary)
@@ -68,7 +68,7 @@ struct InspectorLabelSection: View {
                 guard presenting else { return }
                 isAddingLabel = false
                 DialogWindowPresenter.shared.present(
-                    title: String(localized: "inspector.labels.addTitle", locale: locale)
+                    title: AppStrings.text("inspector.labels.addTitle", locale: locale)
                 ) { _ in
                     AddLabelDialog(model: model, onChanged: onChanged)
                 }
@@ -128,7 +128,7 @@ struct InspectorLabelSection: View {
                     Image(systemName: "lock.fill")
                         .font(.system(size: Tokens.fontSize.caption))
                         .foregroundStyle(.secondary)
-                        .help(String(localized: "inspector.labels.protected"))
+                        .help(AppStrings.text("inspector.labels.protected"))
                 }
             }
         }
@@ -210,7 +210,7 @@ struct InspectorLabelSection: View {
             onChanged()
         } catch {
             await NotificationRouter.shared.presentError(
-                error, whatHappened: String(localized: "error.setLabelFailed", locale: locale))
+                error, whatHappened: AppStrings.text("error.setLabelFailed", locale: locale))
         }
     }
 }

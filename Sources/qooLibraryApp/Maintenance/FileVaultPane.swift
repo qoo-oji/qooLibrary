@@ -106,7 +106,7 @@ struct FileVaultPane: View {
     /// ——空文字の見出しは、区画が無いのと区別が付かない。
     private func sectionTitle(_ section: FileVaultModel.Section) -> String {
         section.folder.isEmpty
-            ? String(localized: "fileVault.libraryRoot", locale: locale)
+            ? AppStrings.text("fileVault.libraryRoot", locale: locale)
             : section.folder
     }
 
@@ -136,9 +136,9 @@ struct FileVaultPane: View {
                     // [FAW-05] 保管した日時。記録が無いのは外部で
                     // `.qooarchive` へ入れられたもの [FA-04]。
                     Text(row.archivedAt.map { Self.dateFormatter.string(from: $0) }
-                        ?? String(localized: "fileVault.archivedAtUnknown", locale: locale))
+                        ?? AppStrings.text("fileVault.archivedAtUnknown", locale: locale))
                     if row.labelCount > 0 {
-                        Text(String(format: String(localized: "fileVault.labelCount",
+                        Text(String(format: AppStrings.text("fileVault.labelCount",
                                                    locale: locale), row.labelCount))
                     }
                 }
@@ -192,7 +192,7 @@ struct FileVaultPane: View {
                 .frame(maxHeight: 44)
             }
             HStack(spacing: Tokens.spacing.s) {
-                Text(String(format: String(localized: "labelEditor.selectedCount", locale: locale),
+                Text(String(format: AppStrings.text("labelEditor.selectedCount", locale: locale),
                             model.selection.count))
                     .font(.system(size: Tokens.fontSize.caption))
                     .foregroundStyle(.secondary)
@@ -218,7 +218,7 @@ struct FileVaultPane: View {
             // どうかも変わるので、ダイアログを出す前に決める必要がある。
             guard let plan = await model.planDelete() else { return }
             DialogWindowPresenter.shared.present(
-                title: String(localized: "fileVault.deleteTitle", locale: locale)
+                title: AppStrings.text("fileVault.deleteTitle", locale: locale)
             ) { _ in
                 DeleteVaultFilesDialog(plan: plan) {
                     perform { try await model.deleteSelected(plan) }

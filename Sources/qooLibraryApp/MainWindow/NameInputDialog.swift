@@ -48,7 +48,7 @@ struct NameInputDialog: View {
             width: 360,
             confirm: DialogButton(title: confirmTitle) { commit() },
             cancel: DialogButton(
-                title: String(localized: "common.cancel", locale: locale), role: .cancel
+                title: AppStrings.text("common.cancel", locale: locale), role: .cancel
             ) { dismiss() },
             confirmDisabled: trimmedName.isEmpty
         ) {

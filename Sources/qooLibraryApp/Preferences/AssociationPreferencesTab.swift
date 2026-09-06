@@ -100,7 +100,7 @@ struct AssociationPreferencesTab: View {
     /// ベース。拡張子からは引けない）。
     private var folderAssociationRow: some View {
         let key = AppAssociationKeys.folder
-        return LabeledContent(String(localized: "preferences.associations.folderRow", locale: locale)) {
+        return LabeledContent(AppStrings.text("preferences.associations.folderRow", locale: locale)) {
             Picker("preferences.associations.folderRow", selection: primaryBinding(for: key)) {
                 Text("preferences.associations.systemDefault").tag(Optional<String>.none)
                 ForEach(options(for: key)) { candidate in
@@ -157,7 +157,7 @@ struct AssociationPreferencesTab: View {
                         // 保存失敗を握りつぶさない [ER-01、2026-08 既知の不具合の
                         // 一掃]。楽観更新した表示は実際の保存内容へ読み直して戻す。
                         await NotificationRouter.shared.presentError(
-                            error, whatHappened: String(localized: "error.operationFailed", locale: locale)
+                            error, whatHappened: AppStrings.text("error.operationFailed", locale: locale)
                         )
                         await refreshPrimary(for: ext)
                     }
@@ -196,7 +196,7 @@ struct AssociationPreferencesTab: View {
             } catch {
                 // 保存失敗を握りつぶさない [ER-01、2026-08 既知の不具合の一掃]。
                 await NotificationRouter.shared.presentError(
-                    error, whatHappened: String(localized: "error.operationFailed", locale: locale)
+                    error, whatHappened: AppStrings.text("error.operationFailed", locale: locale)
                 )
                 await reload()
             }
@@ -214,7 +214,7 @@ struct AssociationPreferencesTab: View {
             } catch {
                 // 保存失敗を握りつぶさない [ER-01、2026-08 既知の不具合の一掃]。
                 await NotificationRouter.shared.presentError(
-                    error, whatHappened: String(localized: "error.operationFailed", locale: locale)
+                    error, whatHappened: AppStrings.text("error.operationFailed", locale: locale)
                 )
                 await reload()
             }

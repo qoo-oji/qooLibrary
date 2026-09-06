@@ -88,21 +88,21 @@ public enum FileNameValidation {
     }
 }
 
-/// 文言は日本語のリテラル。この層は文字列カタログを参照できないため
-/// ［既知の限界、`FileOperationError`/`ExtractError` と同じ］。
+/// 文言はこの層のカタログ（`Resources/<lang>.lproj/Localizable.strings`）から
+/// 引く。**`String(localized:locale:)` は使わない**——理由は
+/// `LocalizedStrings` の型コメント。
 extension FileNameValidation.Failure: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .empty:
-            return "名前を入力してください。"
+            return QooKitStrings.text("fileName.error.empty")
         case let .forbiddenCharacter(character):
-            return "名前に「\(character)」は使えません。"
-                + "この文字はフォルダの区切りとして予約されています。別の文字に置き換えてください。"
+            return QooKitStrings.format("fileName.error.forbiddenCharacter", String(character))
         case .reservedDotName:
-            return "「.」と「..」はファイルシステムが使う名前のため、項目の名前には使えません。"
+            return QooKitStrings.text("fileName.error.reservedDotName")
         case let .tooLong(units):
-            return "名前が長すぎます（\(units) 文字ぶん、上限 \(FileNameValidation.maxNameUnits) 文字ぶん）。"
-                + "短い名前を入力してください。"
+            return QooKitStrings.format("fileName.error.tooLong",
+                                        units, FileNameValidation.maxNameUnits)
         }
     }
 }

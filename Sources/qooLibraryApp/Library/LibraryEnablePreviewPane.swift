@@ -60,7 +60,7 @@ struct LibraryEnablePreviewPane: View {
             Text("libraryEnable.preview.title")
                 .font(.system(size: Tokens.fontSize.body, weight: .semibold))
             if !model.isSampling && !model.sampleNames.isEmpty {
-                Text(String(format: String(localized: "libraryEnable.preview.summary",
+                Text(String(format: AppStrings.text("libraryEnable.preview.summary",
                                            locale: locale),
                             outcome.total, outcome.matched, outcome.unresolved))
                     .font(.system(size: Tokens.fontSize.caption))
@@ -68,13 +68,13 @@ struct LibraryEnablePreviewPane: View {
                 if outcome.excluded > 0 {
                     // 対象拡張子で外した件数 [AL-11]。出さないと、有効化した
                     // 後の走査結果と数が合わない理由が分からない。
-                    Text(String(format: String(localized: "libraryEnable.preview.excluded",
+                    Text(String(format: AppStrings.text("libraryEnable.preview.excluded",
                                                locale: locale), outcome.excluded))
                         .font(.system(size: Tokens.fontSize.caption))
                         .foregroundStyle(.secondary)
                 }
                 if outcome.truncated {
-                    Text(String(format: String(localized: "libraryEnable.preview.truncated",
+                    Text(String(format: AppStrings.text("libraryEnable.preview.truncated",
                                                locale: locale), outcome.total))
                         .font(.system(size: Tokens.fontSize.caption))
                         .foregroundStyle(.secondary)
