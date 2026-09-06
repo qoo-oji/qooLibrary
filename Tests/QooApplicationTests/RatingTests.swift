@@ -116,17 +116,18 @@ struct RatingCommandTests {
     @MainActor
     func displayNames() async throws {
         let w = try ServicesWorkspace()
-        let url = w.libraryRoot.appendingPathComponent("(一般コミック) [著者値A] 作品名A 第01巻.cbz")
+        let name = "(一般コミック) [著者値A] 作品名A 第01巻.cbz"
+        let url = w.libraryRoot.appendingPathComponent(name)
         let target = RatingTarget(id: FileID(rawValue: 1), url: url, previousStars: 0)
         let single = SetRatingCommand(targets: [target], stars: 3,
-                                      subjectName: "(一般コミック) [著者値A] 作品名A 第01巻.cbz", services: w.services)
+                                      subjectName: name, services: w.services)
         #expect(single.displayName
-                == "「(一般コミック) [著者値A] 作品名A 第01巻.cbz」の評価を★3に設定")
+                == QooApplicationStrings.format("command.setRating", name, 3))
 
         let cleared = SetRatingCommand(targets: [target], stars: 0,
-                                       subjectName: "(一般コミック) [著者値A] 作品名A 第01巻.cbz", services: w.services)
+                                       subjectName: name, services: w.services)
         #expect(cleared.displayName
-                == "「(一般コミック) [著者値A] 作品名A 第01巻.cbz」の評価を解除")
+                == QooApplicationStrings.format("command.clearRating", name))
 
         let series = SetRatingCommand(targets: [target, target], stars: 4,
                                       subjectName: "x", seriesName: "作品名A",

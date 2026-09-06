@@ -144,7 +144,8 @@ struct OperationLogRecordingTests {
         _ = await stack.undo()
         try await waitForRows(store, count: 2)
         #expect(store.drafts.last?.kind == .undonePartially)
-        #expect(store.drafts.last?.detail == "成功 3 件 / 失敗 1 件")
+        #expect(store.drafts.last?.detail
+                == QooApplicationStrings.format("operation.partialDetail", 3, 1))
     }
 
     @Test("取り消しの失敗は理由を残す")
@@ -325,7 +326,7 @@ struct ScanOperationLogTests {
         #expect(row.commandName == "scan")
         #expect(row.libraryUUID == w.registrationUUID)
         #expect(row.targets == [w.libraryRoot.path], "対象はライブラリの根 1 つ")
-        #expect(row.detail?.contains("追加 2") == true)
+        #expect(row.detail?.contains(QooApplicationStrings.format("scan.summary.added", 2)) == true)
     }
 
     /// **中身が変わらなくても手動は残す。** 利用者が明示的に頼んだ操作で、

@@ -434,9 +434,17 @@ struct VolumeFormatValidationTests {
     /// 実測は `validate()` ではなく `measuredIssues()` の担当。**入力のたびに
     /// 走らせると、危険な正規表現を直している最中に画面が重くなる。**
     @Test("実測は validate には含まれず measuredIssues が担う")
-    func measurementIsSeparate() {
-        let d = draft([VolumeFormatDraft(source: #"((?:[0-9]+)+)巻"#)])
-        let slowMarker = "時間の上限に達しました"
+    func measurementIsSeparate() throws {
+        let source = #"((?:[0-9]+)+)巻"#
+        let d = draft([VolumeFormatDraft(source: source)])
+
+        // **印は文言のリテラルではなく、実測でしか出ない種別から作る**
+        // ——警告文はローカライズされているので、環境の言語で落ちる
+        // ［CI は英語環境。2026-09-06 に 3 度目の同じ失敗をした］。
+        let slowFindings = RegexSafety.measuredFindings(source)
+            .filter { if case .tooSlow = $0.kind { true } else { false } }
+        let slowMarker = try #require(slowFindings.first?.message,
+                                      "実測で時間の上限に達しなかった")
         #expect(!d.validate().contains { $0.message.contains(slowMarker) })
         #expect(d.measuredIssues().contains { $0.message.contains(slowMarker) })
     }

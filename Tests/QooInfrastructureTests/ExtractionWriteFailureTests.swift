@@ -71,7 +71,11 @@ import Testing
             return
         }
         // 原因が読める文言になっていること [ER-03]。「エラーN」形式へ潰れない。
-        #expect(reason.contains("空き容量"), "容量不足だと分からない文言: \(reason)")
+        // **文言の一致で見ない**——ローカライズされているので、環境の言語で落ちる
+        // ［CI は英語環境。2026-09-06 に 3 度目の同じ失敗をした］。ENOSPC の
+        // 説明が実際に引けていることを、その説明そのものと突き合わせて確かめる。
+        #expect(reason.contains(PosixFailure.reason(ENOSPC)),
+                "容量不足だと分からない文言: \(reason)")
         #expect(!error.localizedDescription.contains("ExtractError"))
     }
 

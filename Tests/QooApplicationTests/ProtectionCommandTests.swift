@@ -167,7 +167,8 @@ struct ProtectionCommandTests {
         let off = SetProtectionCommand(targets: [target],
                                        mode: .all(fields: [], protected: false),
                                        libraryID: LibraryID(rawValue: 1),
-                                       subjectName: "3 項目", services: w.services)
+                                       subjectName: QooApplicationStrings.format("operation.subjectItems", 3),
+                                       services: w.services)
         #expect(off.displayName
             == QooApplicationStrings.format("command.unprotectMetadata",
                                               QooApplicationStrings.format("operation.subjectItems", 3)))

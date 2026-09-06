@@ -363,7 +363,8 @@ struct LabelEditingTests {
         let remove = AssignLabelCommand(labelID: LabelID(rawValue: 1), fieldID: field,
                                         labelName: "サークル値1",
                                         previous: previous, assigning: false,
-                                        subjectName: "3 項目", services: w.services)
+                                        subjectName: QooApplicationStrings.format("operation.subjectItems", 3),
+                                        services: w.services)
         #expect(remove.displayName
             == QooApplicationStrings.format("command.removeLabel",
                                               QooApplicationStrings.format("operation.subjectItems", 3),

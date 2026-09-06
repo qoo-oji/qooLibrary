@@ -39,7 +39,7 @@ import Testing
 
         #expect(!stack.canUndo)
         #expect(stack.canRedo)
-        #expect(stack.redoTitle == "「NewFolder」を作成")
+        #expect(stack.redoTitle == QooApplicationStrings.format("command.createFolder", "NewFolder"))
     }
 
     @Test func redoReappliesCommand() async throws {

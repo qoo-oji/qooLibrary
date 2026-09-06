@@ -160,7 +160,7 @@ import Testing
             Issue.record("expected .impossible, got \(undoResult)")
             return
         }
-        #expect(reason.contains("空ではありません"))
+        #expect(reason.contains(QooApplicationStrings.text("command.createFolder.notEmpty")))
         #expect(FileManager.default.fileExists(atPath: folderURL.path)) // 削除されていない
     }
 
@@ -175,7 +175,8 @@ import Testing
         let command = CreateAliasCommand(source: source, destinationFolder: dest)
         _ = try await command.execute()
 
-        let aliasURL = dest.appendingPathComponent("a.txt のエイリアス")
+        let aliasURL = dest.appendingPathComponent(
+            QooInfrastructureStrings.format("fileOp.aliasName", "a.txt"))
         #expect(FileManager.default.fileExists(atPath: aliasURL.path))
     }
 
