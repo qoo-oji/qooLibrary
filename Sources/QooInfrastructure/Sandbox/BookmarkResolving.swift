@@ -63,21 +63,16 @@ extension BookmarkAccessError: LocalizedError {
         case let .offline(reason):
             switch reason {
             case .volumeNotMounted:
-                return "このフォルダがあるボリュームが接続されていません。"
-                    + "接続してから、もう一度お試しください。"
+                return QooInfrastructureStrings.text("bookmark.error.volumeNotMounted")
             case .unresponsive:
-                return "このフォルダがある場所が応答していません。"
-                    + "サーバや接続の状態を確かめてから、もう一度お試しください。"
+                return QooInfrastructureStrings.text("bookmark.error.unresponsive")
             case .permissionDenied:
-                return "このフォルダへアクセスする許可がありません。"
-                    + "環境設定の「アクセス権」で、この場所へのアクセスを許可してください。"
+                return QooInfrastructureStrings.text("bookmark.error.permissionDenied")
             case .invalidBookmark:
-                return "保存されていたフォルダの参照が使えなくなっています。"
-                    + "いったん登録を解除して、選び直してください。"
+                return QooInfrastructureStrings.text("bookmark.error.invalidBookmark")
             }
         case .accessDenied:
-            return "このフォルダへアクセスできませんでした。"
-                + "環境設定の「アクセス権」で、この場所へのアクセスを許可してください。"
+            return QooInfrastructureStrings.text("bookmark.error.accessDenied")
         }
     }
 }

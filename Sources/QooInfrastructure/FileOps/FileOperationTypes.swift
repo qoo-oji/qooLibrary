@@ -114,7 +114,8 @@ extension PartialTransferFailure: UserPresentableError {
 
     public var technicalDetail: String? {
         // 「何件目で止まったか」は問い合わせのときに効く情報なので添える。
-        let progress = "\(receipts.count) 件まで完了 / 「\(failedItem.lastPathComponent)」で中断"
+        let progress = QooInfrastructureStrings.format("fileOp.partial.transferProgress",
+                                 receipts.count, failedItem.lastPathComponent)
         return [presentable?.technicalDetail, progress].compactMap { $0 }.joined(separator: "\n")
     }
 }
@@ -160,7 +161,7 @@ extension PartialTrashFailure: UserPresentableError {
     public var severity: NotificationSeverity { presentable?.severity ?? .sheet }
 
     public var technicalDetail: String? {
-        let progress = "\(receipts.count) 件までゴミ箱へ移動済み"
+        let progress = QooInfrastructureStrings.format("fileOp.partial.trashProgress", receipts.count)
         return [presentable?.technicalDetail, progress].compactMap { $0 }.joined(separator: "\n")
     }
 }
@@ -329,49 +330,52 @@ public enum FileOperationError: Error, Sendable, Equatable {
 /// 合成（どれをタイトルに、どれを本文に置くか）は
 /// `NotificationRouter.presentError` の 1 箇所だけが決める。
 ///
-/// なお文言は日本語のリテラル。この層は文字列カタログ
-/// （`Resources/Localizable.xcstrings`、アプリターゲットのリソース）を
-/// 参照できず、既存の `operationFailed` の実引数も同じく日本語リテラル
-/// なので、それに揃えている［既知の限界。ここの英語化は、エラー文言を
-/// アプリ層へ持ち上げる別作業として扱う］。
+/// 文言は `Resources/<lang>.lproj/Localizable.strings` から
+/// `QooInfrastructureStrings` 経由で引く。**`String(localized:)` を
+/// 使ってはならない**（`locale:` は `.lproj` を選ばない。理由は
+/// `LocalizedStrings` の型コメント）。
+///
+/// **`operationFailed` の実引数だけは呼び出し側が組み立てた文字列**で、
+/// ここでは訳せない——投げる側が訳したものを渡すこと。
 extension FileOperationError: UserPresentableError {
     /// 何が起きたか（1 文）。**操作名は入れない** — それは呼び出し側が
     /// タイトルとして持っている。ここは「どの項目がどうなったか」に徹する。
     public var whatHappened: String {
         switch self {
         case let .conflictResolutionRequired(_, destination):
-            return "「\(destination.lastPathComponent)」がすでに存在します。"
+            return QooInfrastructureStrings.format("fileOp.what.alreadyExists", destination.lastPathComponent)
         case let .operationFailed(message):
             return message
         case let .copyFailed(source, _, _):
-            return "「\(source.lastPathComponent)」を処理できませんでした。"
+            return QooInfrastructureStrings.format("fileOp.what.copyFailed", source.lastPathComponent)
         case let .insufficientFreeSpace(_, _, destination):
-            return "「\(destination.lastPathComponent)」の空き容量が足りません。"
+            return QooInfrastructureStrings.format("fileOp.what.insufficientFreeSpace", destination.lastPathComponent)
         case let .destinationInsideSource(source, destination):
-            return "「\(source.lastPathComponent)」を、それ自身の中にある"
-                + "「\(destination.lastPathComponent)」へは移動・コピーできません。"
+            return QooInfrastructureStrings.format("fileOp.what.destinationInsideSource",
+                                                    source.lastPathComponent, destination.lastPathComponent)
         case let .destinationIsReadOnly(destination):
-            return "「\(destination.lastPathComponent)」は読み取り専用です。"
+            return QooInfrastructureStrings.format("fileOp.what.destinationIsReadOnly", destination.lastPathComponent)
         case let .destinationNotWritable(destination, _):
-            return "「\(destination.lastPathComponent)」に書き込めません。"
+            return QooInfrastructureStrings.format("fileOp.what.destinationNotWritable", destination.lastPathComponent)
         case let .trashUnavailable(url):
-            return "「\(url.lastPathComponent)」のある場所にはゴミ箱がありません。"
+            return QooInfrastructureStrings.format("fileOp.what.trashUnavailable", url.lastPathComponent)
         case .timedOut:
-            return "処理が終わるのを待てませんでした。"
+            return QooInfrastructureStrings.text("fileOp.what.timedOut")
         case let .invalidName(name, _):
-            return name.isEmpty ? "名前が入力されていません。" : "「\(name)」は名前として使えません。"
+            return name.isEmpty ? QooInfrastructureStrings.text("fileOp.what.nameEmpty")
+                                : QooInfrastructureStrings.format("fileOp.what.invalidName", name)
         case let .sourceChangedDuringOperation(source):
-            return "「\(source.lastPathComponent)」は、処理している間にほかのアプリが書き換えました。"
+            return QooInfrastructureStrings.format("fileOp.what.sourceChanged", source.lastPathComponent)
         case let .nameTooLongForDestination(name, _, _, _, _):
-            return "「\(name)」は、書き込み先で使える名前の長さを超えています。"
+            return QooInfrastructureStrings.format("fileOp.what.nameTooLong", name)
         case let .fileTooLargeForDestination(item, _, _, destination):
-            return "「\(item.lastPathComponent)」は、書き込み先「\(destination.lastPathComponent)」が"
-                + "扱えるファイルの大きさを超えています。"
+            return QooInfrastructureStrings.format("fileOp.what.fileTooLarge",
+                                                    item.lastPathComponent, destination.lastPathComponent)
         case let .pathTooLong(item, destination, _, _):
-            return "「\(item.lastPathComponent)」を「\(destination.lastPathComponent)」へ置くと、"
-                + "パスが長くなりすぎます。"
+            return QooInfrastructureStrings.format("fileOp.what.pathTooLong",
+                                                    item.lastPathComponent, destination.lastPathComponent)
         case let .replaceBackupOrphaned(_, target, _):
-            return "「\(target.lastPathComponent)」を置き換えられず、元の項目も元の場所へ戻せませんでした。"
+            return QooInfrastructureStrings.format("fileOp.what.replaceBackupOrphaned", target.lastPathComponent)
         }
     }
 
@@ -381,48 +385,48 @@ extension FileOperationError: UserPresentableError {
         let formatter = ByteCountFormatter()
         switch self {
         case .conflictResolutionRequired:
-            return "置き換えるか別名で残すかを決められなかったため、処理を続けられませんでした。"
+            return QooInfrastructureStrings.text("fileOp.why.conflictResolutionRequired")
         case .operationFailed:
             return ""
         case let .copyFailed(_, _, code):
             return PosixFailure.reason(code)
         case let .insufficientFreeSpace(required, available, _):
-            return "\(formatter.string(fromByteCount: required)) が必要ですが、"
-                + "空きは \(formatter.string(fromByteCount: available)) しかありません。"
+            return QooInfrastructureStrings.format("fileOp.why.insufficientFreeSpace",
+                                                    formatter.string(fromByteCount: required),
+                                                    formatter.string(fromByteCount: available))
         case .destinationInsideSource:
-            return "自分自身の中へ入れると、際限なく複製が繰り返されてしまいます。"
+            return QooInfrastructureStrings.text("fileOp.why.destinationInsideSource")
         case .destinationIsReadOnly:
-            return "このボリュームには書き込めない設定になっています。"
+            return QooInfrastructureStrings.text("fileOp.why.destinationIsReadOnly")
         case let .destinationNotWritable(_, code):
             // サーバ側のアクセス許可が POSIX パーミッションへ写らないことが
             // あるため、表示上の権限とは食い違い得る [NV-29]。
             return PosixFailure.reason(code, context: .destination)
         case .trashUnavailable:
-            return "ネットワーク上の共有や一部のボリュームは、ゴミ箱を持ちません。"
+            return QooInfrastructureStrings.text("fileOp.why.trashUnavailable")
         case let .timedOut(seconds):
             // 1 秒未満を `Int` に落とすと「0 秒待っても応答がありません」に
             // なってしまうため、そこだけ小数で見せる。
             let shown = seconds < 1 ? String(format: "%.1f", seconds) : String(Int(seconds))
-            return "\(shown) 秒待っても応答がありませんでした。"
-                + "ネットワーク上の場所では、サーバの応答が返らないことがあります。"
+            return QooInfrastructureStrings.format("fileOp.why.timedOut", shown)
         case let .invalidName(_, reason):
             return reason.errorDescription ?? ""
         case .sourceChangedDuringOperation:
-            return "途中までの内容を写してしまうため中止しました。"
+            return QooInfrastructureStrings.text("fileOp.why.sourceChanged")
         case let .nameTooLongForDestination(_, _, length, limit, unitIsBytes):
-            let unit = unitIsBytes ? "バイト" : "文字ぶん"
-            let note = unitIsBytes
-                ? "書き込み先は名前の長さをバイト数で数えます（日本語は 1 文字あたり 3 バイト）。"
-                : ""
-            return "\(length) \(unit)ありますが、上限は \(limit) \(unit)です。\(note)"
+            // **単位を差し込む形にしない**——英語では数と単位の並びも、
+            // 注記の要否も文ごとに違う。鍵そのものを分ける。
+            return unitIsBytes
+                ? QooInfrastructureStrings.format("fileOp.why.nameTooLongInBytes", length, limit)
+                : QooInfrastructureStrings.format("fileOp.why.nameTooLongInCharacters", length, limit)
         case let .fileTooLargeForDestination(_, size, limit, _):
-            return "\(formatter.string(fromByteCount: size)) ありますが、"
-                + "上限は \(formatter.string(fromByteCount: limit)) です。"
+            return QooInfrastructureStrings.format("fileOp.why.fileTooLarge",
+                                                    formatter.string(fromByteCount: size),
+                                                    formatter.string(fromByteCount: limit))
         case let .pathTooLong(_, _, resultingBytes, limitBytes):
-            return "\(resultingBytes) バイトになりますが、上限は \(limitBytes) バイトです。"
+            return QooInfrastructureStrings.format("fileOp.why.pathTooLong", resultingBytes, limitBytes)
         case let .replaceBackupOrphaned(backup, _, _):
-            return "元の項目は「\(backup.lastPathComponent)」という名前で同じフォルダに退避されたままです。"
-                + "名前が「.」で始まるため、そのままでは表示されません。"
+            return QooInfrastructureStrings.format("fileOp.why.replaceBackupOrphaned", backup.lastPathComponent)
         }
     }
 
@@ -447,45 +451,44 @@ extension FileOperationError: UserPresentableError {
     private static func suggestion(for error: FileOperationError) -> String? {
         switch error {
         case .conflictResolutionRequired:
-            return "もう一度実行して、置き換えるか別名にするかを選んでください。"
+            return QooInfrastructureStrings.text("fileOp.hint.conflictResolutionRequired")
         case .operationFailed:
             return nil
         case let .copyFailed(_, _, code):
             return PosixFailure.recovery(code)
         case .insufficientFreeSpace:
-            return "不要な項目を削除して空きを増やすか、別の場所を選んでください。"
+            return QooInfrastructureStrings.text("fileOp.hint.insufficientFreeSpace")
         case .destinationInsideSource:
-            return "そのフォルダの外にある場所を選んでください。"
+            return QooInfrastructureStrings.text("fileOp.hint.destinationInsideSource")
         case .destinationIsReadOnly:
-            return "書き込みできる別の場所を選ぶか、ボリュームの設定を確認してください。"
+            return QooInfrastructureStrings.text("fileOp.hint.destinationIsReadOnly")
         case .trashUnavailable:
-            return "完全に削除してよければ、「すぐに削除」をお使いください。取り消せません。"
+            return QooInfrastructureStrings.text("fileOp.hint.trashUnavailable")
         case .timedOut:
-            return "接続を確認してから、もう一度お試しください。"
+            return QooInfrastructureStrings.text("fileOp.hint.timedOut")
         case let .destinationNotWritable(_, code):
             return PosixFailure.recovery(code, context: .destination)
-                ?? "この場所への書き込み権限を確認してください。共有フォルダの場合は、"
-                    + "サーバ側のアクセス許可も確認が必要です。"
+                ?? QooInfrastructureStrings.text("fileOp.hint.destinationNotWritable")
         case let .invalidName(_, reason):
             switch reason {
-            case .empty: return "名前を入力してください。"
-            case .forbiddenCharacter: return "その文字を別の文字に置き換えてください。"
-            case .reservedDotName: return "別の名前を付けてください。"
-            case .tooLong: return "短い名前を入力してください。"
+            case .empty: return QooInfrastructureStrings.text("fileOp.hint.nameEmpty")
+            case .forbiddenCharacter: return QooInfrastructureStrings.text("fileOp.hint.forbiddenCharacter")
+            case .reservedDotName: return QooInfrastructureStrings.text("fileOp.hint.reservedDotName")
+            case .tooLong: return QooInfrastructureStrings.text("fileOp.hint.nameTooLongForName")
             }
         case .sourceChangedDuringOperation:
-            return "ダウンロードや書き出しが終わってから、もう一度お試しください。"
+            return QooInfrastructureStrings.text("fileOp.hint.sourceChanged")
         case .nameTooLongForDestination:
-            return "名前を短くしてから、もう一度お試しください。"
+            return QooInfrastructureStrings.text("fileOp.hint.nameTooLong")
         case let .fileTooLargeForDestination(_, _, limit, _):
             // 4GB 弱という上限は FAT32 に固有。断定できるなら断定する。
             return limit <= 4_294_967_295
-                ? "書き込み先は FAT32 です。exFAT で初期化し直すと、この上限は無くなります。"
-                : "分割するか、より大きなファイルを扱える場所を選んでください。"
+                ? QooInfrastructureStrings.text("fileOp.hint.fileTooLargeOnFAT32")
+                : QooInfrastructureStrings.text("fileOp.hint.fileTooLarge")
         case .pathTooLong:
-            return "階層の浅い場所を選ぶか、途中のフォルダ名を短くしてください。"
+            return QooInfrastructureStrings.text("fileOp.hint.pathTooLong")
         case .replaceBackupOrphaned:
-            return "接続を確認してから qooLibrary を再起動すると、元の場所へ戻すことを自動的にやり直します。"
+            return QooInfrastructureStrings.text("fileOp.hint.replaceBackupOrphaned")
         }
     }
 

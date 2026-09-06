@@ -1,4 +1,5 @@
 import Foundation
+import QooKit
 import Testing
 
 @testable import QooInfrastructure
@@ -30,7 +31,8 @@ import Testing
         )
         expectNotTheFallback(error)
         let message = error.localizedDescription
-        #expect(message.contains("空き容量"))
+        // **文言の中身を検査しない**（表示言語で変わる）。対象名と数字は
+        // どちらの言語でも出るので、そこだけ見る。
         #expect(message.contains("bbb"))
         // 必要量と空き容量の両方を数字で示す（どれだけ足りないかが分かる）。
         #expect(message.contains("4") && message.contains("2"))
@@ -45,7 +47,9 @@ import Testing
             errnoCode: ENOSPC
         )
         expectNotTheFallback(error)
-        #expect(error.localizedDescription.contains("空き容量"))
+        // errno から理由を引けていること。**文言ではなく出どころで見る**
+        // ——`PosixFailure` を通していれば、どの言語でも説明が付く。
+        #expect(error.whyItHappened == PosixFailure.reason(ENOSPC))
         #expect(error.localizedDescription.contains("huge.bin"))
     }
 
@@ -56,7 +60,7 @@ import Testing
             errnoCode: EACCES
         )
         expectNotTheFallback(error)
-        #expect(error.localizedDescription.contains("権限"))
+        #expect(error.whyItHappened == PosixFailure.reason(EACCES, context: .destination))
     }
 
     /// 知らない errno でも、少なくとも対象名と system の説明は出す。

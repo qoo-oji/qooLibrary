@@ -13,7 +13,15 @@ import Foundation
 // 動的に組み立てる鍵や、将来のために置いた文言を誤検出するため。
 // 害の非対称（出ない文言 vs 生の鍵が出る）に合わせて、片方向だけ見る。
 
-let sources = "Sources"
+// **アプリターゲットだけを見る。** 下層（QooKit / QooInfrastructure /
+// QooApplication）は自分の `Resources/<lang>.lproj/Localizable.strings` を
+// 引くので、このカタログとは照合できない——それは後半の層カタログの検査が見る。
+//
+// ここを `Sources` 全体にしていたため、**下層の鍵の接頭辞がアプリ側と
+// 重なると誤検出した**（`diagnostics.error.noLogFiles` を QooInfrastructure へ
+// 足したところ、アプリ側に `diagnostics.exportFailed` があるせいで
+// 「未定義」と報告された）。下層に鍵が 1 つも無かった頃の名残。
+let sources = "Sources/qooLibraryApp"
 let catalogPath = "Resources/Localizable.xcstrings"
 
 guard let data = FileManager.default.contents(atPath: catalogPath),
@@ -233,8 +241,38 @@ for layer in layers {
     }
 }
 
+// MARK: - 両言語の鍵集合が一致すること [2026-09-06 追加]
+//
+// 上の検査は「**コードが参照する**鍵が両言語にあるか」しか見ない。片方の言語に
+// だけ書いた鍵（＝訳し忘れ）は、その鍵をまだ誰も呼んでいなければ素通りする——
+// そして呼び始めた瞬間に、その言語で**生の鍵が画面へ出る**。
+// カタログ同士を突き合わせれば、呼ばれるより先に捕まえられる。
+
+var parityFailures: [String] = []
+for layer in layers {
+    var perLanguage: [(path: String, keys: Set<String>)] = []
+    for catalog in layer.catalogs {
+        guard let keys = definedKeys(inStringsFile: catalog) else { continue }
+        perLanguage.append((catalog, keys))
+    }
+    guard perLanguage.count == 2 else { continue }
+    let (a, b) = (perLanguage[0], perLanguage[1])
+    for key in a.keys.subtracting(b.keys).sorted() {
+        parityFailures.append("\(key) — \(a.path) にあるが \(b.path) に無い")
+    }
+    for key in b.keys.subtracting(a.keys).sorted() {
+        parityFailures.append("\(key) — \(b.path) にあるが \(a.path) に無い")
+    }
+}
+
+if !parityFailures.isEmpty {
+    print("==> FAIL: 片方の言語にしかない鍵が \(parityFailures.count) 件あります（その言語で生の鍵が出ます）")
+    for line in parityFailures { print("  \(line)") }
+    exit(1)
+}
+
 if missing.isEmpty {
-    print("==> OK: すべての文字列カタログの鍵が定義されている（文言中の予約語も実在する）")
+    print("==> OK: すべての文字列カタログの鍵が定義されている（両言語で揃っている・文言中の予約語も実在する）")
     exit(0)
 }
 print("==> FAIL: 定義されていない鍵が \(missing.count) 件あります（そのまま画面に出ます）")

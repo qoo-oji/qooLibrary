@@ -357,14 +357,17 @@ struct LabelEditingTests {
                                      labelName: "サークル値1",
                                      previous: previous, assigning: true,
                                      subjectName: Self.name(1), services: w.services)
-        #expect(add.displayName == "「\(Self.name(1))」のラベル「サークル値1」を付与")
+        #expect(add.displayName == QooApplicationStrings.format("command.assignLabel", Self.name(1), "サークル値1"))
         #expect(add.isUndoable)
 
         let remove = AssignLabelCommand(labelID: LabelID(rawValue: 1), fieldID: field,
                                         labelName: "サークル値1",
                                         previous: previous, assigning: false,
                                         subjectName: "3 項目", services: w.services)
-        #expect(remove.displayName == "「3 項目」のラベル「サークル値1」を除去")
+        #expect(remove.displayName
+            == QooApplicationStrings.format("command.removeLabel",
+                                              QooApplicationStrings.format("operation.subjectItems", 3),
+                                              "サークル値1"))
     }
 
     /// 診断ログの匿名化が拾えるのは絶対パスと `Log.redactable` の印だけ

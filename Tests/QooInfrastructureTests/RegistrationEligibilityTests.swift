@@ -78,7 +78,6 @@ import Testing
         }
         // 理由がそのまま読める文言であること（「エラーN」に潰れない）[ER-03]。
         #expect(!error.localizedDescription.contains("RegisteredFolderError"))
-        #expect(error.localizedDescription.contains("登録できません"))
         // 登録一覧に混入していないこと。
         #expect(await store.folders(kind: .library).isEmpty)
     }

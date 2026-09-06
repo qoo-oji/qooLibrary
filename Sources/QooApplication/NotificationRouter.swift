@@ -227,9 +227,7 @@ public final class NotificationRouter {
         guard !looksLikeTheUninformativeDefault(description) else {
             // 説明できないことを正直に言い、生の文言は折りたたみへ回す。
             return (
-                "原因を特定できないエラーが起きました。\n"
-                    + "同じ操作を繰り返して再現する場合は、ヘルプメニューの「診断情報を書き出す」で"
-                    + "記録を保存してください。",
+                QooApplicationStrings.text("notification.unidentifiedError"),
                 description
             )
         }

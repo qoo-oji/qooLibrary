@@ -346,7 +346,8 @@ public final class LabelEditorModel {
     /// コマンドと同じく日本語を直書きしている——この層のコマンド名の翻訳は
     /// 一括で片付ける課題として残っているので、ここだけ別の形にしない。
     nonisolated static func displayName(for urls: [URL]) -> String {
-        urls.count == 1 ? urls[0].lastPathComponent : "\(urls.count) 項目"
+        urls.count == 1 ? urls[0].lastPathComponent
+                        : QooApplicationStrings.format("operation.subjectItems", urls.count)
     }
 
     // MARK: - 操作

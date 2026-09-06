@@ -173,21 +173,32 @@ import Testing
         expectPresentable(VolumeEligibilityError.probeSetupFailed(errnoCode: EACCES), label: "probeFailed")
     }
 
-    /// 登録の可否を調べる場面で「書き込み先」と言わないこと（文脈が違う）。
+    /// 登録の可否を調べる場面では、書き込み先ではなく対象そのものについて言うこと。
+    ///
+    /// **文言そのものを検査しない**——表示言語で変わるので、CI（英語環境）では
+    /// どんな実装でも通ってしまう［既知の失敗様式］。文脈が実際に反映されて
+    /// いるかは「`.destination` のときと文が違う」ことで見る。
     @Test func registrationTalksAboutTheItemNotADestination() {
         let error = VolumeEligibilityError.probeSetupFailed(errnoCode: EACCES)
-        #expect(!error.whyItHappened.contains("書き込み先"))
+        #expect(error.whyItHappened == PosixFailure.reason(EACCES, context: .subject))
+        #expect(error.whyItHappened != PosixFailure.reason(EACCES, context: .destination))
     }
 
     // MARK: - POSIX の翻訳
 
-    /// よく出る `errno` はすべて日本語で理由を言えること。
+    /// よく出る `errno` はすべて、専用の理由を言えること。
+    ///
+    /// **文言の中身を検査しない**（表示言語で変わる）。見たいのは 2 つだけ——
+    /// ①既定の「原因を特定できません」に落ちていない ②`strerror` の生の
+    /// 文字列を本文へ混ぜていない（それは `technicalDetail` の仕事）[ER-03]。
     @Test(arguments: [ENOSPC, EDQUOT, EROFS, EACCES, EPERM, ENOENT, EEXIST, ENOTDIR,
                       EISDIR, ENAMETOOLONG, ELOOP, EXDEV, EBUSY, EMFILE, EFBIG, EIO, ENOTEMPTY, EINVAL])
-    func everyCommonErrnoHasAJapaneseReason(_ code: Int32) {
+    func everyCommonErrnoHasItsOwnReason(_ code: Int32) {
         let reason = PosixFailure.reason(code)
         #expect(!reason.isEmpty)
-        #expect(!reason.contains("Error"), "英語が出ている: \(reason)")
+        #expect(reason != PosixFailure.reason(unknownErrno), "既定の文言に落ちている: errno \(code)")
+        #expect(!reason.contains(String(cString: strerror(code))),
+                "strerror の生の文字列が本文に混ざっている: \(reason)")
     }
 
     /// ユーザーが手を打てる `errno` には対処があること。
@@ -205,8 +216,13 @@ import Testing
                       ECONNRESET, ECONNABORTED, EPIPE, ESTALE, ENOTSUP, EINTR, EAUTH])
     func networkErrnosAreExplainedAndActionable(_ code: Int32) {
         let reason = PosixFailure.reason(code)
-        #expect(!reason.contains("原因を特定できない"), "既定の文言に落ちている: errno \(code)")
-        #expect(!reason.contains("Error"), "英語が出ている: \(reason)")
+        #expect(reason != PosixFailure.reason(unknownErrno), "既定の文言に落ちている: errno \(code)")
+        #expect(!reason.contains(String(cString: strerror(code))),
+                "strerror の生の文字列が本文に混ざっている: \(reason)")
         #expect(PosixFailure.recovery(code)?.isEmpty == false, "対処が無い: errno \(code)")
     }
+
+    /// 翻訳を持たない `errno`。既定の文言に落ちたかどうかの比較対象に使う
+    /// ——**文言そのものを書くと表示言語に縛られる**ので、実装から引く。
+    private var unknownErrno: Int32 { 9999 }
 }

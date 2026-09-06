@@ -62,11 +62,14 @@ public final class SetFileArchivedCommand: Command {
     }
 
     public var displayName: String {
-        let verb = archived ? "保管庫に移動" : "保管庫から戻す"
-        if targets.count == 1 {
-            return "「\((targets[0].relativePath as NSString).lastPathComponent)」を\(verb)"
+        // **動詞句を差し込む形にしない**——英語では語順が変わる。鍵を分ける。
+        let name = (targets[0].relativePath as NSString).lastPathComponent
+        switch (archived, targets.count == 1) {
+        case (true, true): return QooApplicationStrings.format("command.moveToVault.one", name)
+        case (true, false): return QooApplicationStrings.format("command.moveToVault.many", targets.count)
+        case (false, true): return QooApplicationStrings.format("command.restoreFromVault.one", name)
+        case (false, false): return QooApplicationStrings.format("command.restoreFromVault.many", targets.count)
         }
-        return "\(targets.count) 件のファイルを\(verb)"
     }
 
     public var logDescription: String {
@@ -137,7 +140,7 @@ public final class SetFileArchivedCommand: Command {
     }
 
     public func undo() async throws -> UndoResult {
-        guard !moved.isEmpty else { return .impossible(reason: "元に戻す対象がありません") }
+        guard !moved.isEmpty else { return .impossible(reason: QooApplicationStrings.text("command.undo.nothingToRestore")) }
         var reverted: [Moved] = []
         var failed: [FailedItem] = []
         var prunes: Set<URL> = []
@@ -252,7 +255,8 @@ public final class ArchiveFolderCommand: Command {
     }
 
     public var displayName: String {
-        "「\((folderRelativePath as NSString).lastPathComponent)」を保管庫に移動"
+        QooApplicationStrings.format("command.moveFolderToVault",
+                                 (folderRelativePath as NSString).lastPathComponent)
     }
 
     public var logDescription: String {
@@ -291,7 +295,7 @@ public final class ArchiveFolderCommand: Command {
     }
 
     public func undo() async throws -> UndoResult {
-        guard let landedPath else { return .impossible(reason: "元に戻す対象がありません") }
+        guard let landedPath else { return .impossible(reason: QooApplicationStrings.text("command.undo.nothingToRestore")) }
         let relocation = try await FileVault.relocate(
             from: landedPath, to: folderRelativePath, root: root, fileOps: fileOps)
         try await rewrite(oldPrefix: landedPath, newPrefix: relocation.to, archived: false)

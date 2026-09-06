@@ -1,2 +1,94 @@
 /* QooInfrastructure の利用者可視文字列。引くのは QooInfrastructureStrings 経由。
    String(localized:locale:) は .lproj を選ばない（LocalizedStrings 参照）。 */
+
+/* ファイル操作の失敗 [ER-03 の三要素: 何が / なぜ / 次に何ができるか]。
+   what は「どの項目がどうなったか」に徹する——操作名は呼び出し側が題として持つ。 */
+"fileOp.what.alreadyExists" = "「%@」がすでに存在します。";
+"fileOp.what.copyFailed" = "「%@」を処理できませんでした。";
+"fileOp.what.insufficientFreeSpace" = "「%@」の空き容量が足りません。";
+"fileOp.what.destinationInsideSource" = "「%1$@」を、それ自身の中にある「%2$@」へは移動・コピーできません。";
+"fileOp.what.destinationIsReadOnly" = "「%@」は読み取り専用です。";
+"fileOp.what.destinationNotWritable" = "「%@」に書き込めません。";
+"fileOp.what.trashUnavailable" = "「%@」のある場所にはゴミ箱がありません。";
+"fileOp.what.timedOut" = "処理が終わるのを待てませんでした。";
+"fileOp.what.nameEmpty" = "名前が入力されていません。";
+"fileOp.what.invalidName" = "「%@」は名前として使えません。";
+"fileOp.what.sourceChanged" = "「%@」は、処理している間にほかのアプリが書き換えました。";
+"fileOp.what.nameTooLong" = "「%@」は、書き込み先で使える名前の長さを超えています。";
+"fileOp.what.fileTooLarge" = "「%1$@」は、書き込み先「%2$@」が扱えるファイルの大きさを超えています。";
+"fileOp.what.pathTooLong" = "「%1$@」を「%2$@」へ置くと、パスが長くなりすぎます。";
+"fileOp.what.replaceBackupOrphaned" = "「%@」を置き換えられず、元の項目も元の場所へ戻せませんでした。";
+
+/* なぜ起きたか。数字で示せるものは数字で示す（「足りません」だけでは
+   どれだけ空ければよいのか分からない）。 */
+"fileOp.why.conflictResolutionRequired" = "置き換えるか別名で残すかを決められなかったため、処理を続けられませんでした。";
+"fileOp.why.insufficientFreeSpace" = "%1$@ が必要ですが、空きは %2$@ しかありません。";
+"fileOp.why.destinationInsideSource" = "自分自身の中へ入れると、際限なく複製が繰り返されてしまいます。";
+"fileOp.why.destinationIsReadOnly" = "このボリュームには書き込めない設定になっています。";
+"fileOp.why.trashUnavailable" = "ネットワーク上の共有や一部のボリュームは、ゴミ箱を持ちません。";
+"fileOp.why.timedOut" = "%@ 秒待っても応答がありませんでした。ネットワーク上の場所では、サーバの応答が返らないことがあります。";
+"fileOp.why.sourceChanged" = "途中までの内容を写してしまうため中止しました。";
+"fileOp.why.nameTooLongInBytes" = "%1$d バイトありますが、上限は %2$d バイトです。書き込み先は名前の長さをバイト数で数えます（日本語は 1 文字あたり 3 バイト）。";
+"fileOp.why.nameTooLongInCharacters" = "%1$d 文字ぶんありますが、上限は %2$d 文字ぶんです。";
+"fileOp.why.fileTooLarge" = "%1$@ ありますが、上限は %2$@ です。";
+"fileOp.why.pathTooLong" = "%1$d バイトになりますが、上限は %2$d バイトです。";
+"fileOp.why.replaceBackupOrphaned" = "元の項目は「%@」という名前で同じフォルダに退避されたままです。名前が「.」で始まるため、そのままでは表示されません。";
+
+/* 次に何ができるか。示せることが無ければ鍵を持たない（一般論で埋めない）。 */
+"fileOp.hint.conflictResolutionRequired" = "もう一度実行して、置き換えるか別名にするかを選んでください。";
+"fileOp.hint.insufficientFreeSpace" = "不要な項目を削除して空きを増やすか、別の場所を選んでください。";
+"fileOp.hint.destinationInsideSource" = "そのフォルダの外にある場所を選んでください。";
+"fileOp.hint.destinationIsReadOnly" = "書き込みできる別の場所を選ぶか、ボリュームの設定を確認してください。";
+"fileOp.hint.trashUnavailable" = "完全に削除してよければ、「完全に削除」をお使いください。取り消せません。";
+"fileOp.hint.timedOut" = "接続を確認してから、もう一度お試しください。";
+"fileOp.hint.destinationNotWritable" = "この場所への書き込み権限を確認してください。共有フォルダの場合は、サーバ側のアクセス許可も確認が必要です。";
+"fileOp.hint.nameEmpty" = "名前を入力してください。";
+"fileOp.hint.forbiddenCharacter" = "その文字を別の文字に置き換えてください。";
+"fileOp.hint.reservedDotName" = "別の名前を付けてください。";
+"fileOp.hint.nameTooLongForName" = "短い名前を入力してください。";
+"fileOp.hint.sourceChanged" = "ダウンロードや書き出しが終わってから、もう一度お試しください。";
+"fileOp.hint.nameTooLong" = "名前を短くしてから、もう一度お試しください。";
+"fileOp.hint.fileTooLargeOnFAT32" = "書き込み先は FAT32 です。exFAT で初期化し直すと、この上限は無くなります。";
+"fileOp.hint.fileTooLarge" = "分割するか、より大きなファイルを扱える場所を選んでください。";
+"fileOp.hint.pathTooLong" = "階層の浅い場所を選ぶか、途中のフォルダ名を短くしてください。";
+"fileOp.hint.replaceBackupOrphaned" = "接続を確認してから qooLibrary を再起動すると、元の場所へ戻すことを自動的にやり直します。";
+
+/* 一括処理の部分的な成功 [ER-13][ER-16]。どこまで進んだかを必ず言う。 */
+"fileOp.partial.transferProgress" = "%1$d 件まで完了 / 「%2$@」で中断";
+"fileOp.partial.trashProgress" = "%d 件までゴミ箱へ移動済み";
+
+/* 登録先ボリュームの適合検証 [FS-01〜FS-09]。 */
+"volumeEligibility.what.probeSetupFailed" = "このフォルダを登録できるか確認できませんでした。";
+"volumeEligibility.what.readOnlyVolume" = "このフォルダは登録できません。";
+"volumeEligibility.why.readOnlyVolume" = "読み取り専用のボリューム（%@）にあるため、登録に必要な確認も、以降の書き込みもできません。";
+"volumeEligibility.hint.readOnlyVolume" = "書き込みできるボリューム上のフォルダを選んでください。";
+
+/* フォルダ登録の失敗 [RG-01〜RG-08]。 */
+"registeredFolder.what.nestedRegistration" = "このフォルダは登録できません。";
+"registeredFolder.what.unsupportedFileSystem" = "このフォルダがあるボリュームは登録に対応していません。";
+"registeredFolder.what.notRegistered" = "この登録フォルダは見つかりませんでした。";
+"registeredFolder.why.nestedRegistration" = "すでに登録されているフォルダの中、または親にあたるフォルダだからです。";
+"registeredFolder.why.notRegistered" = "操作している間に、別の場所で登録が解除されたようです。";
+"registeredFolder.why.unsupportedFileSystem" = "%@ は、ファイルを移動しても同一と判別できる仕組みに対応していません。この仕組みが無いと、移動や改名のたびにラベル・評価・カバー画像との結びつきが失われてしまいます。";
+"registeredFolder.hint.nestedRegistration" = "すでに登録した場所と重ならないフォルダを選んでください。";
+"registeredFolder.hint.unsupportedFileSystem" = "APFS または Mac OS 拡張のボリューム上のフォルダを選んでください。";
+"registeredFolder.hint.notRegistered" = "登録し直してください。";
+
+/* Security-Scoped Bookmark の解決の失敗 [SB-02][SB-05]。 */
+"bookmark.error.volumeNotMounted" = "このフォルダがあるボリュームが接続されていません。接続してから、もう一度お試しください。";
+"bookmark.error.unresponsive" = "このフォルダがある場所が応答していません。サーバや接続の状態を確かめてから、もう一度お試しください。";
+"bookmark.error.permissionDenied" = "このフォルダへアクセスする許可がありません。環境設定の「アクセス権」で、この場所へのアクセスを許可してください。";
+"bookmark.error.invalidBookmark" = "保存されていたフォルダの参照が使えなくなっています。いったん登録を解除して、選び直してください。";
+"bookmark.error.accessDenied" = "このフォルダへアクセスできませんでした。環境設定の「アクセス権」で、この場所へのアクセスを許可してください。";
+
+/* 診断情報の書き出し [LG2-05]。 */
+"diagnostics.error.noLogFiles" = "書き出せる診断ログがまだありません。環境設定の「詳細」でログレベルを上げてからしばらく使い、もう一度お試しください。";
+"diagnostics.error.stagingFailed" = "診断情報をまとめられませんでした。（%@）";
+
+/* 新規フォルダの作成 [FM-01]。 */
+"fileOp.createFolder.parentMissing" = "「%@」が見つからないため、この中にフォルダを作成できません。";
+"fileOp.createFolder.alreadyExists" = "「%@」という名前の項目はすでに存在します。";
+
+/* Finder の「エイリアスを作成」が付ける名前。**これはファイル名**なので、
+   作成した時点の表示言語で決まる（あとから変わらない）。 */
+"fileOp.aliasName" = "%@ のエイリアス";

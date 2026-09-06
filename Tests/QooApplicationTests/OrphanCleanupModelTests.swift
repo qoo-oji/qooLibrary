@@ -206,7 +206,9 @@ struct OrphanCleanupModelIntegrationTests {
         try await b.model.delete([file])
         // **表示は「孤立」と言わない**［ユーザー判断、15章 §15.7］——消えるのは
         // ファイルではなく「そのファイルについて覚えている記録」。
-        #expect(b.commands.undoTitle?.contains("記録の削除") == true)
+        // 文言そのものは表示言語で変わるので、鍵から組み立てて比べる。
+        #expect(b.commands.undoTitle
+            == QooApplicationStrings.format("command.deleteOrphanRecords.one", file.row.filename))
         #expect(b.commands.undoTitle?.contains(file.row.filename) == true)
     }
 

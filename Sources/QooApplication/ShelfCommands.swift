@@ -37,7 +37,7 @@ public final class CreateShelfCommand: Command {
         self.services = services
     }
 
-    public var displayName: String { "シェルフ「\(name)」を保存" }
+    public var displayName: String { QooApplicationStrings.format("command.saveShelf", name) }
     public var logDescription: String { "createShelf: \(Log.redactable(name))" }
     public let isUndoable = true
 
@@ -55,7 +55,7 @@ public final class CreateShelfCommand: Command {
     }
 
     public func undo() async throws -> UndoResult {
-        guard let created else { return .impossible(reason: "作成した行が分からない") }
+        guard let created else { return .impossible(reason: QooApplicationStrings.text("command.shelf.createdRowUnknown")) }
         do {
             try await services.deleteShelves([created.id])
             return .complete
@@ -81,7 +81,9 @@ public final class RenameShelfCommand: Command {
         self.services = services
     }
 
-    public var displayName: String { "シェルフ「\(previousName)」を「\(newName)」に変更" }
+    public var displayName: String {
+        QooApplicationStrings.format("command.renameShelf", previousName, newName)
+    }
     public var logDescription: String {
         "renameShelf: \(Log.redactable(previousName)) → \(Log.redactable(newName))"
     }
@@ -121,7 +123,7 @@ public final class UpdateShelfCommand: Command {
         self.services = services
     }
 
-    public var displayName: String { "シェルフ「\(shelfName)」を現在の絞り込みで更新" }
+    public var displayName: String { QooApplicationStrings.format("command.updateShelf", shelfName) }
     public var logDescription: String { "updateShelf: \(Log.redactable(shelfName))" }
     public let isUndoable = true
 
@@ -154,7 +156,7 @@ public final class DeleteShelfCommand: Command {
         self.services = services
     }
 
-    public var displayName: String { "シェルフ「\(shelfName)」を削除" }
+    public var displayName: String { QooApplicationStrings.format("command.deleteShelf", shelfName) }
     public var logDescription: String { "deleteShelf: \(Log.redactable(shelfName))" }
     public let isUndoable = true
 
@@ -168,7 +170,7 @@ public final class DeleteShelfCommand: Command {
     }
 
     public func undo() async throws -> UndoResult {
-        guard let snapshot else { return .impossible(reason: "削除前の写しが無い") }
+        guard let snapshot else { return .impossible(reason: QooApplicationStrings.text("command.shelf.snapshotMissing")) }
         do {
             try await services.restoreShelves([snapshot])
             return .complete

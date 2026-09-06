@@ -64,8 +64,10 @@ import Testing
             return
         }
         #expect(size > reportedLimit)
-        // 理由と次の手が読める文言であること [ER-03]。
-        #expect(error.localizedDescription.contains("上限"))
+        // 理由と次の手が読める文言であること [ER-03]。「エラーN」形式へ
+        // 潰れていないことと、FAT32 と断定した助言が出ていることを見る
+        // （`exFAT` は両方の言語で同じ綴りなので、文言に依存しない）。
+        #expect(!error.localizedDescription.contains("FileOperationError"))
         #expect(error.localizedDescription.contains("exFAT"))
 
         // **1 バイトも書いていない**こと。これがこの検証の主眼。

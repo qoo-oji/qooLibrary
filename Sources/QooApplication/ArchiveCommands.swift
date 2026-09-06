@@ -41,7 +41,7 @@ public final class CompressCommand: Command {
 
     public var displayName: String {
         let ext = options.format == .zip ? "zip" : "7z"
-        return "「\(destinationName).\(ext)」を作成"
+        return QooApplicationStrings.format("command.compress", "\(destinationName).\(ext)")
     }
 
     public var logDescription: String {
@@ -69,7 +69,7 @@ public final class CompressCommand: Command {
     }
 
     public func undo() async throws -> UndoResult {
-        guard let resultURL else { return .impossible(reason: "元に戻す対象がありません") }
+        guard let resultURL else { return .impossible(reason: QooApplicationStrings.text("command.undo.nothingToRestore")) }
         do {
             _ = try await fileOps.trash([resultURL])
             return .complete
@@ -110,7 +110,7 @@ public final class ExtractCommand: Command {
         self.fileOps = fileOps
     }
 
-    public var displayName: String { "「\(archiveURL.lastPathComponent)」を展開" }
+    public var displayName: String { QooApplicationStrings.format("command.extract", archiveURL.lastPathComponent) }
 
     public var logDescription: String { "extract: \(Log.path(archiveURL)) → \(Log.path(destination))" }
 
@@ -130,7 +130,7 @@ public final class ExtractCommand: Command {
     }
 
     public func undo() async throws -> UndoResult {
-        guard !createdURLs.isEmpty else { return .impossible(reason: "元に戻す対象がありません") }
+        guard !createdURLs.isEmpty else { return .impossible(reason: QooApplicationStrings.text("command.undo.nothingToRestore")) }
         do {
             _ = try await fileOps.trash(createdURLs)
             return .complete

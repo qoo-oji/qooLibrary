@@ -1,2 +1,130 @@
 /* QooApplication の利用者可視文字列。引くのは QooApplicationStrings 経由。
    String(localized:locale:) は .lproj を選ばない（LocalizedStrings 参照）。 */
+
+/* 操作の名前 [UD-06]。**名詞句にする**——Undo メニューは「%@を取り消す」の
+   形で後ろに付ける（英語は "Undo %@" なので動詞の原形になる）。
+   これは操作履歴の要約 [OH-02] にもなるが、**絞り込みの鍵は型名なので
+   訳しても検索は壊れない**（`CommandStack.draft(for:)` 参照）。 */
+"command.move.one" = "「%@」を移動";
+"command.move.many" = "%d 件のファイルを移動";
+"command.copy.one" = "「%@」を複製";
+"command.copy.many" = "%d 件のファイルを複製";
+"command.rename" = "「%@」の名前を変更";
+"command.trash.one" = "「%@」をゴミ箱に入れる";
+"command.trash.many" = "%d 件のファイルをゴミ箱に入れる";
+"command.deletePermanently.one" = "「%@」を完全に削除";
+"command.deletePermanently.many" = "%d 件を完全に削除";
+"command.createFolder" = "「%@」を作成";
+"command.createAlias" = "「%@」のエイリアスを作成";
+"command.lock.one" = "「%@」をロック";
+"command.lock.many" = "%d 件をロック";
+"command.unlock.one" = "「%@」をロック解除";
+"command.unlock.many" = "%d 件をロック解除";
+"command.compress" = "「%@」を作成";
+"command.extract" = "「%@」を展開";
+"command.bulkRename.one" = "「%@」の名前を変更";
+"command.bulkRename.many" = "%d 件の名前を変更";
+
+/* ライブラリの記録に対する操作 */
+"command.deleteOrphanRecords.one" = "「%@」の記録の削除";
+"command.deleteOrphanRecords.many" = "%d 件のファイルの記録の削除";
+"command.protectMetadata" = "「%@」のメタデータを保護";
+"command.unprotectMetadata" = "「%@」のメタデータの保護を解除";
+"command.setRating" = "「%1$@」の評価を★%2$dに設定";
+"command.clearRating" = "「%@」の評価を解除";
+"command.setRatingForSeries" = "「%1$@」%2$d 冊の評価を★%3$dに設定";
+"command.clearRatingForSeries" = "「%1$@」%2$d 冊の評価を解除";
+"command.assignLabel" = "「%1$@」のラベル「%2$@」を付与";
+"command.removeLabel" = "「%1$@」のラベル「%2$@」を除去";
+"command.editTitle" = "「%@」のタイトルを変更";
+"command.editSeriesName" = "「%@」のシリーズ名を変更";
+"command.editVolume" = "「%@」の巻数を変更";
+"command.rederive" = "「%@」をファイル名から再取得";
+"command.replaceCover" = "「%@」のカバー画像を変更";
+"command.revertCover" = "「%@」のカバー画像を既定に戻す";
+
+/* ラベルそのものの編集 */
+"command.renameLabel" = "ラベル「%1$@」を「%2$@」に変更";
+"command.resetLabelColor" = "ラベル「%@」の色を既定に戻す";
+"command.changeLabelColor" = "ラベル「%@」の色を変更";
+"command.hideLabel.one" = "ラベル「%@」を非表示にする";
+"command.hideLabel.many" = "%d 件のラベルを非表示にする";
+"command.showLabel.one" = "ラベル「%@」を表示にする";
+"command.showLabel.many" = "%d 件のラベルを表示にする";
+"command.pinLabel" = "ラベル「%@」をピン留め";
+"command.unpinLabel" = "ラベル「%@」をピン留め解除";
+"command.deleteLabel.one" = "ラベル「%@」を削除";
+"command.deleteLabel.many" = "%d 件のラベルを削除";
+"command.mergeLabel" = "ラベル「%1$@」を「%2$@」に統合";
+
+/* シェルフ [SH-01〜12] */
+"command.saveShelf" = "シェルフ「%@」を保存";
+"command.renameShelf" = "シェルフ「%1$@」を「%2$@」に変更";
+"command.updateShelf" = "シェルフ「%@」を現在の絞り込みで更新";
+"command.deleteShelf" = "シェルフ「%@」を削除";
+
+/* ファイル保管庫 [FA-01〜17] */
+"command.moveToVault.one" = "「%@」を保管庫に移動";
+"command.moveToVault.many" = "%d 件のファイルを保管庫に移動";
+"command.restoreFromVault.one" = "「%@」を保管庫から戻す";
+"command.restoreFromVault.many" = "%d 件のファイルを保管庫から戻す";
+"command.moveFolderToVault" = "「%@」を保管庫に移動";
+
+/* 未整理ファイル [AL-30〜34] */
+"command.ignoreUnresolved.one" = "「%@」の以後無視する設定";
+"command.ignoreUnresolved.many" = "%d 件のファイルの以後無視する設定";
+"command.unignoreUnresolved.one" = "「%@」の無視の解除";
+"command.unignoreUnresolved.many" = "%d 件のファイルの無視の解除";
+
+/* シリーズの提案 [SS-01〜08] */
+"command.setSeries" = "「%1$@」%2$d 冊のシリーズ設定";
+"command.setSeriesMany" = "%d 件のシリーズ設定";
+"command.ignoreSuggestion" = "「%@」の提案を以後出さない設定";
+"command.unignoreSuggestion" = "「%@」の提案の無視の解除";
+"command.ignoreSuggestionMany" = "%d 件の提案の以後出さない設定";
+"command.unignoreSuggestionMany" = "%d 件の提案の無視の解除";
+
+/* テンプレート改訂 [LT-10〜17] */
+"command.acknowledgeTemplateUpdate" = "「%@」のテンプレート改訂を確認済みにする";
+"command.applyTemplateUpdate" = "「%1$@」にテンプレートの変更 %2$d 件を適用";
+
+/* 重複ファイル [DU-20〜29] */
+"command.deleteDuplicates" = "「%1$@」を残して %2$d 件を削除";
+
+/* 走査 [SY-01〜12]。操作履歴に残る要約 [OH-03]。 */
+"command.scan" = "「%@」を走査";
+"command.scanAutomatically" = "「%@」を自動で走査";
+"scan.summary.added" = "追加 %d";
+"scan.summary.updated" = "更新 %d";
+"scan.summary.reidentified" = "引き継ぎ %d";
+"scan.summary.orphaned" = "見つからない %d";
+"scan.summary.unresolved" = "未整理 %d";
+"scan.summary.bookFoldersReleased" = "1 冊扱いを解除 %d";
+"scan.summary.cancelled" = "中断";
+
+/* 取り消しの結果 */
+"command.undo.nothingToRestore" = "元に戻す対象がありません";
+"command.bulkRename.partialRestoreFailed" = "一部の名前を戻せませんでした";
+"operation.partialDetail" = "成功 %1$d 件 / 失敗 %2$d 件";
+"operation.subjectItems" = "%d 項目";
+
+/* 自動バックアップの失敗 [BK-02] */
+"backup.failed.title" = "自動バックアップを作成できませんでした";
+"backup.failed.body" = "この操作の直前の状態を保存できませんでした。操作そのものは続行しています。環境設定の「リセット」で置き場所と空き容量を確認してください。";
+
+/* どの型も説明を持たなかったときの安全網 [ER-03]。 */
+"notification.unidentifiedError" = "原因を特定できないエラーが起きました。\n同じ操作を繰り返して再現する場合は、ヘルプメニューの「診断情報を書き出す」で記録を保存してください。";
+
+/* 取り消せない・戻せない理由。操作履歴に残る [OH-04]。 */
+"command.shelf.createdRowUnknown" = "作成した行が分からない";
+"command.shelf.snapshotMissing" = "削除前の写しが無い";
+"command.trash.restoreFailed" = "ゴミ箱からの復元に失敗しました";
+"command.deletePermanently.notUndoable" = "完全に削除された項目は元に戻せません";
+"command.createFolder.notEmpty" = "フォルダの中身が空ではありません";
+"command.templateUpdate.previousUnknown" = "適用前の設定が分からない";
+"templateUpdate.error.settingsUnavailable" = "ライブラリの設定を読み取れませんでした。";
+
+/* 一括処理の部分的な失敗の内訳 [ER-13][ER-14]。 */
+"operation.remainingItems" = "ほか %d 件";
+"operation.notProcessed" = "先の失敗により処理していません";
+"operation.itemCount" = "%d 件";

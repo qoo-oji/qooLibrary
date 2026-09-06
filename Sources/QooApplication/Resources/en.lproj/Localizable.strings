@@ -1,2 +1,130 @@
 /* User-facing strings for QooApplication. Resolve through QooApplicationStrings.
    String(localized:locale:) does not select .lproj (see LocalizedStrings). */
+
+/* Operation names [UD-06]. The Undo menu wraps these as "Undo %@", so in English
+   they read as a bare verb phrase ("Move …"), while Japanese uses a noun phrase.
+   These also become the operation-history summary [OH-02], but filtering there is
+   keyed on the type name, so translating them doesn't break search. */
+"command.move.one" = "Move “%@”";
+"command.move.many" = "Move %d Files";
+"command.copy.one" = "Duplicate “%@”";
+"command.copy.many" = "Duplicate %d Files";
+"command.rename" = "Rename “%@”";
+"command.trash.one" = "Move “%@” to Trash";
+"command.trash.many" = "Move %d Files to Trash";
+"command.deletePermanently.one" = "Delete “%@”";
+"command.deletePermanently.many" = "Delete %d Items";
+"command.createFolder" = "Create “%@”";
+"command.createAlias" = "Make Alias of “%@”";
+"command.lock.one" = "Lock “%@”";
+"command.lock.many" = "Lock %d Items";
+"command.unlock.one" = "Unlock “%@”";
+"command.unlock.many" = "Unlock %d Items";
+"command.compress" = "Create “%@”";
+"command.extract" = "Extract “%@”";
+"command.bulkRename.one" = "Rename “%@”";
+"command.bulkRename.many" = "Rename %d Items";
+
+/* Operations on library records */
+"command.deleteOrphanRecords.one" = "Delete the Record for “%@”";
+"command.deleteOrphanRecords.many" = "Delete the Records for %d Files";
+"command.protectMetadata" = "Protect Metadata of “%@”";
+"command.unprotectMetadata" = "Unprotect Metadata of “%@”";
+"command.setRating" = "Rate “%1$@” %2$d Stars";
+"command.clearRating" = "Clear Rating of “%@”";
+"command.setRatingForSeries" = "Rate %2$d Volumes of “%1$@” %3$d Stars";
+"command.clearRatingForSeries" = "Clear Rating of %2$d Volumes of “%1$@”";
+"command.assignLabel" = "Add Label “%2$@” to “%1$@”";
+"command.removeLabel" = "Remove Label “%2$@” from “%1$@”";
+"command.editTitle" = "Change Title of “%@”";
+"command.editSeriesName" = "Change Series Name of “%@”";
+"command.editVolume" = "Change Volume Number of “%@”";
+"command.rederive" = "Re-read “%@” from Its File Name";
+"command.replaceCover" = "Change Cover Image of “%@”";
+"command.revertCover" = "Reset Cover Image of “%@”";
+
+/* Editing the labels themselves */
+"command.renameLabel" = "Rename Label “%1$@” to “%2$@”";
+"command.resetLabelColor" = "Reset Color of Label “%@”";
+"command.changeLabelColor" = "Change Color of Label “%@”";
+"command.hideLabel.one" = "Hide Label “%@”";
+"command.hideLabel.many" = "Hide %d Labels";
+"command.showLabel.one" = "Show Label “%@”";
+"command.showLabel.many" = "Show %d Labels";
+"command.pinLabel" = "Pin Label “%@”";
+"command.unpinLabel" = "Unpin Label “%@”";
+"command.deleteLabel.one" = "Delete Label “%@”";
+"command.deleteLabel.many" = "Delete %d Labels";
+"command.mergeLabel" = "Merge Label “%1$@” into “%2$@”";
+
+/* Shelves [SH-01–12] */
+"command.saveShelf" = "Save Shelf “%@”";
+"command.renameShelf" = "Rename Shelf “%1$@” to “%2$@”";
+"command.updateShelf" = "Update Shelf “%@” with the Current Filter";
+"command.deleteShelf" = "Delete Shelf “%@”";
+
+/* File vault [FA-01–17] */
+"command.moveToVault.one" = "Move “%@” to the Vault";
+"command.moveToVault.many" = "Move %d Files to the Vault";
+"command.restoreFromVault.one" = "Take “%@” Out of the Vault";
+"command.restoreFromVault.many" = "Take %d Files Out of the Vault";
+"command.moveFolderToVault" = "Move “%@” to the Vault";
+
+/* Files that match no format [AL-30–34] */
+"command.ignoreUnresolved.one" = "Ignore “%@” from Now On";
+"command.ignoreUnresolved.many" = "Ignore %d Files from Now On";
+"command.unignoreUnresolved.one" = "Stop Ignoring “%@”";
+"command.unignoreUnresolved.many" = "Stop Ignoring %d Files";
+
+/* Series suggestions [SS-01–08] */
+"command.setSeries" = "Set the Series for %2$d Volumes of “%1$@”";
+"command.setSeriesMany" = "Set the Series for %d Suggestions";
+"command.ignoreSuggestion" = "Stop Suggesting “%@”";
+"command.unignoreSuggestion" = "Suggest “%@” Again";
+"command.ignoreSuggestionMany" = "Stop Suggesting %d Series";
+"command.unignoreSuggestionMany" = "Suggest %d Series Again";
+
+/* Template revisions [LT-10–17] */
+"command.acknowledgeTemplateUpdate" = "Mark the Template Revision for “%@” as Reviewed";
+"command.applyTemplateUpdate" = "Apply %2$d Template Changes to “%1$@”";
+
+/* Duplicate files [DU-20–29] */
+"command.deleteDuplicates" = "Keep “%1$@” and Delete %2$d Files";
+
+/* Scans [SY-01–12]. These land in the operation history [OH-03]. */
+"command.scan" = "Scan “%@”";
+"command.scanAutomatically" = "Scan “%@” Automatically";
+"scan.summary.added" = "%d added";
+"scan.summary.updated" = "%d updated";
+"scan.summary.reidentified" = "%d carried over";
+"scan.summary.orphaned" = "%d missing";
+"scan.summary.unresolved" = "%d unsorted";
+"scan.summary.bookFoldersReleased" = "%d no longer treated as one book";
+"scan.summary.cancelled" = "cancelled";
+
+/* Results of undoing */
+"command.undo.nothingToRestore" = "There's nothing to restore.";
+"command.bulkRename.partialRestoreFailed" = "Some of the names couldn't be put back.";
+"operation.partialDetail" = "%1$d succeeded, %2$d failed";
+"operation.subjectItems" = "%d items";
+
+/* Automatic backup failure [BK-02] */
+"backup.failed.title" = "The automatic backup couldn't be created";
+"backup.failed.body" = "The state just before this operation couldn't be saved. The operation itself is going ahead. Check the location and the free space in Settings › Reset.";
+
+/* Safety net for when no type carried an explanation [ER-03]. */
+"notification.unidentifiedError" = "An error occurred that couldn't be identified.\nIf it happens again when you repeat the same steps, save a record with Help › Export Diagnostics.";
+
+/* Why something can't be undone. These land in the operation history [OH-04]. */
+"command.shelf.createdRowUnknown" = "The row that was created can't be identified.";
+"command.shelf.snapshotMissing" = "There's no snapshot from before the deletion.";
+"command.trash.restoreFailed" = "Restoring from the Trash failed.";
+"command.deletePermanently.notUndoable" = "Items deleted for good can't be brought back.";
+"command.createFolder.notEmpty" = "The folder isn't empty.";
+"command.templateUpdate.previousUnknown" = "The settings from before the change can't be identified.";
+"templateUpdate.error.settingsUnavailable" = "The library's settings couldn't be read.";
+
+/* Breakdown of a partly failed batch [ER-13][ER-14]. */
+"operation.remainingItems" = "%d more";
+"operation.notProcessed" = "Not processed, because of the earlier failure";
+"operation.itemCount" = "%d items";

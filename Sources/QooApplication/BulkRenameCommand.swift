@@ -26,8 +26,8 @@ public final class BulkRenameCommand: Command {
 
     public var displayName: String {
         changes.count == 1
-            ? "「\(changes[0].originalName)」の名前を変更"
-            : "\(changes.count) 件の名前を変更"
+            ? QooApplicationStrings.format("command.bulkRename.one", changes[0].originalName)
+            : QooApplicationStrings.format("command.bulkRename.many", changes.count)
     }
 
     public var logDescription: String {
@@ -59,7 +59,7 @@ public final class BulkRenameCommand: Command {
     }
 
     public func undo() async throws -> UndoResult {
-        guard !applied.isEmpty else { return .impossible(reason: "元に戻す対象がありません") }
+        guard !applied.isEmpty else { return .impossible(reason: QooApplicationStrings.text("command.undo.nothingToRestore")) }
         let plan = applied.map { (from: $0.url.lastPathComponent, to: $0.originalName) }
         let reverse = plan.map { BulkRename.Change(originalName: $0.from, newName: $0.to) }
         var restored: [(url: URL, originalName: String)] = []
@@ -68,7 +68,7 @@ public final class BulkRenameCommand: Command {
         if restored.count == plan.count { return .complete }
         return .partial(
             succeeded: restored.count,
-            failed: [FailedItem(item: folder.lastPathComponent, reason: "一部の名前を戻せませんでした")]
+            failed: [FailedItem(item: folder.lastPathComponent, reason: QooApplicationStrings.text("command.bulkRename.partialRestoreFailed"))]
         )
     }
 

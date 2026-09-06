@@ -32,8 +32,8 @@ public final class DeleteOrphanedFilesCommand: Command {
     /// 「記録を削除」だと「記録を削除を取り消す」と助詞が重なる。
     public var displayName: String {
         names.count == 1
-            ? "「\(names[0])」の記録の削除"
-            : "\(names.count) 件のファイルの記録の削除"
+            ? QooApplicationStrings.format("command.deleteOrphanRecords.one", names[0])
+            : QooApplicationStrings.format("command.deleteOrphanRecords.many", names.count)
     }
     public var logDescription: String {
         "deleteOrphans: " + names.map { Log.redactable($0) }.joined(separator: ", ")
@@ -48,7 +48,7 @@ public final class DeleteOrphanedFilesCommand: Command {
     }
 
     public func undo() async throws -> UndoResult {
-        guard !snapshots.isEmpty else { return .impossible(reason: "元に戻す対象がありません") }
+        guard !snapshots.isEmpty else { return .impossible(reason: QooApplicationStrings.text("command.undo.nothingToRestore")) }
         do {
             try await services.restoreFiles(snapshots)
             return .complete

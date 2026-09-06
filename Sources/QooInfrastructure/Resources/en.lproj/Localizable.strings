@@ -1,2 +1,95 @@
 /* User-facing strings for QooInfrastructure. Resolve through QooInfrastructureStrings.
    String(localized:locale:) does not select .lproj (see LocalizedStrings). */
+
+/* File operation failures [ER-03: what happened / why / what you can do next].
+   "what" sticks to which item ended up how — the operation name belongs to the
+   caller, which uses it as the title. */
+"fileOp.what.alreadyExists" = "“%@” already exists.";
+"fileOp.what.copyFailed" = "“%@” couldn't be processed.";
+"fileOp.what.insufficientFreeSpace" = "There isn't enough free space in “%@”.";
+"fileOp.what.destinationInsideSource" = "“%1$@” can't be moved or copied into “%2$@”, which is inside it.";
+"fileOp.what.destinationIsReadOnly" = "“%@” is read-only.";
+"fileOp.what.destinationNotWritable" = "“%@” can't be written to.";
+"fileOp.what.trashUnavailable" = "The location that holds “%@” has no Trash.";
+"fileOp.what.timedOut" = "Waiting for the operation to finish took too long.";
+"fileOp.what.nameEmpty" = "No name was entered.";
+"fileOp.what.invalidName" = "“%@” can't be used as a name.";
+"fileOp.what.sourceChanged" = "Another app modified “%@” while it was being processed.";
+"fileOp.what.nameTooLong" = "“%@” is longer than the name length the destination allows.";
+"fileOp.what.fileTooLarge" = "“%1$@” is larger than the file size the destination “%2$@” can handle.";
+"fileOp.what.pathTooLong" = "Putting “%1$@” into “%2$@” would make the path too long.";
+"fileOp.what.replaceBackupOrphaned" = "“%@” couldn't be replaced, and the original couldn't be put back either.";
+
+/* Why it happened. Where a number can be given, give it — "not enough space"
+   alone doesn't say how much needs to be freed. */
+"fileOp.why.conflictResolutionRequired" = "There was no decision on whether to replace the existing item or keep both, so the operation couldn't continue.";
+"fileOp.why.insufficientFreeSpace" = "%1$@ is needed, but only %2$@ is free.";
+"fileOp.why.destinationInsideSource" = "Putting a folder inside itself would repeat the copy without end.";
+"fileOp.why.destinationIsReadOnly" = "This volume is set up so that it can't be written to.";
+"fileOp.why.trashUnavailable" = "Network shares and some volumes have no Trash.";
+"fileOp.why.timedOut" = "There was no response after %@ seconds. On network locations, the server may never answer.";
+"fileOp.why.sourceChanged" = "The operation was stopped, because it would have copied a partially written file.";
+"fileOp.why.nameTooLongInBytes" = "It's %1$d bytes, but the limit is %2$d. The destination counts name lengths in bytes (a Japanese character takes 3).";
+"fileOp.why.nameTooLongInCharacters" = "It's %1$d characters, but the limit is %2$d.";
+"fileOp.why.fileTooLarge" = "It's %1$@, but the limit is %2$@.";
+"fileOp.why.pathTooLong" = "It would be %1$d bytes, but the limit is %2$d.";
+"fileOp.why.replaceBackupOrphaned" = "The original is still set aside in the same folder under the name “%@”. Its name starts with a dot, so it isn't shown.";
+
+/* What you can do next. Cases with nothing useful to suggest have no key. */
+"fileOp.hint.conflictResolutionRequired" = "Run it again, and choose whether to replace the existing item or keep both.";
+"fileOp.hint.insufficientFreeSpace" = "Free up space by deleting items you no longer need, or choose a different location.";
+"fileOp.hint.destinationInsideSource" = "Choose a location outside that folder.";
+"fileOp.hint.destinationIsReadOnly" = "Choose a different location you can write to, or check the volume's settings.";
+"fileOp.hint.trashUnavailable" = "If it's fine to remove it for good, use Delete Immediately. That can't be undone.";
+"fileOp.hint.timedOut" = "Check the connection and try again.";
+"fileOp.hint.destinationNotWritable" = "Check that you have permission to write to this location. For a shared folder, check the permissions on the server as well.";
+"fileOp.hint.nameEmpty" = "Enter a name.";
+"fileOp.hint.forbiddenCharacter" = "Replace that character with a different one.";
+"fileOp.hint.reservedDotName" = "Choose a different name.";
+"fileOp.hint.nameTooLongForName" = "Enter a shorter name.";
+"fileOp.hint.sourceChanged" = "Wait until the download or export finishes, then try again.";
+"fileOp.hint.nameTooLong" = "Shorten the name and try again.";
+"fileOp.hint.fileTooLargeOnFAT32" = "The destination is FAT32. Reformatting it as exFAT removes this limit.";
+"fileOp.hint.fileTooLarge" = "Split the file, or choose a location that can handle larger files.";
+"fileOp.hint.pathTooLong" = "Choose a location with fewer levels, or shorten the folder names along the way.";
+"fileOp.hint.replaceBackupOrphaned" = "Check the connection and restart qooLibrary — it will retry putting the original back automatically.";
+
+/* Partial success in a batch [ER-13][ER-16]. Always say how far it got. */
+"fileOp.partial.transferProgress" = "Completed %1$d item(s), stopped at “%2$@”";
+"fileOp.partial.trashProgress" = "Moved %d item(s) to the Trash";
+
+/* Volume eligibility for registration [FS-01–FS-09]. */
+"volumeEligibility.what.probeSetupFailed" = "Whether this folder can be registered couldn't be determined.";
+"volumeEligibility.what.readOnlyVolume" = "This folder can't be registered.";
+"volumeEligibility.why.readOnlyVolume" = "It's on a read-only volume (%@), so neither the check that registration needs nor any later writing is possible.";
+"volumeEligibility.hint.readOnlyVolume" = "Choose a folder on a volume you can write to.";
+
+/* Folder registration failures [RG-01–RG-08]. */
+"registeredFolder.what.nestedRegistration" = "This folder can't be registered.";
+"registeredFolder.what.unsupportedFileSystem" = "The volume this folder is on doesn't support registration.";
+"registeredFolder.what.notRegistered" = "That registered folder couldn't be found.";
+"registeredFolder.why.nestedRegistration" = "It's inside a folder that's already registered, or it's a parent of one.";
+"registeredFolder.why.notRegistered" = "It looks like the registration was removed elsewhere while you were working.";
+"registeredFolder.why.unsupportedFileSystem" = "%@ can't tell that a file is still the same one after it moves. Without that, labels, ratings, and cover images lose their connection to a file every time it's moved or renamed.";
+"registeredFolder.hint.nestedRegistration" = "Choose a folder that doesn't overlap one you've already registered.";
+"registeredFolder.hint.unsupportedFileSystem" = "Choose a folder on an APFS or Mac OS Extended volume.";
+"registeredFolder.hint.notRegistered" = "Register it again.";
+
+/* Security-scoped bookmark resolution failures [SB-02][SB-05]. */
+"bookmark.error.volumeNotMounted" = "The volume this folder is on isn't connected. Connect it and try again.";
+"bookmark.error.unresponsive" = "The location this folder is on isn't responding. Check the server and the connection, then try again.";
+"bookmark.error.permissionDenied" = "There's no permission to reach this folder. Grant access to this location in Settings › Access.";
+"bookmark.error.invalidBookmark" = "The saved reference to this folder is no longer usable. Remove the registration and choose the folder again.";
+"bookmark.error.accessDenied" = "This folder couldn't be reached. Grant access to this location in Settings › Access.";
+
+/* Diagnostics export [LG2-05]. */
+"diagnostics.error.noLogFiles" = "There are no diagnostic logs to export yet. Raise the log level in Settings › Advanced, use the app for a while, then try again.";
+"diagnostics.error.stagingFailed" = "The diagnostics couldn't be assembled. (%@)";
+
+/* Creating a new folder [FM-01]. */
+"fileOp.createFolder.parentMissing" = "“%@” couldn't be found, so no folder can be created inside it.";
+"fileOp.createFolder.alreadyExists" = "An item named “%@” already exists.";
+
+/* The name Finder's "Make Alias" gives. **This is a file name**, so it's fixed at
+   the display language in use when it was created (it doesn't change later). */
+"fileOp.aliasName" = "%@ alias";

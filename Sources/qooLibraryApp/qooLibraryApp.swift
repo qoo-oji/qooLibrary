@@ -412,11 +412,11 @@ private struct AboutMenuButton: View {
 /// ヘルプメニューの「診断ログを書き出す…」[13章 §13.5、LG2-05]。
 /// 実処理は環境設定「詳細」タブと共有する（`DiagnosticExportAction` 参照）。
 private struct DiagnosticExportMenuButton: View {
-    @Environment(\.locale) private var locale
-
     var body: some View {
+        // `.commands` には環境が届かないので、表示言語は設定から直に取る
+        // （`SetupWizardMenuButton` と同じ既存の慣例）。
         Button("diagnostics.exportMenuItem", systemImage: "stethoscope") {
-            DiagnosticExportAction.run(locale: locale)
+            DiagnosticExportAction.run(locale: AppLanguage.effectiveLocale)
         }
     }
 }
@@ -957,10 +957,12 @@ private struct EditMenuCommands: View {
 /// [設計判断、1-8 以来の他のショートカットと同じ仕組みに揃える]。ここは
 /// 動的なタイトルを出す発見可能なメニュー項目としての役割のみを持つ。
 private struct UndoRedoMenuCommands: View {
-    // `Command.displayName`（`QooApplication`）は現状 UI 文字列扱いで日本語
-    // 固定のまま。ここではその前後に付く助詞部分だけをローカライズする
-    // [1-12 ローカライズ方針の適用範囲外、CLAUDE.md「既知の未対応範囲」参照]。
-    @Environment(\.locale) private var locale
+    // **`@Environment(\.locale)` を使わない。** `.commands` はシーン構築時に
+    // 評価されるので環境が届かず、表示言語を英語にしても既定（システム言語）の
+    // ままになる——`Command.displayName` を訳したことで
+    // 「Create “X”**を取り消す**」という混在として表面化した［実機検証で発見］。
+    // 表示言語は `AppStrings` の既定（`AppLanguagePreference.effectiveLocale`）
+    // に任せる（`SetupWizardMenuButton` と同じ既存の慣例）。
 
     var body: some View {
         let stack = CommandStack.shared
@@ -996,19 +998,19 @@ private struct UndoRedoMenuCommands: View {
         guard outcome.needsAttention else { return }
         let locale = AppLanguage.effectiveLocale
         let title = String(
-            localized: isUndo ? "error.undoFailed" : "error.redoFailed", locale: locale
+            localized: isUndo ? "error.undoFailed" : "error.redoFailed"
         )
         let body: String
         switch outcome {
         case let .partial(operationName, succeeded, failed):
             var lines = [operationName, ""]
             lines.append(String(
-                format: AppStrings.text("error.partialCounts", locale: locale), succeeded, failed.count
+                format: AppStrings.text("error.partialCounts"), succeeded, failed.count
             ))
             for item in failed.prefix(5) { lines.append("• \(item.item): \(item.reason)") }
             if failed.count > 5 {
                 lines.append(String(
-                    format: AppStrings.text("error.partialMore", locale: locale), failed.count - 5
+                    format: AppStrings.text("error.partialMore"), failed.count - 5
                 ))
             }
             body = lines.joined(separator: "\n")
@@ -1023,14 +1025,14 @@ private struct UndoRedoMenuCommands: View {
     }
 
     private func undoTitle(_ operationName: String?) -> String {
-        guard let operationName else { return AppStrings.text("action.undo", locale: locale) }
-        let template = AppStrings.text("menu.undoWithName", locale: locale)
+        guard let operationName else { return AppStrings.text("action.undo") }
+        let template = AppStrings.text("menu.undoWithName")
         return String(format: template, operationName)
     }
 
     private func redoTitle(_ operationName: String?) -> String {
-        guard let operationName else { return AppStrings.text("action.redo", locale: locale) }
-        let template = AppStrings.text("menu.redoWithName", locale: locale)
+        guard let operationName else { return AppStrings.text("action.redo") }
+        let template = AppStrings.text("menu.redoWithName")
         return String(format: template, operationName)
     }
 }

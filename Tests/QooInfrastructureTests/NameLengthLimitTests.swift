@@ -76,8 +76,13 @@ import Testing
         #expect(!message.contains("FileOperationError"))
         #expect(message.contains("300"))
         #expect(message.contains("255"))
-        // バイトで数えることと、日本語が 1 文字 3 バイトであることを示す。
-        #expect(message.contains("バイト"))
-        #expect(message.contains("3 バイト"))
+        // **バイトで数える場合と文字数で数える場合で、説明が違うこと。**
+        // 文言そのものは表示言語で変わるので、違いのほうを見る（バイト版は
+        // 「1 文字 3 バイト」の注記を持つぶん、必ず文字版と異なる）。
+        let asCharacters = FileOperationError.nameTooLongForDestination(
+            name: japanese100, item: URL(fileURLWithPath: "/tmp/\(japanese100)"),
+            length: 300, limit: 255, unitIsBytes: false
+        ).localizedDescription
+        #expect(message != asCharacters)
     }
 }

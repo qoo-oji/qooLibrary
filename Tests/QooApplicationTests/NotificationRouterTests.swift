@@ -255,7 +255,7 @@ import Testing
         try? await Task.sleep(for: .milliseconds(20))
         let item = router.currentModalItem
         #expect(item?.title == "移動に失敗しました")
-        #expect(item?.body.contains("原因を特定できない") == true)
+        #expect(item?.body == QooApplicationStrings.text("notification.unidentifiedError"))
         // 型名は本文ではなく折りたたみへ。
         #expect(item?.body.contains("Bare") == false)
         #expect(item?.technicalDetail?.contains("Bare") == true)

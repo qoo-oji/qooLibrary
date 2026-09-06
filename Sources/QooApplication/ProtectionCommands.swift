@@ -76,7 +76,9 @@ public final class SetProtectionCommand: Command {
     }
 
     public var displayName: String {
-        "「\(subjectName)」のメタデータ\(mode.isProtecting ? "を保護" : "の保護を解除")"
+        mode.isProtecting
+            ? QooApplicationStrings.format("command.protectMetadata", subjectName)
+            : QooApplicationStrings.format("command.unprotectMetadata", subjectName)
     }
 
     public var logDescription: String {
@@ -109,7 +111,7 @@ public final class SetProtectionCommand: Command {
     }
 
     public func undo() async throws -> UndoResult {
-        guard !targets.isEmpty else { return .impossible(reason: "元に戻す対象がありません") }
+        guard !targets.isEmpty else { return .impossible(reason: QooApplicationStrings.text("command.undo.nothingToRestore")) }
         do {
             for item in targets {
                 // **保護と値を一緒に書き戻す**（`setFields` が両方を受ける）。

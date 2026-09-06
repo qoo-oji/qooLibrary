@@ -226,7 +226,9 @@ public final class SeriesSuggestionModel {
     ///
     /// **実際に積んだ数で書く**——行が引けずに飛ばしたグループがあると、
     /// 選択した数と食い違う。
-    private func applyName(_ count: Int) -> String { "\(count) 件のシリーズ設定" }
+    private func applyName(_ count: Int) -> String {
+        QooApplicationStrings.format("command.setSeriesMany", count)
+    }
 
     /// 1 件ならそのまま、複数なら 1 つの Undo 単位へ束ねる [UD-04]。
     private func run(_ batch: [any Command], displayName: String) async throws {
@@ -262,8 +264,11 @@ public final class SeriesSuggestionModel {
                 previous: previous, marks: marks,
                 seriesName: group.suggestion.seriesName, services: services))
         }
-        let verb = ignored ? "以後出さない設定" : "無視の解除"
-        try await run(batch, displayName: "\(groups.count) 件の提案の\(verb)")
+        // **動詞句を差し込む形にしない**——英語では語順が変わる。鍵を分ける。
+        let name = ignored
+            ? QooApplicationStrings.format("command.ignoreSuggestionMany", groups.count)
+            : QooApplicationStrings.format("command.unignoreSuggestionMany", groups.count)
+        try await run(batch, displayName: name)
         await reload()
     }
 

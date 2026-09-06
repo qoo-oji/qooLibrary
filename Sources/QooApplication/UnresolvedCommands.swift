@@ -60,10 +60,13 @@ public final class SetUnresolvedIgnoredCommand: Command {
 
     /// **名詞句にする。** Undo メニューは「〜を取り消す」を後ろに付ける。
     public var displayName: String {
-        let verb = ignored ? "以後無視する設定" : "無視の解除"
-        return names.count == 1
-            ? "「\(names[0])」の\(verb)"
-            : "\(names.count) 件のファイルの\(verb)"
+        // **動詞句を差し込む形にしない**——英語では語順が変わる。鍵を分ける。
+        switch (ignored, names.count == 1) {
+        case (true, true): return QooApplicationStrings.format("command.ignoreUnresolved.one", names[0])
+        case (true, false): return QooApplicationStrings.format("command.ignoreUnresolved.many", names.count)
+        case (false, true): return QooApplicationStrings.format("command.unignoreUnresolved.one", names[0])
+        case (false, false): return QooApplicationStrings.format("command.unignoreUnresolved.many", names.count)
+        }
     }
 
     public var logDescription: String {

@@ -14,10 +14,9 @@ extension DiagnosticExportError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .noLogFiles:
-            return "書き出せる診断ログがまだありません。"
-                + "環境設定の「詳細」でログレベルを上げてからしばらく使い、もう一度お試しください。"
+            return QooInfrastructureStrings.text("diagnostics.error.noLogFiles")
         case let .stagingFailed(reason):
-            return "診断情報をまとめられませんでした。（\(reason)）"
+            return QooInfrastructureStrings.format("diagnostics.error.stagingFailed", reason)
         }
     }
 }

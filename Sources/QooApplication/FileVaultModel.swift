@@ -279,8 +279,8 @@ public final class FileVaultModel {
         let root = URL(fileURLWithPath: library.resolvedPath)
         let urls = targets.map { root.appendingPathComponent($0.row.relativePath) }
         let name = targets.count == 1
-            ? "「\(targets[0].row.filename)」を削除"
-            : "\(targets.count) 件のファイルを削除"
+            ? QooApplicationStrings.format("command.deletePermanently.one", targets[0].row.filename)
+            : QooApplicationStrings.format("command.deletePermanently.many", targets.count)
         // **実体を捨てる → 記録を消す、の順**。逆にすると、捨てるほうに
         // 失敗したときに記録だけが消えて実体が保管庫に残る（次の走査で
         // ラベルを失った行として戻ってくる）。`CompositeCommand` は子が

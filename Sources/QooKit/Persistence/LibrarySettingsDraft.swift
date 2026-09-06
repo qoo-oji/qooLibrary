@@ -274,7 +274,7 @@ extension LibrarySettingsDraft {
 
         // --- 基本 ---
         if context == .library, displayName.trimmingCharacters(in: .whitespaces).isEmpty {
-            addError(.basics, "表示名を入力してください。")
+            addError(.basics, QooKitStrings.text("draft.displayNameRequired"))
         }
 
         // --- 対象拡張子 ---
@@ -283,25 +283,26 @@ extension LibrarySettingsDraft {
         // 「絞り込まない＝すべてのファイルが対象」と読むため、`.DS_Store` や
         // メモの `.txt` まで蔵書として取り込む。実際にこの穴を踏んでいる。
         if targetExtensions.isEmpty {
-            addError(.extensions, "対象拡張子が空です。空にすると、隠しファイルを含むすべてのファイルが蔵書として取り込まれます。")
+            addError(.extensions, QooKitStrings.text("draft.extensionsEmpty"))
         }
         let overlap = Set(targetExtensions).intersection(Set(imageExtensions))
         if !overlap.isEmpty {
-            addWarning(.extensions, "対象拡張子と画像拡張子が重複しています: \(overlap.sorted().joined(separator: ", "))")
+            addWarning(.extensions, QooKitStrings.format("draft.extensionOverlap",
+                                         overlap.sorted().joined(separator: ", ")))
         }
 
         // --- ラベルフィールド ---
         var seenIndexes: Set<Int> = []
         for field in fields {
             if field.index < 1 || field.index > AppLimits.Format.maxFields {
-                addError(.fields,
-                      "フィールド番号 \(field.index) は 1〜\(AppLimits.Format.maxFields) の範囲外です。")
+                addError(.fields, QooKitStrings.format("draft.fieldIndexOutOfRange",
+                                                       field.index, AppLimits.Format.maxFields))
             }
             if !seenIndexes.insert(field.index).inserted {
-                addError(.fields, "フィールド番号 \(field.index) が重複しています。")
+                addError(.fields, QooKitStrings.format("draft.fieldIndexDuplicated", field.index))
             }
             if field.name.trimmingCharacters(in: .whitespaces).isEmpty {
-                addError(.fields, "フィールド \(field.index) の名前が空です。")
+                addError(.fields, QooKitStrings.format("draft.fieldNameEmpty", field.index))
             }
         }
 
@@ -313,35 +314,36 @@ extension LibrarySettingsDraft {
         for (keyword, index) in semanticBindings {
             groupToKeywords[index, default: []].append(keyword)
             if !definedFieldIndexes.contains(index) {
-                addError(.fields,
-                      "\(keyword.rawValue) が存在しないフィールド \(index) に紐づいています。")
+                addError(.fields, QooKitStrings.format("draft.keywordBoundToMissingField",
+                                                       keyword.rawValue, index))
             }
         }
         for (index, keywords) in groupToKeywords where keywords.count > 1 {
-            addError(.fields,
-                  "フィールド \(index) に複数の予約語が紐づいています: "
-                  + keywords.map(\.rawValue).sorted().joined(separator: ", "))
+            addError(.fields, QooKitStrings.format("draft.fieldHasMultipleKeywords", index,
+                                                   keywords.map(\.rawValue).sorted().joined(separator: ", ")))
         }
 
         // --- ファイル名フォーマット ---
         let context = compilationContext
         let defined = definedFieldIndexes
         if filenameFormats.allSatisfy({ !$0.isEnabled }) {
-            addWarning(.filenameFormats,
-                 "有効なファイル名フォーマットが 1 つもありません。すべてのファイルがどのフォーマットにも一致しなくなり、ラベルが付きません。")
+            addWarning(.filenameFormats, QooKitStrings.text("draft.noEnabledFilenameFormat"))
         }
         for (i, format) in filenameFormats.enumerated() {
             // **無効なものも検証する**——後で有効に戻したときに初めて壊れて
             // いると分かるのでは遅い。ただし警告に留め、保存は妨げない。
             let severityIsError = format.isEnabled
             if format.source.trimmingCharacters(in: .whitespaces).isEmpty {
-                if severityIsError { addError(.filenameFormats, "\(i + 1) 番目のフォーマットが空です。") }
+                if severityIsError {
+                    addError(.filenameFormats, QooKitStrings.format("draft.filenameFormatEmpty", i + 1))
+                }
                 continue
             }
             do {
                 _ = try FormatCompiler.compile(format.source, context: context, priority: i)
             } catch {
-                let message = "\(i + 1) 番目のフォーマット「\(format.source)」: \(error.whatHappened)"
+                let message = QooKitStrings.format("draft.filenameFormatInvalid",
+                                                   i + 1, format.source, error.whatHappened)
                 if severityIsError { addError(.filenameFormats, message) }
                 else { addWarning(.filenameFormats, message) }
                 continue
@@ -352,8 +354,8 @@ extension LibrarySettingsDraft {
             // 拍子に「照合は成功するのにラベルが付かない」設定が保存できてしまう。
             for keyword in unboundSemanticKeywords(in: format.source,
                                                    keepsStructuredColumns: true) {
-                let message = "\(i + 1) 番目のフォーマットの \(keyword.rawValue) は、"
-                    + "どのフィールドにも紐づいていないため値が失われます。"
+                let message = QooKitStrings.format("draft.unboundKeywordInFilenameFormat",
+                                                   i + 1, keyword.rawValue)
                 if severityIsError { addError(.filenameFormats, message) }
                 else { addWarning(.filenameFormats, message) }
             }
@@ -363,34 +365,36 @@ extension LibrarySettingsDraft {
         var seenLevels: Set<Int> = []
         for level in folderLevels {
             if level.level < 1 {
-                addError(.folderLevels, "階層番号は 1 以上にしてください（1 = ライブラリ直下）。")
+                addError(.folderLevels, QooKitStrings.text("draft.folderLevelTooSmall"))
             }
             if !seenLevels.insert(level.level).inserted {
-                addError(.folderLevels, "階層 \(level.level) の割り当てが重複しています。")
+                addError(.folderLevels, QooKitStrings.format("draft.folderLevelDuplicated", level.level))
             }
             switch level.assignment {
             case .none:
                 break
             case .singleLabelGroup(let index):
                 if !defined.contains(index) {
-                    addError(.folderLevels, "階層 \(level.level) が、存在しないフィールド \(index) に割り当てられています。")
+                    addError(.folderLevels, QooKitStrings.format("draft.folderLevelMissingField",
+                                                                 level.level, index))
                 }
             case .format(let source):
                 if source.trimmingCharacters(in: .whitespaces).isEmpty {
-                    addError(.folderLevels, "階層 \(level.level) のフォーマットが空です。")
+                    addError(.folderLevels, QooKitStrings.format("draft.folderLevelFormatEmpty", level.level))
                     continue
                 }
                 do {
                     _ = try FormatCompiler.compile(source, context: context)
                 } catch {
-                    addError(.folderLevels, "階層 \(level.level)「\(source)」: \(error.whatHappened)")
+                    addError(.folderLevels, QooKitStrings.format("draft.folderLevelFormatInvalid",
+                                                                 level.level, source, error.whatHappened))
                     continue
                 }
                 for keyword in unboundSemanticKeywords(in: source,
                                                        keepsStructuredColumns: false) {
                     addError(.folderLevels,
-                          "階層 \(level.level) の \(keyword.rawValue) は、"
-                          + "どのフィールドにも紐づいていないため値が失われます。")
+                             QooKitStrings.format("draft.unboundKeywordInFolderLevel",
+                                                  level.level, keyword.rawValue))
                 }
             }
         }
@@ -401,16 +405,15 @@ extension LibrarySettingsDraft {
         // **拒否ではなく警告で足りる**のは、実行時に `SafeRegex` のウォッチドッグが
         // 必ず時間の上限で打ち切るため [三層防御の ①]。
         for (i, pattern) in volumeFormats.enumerated() {
-            let label = "\(i + 1) 番目の巻数フォーマット"
             if pattern.source.trimmingCharacters(in: .whitespaces).isEmpty {
-                let message = "\(label)が空です。"
+                let message = QooKitStrings.format("draft.volumeFormatEmpty", i + 1)
                 if pattern.isEnabled { addError(.volumeFormats, message) } else { addWarning(.volumeFormats, message) }
                 continue
             }
             guard pattern.isEnabled else { continue }
 
             for finding in RegexSafety.staticFindings(pattern.source) {
-                let message = "\(label): \(finding.message)"
+                let message = QooKitStrings.format("draft.volumeFormatFinding", i + 1, finding.message)
                 if finding.isError { addError(.volumeFormats, message) }
                 else { addWarning(.volumeFormats, message) }
             }
@@ -419,27 +422,23 @@ extension LibrarySettingsDraft {
             guard pattern.kind == .volume, let regex = try? SafeRegex(pattern.source) else { continue }
             if regex.captureGroupCount == 0 {
                 addError(.volumeFormats,
-                         "\(label): 巻数を取り出すキャプチャグループがありません。"
-                         + "巻数にあたる部分を `(` `)` で囲んでください（例: `第([0-9]+)巻`）。"
-                         + "シリーズ名を切るだけなら種別を「区切り」にしてください。")
+                         QooKitStrings.format("draft.volumeFormatNoCaptureGroup", i + 1))
             } else if regex.captureGroupCount > 1, !regex.hasNamedVolumeGroup {
                 addError(.volumeFormats,
-                         "\(label): キャプチャグループが \(regex.captureGroupCount) 個あり、"
-                         + "どれが巻数か決まりません。巻数以外は `(?:…)` にするか、"
-                         + "巻数を `(?<\(volumeCaptureGroupName)>…)` と名前付きにしてください。")
+                         QooKitStrings.format("draft.volumeFormatAmbiguousCaptureGroup",
+                                              i + 1, regex.captureGroupCount, volumeCaptureGroupName))
             }
         }
 
         // --- 保護文字列 [PT-01] ---
         for (i, token) in protectedTokens.enumerated() {
-            let label = "\(i + 1) 番目の保護文字列"
             if token.pattern.trimmingCharacters(in: .whitespaces).isEmpty {
-                addError(.protectedTokens, "空の保護文字列があります。")
+                addError(.protectedTokens, QooKitStrings.text("draft.protectedTokenEmpty"))
                 continue
             }
             guard token.isEnabled else { continue }
             for finding in RegexSafety.staticFindings(token.pattern) {
-                let message = "\(label): \(finding.message)"
+                let message = QooKitStrings.format("draft.protectedTokenFinding", i + 1, finding.message)
                 if finding.isError { addError(.protectedTokens, message) }
                 else { addWarning(.protectedTokens, message) }
             }
@@ -463,13 +462,15 @@ extension LibrarySettingsDraft {
         for (i, pattern) in volumeFormats.enumerated() where pattern.isEnabled {
             for finding in RegexSafety.measuredFindings(pattern.source, samples: samples) {
                 issues.append(.init(severity: .warning, section: .volumeFormats,
-                                    message: "\(i + 1) 番目の巻数フォーマット: \(finding.message)"))
+                                    message: QooKitStrings.format("draft.volumeFormatFinding",
+                                                                  i + 1, finding.message)))
             }
         }
         for (i, token) in protectedTokens.enumerated() where token.isEnabled {
             for finding in RegexSafety.measuredFindings(token.pattern, samples: samples) {
                 issues.append(.init(severity: .warning, section: .protectedTokens,
-                                    message: "\(i + 1) 番目の保護文字列: \(finding.message)"))
+                                    message: QooKitStrings.format("draft.protectedTokenFinding",
+                                                                  i + 1, finding.message)))
             }
         }
         return issues

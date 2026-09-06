@@ -47,25 +47,17 @@ public struct RegexSafetyFinding: Sendable, Hashable {
     public var message: String {
         switch kind {
         case .invalidSyntax(let reason):
-            return "正規表現として読めません: \(reason)"
+            return QooKitStrings.format("regex.warning.invalidSyntax", reason)
         case .quantifiedGroup:
-            return "量指定子の付いたグループが、中にも量指定子や選択肢を含んでいます"
-                + "（`(a+)+` のような形）。入力によっては照合が極端に遅くなり、"
-                + "時間の上限で打ち切られることがあります。"
+            return QooKitStrings.text("regex.warning.quantifiedGroup")
         case .backreference:
-            return "後方参照（`\\1` や `\\k<名前>`）が含まれています。照合が極端に遅く"
-                + "なることがあり、ファイル名の照合では通常必要ありません。"
+            return QooKitStrings.text("regex.warning.backreference")
         case .lookaround:
-            return "先読み・後読み（`(?=` `(?!` `(?<=` `(?<!`）が含まれています。"
-                + "量指定子と組み合わさると照合が遅くなることがあります。"
+            return QooKitStrings.text("regex.warning.lookaround")
         case .fullWidthLiteral(let characters):
-            return "全角の文字 \(characters) が含まれています。照合は全角を半角へ"
-                + "畳んでから行うため、この文字は決して一致しません。半角で書いてください"
-                + "（記号をそのまま照合したい場合は `\\(` のようにエスケープします）。"
+            return QooKitStrings.format("regex.warning.fullWidthLiteral", characters)
         case .tooSlow(let sample):
-            return "この正規表現は入力によっては極端に遅くなります（\(sample) で"
-                + "時間の上限に達しました）。走査中に打ち切られ、このフォーマットは"
-                + "無効化されます。"
+            return QooKitStrings.format("regex.warning.tooSlow", sample)
         }
     }
 }
@@ -318,10 +310,10 @@ public enum RegexSafety {
 
     static func describe(_ sample: String) -> String {
         let visible = sample.replacingOccurrences(of: "\u{0001}", with: "")
-        guard let first = visible.first else { return "空の文字列" }
+        guard let first = visible.first else { return QooKitStrings.text("regex.sample.empty") }
         if visible.allSatisfy({ $0 == first }) {
-            return "`\(first)` を \(visible.count) 個並べた文字列"
+            return QooKitStrings.format("regex.sample.repeated", String(first), visible.count)
         }
-        return "「\(visible.prefix(24))…」"
+        return QooKitStrings.format("regex.sample.excerpt", String(visible.prefix(24)))
     }
 }

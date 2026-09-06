@@ -131,7 +131,7 @@ struct RatingCommandTests {
         let series = SetRatingCommand(targets: [target, target], stars: 4,
                                       subjectName: "x", seriesName: "作品名A",
                                       services: w.services)
-        #expect(series.displayName == "「作品名A」2 冊の評価を★4に設定")
+        #expect(series.displayName == QooApplicationStrings.format("command.setRatingForSeries", "作品名A", 2, 4))
     }
 
     /// 診断ログの匿名化が拾えるのは絶対パスと `Log.redactable` の印だけ

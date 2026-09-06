@@ -22,7 +22,9 @@ import Testing
         try await stack.run(CreateFolderCommand(url: folderURL))
 
         #expect(stack.canUndo)
-        #expect(stack.undoTitle == "「NewFolder」を作成")
+        // **文言そのものを検査しない**（表示言語で変わる）。鍵から組み立てて
+        // 比べると、鍵の取り違えと引数の順序まで見られる。
+        #expect(stack.undoTitle == QooApplicationStrings.format("command.createFolder", "NewFolder"))
         #expect(FileManager.default.fileExists(atPath: folderURL.path))
     }
 

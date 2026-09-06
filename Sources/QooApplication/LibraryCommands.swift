@@ -61,11 +61,15 @@ public final class SetRatingCommand: Command {
     }
 
     public var displayName: String {
-        let value = stars == 0 ? "評価を解除" : "評価を★\(stars)に設定"
+        // **値の句を差し込む形にしない**——英語では語順が変わる。鍵を分ける。
         if let seriesName {
-            return "「\(seriesName)」\(targets.count) 冊の\(value)"
+            return stars == 0
+                ? QooApplicationStrings.format("command.clearRatingForSeries", seriesName, targets.count)
+                : QooApplicationStrings.format("command.setRatingForSeries", seriesName, targets.count, stars)
         }
-        return "「\(subjectName)」の\(value)"
+        return stars == 0
+            ? QooApplicationStrings.format("command.clearRating", subjectName)
+            : QooApplicationStrings.format("command.setRating", subjectName, stars)
     }
 
     public var logDescription: String {
@@ -85,7 +89,7 @@ public final class SetRatingCommand: Command {
     }
 
     public func undo() async throws -> UndoResult {
-        guard !targets.isEmpty else { return .impossible(reason: "元に戻す対象がありません") }
+        guard !targets.isEmpty else { return .impossible(reason: QooApplicationStrings.text("command.undo.nothingToRestore")) }
         // 変更前の値でまとめて書き戻す。星は 0〜5 の 6 通りしか無いので、
         // 何件あっても書き込みは最大 6 回で済む。
         let grouped = Dictionary(grouping: targets, by: \.previousStars)
@@ -101,7 +105,7 @@ public final class SetRatingCommand: Command {
                 return restored == 0
                     ? .impossible(reason: error.localizedDescription)
                     : .partial(succeeded: restored,
-                               failed: [FailedItem(item: "\(group.count) 件",
+                               failed: [FailedItem(item: QooApplicationStrings.format("operation.itemCount", group.count),
                                                    reason: error.localizedDescription)])
             }
         }
@@ -172,7 +176,9 @@ public final class AssignLabelCommand: Command {
     }
 
     public var displayName: String {
-        "「\(subjectName)」のラベル「\(labelName)」\(assigning ? "を付与" : "を除去")"
+        assigning
+            ? QooApplicationStrings.format("command.assignLabel", subjectName, labelName)
+            : QooApplicationStrings.format("command.removeLabel", subjectName, labelName)
     }
 
     public var logDescription: String {
@@ -200,7 +206,7 @@ public final class AssignLabelCommand: Command {
     }
 
     public func undo() async throws -> UndoResult {
-        guard !previous.isEmpty else { return .impossible(reason: "元に戻す対象がありません") }
+        guard !previous.isEmpty else { return .impossible(reason: QooApplicationStrings.text("command.undo.nothingToRestore")) }
         do {
             // **1 トランザクションで書き戻す**ので、途中まで戻った状態は残らない
             // ——`SetRatingCommand` が `.partial` を返しうるのは、星の値ごとに
@@ -310,10 +316,10 @@ public final class SetFileFieldsCommand: Command {
 
     public var displayName: String {
         switch kind {
-        case .editTitle: "「\(subjectName)」のタイトルを変更"
-        case .editSeriesName: "「\(subjectName)」のシリーズ名を変更"
-        case .editVolume: "「\(subjectName)」の巻数を変更"
-        case .rederive: "「\(subjectName)」をファイル名から再取得"
+        case .editTitle: QooApplicationStrings.format("command.editTitle", subjectName)
+        case .editSeriesName: QooApplicationStrings.format("command.editSeriesName", subjectName)
+        case .editVolume: QooApplicationStrings.format("command.editVolume", subjectName)
+        case .rederive: QooApplicationStrings.format("command.rederive", subjectName)
         }
     }
 
@@ -374,8 +380,8 @@ public final class SetCoverCommand: Command {
 
     public var displayName: String {
         switch kind {
-        case .replace: "「\(subjectName)」のカバー画像を変更"
-        case .revert: "「\(subjectName)」のカバー画像を既定に戻す"
+        case .replace: QooApplicationStrings.format("command.replaceCover", subjectName)
+        case .revert: QooApplicationStrings.format("command.revertCover", subjectName)
         }
     }
 

@@ -21,7 +21,8 @@ public final class MoveFilesCommand: Command {
     }
 
     public var displayName: String {
-        items.count == 1 ? "「\(items[0].lastPathComponent)」を移動" : "\(items.count) 件のファイルを移動"
+        items.count == 1 ? QooApplicationStrings.format("command.move.one", items[0].lastPathComponent)
+                         : QooApplicationStrings.format("command.move.many", items.count)
     }
 
     public var logDescription: String { Self.logDescription("move", items, to: destination) }
@@ -46,7 +47,7 @@ public final class MoveFilesCommand: Command {
     }
 
     public func undo() async throws -> UndoResult {
-        guard !receipts.isEmpty else { return .impossible(reason: "元に戻す対象がありません") }
+        guard !receipts.isEmpty else { return .impossible(reason: QooApplicationStrings.text("command.undo.nothingToRestore")) }
         var succeeded = 0
         var failed: [FailedItem] = []
         for receipt in receipts {
@@ -88,7 +89,8 @@ public final class CopyFilesCommand: Command {
     }
 
     public var displayName: String {
-        items.count == 1 ? "「\(items[0].lastPathComponent)」を複製" : "\(items.count) 件のファイルを複製"
+        items.count == 1 ? QooApplicationStrings.format("command.copy.one", items[0].lastPathComponent)
+                         : QooApplicationStrings.format("command.copy.many", items.count)
     }
 
     public var logDescription: String { Self.logDescription("copy", items, to: destination) }
@@ -110,7 +112,7 @@ public final class CopyFilesCommand: Command {
     }
 
     public func undo() async throws -> UndoResult {
-        guard !receipts.isEmpty else { return .impossible(reason: "元に戻す対象がありません") }
+        guard !receipts.isEmpty else { return .impossible(reason: QooApplicationStrings.text("command.undo.nothingToRestore")) }
         do {
             _ = try await fileOps.trash(receipts.map(\.toURL))
             return .complete
@@ -133,7 +135,7 @@ public final class RenameCommand: Command {
         self.fileOps = fileOps
     }
 
-    public var displayName: String { "「\(item.lastPathComponent)」の名前を変更" }
+    public var displayName: String { QooApplicationStrings.format("command.rename", item.lastPathComponent) }
 
     public var logDescription: String {
         "rename: \(Log.path(item)) → \(Log.path(item.deletingLastPathComponent().appendingPathComponent(newName)))"
@@ -146,7 +148,7 @@ public final class RenameCommand: Command {
     }
 
     public func undo() async throws -> UndoResult {
-        guard let receipt else { return .impossible(reason: "元に戻す対象がありません") }
+        guard let receipt else { return .impossible(reason: QooApplicationStrings.text("command.undo.nothingToRestore")) }
         do {
             _ = try await fileOps.rename(receipt.toURL, to: receipt.fromURL.lastPathComponent)
             return .complete
@@ -170,7 +172,8 @@ public final class TrashCommand: Command {
     }
 
     public var displayName: String {
-        items.count == 1 ? "「\(items[0].lastPathComponent)」をゴミ箱に入れる" : "\(items.count) 件のファイルをゴミ箱に入れる"
+        items.count == 1 ? QooApplicationStrings.format("command.trash.one", items[0].lastPathComponent)
+                         : QooApplicationStrings.format("command.trash.many", items.count)
     }
 
     public var logDescription: String { Self.logDescription("trash", items) }
@@ -196,13 +199,13 @@ public final class TrashCommand: Command {
     }
 
     public func undo() async throws -> UndoResult {
-        guard !receipts.isEmpty else { return .impossible(reason: "元に戻す対象がありません") }
+        guard !receipts.isEmpty else { return .impossible(reason: QooApplicationStrings.text("command.undo.nothingToRestore")) }
         let restored = try await fileOps.restoreFromTrash(receipts)
         if restored.count == receipts.count { return .complete }
         let restoredURLs = Set(restored.map(\.toURL))
         let failed = receipts
             .filter { !restoredURLs.contains($0.originalURL) }
-            .map { FailedItem(item: $0.originalURL.lastPathComponent, reason: "ゴミ箱からの復元に失敗しました") }
+            .map { FailedItem(item: $0.originalURL.lastPathComponent, reason: QooApplicationStrings.text("command.trash.restoreFailed")) }
         return .partial(succeeded: restored.count, failed: failed)
     }
 }
@@ -246,7 +249,8 @@ public final class DeletePermanentlyCommand: Command {
     }
 
     public var displayName: String {
-        items.count == 1 ? "「\(items[0].lastPathComponent)」を完全に削除" : "\(items.count) 件を完全に削除"
+        items.count == 1 ? QooApplicationStrings.format("command.deletePermanently.one", items[0].lastPathComponent)
+                         : QooApplicationStrings.format("command.deletePermanently.many", items.count)
     }
 
     public var logDescription: String { Self.logDescription("deletePermanently", items) }
@@ -304,7 +308,7 @@ public final class DeletePermanentlyCommand: Command {
     /// この経路に到達しないが、将来 `isUndoable` を取り違えて変更した場合に
     /// 黙って何かが起きるより明示的に不能を返すほうが安全。
     public func undo() async throws -> UndoResult {
-        .impossible(reason: "完全に削除された項目は元に戻せません")
+        .impossible(reason: QooApplicationStrings.text("command.deletePermanently.notUndoable"))
     }
 }
 
@@ -319,7 +323,7 @@ public final class CreateFolderCommand: Command {
         self.fileOps = fileOps
     }
 
-    public var displayName: String { "「\(url.lastPathComponent)」を作成" }
+    public var displayName: String { QooApplicationStrings.format("command.createFolder", url.lastPathComponent) }
 
     public var logDescription: String { "createFolder: \(Log.path(url))" }
     public let isUndoable = true
@@ -339,7 +343,7 @@ public final class CreateFolderCommand: Command {
             ((try? FileManager.default.contentsOfDirectory(atPath: target.path)) ?? []).isEmpty
         }
         guard isEmpty else {
-            return .impossible(reason: "フォルダの中身が空ではありません")
+            return .impossible(reason: QooApplicationStrings.text("command.createFolder.notEmpty"))
         }
         do {
             _ = try await fileOps.trash([url])
@@ -365,7 +369,7 @@ public final class CreateAliasCommand: Command {
         self.fileOps = fileOps
     }
 
-    public var displayName: String { "「\(source.lastPathComponent)」のエイリアスを作成" }
+    public var displayName: String { QooApplicationStrings.format("command.createAlias", source.lastPathComponent) }
 
     public var logDescription: String { "createAlias: \(Log.path(source)) → \(Log.path(destinationFolder))" }
     public let isUndoable = true
@@ -376,7 +380,7 @@ public final class CreateAliasCommand: Command {
     }
 
     public func undo() async throws -> UndoResult {
-        guard let receipt else { return .impossible(reason: "元に戻す対象がありません") }
+        guard let receipt else { return .impossible(reason: QooApplicationStrings.text("command.undo.nothingToRestore")) }
         do {
             _ = try await fileOps.trash([receipt.toURL])
             return .complete
@@ -400,8 +404,13 @@ public final class SetLockedCommand: Command {
     }
 
     public var displayName: String {
-        let action = locked ? "ロック" : "ロック解除"
-        return items.count == 1 ? "「\(items[0].lastPathComponent)」を\(action)" : "\(items.count) 件を\(action)"
+        // **動詞を差し込む形にしない**——英語では語順が変わる。鍵を分ける。
+        switch (locked, items.count == 1) {
+        case (true, true): return QooApplicationStrings.format("command.lock.one", items[0].lastPathComponent)
+        case (true, false): return QooApplicationStrings.format("command.lock.many", items.count)
+        case (false, true): return QooApplicationStrings.format("command.unlock.one", items[0].lastPathComponent)
+        case (false, false): return QooApplicationStrings.format("command.unlock.many", items.count)
+        }
     }
 
     public var logDescription: String { Self.logDescription("setLocked(\(locked))", items) }
@@ -426,7 +435,7 @@ public final class SetLockedCommand: Command {
         // 対象は `items` 全体ではなく**実際に変えられた分**だけ [UD-07]。
         // 全体に適用すると、execute が部分失敗していた場合に「変えていない
         // 項目のロック状態」まで反転させてしまう。
-        guard !receipts.isEmpty else { return .impossible(reason: "元に戻す対象がありません") }
+        guard !receipts.isEmpty else { return .impossible(reason: QooApplicationStrings.text("command.undo.nothingToRestore")) }
         do {
             _ = try await fileOps.setLocked(receipts.map(\.toURL), locked: !locked)
             return .complete

@@ -83,7 +83,8 @@ import Testing
         #expect((try? source.resourceValues(forKeys: [.fileSizeKey]))?.fileSize == 24_000_000)
         // 中途半端なコピーを残していないこと。
         #expect(!FileManager.default.fileExists(atPath: target.path), "中途半端なコピーが残っている")
-        #expect(error.localizedDescription.contains("書き換え"))
+        // 「エラーN」形式へ潰れていないこと [ER-03]（文言の中身は表示言語で変わる）。
+        #expect(!error.localizedDescription.contains("FileOperationError"))
     }
 
     /// **更新日時の検査が効かない環境でも、元を消さないこと。**

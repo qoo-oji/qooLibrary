@@ -239,8 +239,11 @@ import Testing
         let asLibrary = draft.validate(as: .library).filter { $0.severity == .error }
         let asTemplate = draft.validate(as: .template).filter { $0.severity == .error }
 
-        #expect(asLibrary.contains { $0.message.contains("表示名") })
-        #expect(!asTemplate.contains { $0.message.contains("表示名") })
+        // **文言そのものを検査しない**——表示言語で変わるので、英語環境では
+        // どんな実装でも通ってしまう［既知の失敗様式］。区分（`section`）は
+        // 構造的な情報なので言語に依存しない。
+        #expect(asLibrary.contains { $0.section == .basics })
+        #expect(!asTemplate.contains { $0.section == .basics })
         #expect(asTemplate.isEmpty, "表示名以外に不備が無ければテンプレートとして保存できる")
     }
 
@@ -263,6 +266,6 @@ import Testing
         let draft = LibrarySettingsDraft(displayName: "",
                                          targetExtensions: [])
         let asTemplate = draft.validate(as: .template).filter { $0.severity == .error }
-        #expect(asTemplate.contains { $0.message.contains("対象拡張子") })
+        #expect(asTemplate.contains { $0.section == .extensions })
     }
 }

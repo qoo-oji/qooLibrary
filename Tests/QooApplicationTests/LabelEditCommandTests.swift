@@ -67,7 +67,7 @@ struct LabelEditCommandTests {
         let w = try ServicesWorkspace()
         let c = RenameLabelCommand(labelID: LabelID(rawValue: 1), previousName: "旧",
                                    newName: "新", services: w.services)
-        #expect(c.displayName == "ラベル「旧」を「新」に変更")
+        #expect(c.displayName == QooApplicationStrings.format("command.renameLabel", "旧", "新"))
     }
 
     // MARK: - 色 [LE-10][CO-06]
@@ -166,7 +166,8 @@ struct LabelEditCommandTests {
         _ = try await stack.run(DeleteLabelsCommand(
             labelIDs: [target.id], labelNames: [target.name], services: w.services))
         #expect(stack.undoTitle != nil)
-        #expect(stack.undoTitle?.contains("削除") == true)
+        // 文言そのものは表示言語で変わるので、対象名と鍵で見る。
+        #expect(stack.undoTitle == QooApplicationStrings.format("command.deleteLabel.one", target.name))
     }
 
     @Test("写しは組み立て時ではなく実行の直前に取る")
@@ -234,7 +235,7 @@ struct LabelEditCommandTests {
         let c = MergeLabelsCommand(source: LabelID(rawValue: 1), sourceName: "旧表記",
                                    target: LabelID(rawValue: 2), targetName: "新表記",
                                    services: w.services)
-        #expect(c.displayName == "ラベル「旧表記」を「新表記」に統合")
+        #expect(c.displayName == QooApplicationStrings.format("command.mergeLabel", "旧表記", "新表記"))
     }
 
     // MARK: - 診断ログ [LG2-06]

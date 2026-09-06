@@ -130,8 +130,8 @@ extension PartialTransferFailure {
         // （「30 件成功・1 件失敗」だけだと残り 69 件の行方が分からない）。
         if remaining > 1 {
             failed.append(FailedItem(
-                item: "ほか \(remaining - 1) 件",
-                reason: "先の失敗により処理していません"
+                item: QooApplicationStrings.format("operation.remainingItems", remaining - 1),
+                reason: QooApplicationStrings.text("operation.notProcessed")
             ))
         }
         return .partial(succeeded: receipts.count, failed: failed)

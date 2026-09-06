@@ -368,7 +368,7 @@ extension DuplicateResolutionModel {
             services: services))
 
         return CompositeCommand(
-            displayName: "「\(keeperName)」を残して \(plan.doomed.count) 件を削除",
+            displayName: QooApplicationStrings.format("command.deleteDuplicates", keeperName, plan.doomed.count),
             children: children)
     }
 

@@ -459,9 +459,8 @@ public final class LibraryServices {
         await NotificationRouter.shared.present(NotificationItem(
             category: .warning,
             severity: .transient,
-            title: "自動バックアップを作成できませんでした",
-            body: "この操作の直前の状態を保存できませんでした。操作そのものは続行しています。"
-                + "環境設定の「リセット」で置き場所と空き容量を確認してください。",
+            title: QooApplicationStrings.text("backup.failed.title"),
+            body: QooApplicationStrings.text("backup.failed.body"),
             technicalDetail: String(describing: error)))
     }
 
@@ -1610,14 +1609,22 @@ public final class LibraryServices {
     private func recordScan(libraryID: LibraryID, summary: ScanSummary, manual: Bool) async {
         guard Self.shouldRecordScan(summary, manual: manual) else { return }
         let library = libraries.first { $0.id == libraryID }
-        var parts = ["追加 \(summary.added)", "更新 \(summary.updated)"]
-        if summary.reidentified > 0 { parts.append("引き継ぎ \(summary.reidentified)") }
-        if summary.orphaned > 0 { parts.append("見つからない \(summary.orphaned)") }
-        if summary.unresolvedNames > 0 { parts.append("未整理 \(summary.unresolvedNames)") }
-        if !summary.bookFoldersReleased.isEmpty {
-            parts.append("1 冊扱いを解除 \(summary.bookFoldersReleased.count)")
+        var parts = [QooApplicationStrings.format("scan.summary.added", summary.added),
+                     QooApplicationStrings.format("scan.summary.updated", summary.updated)]
+        if summary.reidentified > 0 {
+            parts.append(QooApplicationStrings.format("scan.summary.reidentified", summary.reidentified))
         }
-        if summary.cancelled { parts.append("中断") }
+        if summary.orphaned > 0 {
+            parts.append(QooApplicationStrings.format("scan.summary.orphaned", summary.orphaned))
+        }
+        if summary.unresolvedNames > 0 {
+            parts.append(QooApplicationStrings.format("scan.summary.unresolved", summary.unresolvedNames))
+        }
+        if !summary.bookFoldersReleased.isEmpty {
+            parts.append(QooApplicationStrings.format("scan.summary.bookFoldersReleased",
+                                                        summary.bookFoldersReleased.count))
+        }
+        if summary.cancelled { parts.append(QooApplicationStrings.text("scan.summary.cancelled")) }
 
         operationLogRecorder.record(OperationLogDraft(
             // **型名ではなく `scan`。** これはコマンドではないので、
@@ -1631,9 +1638,8 @@ public final class LibraryServices {
             // 初回スキャンも通る（`rescan(libraryID:)` の呼び出し元を参照）
             // ので、「再」を付けると 1 度目から嘘になる——実機検証で
             // 初回の記録が「「蔵書」を再スキャン」と出て気づいた。
-            summary: manual
-                ? "「\(library?.displayName ?? "?")」を走査"
-                : "「\(library?.displayName ?? "?")」を自動で走査",
+            summary: QooApplicationStrings.format(manual ? "command.scan" : "command.scanAutomatically",
+                                                    library?.displayName ?? "?"),
             detail: parts.joined(separator: " · ")))
     }
 

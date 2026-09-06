@@ -40,7 +40,9 @@ public final class RenameLabelCommand: Command {
         self.services = services
     }
 
-    public var displayName: String { "ラベル「\(previousName)」を「\(newName)」に変更" }
+    public var displayName: String {
+        QooApplicationStrings.format("command.renameLabel", previousName, newName)
+    }
     /// **ラベル名は利用者が付けた語なので、そのまま診断ログへ書かない** [LG2-06]
     /// ——絶対パスと違い匿名化の対象にならないため、`Log.redactable(_:)` の印で包む
     /// （包まなければ書き出しバンドルに実名が残る）。
@@ -83,8 +85,8 @@ public final class SetLabelColorCommand: Command {
     }
 
     public var displayName: String {
-        newHex == nil ? "ラベル「\(labelName)」の色を既定に戻す"
-                      : "ラベル「\(labelName)」の色を変更"
+        newHex == nil ? QooApplicationStrings.format("command.resetLabelColor", labelName)
+                      : QooApplicationStrings.format("command.changeLabelColor", labelName)
     }
     public var logDescription: String {
         "setLabelColor(\(newHex ?? "inherit")): \(Log.redactable(labelName))"
@@ -141,10 +143,10 @@ public final class SetLabelHiddenCommand: Command {
     }
 
     public var displayName: String {
-        let verb = hidden ? "非表示に" : "表示に"
+        // **動詞を差し込む形にしない**——英語では語順が変わる。鍵を分ける。
         return previous.count == 1
-            ? "ラベル「\(previous[0].name)」を\(verb)する"
-            : "\(previous.count) 件のラベルを\(verb)する"
+            ? QooApplicationStrings.format(hidden ? "command.hideLabel.one" : "command.showLabel.one", previous[0].name)
+            : QooApplicationStrings.format(hidden ? "command.hideLabel.many" : "command.showLabel.many", previous.count)
     }
     public var logDescription: String {
         "setLabelHidden(\(hidden)): " + previous.map { Log.redactable($0.name) }.joined(separator: ", ")
@@ -164,7 +166,7 @@ public final class SetLabelHiddenCommand: Command {
 
     public func undo() async throws -> UndoResult {
         let targets = changing
-        guard !targets.isEmpty else { return .impossible(reason: "元に戻す対象がありません") }
+        guard !targets.isEmpty else { return .impossible(reason: QooApplicationStrings.text("command.undo.nothingToRestore")) }
         do {
             try await services.setLabelHidden(targets.map(\.id), !hidden)
             return .complete
@@ -191,7 +193,8 @@ public final class SetLabelPinnedCommand: Command {
     }
 
     public var displayName: String {
-        "ラベル「\(labelName)」を\(pinned ? "ピン留め" : "ピン留め解除")"
+        pinned ? QooApplicationStrings.format("command.pinLabel", labelName)
+               : QooApplicationStrings.format("command.unpinLabel", labelName)
     }
     public var logDescription: String {
         "setLabelPinned(\(pinned)): \(Log.redactable(labelName))"
@@ -237,8 +240,8 @@ public final class DeleteLabelsCommand: Command {
 
     public var displayName: String {
         labelNames.count == 1
-            ? "ラベル「\(labelNames[0])」を削除"
-            : "\(labelNames.count) 件のラベルを削除"
+            ? QooApplicationStrings.format("command.deleteLabel.one", labelNames[0])
+            : QooApplicationStrings.format("command.deleteLabel.many", labelNames.count)
     }
     public var logDescription: String {
         "deleteLabels: " + labelNames.map { Log.redactable($0) }.joined(separator: ", ")
@@ -253,7 +256,7 @@ public final class DeleteLabelsCommand: Command {
     }
 
     public func undo() async throws -> UndoResult {
-        guard !snapshots.isEmpty else { return .impossible(reason: "元に戻す対象がありません") }
+        guard !snapshots.isEmpty else { return .impossible(reason: QooApplicationStrings.text("command.undo.nothingToRestore")) }
         do {
             try await services.restoreLabels(snapshots)
             return .complete
@@ -286,7 +289,9 @@ public final class MergeLabelsCommand: Command {
         self.services = services
     }
 
-    public var displayName: String { "ラベル「\(sourceName)」を「\(targetName)」に統合" }
+    public var displayName: String {
+        QooApplicationStrings.format("command.mergeLabel", sourceName, targetName)
+    }
     public var logDescription: String {
         "mergeLabels: \(Log.redactable(sourceName)) → \(Log.redactable(targetName))"
     }
@@ -299,7 +304,7 @@ public final class MergeLabelsCommand: Command {
     }
 
     public func undo() async throws -> UndoResult {
-        guard !snapshots.isEmpty else { return .impossible(reason: "元に戻す対象がありません") }
+        guard !snapshots.isEmpty else { return .impossible(reason: QooApplicationStrings.text("command.undo.nothingToRestore")) }
         do {
             // **1 回の `restore` で 2 件とも戻す**——リポジトリが 1 トランザクション
             // で書くので、「統合元は戻ったが統合先は統合後のまま」というどちらでも

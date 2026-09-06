@@ -117,12 +117,13 @@ public actor FileOperationService {
             let parent = url.deletingLastPathComponent()
             guard FileManager.default.fileExists(atPath: parent.path) else {
                 throw FileOperationError.operationFailed(
-                    "「\(parent.lastPathComponent)」が見つからないため、この中にフォルダを作成できません。"
+                    QooInfrastructureStrings.format("fileOp.createFolder.parentMissing", parent.lastPathComponent)
                 )
             }
             try Self.checkDestinationIsWritable(parent)
             guard !FileManager.default.fileExists(atPath: url.path) else {
-                throw FileOperationError.operationFailed("「\(url.lastPathComponent)」という名前の項目はすでに存在します。")
+                throw FileOperationError.operationFailed(
+                    QooInfrastructureStrings.format("fileOp.createFolder.alreadyExists", url.lastPathComponent))
             }
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true) // [FM-01]
             Log.fileOps.info("createDirectory: \(Log.path(url))")
@@ -706,7 +707,7 @@ public actor FileOperationService {
     /// で本物の Finder エイリアス（シンボリックリンクではない）を作る。
     @discardableResult
     public func createAlias(for source: URL, in destinationFolder: URL, options: OpOptions = .init()) async throws -> OpReceipt {
-        let aliasName = "\(source.lastPathComponent) のエイリアス"
+        let aliasName = QooInfrastructureStrings.format("fileOp.aliasName", source.lastPathComponent)
         let target = destinationFolder.appendingPathComponent(aliasName)
         expect([target], .createAlias)                                    // [FO-11]
         defer { announce([target]) }

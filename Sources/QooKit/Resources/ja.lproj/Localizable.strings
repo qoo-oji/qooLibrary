@@ -62,3 +62,98 @@
 "format.adjacentFreeFields.hint" = "間に区切り文字やリテラル文字を挟んでください（空白だけでは境目になりません）。";
 "format.unknownReservedWord.hint" = "予約語パレットから選び直してください。";
 "format.empty.hint" = "@title などの予約語を 1 つ以上書いてください。";
+
+/* POSIX の errno の翻訳 [ER-03 の三要素のうち「なぜ」]。
+   同じ errno でも、書き込み先の話か対象そのものの話かで文が変わるものは
+   .destination / .subject に鍵を分ける——**place を書式引数で差し込む形は
+   採れない**。英語では場所が主語にも前置詞句にもなり、語順が文ごとに違う。 */
+"posix.reason.noSpace.destination" = "書き込み先の空き容量が足りません。";
+"posix.reason.noSpace.subject" = "この場所の空き容量が足りません。";
+"posix.reason.quotaExceeded" = "ディスク使用量の割り当てを超えています。";
+"posix.reason.readOnly.destination" = "書き込み先が読み取り専用です。";
+"posix.reason.readOnly.subject" = "この項目が読み取り専用です。";
+"posix.reason.noPermission.destination" = "書き込み先を扱う権限がありません。";
+"posix.reason.noPermission.subject" = "この項目を扱う権限がありません。";
+"posix.reason.notFound.destination" = "項目または書き込み先が見つかりません。";
+"posix.reason.notFound.subject" = "この項目が見つかりません。";
+"posix.reason.alreadyExists" = "同じ名前の項目がすでに存在します。";
+"posix.reason.notADirectory.destination" = "書き込み先がフォルダではありません。";
+"posix.reason.notADirectory.subject" = "この項目がフォルダではありません。";
+"posix.reason.isADirectory.destination" = "書き込み先が既存のフォルダです。";
+"posix.reason.isADirectory.subject" = "この項目が既存のフォルダです。";
+"posix.reason.nameTooLong" = "名前またはパスが長すぎます。";
+"posix.reason.tooManySymlinks" = "シンボリックリンクがたどれないほど連鎖しています。";
+"posix.reason.crossDevice" = "別のボリュームをまたぐため、この方法では処理できません。";
+"posix.reason.busy" = "対象がほかの処理で使用中です。";
+"posix.reason.tooManyOpenFiles" = "同時に開けるファイル数の上限に達しました。";
+"posix.reason.fileTooLarge.destination" = "書き込み先のファイルシステムが扱える大きさを超えています。";
+"posix.reason.fileTooLarge.subject" = "この場所のファイルシステムが扱える大きさを超えています。";
+"posix.reason.ioError" = "入出力エラーが起きました。ディスクが壊れているか、接続が外れた可能性があります。";
+"posix.reason.notEmpty" = "フォルダを空にできませんでした。中のファイルを開いているアプリがあるかもしれません。";
+"posix.reason.invalid" = "この組み合わせでは処理できません。";
+"posix.reason.timedOut" = "サーバが応答しませんでした。";
+"posix.reason.disconnected" = "サーバとの接続が切れました。";
+"posix.reason.staleReference" = "この項目への参照が無効になりました。ほかのコンピュータから変更された可能性があります。";
+"posix.reason.unsupported" = "この場所ではこの操作がサポートされていません。";
+"posix.reason.interrupted" = "処理が中断されました。";
+"posix.reason.authenticationFailed" = "サーバの認証に失敗しました。";
+"posix.reason.unknown" = "原因を特定できないエラーが起きました。";
+
+/* POSIX の errno の翻訳 [ER-03 の三要素のうち「次に何ができるか」]。
+   示せる手が無いものは鍵を持たない（`recovery` が nil を返す）。 */
+"posix.recovery.noSpace" = "不要な項目を削除して空きを増やすか、別の場所を選んでください。";
+"posix.recovery.readOnly" = "書き込みできる別の場所を選んでください。";
+"posix.recovery.noPermission" = "環境設定の「アクセス権」でこの場所へのアクセスを許可するか、項目のロックが掛かっていないか確認してください。";
+"posix.recovery.notFound" = "ほかのアプリで移動・削除された可能性があります。一覧を最新にしてから、もう一度お試しください。";
+"posix.recovery.alreadyExists" = "別の名前を付けるか、既存の項目を移動してください。";
+"posix.recovery.nameTooLong" = "階層の浅い場所を選ぶか、名前を短くしてください。";
+"posix.recovery.busy" = "しばらく待ってから、もう一度お試しください。";
+"posix.recovery.tooManyOpenFiles" = "ほかのアプリを終了してから、もう一度お試しください。";
+"posix.recovery.fileTooLarge" = "exFAT など、大きなファイルを扱える形式の場所を選んでください。";
+"posix.recovery.ioError" = "接続を確認し、ディスクユーティリティでボリュームを検査してください。";
+"posix.recovery.notEmpty" = "このフォルダの中のファイルを開いているアプリがあれば閉じてから、もう一度お試しください。";
+"posix.recovery.network" = "ネットワーク接続とサーバの状態を確認してから、もう一度お試しください。";
+"posix.recovery.staleReference" = "一覧を最新にしてから、もう一度お試しください。";
+"posix.recovery.unsupported" = "別の場所を選ぶか、この場所で使える操作をお試しください。";
+"posix.recovery.authenticationFailed" = "サーバへ接続し直して、認証をやり直してください。";
+
+/* 正規表現の安全性の警告 [SE-25]。構文エラー以外は「保存はできるが遅くなりうる」注意。 */
+"regex.warning.invalidSyntax" = "正規表現として読めません: %@";
+"regex.warning.quantifiedGroup" = "量指定子の付いたグループが、中にも量指定子や選択肢を含んでいます（`(a+)+` のような形）。入力によっては照合が極端に遅くなり、時間の上限で打ち切られることがあります。";
+"regex.warning.backreference" = "後方参照（`\\1` や `\\k<名前>`）が含まれています。照合が極端に遅くなることがあり、ファイル名の照合では通常必要ありません。";
+"regex.warning.lookaround" = "先読み・後読み（`(?=` `(?!` `(?<=` `(?<!`）が含まれています。量指定子と組み合わさると照合が遅くなることがあります。";
+"regex.warning.fullWidthLiteral" = "全角の文字 %@ が含まれています。照合は全角を半角へ畳んでから行うため、この文字は決して一致しません。半角で書いてください（記号をそのまま照合したい場合は `\\(` のようにエスケープします）。";
+"regex.warning.tooSlow" = "この正規表現は入力によっては極端に遅くなります（%@ で時間の上限に達しました）。走査中に打ち切られ、このフォーマットは無効化されます。";
+
+/* 遅さを再現した入力の説明。上の tooSlow に差し込まれる。 */
+"regex.sample.empty" = "空の文字列";
+"regex.sample.repeated" = "`%1$@` を %2$d 個並べた文字列";
+"regex.sample.excerpt" = "「%@…」";
+
+/* ライブラリ設定の草案の不備 [LibrarySettingsDraft.validate]。
+   同じ鍵がエラーにも警告にもなる（有効なフォーマットかどうかで severity が変わる）
+   ため、鍵名には error / warning を含めない。 */
+"draft.displayNameRequired" = "表示名を入力してください。";
+"draft.extensionsEmpty" = "対象拡張子が空です。空にすると、隠しファイルを含むすべてのファイルが蔵書として取り込まれます。";
+"draft.extensionOverlap" = "対象拡張子と画像拡張子が重複しています: %@";
+"draft.fieldIndexOutOfRange" = "フィールド番号 %1$d は 1〜%2$d の範囲外です。";
+"draft.fieldIndexDuplicated" = "フィールド番号 %d が重複しています。";
+"draft.fieldNameEmpty" = "フィールド %d の名前が空です。";
+"draft.keywordBoundToMissingField" = "%1$@ が存在しないフィールド %2$d に紐づいています。";
+"draft.fieldHasMultipleKeywords" = "フィールド %1$d に複数の予約語が紐づいています: %2$@";
+"draft.noEnabledFilenameFormat" = "有効なファイル名フォーマットが 1 つもありません。すべてのファイルがどのフォーマットにも一致しなくなり、ラベルが付きません。";
+"draft.filenameFormatEmpty" = "%d 番目のフォーマットが空です。";
+"draft.filenameFormatInvalid" = "%1$d 番目のフォーマット「%2$@」: %3$@";
+"draft.unboundKeywordInFilenameFormat" = "%1$d 番目のフォーマットの %2$@ は、どのフィールドにも紐づいていないため値が失われます。";
+"draft.folderLevelTooSmall" = "階層番号は 1 以上にしてください（1 = ライブラリ直下）。";
+"draft.folderLevelDuplicated" = "階層 %d の割り当てが重複しています。";
+"draft.folderLevelMissingField" = "階層 %1$d が、存在しないフィールド %2$d に割り当てられています。";
+"draft.folderLevelFormatEmpty" = "階層 %d のフォーマットが空です。";
+"draft.folderLevelFormatInvalid" = "階層 %1$d「%2$@」: %3$@";
+"draft.unboundKeywordInFolderLevel" = "階層 %1$d の %2$@ は、どのフィールドにも紐づいていないため値が失われます。";
+"draft.volumeFormatEmpty" = "%d 番目の巻数フォーマットが空です。";
+"draft.volumeFormatFinding" = "%1$d 番目の巻数フォーマット: %2$@";
+"draft.volumeFormatNoCaptureGroup" = "%d 番目の巻数フォーマット: 巻数を取り出すキャプチャグループがありません。巻数にあたる部分を `(` `)` で囲んでください（例: `第([0-9]+)巻`）。シリーズ名を切るだけなら種別を「区切り」にしてください。";
+"draft.volumeFormatAmbiguousCaptureGroup" = "%1$d 番目の巻数フォーマット: キャプチャグループが %2$d 個あり、どれが巻数か決まりません。巻数以外は `(?:…)` にするか、巻数を `(?<%3$@>…)` と名前付きにしてください。";
+"draft.protectedTokenEmpty" = "空の保護文字列があります。";
+"draft.protectedTokenFinding" = "%1$d 番目の保護文字列: %2$@";

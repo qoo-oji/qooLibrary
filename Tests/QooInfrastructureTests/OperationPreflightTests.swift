@@ -150,7 +150,9 @@ import Testing
             return
         }
         #expect(resulting > limit)
-        #expect(error.localizedDescription.contains("パス"))
+        // 「エラーN」形式へ潰れていないこと [ER-03]。**文言の中身は見ない**
+        // ——表示言語で変わるため。
+        #expect(!error.localizedDescription.contains("FileOperationError"))
         // 書き込み先には何も作られていないこと。
         #expect(try FileManager.default.contentsOfDirectory(atPath: deep.path).isEmpty)
     }
@@ -186,6 +188,5 @@ import Testing
         }
         // 「エラー0」形式へ潰れていないこと [ER-03]。
         #expect(!error.localizedDescription.contains("VolumeEligibilityError"))
-        #expect(error.localizedDescription.contains("読み取り専用"))
     }
 }

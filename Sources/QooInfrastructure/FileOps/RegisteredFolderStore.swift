@@ -117,24 +117,22 @@ public enum RegisteredFolderError: Error, Sendable, Equatable {
 extension RegisteredFolderError: UserPresentableError {
     public var whatHappened: String {
         switch self {
-        case .nestedRegistration: "このフォルダは登録できません。"
-        case .unsupportedFileSystem: "このフォルダがあるボリュームは登録に対応していません。"
-        case .notRegistered: "この登録フォルダは見つかりませんでした。"
+        case .nestedRegistration: QooInfrastructureStrings.text("registeredFolder.what.nestedRegistration")
+        case .unsupportedFileSystem: QooInfrastructureStrings.text("registeredFolder.what.unsupportedFileSystem")
+        case .notRegistered: QooInfrastructureStrings.text("registeredFolder.what.notRegistered")
         }
     }
 
     public var whyItHappened: String {
         switch self {
         case .nestedRegistration:
-            return "すでに登録されているフォルダの中、または親にあたるフォルダだからです。"
+            return QooInfrastructureStrings.text("registeredFolder.why.nestedRegistration")
         case .notRegistered:
-            return "操作している間に、別の場所で登録が解除されたようです。"
+            return QooInfrastructureStrings.text("registeredFolder.why.notRegistered")
         case let .unsupportedFileSystem(reason):
             switch reason {
             case let .noPersistentFileID(fileSystem), let .persistentIDNotPreserved(fileSystem):
-                return "\(fileSystem) は、ファイルを移動しても同一と判別できる仕組みに対応していません。"
-                    + "この仕組みが無いと、移動や改名のたびにラベル・評価・カバー画像との"
-                    + "結びつきが失われてしまいます。"
+                return QooInfrastructureStrings.format("registeredFolder.why.unsupportedFileSystem", fileSystem)
             }
         }
     }
@@ -143,9 +141,9 @@ extension RegisteredFolderError: UserPresentableError {
 
     public var recoveryHint: String? {
         switch self {
-        case .nestedRegistration: "すでに登録した場所と重ならないフォルダを選んでください。"
-        case .unsupportedFileSystem: "APFS または Mac OS 拡張のボリューム上のフォルダを選んでください。"
-        case .notRegistered: "登録し直してください。"
+        case .nestedRegistration: QooInfrastructureStrings.text("registeredFolder.hint.nestedRegistration")
+        case .unsupportedFileSystem: QooInfrastructureStrings.text("registeredFolder.hint.unsupportedFileSystem")
+        case .notRegistered: QooInfrastructureStrings.text("registeredFolder.hint.notRegistered")
         }
     }
 

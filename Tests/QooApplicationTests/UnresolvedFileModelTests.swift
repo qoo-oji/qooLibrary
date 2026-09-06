@@ -551,13 +551,13 @@ struct SetUnresolvedIgnoredCommandTests {
         let one = SetUnresolvedIgnoredCommand(
             previous: [.init(fileID: FileID(rawValue: 1), isIgnored: false)],
             ignored: true, names: ["謎の名前.cbz"], services: LibraryServices.shared)
-        #expect(one.displayName == "「謎の名前.cbz」の以後無視する設定")
+        #expect(one.displayName == QooApplicationStrings.format("command.ignoreUnresolved.one", "謎の名前.cbz"))
 
         let many = SetUnresolvedIgnoredCommand(
             previous: [.init(fileID: FileID(rawValue: 1), isIgnored: true),
                        .init(fileID: FileID(rawValue: 2), isIgnored: true)],
             ignored: false, names: ["一.cbz", "二.cbz"], services: LibraryServices.shared)
-        #expect(many.displayName == "2 件のファイルの無視の解除")
+        #expect(many.displayName == QooApplicationStrings.format("command.unignoreUnresolved.many", 2))
     }
 
     @Test("取り消せる操作として宣言する [UD-03]")

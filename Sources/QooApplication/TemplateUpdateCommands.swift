@@ -50,8 +50,8 @@ public final class ApplyTemplateDiffCommand: Command {
 
     public var displayName: String {
         items.isEmpty
-            ? "「\(libraryName)」のテンプレート改訂を確認済みにする"
-            : "「\(libraryName)」にテンプレートの変更 \(items.count) 件を適用"
+            ? QooApplicationStrings.format("command.acknowledgeTemplateUpdate", libraryName)
+            : QooApplicationStrings.format("command.applyTemplateUpdate", libraryName, items.count)
     }
 
     public var logDescription: String {
@@ -79,7 +79,7 @@ public final class ApplyTemplateDiffCommand: Command {
     }
 
     public func undo() async throws -> UndoResult {
-        guard let previousDraft else { return .impossible(reason: "適用前の設定が分からない") }
+        guard let previousDraft else { return .impossible(reason: QooApplicationStrings.text("command.templateUpdate.previousUnknown")) }
         do {
             if let current = try await services.settingsDraft(libraryID: libraryID),
                current != previousDraft {
@@ -95,14 +95,14 @@ public final class ApplyTemplateDiffCommand: Command {
 
 /// **文言は日本語のリテラル。** `QooApplication` には文字列カタログが無く
 /// （`Command.displayName` も同じ扱い）、ここだけ英語にすると 1 行だけ
-/// 英語になってかえって読めない。ローカライズは既存の負債として、
-/// `displayName` と一緒に片付けること。
+/// 文言は `Resources/<lang>.lproj/Localizable.strings` から
+/// `QooApplicationStrings` 経由で引く [2026-09-06 に移行]。
 public enum TemplateUpdateError: Error, LocalizedError, Equatable {
     case settingsUnavailable
 
     public var errorDescription: String? {
         switch self {
-        case .settingsUnavailable: "ライブラリの設定を読み取れませんでした。"
+        case .settingsUnavailable: QooApplicationStrings.text("templateUpdate.error.settingsUnavailable")
         }
     }
 }

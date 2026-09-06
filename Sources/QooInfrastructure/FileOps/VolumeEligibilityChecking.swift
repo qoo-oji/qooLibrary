@@ -62,8 +62,8 @@ public enum VolumeEligibilityError: Error, Sendable, Equatable {
 extension VolumeEligibilityError: UserPresentableError {
     public var whatHappened: String {
         switch self {
-        case .probeSetupFailed: "このフォルダを登録できるか確認できませんでした。"
-        case .readOnlyVolume: "このフォルダは登録できません。"
+        case .probeSetupFailed: QooInfrastructureStrings.text("volumeEligibility.what.probeSetupFailed")
+        case .readOnlyVolume: QooInfrastructureStrings.text("volumeEligibility.what.readOnlyVolume")
         }
     }
 
@@ -72,8 +72,7 @@ extension VolumeEligibilityError: UserPresentableError {
         case let .probeSetupFailed(code):
             return PosixFailure.reason(code, context: .subject)
         case let .readOnlyVolume(fileSystem):
-            return "読み取り専用のボリューム（\(fileSystem)）にあるため、"
-                + "登録に必要な確認も、以降の書き込みもできません。"
+            return QooInfrastructureStrings.format("volumeEligibility.why.readOnlyVolume", fileSystem)
         }
     }
 
@@ -82,7 +81,7 @@ extension VolumeEligibilityError: UserPresentableError {
     public var recoveryHint: String? {
         switch self {
         case let .probeSetupFailed(code): PosixFailure.recovery(code, context: .subject)
-        case .readOnlyVolume: "書き込みできるボリューム上のフォルダを選んでください。"
+        case .readOnlyVolume: QooInfrastructureStrings.text("volumeEligibility.hint.readOnlyVolume")
         }
     }
 

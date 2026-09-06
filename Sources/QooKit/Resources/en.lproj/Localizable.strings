@@ -62,3 +62,100 @@
 "format.adjacentFreeFields.hint" = "Put a delimiter or a literal character between them (whitespace alone isn't a boundary).";
 "format.unknownReservedWord.hint" = "Choose one from the reserved-word palette.";
 "format.empty.hint" = "Write at least one reserved word, such as @title.";
+
+/* POSIX errno, translated into the "why" of the three-part error message [ER-03].
+   Where the sentence differs depending on whether the failure is about the
+   destination or about the item itself, the key is split — **the place can't be
+   passed as a format argument**, because in English it becomes the subject in one
+   sentence and a prepositional phrase in the next. */
+"posix.reason.noSpace.destination" = "There isn't enough free space at the destination.";
+"posix.reason.noSpace.subject" = "There isn't enough free space at this location.";
+"posix.reason.quotaExceeded" = "You've exceeded your disk quota.";
+"posix.reason.readOnly.destination" = "The destination is read-only.";
+"posix.reason.readOnly.subject" = "This item is read-only.";
+"posix.reason.noPermission.destination" = "You don't have permission to use the destination.";
+"posix.reason.noPermission.subject" = "You don't have permission to use this item.";
+"posix.reason.notFound.destination" = "The item or the destination could not be found.";
+"posix.reason.notFound.subject" = "This item could not be found.";
+"posix.reason.alreadyExists" = "An item with the same name already exists.";
+"posix.reason.notADirectory.destination" = "The destination isn't a folder.";
+"posix.reason.notADirectory.subject" = "This item isn't a folder.";
+"posix.reason.isADirectory.destination" = "The destination is an existing folder.";
+"posix.reason.isADirectory.subject" = "This item is an existing folder.";
+"posix.reason.nameTooLong" = "The name or the path is too long.";
+"posix.reason.tooManySymlinks" = "There are too many levels of symbolic links to follow.";
+"posix.reason.crossDevice" = "This can't be done in one step across different volumes.";
+"posix.reason.busy" = "The item is in use by another process.";
+"posix.reason.tooManyOpenFiles" = "The limit on simultaneously open files has been reached.";
+"posix.reason.fileTooLarge.destination" = "The file is larger than the destination's file system can handle.";
+"posix.reason.fileTooLarge.subject" = "The file is larger than this location's file system can handle.";
+"posix.reason.ioError" = "An input/output error occurred. The disk may be damaged, or the connection may have been lost.";
+"posix.reason.notEmpty" = "The folder couldn't be emptied. An app may still have a file inside it open.";
+"posix.reason.invalid" = "This combination can't be processed.";
+"posix.reason.timedOut" = "The server didn't respond.";
+"posix.reason.disconnected" = "The connection to the server was lost.";
+"posix.reason.staleReference" = "The reference to this item is no longer valid. It may have been changed from another computer.";
+"posix.reason.unsupported" = "This location doesn't support this operation.";
+"posix.reason.interrupted" = "The operation was interrupted.";
+"posix.reason.authenticationFailed" = "Authentication with the server failed.";
+"posix.reason.unknown" = "An error occurred that couldn't be identified.";
+
+/* POSIX errno, translated into the "what you can do next" part [ER-03].
+   Codes with nothing useful to suggest have no key (`recovery` returns nil). */
+"posix.recovery.noSpace" = "Free up space by deleting items you no longer need, or choose a different location.";
+"posix.recovery.readOnly" = "Choose a different location that you can write to.";
+"posix.recovery.noPermission" = "Grant access to this location in Settings › Access, or check whether the item is locked.";
+"posix.recovery.notFound" = "Another app may have moved or deleted it. Refresh the list and try again.";
+"posix.recovery.alreadyExists" = "Choose a different name, or move the existing item.";
+"posix.recovery.nameTooLong" = "Choose a location with fewer levels, or use a shorter name.";
+"posix.recovery.busy" = "Wait a moment and try again.";
+"posix.recovery.tooManyOpenFiles" = "Quit other apps and try again.";
+"posix.recovery.fileTooLarge" = "Choose a location formatted for large files, such as exFAT.";
+"posix.recovery.ioError" = "Check the connection, and verify the volume with Disk Utility.";
+"posix.recovery.notEmpty" = "If an app still has a file inside this folder open, close it and try again.";
+"posix.recovery.network" = "Check your network connection and the server, then try again.";
+"posix.recovery.staleReference" = "Refresh the list and try again.";
+"posix.recovery.unsupported" = "Choose a different location, or try an operation this location supports.";
+"posix.recovery.authenticationFailed" = "Reconnect to the server and authenticate again.";
+
+/* Regular-expression safety warnings [SE-25]. Everything but a syntax error is a
+   caution — the pattern still saves, but matching may become slow. */
+"regex.warning.invalidSyntax" = "This isn't a valid regular expression: %@";
+"regex.warning.quantifiedGroup" = "A quantified group also contains a quantifier or an alternation inside it (a shape like `(a+)+`). With some inputs, matching becomes extremely slow and is cut off at the time limit.";
+"regex.warning.backreference" = "It contains a backreference (`\\1` or `\\k<name>`). Matching can become extremely slow, and backreferences are rarely needed when matching file names.";
+"regex.warning.lookaround" = "It contains a lookahead or lookbehind (`(?=` `(?!` `(?<=` `(?<!`). Combined with quantifiers, matching can become slow.";
+"regex.warning.fullWidthLiteral" = "It contains the full-width character %@. Matching folds full-width characters to half-width first, so this will never match. Write it half-width instead (to match a symbol literally, escape it as in `\\(`).";
+"regex.warning.tooSlow" = "This regular expression becomes extremely slow with some inputs (%@ reached the time limit). It will be cut off during a scan, and this format will be disabled.";
+
+/* Describes the input that reproduced the slowness; substituted into tooSlow above. */
+"regex.sample.empty" = "an empty string";
+"regex.sample.repeated" = "`%1$@` repeated %2$d times";
+"regex.sample.excerpt" = "\"%@…\"";
+
+/* Problems found in a library settings draft [LibrarySettingsDraft.validate].
+   The same key can be reported as an error or as a warning (it depends on whether
+   the format is enabled), so key names don't say error / warning. */
+"draft.displayNameRequired" = "Enter a display name.";
+"draft.extensionsEmpty" = "No target extensions are set. Leaving this empty takes in every file as part of the library, including hidden files.";
+"draft.extensionOverlap" = "These are listed as both target and image extensions: %@";
+"draft.fieldIndexOutOfRange" = "Field number %1$d is outside the range 1–%2$d.";
+"draft.fieldIndexDuplicated" = "Field number %d appears more than once.";
+"draft.fieldNameEmpty" = "Field %d has no name.";
+"draft.keywordBoundToMissingField" = "%1$@ is bound to field %2$d, which doesn't exist.";
+"draft.fieldHasMultipleKeywords" = "Field %1$d has more than one reserved word bound to it: %2$@";
+"draft.noEnabledFilenameFormat" = "No file name format is enabled. Nothing will match any format, so no labels will be applied.";
+"draft.filenameFormatEmpty" = "File name format %d is empty.";
+"draft.filenameFormatInvalid" = "File name format %1$d, “%2$@”: %3$@";
+"draft.unboundKeywordInFilenameFormat" = "%2$@ in file name format %1$d isn't bound to any field, so its value would be discarded.";
+"draft.folderLevelTooSmall" = "Folder levels start at 1 (1 = directly inside the library folder).";
+"draft.folderLevelDuplicated" = "Level %d is assigned more than once.";
+"draft.folderLevelMissingField" = "Level %1$d is assigned to field %2$d, which doesn't exist.";
+"draft.folderLevelFormatEmpty" = "The format for level %d is empty.";
+"draft.folderLevelFormatInvalid" = "Level %1$d, “%2$@”: %3$@";
+"draft.unboundKeywordInFolderLevel" = "%2$@ at level %1$d isn't bound to any field, so its value would be discarded.";
+"draft.volumeFormatEmpty" = "Volume format %d is empty.";
+"draft.volumeFormatFinding" = "Volume format %1$d: %2$@";
+"draft.volumeFormatNoCaptureGroup" = "Volume format %d: There's no capturing group for the volume number. Wrap the number in `(` `)`, for example `Vol\\.([0-9]+)`. If this only marks where the series name ends, set the kind to Separator.";
+"draft.volumeFormatAmbiguousCaptureGroup" = "Volume format %1$d: There are %2$d capturing groups, so it's unclear which one is the volume number. Use `(?:…)` for the others, or name the volume group `(?<%3$@>…)`.";
+"draft.protectedTokenEmpty" = "One of the protected strings is empty.";
+"draft.protectedTokenFinding" = "Protected string %1$d: %2$@";

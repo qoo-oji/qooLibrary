@@ -49,7 +49,8 @@ import Testing
         #expect(required >= 40 * 1_000 * 1_000)
         #expect(available < required)
         // 理由がそのまま読める文言であること（「エラー2」に潰れない）[ER-03]。
-        #expect(error.localizedDescription.contains("空き容量"))
+        // **文言の中身は見ない**——表示言語で変わるため。
+        #expect(!error.localizedDescription.contains("FileOperationError"))
 
         // **1 バイトも書いていない**こと。これがこの検証の主眼。
         let written = try FileManager.default.contentsOfDirectory(

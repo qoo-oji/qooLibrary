@@ -269,7 +269,7 @@ extension OperationHistoryEntry.Action {
         case .executed, .cancelled, .undone, .redone:
             nil
         case .undonePartially(let succeeded, let failedCount):
-            "成功 \(succeeded) 件 / 失敗 \(failedCount) 件"
+            QooApplicationStrings.format("operation.partialDetail", succeeded, failedCount)
         case .failed(let reason), .undoFailed(let reason), .redoFailed(let reason):
             reason
         }

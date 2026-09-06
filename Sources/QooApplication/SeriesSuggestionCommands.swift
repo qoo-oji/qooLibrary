@@ -48,7 +48,7 @@ public final class ApplySeriesSuggestionCommand: Command {
 
     /// **名詞句にする。** Undo メニューは「〜を取り消す」を後ろに付ける。
     public var displayName: String {
-        "「\(suggestion.seriesName)」\(suggestion.members.count) 冊のシリーズ設定"
+        QooApplicationStrings.format("command.setSeries", suggestion.seriesName, suggestion.members.count)
     }
 
     public var logDescription: String {
@@ -154,8 +154,8 @@ public final class SetSeriesSuggestionIgnoredCommand: Command {
 
     public var displayName: String {
         isIgnoring
-            ? "「\(seriesName)」の提案を以後出さない設定"
-            : "「\(seriesName)」の提案の無視の解除"
+            ? QooApplicationStrings.format("command.ignoreSuggestion", seriesName)
+            : QooApplicationStrings.format("command.unignoreSuggestion", seriesName)
     }
 
     public var logDescription: String {
