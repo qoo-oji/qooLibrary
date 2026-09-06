@@ -75,10 +75,11 @@ public struct RecoveryAction: Sendable, Identifiable, Equatable {
 /// 対象ライブラリでの絞り込み [NT-04][NW-01][NW-02] に使う。**省略してよい**
 /// ——ライブラリと無関係な通知（ファイル操作の失敗など）のほうが多い。
 ///
-/// 仕様書の `operationLogID`（操作履歴へのリンク [NT-04]）はまだ持たない。
-/// `operationLog` テーブルは v1 からあるが誰も書いておらず、操作履歴は
-/// `CommandStack.operationHistory`（メモリのみ）に留まっている
-/// ——**リンク先の実体が無いものへの参照を先に作らない**。
+/// `operationLogID` は関連する操作履歴の行 [NT-04]。**対応する行を持つ通知
+/// だけが持つ**——走査の結果と、`CommandStack` を通った操作（成功・部分成功・
+/// 失敗）がそれにあたる。テンプレートの保存・JSON 入出力・復元・イジェクトは
+/// `CommandStack` を通らないので `nil` のまま（リンク先の実体が無いものへの
+/// 参照を先に作らない）。
 public struct NotificationItem: Sendable, Identifiable {
     public enum Category: Sendable, CaseIterable {
         case error, warning, info // [NT-03]
@@ -94,6 +95,9 @@ public struct NotificationItem: Sendable, Identifiable {
     public let body: String
     public let technicalDetail: String?
     public let actions: [RecoveryAction]
+    /// 関連する操作履歴の行 [NT-04]。**この通知を出した操作が履歴に残した行**で、
+    /// 通知履歴から「この操作を見る」で辿れる。対応する操作が無ければ `nil`。
+    public let operationLogID: OperationLogID?
 
     public init(
         id: UUID = UUID(),
@@ -104,7 +108,8 @@ public struct NotificationItem: Sendable, Identifiable {
         title: String,
         body: String,
         technicalDetail: String? = nil,
-        actions: [RecoveryAction] = []
+        actions: [RecoveryAction] = [],
+        operationLogID: OperationLogID? = nil
     ) {
         self.id = id
         self.date = date
@@ -115,5 +120,6 @@ public struct NotificationItem: Sendable, Identifiable {
         self.body = body
         self.technicalDetail = technicalDetail
         self.actions = actions
+        self.operationLogID = operationLogID
     }
 }

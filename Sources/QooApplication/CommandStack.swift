@@ -65,8 +65,12 @@ public final class CommandStack {
         return false
     }
 
+    /// - Parameter logReceipt: 渡すと、この実行が操作履歴へ残した行の ID を
+    ///   受け取れる [NT-04]。**失敗して投げる経路でも書かれる**——失敗も履歴に
+    ///   `failed` として載るため。要らなければ省略してよい（追記を待たない）。
     @discardableResult
-    public func run(_ command: any Command) async throws -> CommandResult {
+    public func run(_ command: any Command,
+                    logReceipt: OperationLogReceipt? = nil) async throws -> CommandResult {
         let result: CommandResult
         do {
             result = try await command.execute()
@@ -84,12 +88,13 @@ public final class CommandStack {
             // 「失敗」でありながら**ファイルは動いている**ものがあるので、
             // 残さないと履歴が「何も起きなかった」と嘘をつく。
             // 診断ログへの記録も `record` が行う（1 箇所に集める）。
-            record(command, action: Self.isCancellation(error)
+            await record(command, action: Self.isCancellation(error)
                    ? .cancelled
-                   : .failed(reason: error.localizedDescription))
+                   : .failed(reason: error.localizedDescription),
+                         receipt: logReceipt)
             throw error
         }
-        record(command, action: .executed)
+        await record(command, action: .executed, receipt: logReceipt)
         await playCompletionSound(for: command, result: result)
         if command.isUndoable {
             undoStack.append(command)
@@ -114,17 +119,22 @@ public final class CommandStack {
     /// 記録（ログ・操作履歴）はここの責務のまま。**いつ・どう見せるか**だけを
     /// 呼び出し側に委ねる。
     @discardableResult
-    public func undo() async -> UndoOutcome {
+    public func undo(logReceipt: OperationLogReceipt? = nil) async -> UndoOutcome {
         guard let command = undoStack.popLast() else { return .nothingToDo }
         do {
             let result = try await command.undo()
             switch result {
             case .complete:
-                record(command, action: .undone)
+                // **スタック操作は記録より先に済ませる** [NT-04 で `record` が
+                // `async` になったため]。記録は「失敗しても本体を止めない」もの
+                // なので順序を選べるが、`await` を挟んだ先でスタックを触ると、
+                // その間に別の取り消しが入ったときに積む順が入れ替わりうる。
                 redoStack.append(command)
+                await record(command, action: .undone, receipt: logReceipt)
                 return .complete(operationName: command.displayName)
             case .partial(let succeeded, let failed):
-                record(command, action: .undonePartially(succeeded: succeeded, failedCount: failed.count))
+                await record(command, action: .undonePartially(succeeded: succeeded, failedCount: failed.count),
+                             receipt: logReceipt)
                 // **redo スタックへ積まない** [2026-08 既知の不具合の一掃]。
                 // 部分的にしか元へ戻っていない状態で Redo すると、`execute()` が
                 // 元の `items` で再実行され「移動元が既に存在しない」といった
@@ -133,28 +143,30 @@ public final class CommandStack {
                 // できないため、操作履歴に記録を残してスタックからは外す。
                 return .partial(operationName: command.displayName, succeeded: succeeded, failed: failed)
             case .impossible(let reason):
-                record(command, action: .undoFailed(reason: reason))
+                await record(command, action: .undoFailed(reason: reason), receipt: logReceipt)
                 // スタックへ戻さない（同じコマンドの Undo を再試行しても直らないため）。
                 return .failed(operationName: command.displayName, reason: reason)
             }
         } catch {
-            record(command, action: .undoFailed(reason: error.localizedDescription))
+            await record(command, action: .undoFailed(reason: error.localizedDescription),
+                         receipt: logReceipt)
             return .failed(operationName: command.displayName, reason: error.localizedDescription)
         }
     }
 
     /// やり直す。`undo()` と同じ理由で結果だけを返す。
     @discardableResult
-    public func redo() async -> UndoOutcome {
+    public func redo(logReceipt: OperationLogReceipt? = nil) async -> UndoOutcome {
         guard let command = redoStack.popLast() else { return .nothingToDo }
         do {
             let result = try await command.redo()
-            record(command, action: .redone)
+            await record(command, action: .redone, receipt: logReceipt)
             await playCompletionSound(for: command, result: result)
             undoStack.append(command)
             return .complete(operationName: command.displayName)
         } catch {
-            record(command, action: .redoFailed(reason: error.localizedDescription))
+            await record(command, action: .redoFailed(reason: error.localizedDescription),
+                         receipt: logReceipt)
             return .failed(operationName: command.displayName, reason: error.localizedDescription)
         }
     }
@@ -186,7 +198,8 @@ public final class CommandStack {
     /// 前者はユーザー向けの文言（「12 件のファイルを移動」）、後者は対象を
     /// 絶対パスで表した診断用の文字列で、書き出し時の匿名化 [LG2-06] が
     /// 効くのは後者だけ（`Command.logDescription` のコメント参照）。
-    private func record(_ command: any Command, action: OperationHistoryEntry.Action) {
+    private func record(_ command: any Command, action: OperationHistoryEntry.Action,
+                        receipt: OperationLogReceipt? = nil) async {
         let detail = command.logDescription
         switch action {
         case .executed, .undone, .redone:
@@ -209,7 +222,14 @@ public final class CommandStack {
         // redo と失敗・中断のすべてがこの関数を通るので、コマンドを足す人が
         // 記録を配線し忘れる余地が無い（ログ・音・読み直しの合図と同じ理由で
         // ここへ集めてある）。
-        operationLog.record(Self.draft(for: command, action: action))
+        // **箱が渡されたときだけ ID を待つ** [NT-04]。待たない経路は今までどおり
+        // 投げっぱなしなので、リンクを使わない大多数の操作に待ち時間が増えない。
+        let draft = Self.draft(for: command, action: action)
+        if let receipt {
+            receipt.set(await operationLog.recordReturningID(draft))
+        } else {
+            operationLog.record(draft)
+        }
         // **画面の読み直しはここ 1 箇所から知らせる** [§19.13 #2]。run / undo /
         // redo のどれもこの関数を通るので、コマンドを足す人が合図を配線し忘れる
         // 余地が無い（ログと操作履歴を 1 箇所に集めているのと同じ考え方）。

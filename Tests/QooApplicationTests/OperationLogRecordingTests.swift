@@ -78,6 +78,70 @@ struct OperationLogRecordingTests {
         return (recorder, store)
     }
 
+    // MARK: - 通知へのリンク [NT-04]
+
+    /// 箱を渡すと**追記を待ってから返る**——`waitForRows` を挟まずに件数が
+    /// 揃っていることが、その証拠になる。
+    @Test("箱を渡した実行は行 ID を持ち帰る [NT-04]")
+    func receiptCarriesTheIDOnSuccess() async throws {
+        let (recorder, store) = await attached()
+        let stack = CommandStack(operationLog: recorder)
+        let receipt = OperationLogReceipt()
+        try await stack.run(FakeCommand(displayName: "移動"), logReceipt: receipt)
+        #expect(receipt.id != nil)
+        #expect(store.drafts.count == 1, "箱を渡した実行は追記を待つ")
+    }
+
+    /// **箱にした理由そのもの。** 返り値に載せると `throw` した瞬間に失われる
+    /// ——失敗も履歴には `failed` として載るので、そこへのリンクは成功時と
+    /// 同じく意味を持つ。
+    @Test("失敗して投げる経路でも行 ID を持ち帰る [NT-04]")
+    func receiptCarriesTheIDOnFailure() async throws {
+        let (recorder, _) = await attached()
+        let stack = CommandStack(operationLog: recorder)
+        let command = FakeCommand(displayName: "移動")
+        struct Boom: Error {}
+        command.executeError = Boom()
+        let receipt = OperationLogReceipt()
+        await #expect(throws: Boom.self) {
+            try await stack.run(command, logReceipt: receipt)
+        }
+        #expect(receipt.id != nil)
+    }
+
+    @Test("取り消しの行 ID も持ち帰る [NT-04]")
+    func receiptCarriesTheIDOnUndo() async throws {
+        let (recorder, _) = await attached()
+        let stack = CommandStack(operationLog: recorder)
+        try await stack.run(FakeCommand(displayName: "移動"))
+        let receipt = OperationLogReceipt()
+        _ = await stack.undo(logReceipt: receipt)
+        #expect(receipt.id != nil)
+    }
+
+    /// **書けなかったら `nil` のまま。** 呼び出し元はリンクを付けないので、
+    /// 「押しても何も起きない導線」が出ない。
+    @Test("履歴に書けなかったときは行 ID を持たない [NT-04]")
+    func receiptIsEmptyWhenTheAppendFails() async throws {
+        let (recorder, store) = await attached()
+        store.failNextAppend = true
+        let stack = CommandStack(operationLog: recorder)
+        let receipt = OperationLogReceipt()
+        try await stack.run(FakeCommand(displayName: "移動"), logReceipt: receipt)
+        #expect(receipt.id == nil)
+    }
+
+    /// ストアが繋がる前の操作は溜められる [AppLimits.Operations.preAttachBufferLimit]
+    /// ——そのときは ID が無い。
+    @Test("ストアが繋がる前は行 ID を持たない [NT-04]")
+    func receiptIsEmptyBeforeTheStoreIsAttached() async throws {
+        let recorder = OperationLogRecorder()
+        let stack = CommandStack(operationLog: recorder)
+        let receipt = OperationLogReceipt()
+        try await stack.run(FakeCommand(displayName: "移動"), logReceipt: receipt)
+        #expect(receipt.id == nil)
+    }
+
     // MARK: - `record()` を通る 6 経路
 
     @Test("実行が記録される")

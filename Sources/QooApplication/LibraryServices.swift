@@ -90,7 +90,10 @@ public final class LibraryServices {
     /// 出ないことを確認した（既に新しい行があるので `.nameOnly` の経路を
     /// 通らない）。恒常的な到達手段がライブラリ設定だけになっていた。
     @ObservationIgnored
-    public var onAutomaticScanFinished: ((LibraryID, ScanSummary) -> Void)?
+    /// 自動走査が終わったとき。第 3 引数は**その走査が操作履歴へ残した行**
+    /// [NT-04]——通知から「この操作を見る」で辿るために運ぶ（記録しなかった
+    /// 走査 [OH-03] では `nil`）。
+    public var onAutomaticScanFinished: ((LibraryID, ScanSummary, OperationLogID?) -> Void)?
 
     // MARK: - 内部
 
@@ -526,8 +529,8 @@ public final class LibraryServices {
                 if summary.added > 0 || summary.updated > 0 || summary.orphaned > 0 {
                     LibraryGeneration.shared.bump()
                 }
-                await self?.recordScan(libraryID: id, summary: summary, manual: false)
-                self?.onAutomaticScanFinished?(id, summary)
+                let logID = await self?.recordScan(libraryID: id, summary: summary, manual: false)
+                self?.onAutomaticScanFinished?(id, summary, logID ?? nil)
             }
         }
         // 着脱で `isOnline` が変わったら**一覧の写しを取り直す** [VD-03][VD-05]。
@@ -1565,11 +1568,14 @@ public final class LibraryServices {
     ///
     /// **ファイルシステムに対しては読み取りしか行わない**（列挙と存在確認のみ）。
     /// 書き込み先は DB だけなので、途中で取り消しても利用者のファイルは変わらない。
+    /// - Parameter logReceipt: 渡すと、この走査が操作履歴へ残した行の ID を
+    ///   受け取れる [NT-04]。走査結果の通知にリンクを持たせるために使う。
     public func scan(
         libraryID: LibraryID,
         mode: ScanEngine.Mode? = nil,
         root: URL? = nil,
-        onProgress: (@Sendable (ScanProgress) -> Void)? = nil
+        onProgress: (@Sendable (ScanProgress) -> Void)? = nil,
+        logReceipt: OperationLogReceipt? = nil
     ) async throws -> ScanSummary {
         guard let engine = makeScanEngineIfNeeded() else { throw ServiceError.notReady }
         let scanMode = mode ?? .full(libraryID: libraryID)
@@ -1586,7 +1592,12 @@ public final class LibraryServices {
         }
         await refreshLibraries()
         LibraryGeneration.shared.bump()
-        await recordScan(libraryID: libraryID, summary: summary, manual: true)
+        // **`logReceipt?.set(await recordScan(...))` と書いてはいけない。**
+        // optional chaining は receiver が `nil` だと**引数を評価しない**ので、
+        // 箱を渡さない呼び出し（自動走査以外のすべて）で記録そのものが飛ぶ
+        // ——既存のテストが「走査が 1 行も残らない」として捕まえた。
+        let logID = await recordScan(libraryID: libraryID, summary: summary, manual: true)
+        logReceipt?.set(logID)
         return summary
     }
 
@@ -1606,8 +1617,11 @@ public final class LibraryServices {
     /// ファイルを再走査しても更新として数えられる（実測: 2 回目の走査が
     /// 「追加 0 / 更新 12 / 孤立 0」）。手動の走査は利用者が明示的に頼んだ
     /// 操作なので、結果によらず残す（通知の出し分けと同じ線引き）。
-    private func recordScan(libraryID: LibraryID, summary: ScanSummary, manual: Bool) async {
-        guard Self.shouldRecordScan(summary, manual: manual) else { return }
+    /// - Returns: 残した行 [NT-04]。記録しなかった走査では `nil`。
+    @discardableResult
+    private func recordScan(libraryID: LibraryID, summary: ScanSummary,
+                            manual: Bool) async -> OperationLogID? {
+        guard Self.shouldRecordScan(summary, manual: manual) else { return nil }
         let library = libraries.first { $0.id == libraryID }
         var parts = [QooApplicationStrings.format("scan.summary.added", summary.added),
                      QooApplicationStrings.format("scan.summary.updated", summary.updated)]
@@ -1626,7 +1640,9 @@ public final class LibraryServices {
         }
         if summary.cancelled { parts.append(QooApplicationStrings.text("scan.summary.cancelled")) }
 
-        operationLogRecorder.record(OperationLogDraft(
+        // **ID を待つ** [NT-04]。走査は 1 回につき 1 行しか書かないので、
+        // 追記の完了を待つ費用は走査そのものに比べて無視できる。
+        return await operationLogRecorder.recordReturningID(OperationLogDraft(
             // **型名ではなく `scan`。** これはコマンドではないので、
             // 種別で絞ったときに紛れないよう固有の識別子を与える。
             commandName: "scan",

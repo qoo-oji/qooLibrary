@@ -105,8 +105,11 @@ final class FolderOperations {
             }
             var failed: (any Error)?
             var partial: CommandResult?
+            // この実行が操作履歴へ残す行 [NT-04]。**失敗して投げる経路でも
+            // 書かれる**ので、`do` の外で受ける。
+            let logReceipt = OperationLogReceipt()
             do {
-                let result = try await CommandStack.shared.run(command)
+                let result = try await CommandStack.shared.run(command, logReceipt: logReceipt)
                 // **一部だけ終わった場合も必ず知らせる** [ER-12][ER-14]。
                 // 例外は投げられないので、ここで拾わないと「エラーも出ずに
                 // 一部のファイルだけが動いた」状態になる。提示は進捗表示を
@@ -137,13 +140,15 @@ final class FolderOperations {
             if showsProgress { endProgress() }
             if let failed {
                 await NotificationRouter.shared.presentError(
-                    failed, whatHappened: AppStrings.text(failure, locale: locale)
+                    failed, whatHappened: AppStrings.text(failure, locale: locale),
+                    operationLogID: logReceipt.id
                 )
             } else if case let .partial(succeeded, failures)? = partial {
                 await NotificationRouter.shared.present(NotificationItem(
                     category: .warning, severity: .sheet,
                     title: AppStrings.text("error.partiallyCompleted", locale: locale),
-                    body: Self.partialSummary(command: command, succeeded: succeeded, failed: failures)
+                    body: Self.partialSummary(command: command, succeeded: succeeded, failed: failures),
+                    operationLogID: logReceipt.id
                 ))
             }
         }
@@ -519,10 +524,11 @@ final class FolderOperations {
                 await askLockedItemDecision(url)
             })
         )
+        let logReceipt = OperationLogReceipt()
         Task {
             defer { endProgress() }
             do {
-                _ = try await CommandStack.shared.run(command)
+                _ = try await CommandStack.shared.run(command, logReceipt: logReceipt)
                 request.onSuccess()
                 // **完全削除だけは別途知らせる** [10章 §10.0 の例外]。
                 // 消えた項目が登録フォルダ（ライブラリ／テンポラリ）だった
@@ -531,10 +537,11 @@ final class FolderOperations {
                 // 一覧の変化なので、`DirectoryChangeHub` ではなくこちらの
                 // 信号で伝える。
                 SessionState.shared.reloadToken += 1
-                await presentDeletionSummaryIfNeeded(command)
+                await presentDeletionSummaryIfNeeded(command, operationLogID: logReceipt.id)
             } catch {
                 await NotificationRouter.shared.presentError(
-                    error, whatHappened: AppStrings.text("error.deletePermanentlyFailed", locale: locale)
+                    error, whatHappened: AppStrings.text("error.deletePermanentlyFailed", locale: locale),
+                    operationLogID: logReceipt.id
                 )
                 SessionState.shared.reloadToken += 1
             }
@@ -581,7 +588,9 @@ final class FolderOperations {
     /// [ER-12][ER-14] 完了後の結果サマリ。全件成功なら何も出さない
     /// （成功を報告するだけのダイアログは邪魔なため）。失敗・スキップが
     /// あった場合と、登録フォルダを強制解除した場合にだけ提示する。
-    private func presentDeletionSummaryIfNeeded(_ command: DeletePermanentlyCommand) async {
+    /// - Parameter operationLogID: この削除が操作履歴へ残した行 [NT-04]。
+    private func presentDeletionSummaryIfNeeded(_ command: DeletePermanentlyCommand,
+                                                operationLogID: OperationLogID?) async {
         guard let outcome = command.outcome else { return }
         var lines: [String] = []
         if !outcome.failures.isEmpty || !outcome.skipped.isEmpty {
@@ -606,7 +615,8 @@ final class FolderOperations {
             category: outcome.failures.isEmpty ? .info : .warning,
             severity: .sheet,
             title: AppStrings.text("permanentDelete.summaryTitle", locale: locale),
-            body: lines.joined(separator: "\n")
+            body: lines.joined(separator: "\n"),
+            operationLogID: operationLogID
         ))
     }
 
@@ -994,6 +1004,7 @@ final class FolderOperations {
     /// パスワードの入力後もここへ戻ってくる（`beginCompression` 参照）。
     func runCompression(_ request: PendingCompression, passphrase: String?) {
         let pauseToken = currentPauseToken
+        let logReceipt = OperationLogReceipt()
         let task = Task {
             defer { endProgress() }
             do {
@@ -1008,7 +1019,7 @@ final class FolderOperations {
                     conflictPolicy: request.conflictPolicy, progress: progressReporter,
                     pauseToken: pauseToken
                 )
-                _ = try await CommandStack.shared.run(command)
+                _ = try await CommandStack.shared.run(command, logReceipt: logReceipt)
                 if let resultURL = command.resultURL {
                     request.onCompleted(resultURL)
                 }
@@ -1023,7 +1034,8 @@ final class FolderOperations {
                 // 理由 — `presentError` はダイアログが閉じられるまで返らない）。
                 endProgress()
                 await NotificationRouter.shared.presentError(
-                    error, whatHappened: AppStrings.text("error.compressFailed", locale: locale)
+                    error, whatHappened: AppStrings.text("error.compressFailed", locale: locale),
+                    operationLogID: logReceipt.id
                 )
             }
         }
@@ -1083,8 +1095,9 @@ final class FolderOperations {
                 ))
             }
             guard let command = Self.singleOrComposite(children, displayName: name) else { return }
+            let logReceipt = OperationLogReceipt()
             do {
-                _ = try await CommandStack.shared.run(command)
+                _ = try await CommandStack.shared.run(command, logReceipt: logReceipt)
                 onSuccess()
             } catch is CancellationError {
                 // ユーザー自身が止めたので、失敗として提示しない。
@@ -1110,7 +1123,8 @@ final class FolderOperations {
                 // エラーを見せる**前に**進捗表示を片付ける（`run()` と同じ理由）。
                 endProgress()
                 await NotificationRouter.shared.presentError(
-                    error, whatHappened: AppStrings.text("error.extractFailed", locale: locale)
+                    error, whatHappened: AppStrings.text("error.extractFailed", locale: locale),
+                    operationLogID: logReceipt.id
                 )
                 onSuccess()
             }

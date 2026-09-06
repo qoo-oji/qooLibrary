@@ -22,6 +22,10 @@ struct OperationHistoryWindow: View {
     @Environment(\.locale) private var locale
     @State private var model = OperationLogModel()
     @State private var errorText: String?
+    /// スクロールしたい行 [NT-04]。**利用者のクリックでは動かさない**
+    /// ——選択の変化そのものを見ると、既に見えている行をクリックしただけで
+    /// 一覧が再センタリングされる（中央ペインで実際に踏んだ形）。
+    @State private var pendingScrollTarget: OperationLogID?
 
     var body: some View {
         NavigationSplitView(columnVisibility: .constant(.all)) {
@@ -33,7 +37,15 @@ struct OperationHistoryWindow: View {
         }
         .navigationTitle(Text("operations.windowTitle"))
         .frame(minWidth: 760, minHeight: 480)
-        .task { await model.prepare(services: LibraryServices.shared) }
+        .task {
+            await model.prepare(services: LibraryServices.shared)
+            await consumePendingSelection()
+        }
+        // 既に開いているウインドウへ「この操作を見る」が届いたとき [NT-04]。
+        .onChange(of: OperationHistoryNavigation.shared.pendingSelection) { _, id in
+            guard id != nil else { return }
+            Task { await consumePendingSelection() }
+        }
         // **起動と同時に状態復元で開かれると、DB の準備より先に `.notReady` で
         // 確定する。** `Window(id:)` は `WindowGroup` と違い
         // `.restorationBehavior(.disabled)` を持たないのでこの経路は実在し、
@@ -46,6 +58,26 @@ struct OperationHistoryWindow: View {
         // 見続けないようにする。
         .onChange(of: OperationLogRecorder.shared.revision) { _, _ in
             Task { await model.reload() }
+        }
+    }
+
+    /// 通知から渡された 1 件を選んで見せる [NT-04]。
+    ///
+    /// 絞り込みの解除と選択は `OperationLogModel.reveal` が行う——**判定を
+    /// View に書かない**（この画面の分担）。ここがするのは要求の消費と
+    /// スクロールだけ。
+    private func consumePendingSelection() async {
+        guard let id = OperationHistoryNavigation.shared.pendingSelection else { return }
+        OperationHistoryNavigation.shared.pendingSelection = nil
+        if await model.reveal(id) {
+            pendingScrollTarget = id
+            errorText = nil
+        } else {
+            // **黙って何も起きないのが最も分かりにくい**［レビューで発見］。
+            // 通知の側は実在を確かめてから導線を出す [NT-04] が、それは
+            // 「表に行が在る」ことしか保証しない——一覧の読み込み上限
+            // （`AppLimits.Operations.queryLimit`）より古い行は引けない。
+            errorText = AppStrings.text("operations.revealFailed", locale: locale)
         }
     }
 
@@ -143,6 +175,17 @@ struct OperationHistoryWindow: View {
 
     /// 一覧 [OH-01]。列: 日時 / 種別 / 対象 / 内容。
     private var table: some View {
+        ScrollViewReader { proxy in
+            tableBody
+                .onChange(of: pendingScrollTarget) { _, target in
+                    guard let target else { return }
+                    proxy.scrollTo(target, anchor: .center)
+                    pendingScrollTarget = nil
+                }
+        }
+    }
+
+    private var tableBody: some View {
         Table(model.rows, selection: $model.selection) {
             TableColumn("operations.column.date") { row in
                 Text(Self.dateFormatter.string(from: row.date))
@@ -369,11 +412,32 @@ struct OperationHistoryWindow: View {
 
 /// ウインドウを開く要求を受け渡す [15章 §15.13]。
 ///
-/// 開く経路は**ウインドウメニュー** [13章 §13.7.2] と**通知履歴ウインドウ**
-/// [OH-06] の 2 つ。`NotificationHistoryNavigation` と同じ形。
+/// 開く経路は**ウインドウメニュー** [13章 §13.7.2]、**通知履歴ウインドウの
+/// フッター** [OH-06]、**通知 1 件からの導線** [NT-04] の 3 つ。
+///
+/// **`@Observable` にしてあるのは、既に開いているウインドウへも届けるため。**
+/// `Window(id:)` は同じ id で再度 `openWindow` してもビューを作り直さない
+/// ので、`.task`（初回）だけでは前面に出るだけで選択が変わらない
+/// （`PreferencesNavigation` で踏んだのと同じ形）。
 @MainActor
-enum OperationHistoryNavigation {
+@Observable
+final class OperationHistoryNavigation {
+    static let shared = OperationHistoryNavigation()
+
+    /// 開いたときに選ぶ行 [NT-04]。**読んだ側が `nil` へ戻して 1 度だけ
+    /// 消費する**——残したままだと、次に何かの拍子で読み直されたときに
+    /// 利用者が選び直した行を勝手に上書きする。
+    var pendingSelection: OperationLogID?
+
+    private init() {}
+
     static func open(openWindow: OpenWindowAction) {
+        openWindow(id: "operationHistory")
+    }
+
+    /// 1 件を選んだ状態で開く [NT-04]。
+    static func open(selecting id: OperationLogID, openWindow: OpenWindowAction) {
+        shared.pendingSelection = id
         openWindow(id: "operationHistory")
     }
 }

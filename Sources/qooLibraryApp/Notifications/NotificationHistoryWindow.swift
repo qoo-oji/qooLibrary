@@ -280,7 +280,7 @@ struct NotificationHistoryWindow: View {
     /// されていれば無効にする——履歴は登録が消えたあとも残る [NT-04]。
     @ViewBuilder
     private func links(for detail: StoredNotification) -> some View {
-        if !detail.links.isEmpty {
+        if !detail.links.isEmpty || detail.operationLogID != nil {
             HStack(spacing: Tokens.spacing.s) {
                 ForEach(detail.links, id: \.actionID) { link in
                     let library = NotificationRouteAction.library(for: detail.target,
@@ -293,6 +293,17 @@ struct NotificationHistoryWindow: View {
                     }
                     .disabled(!NotificationRouteAction.canPerform(link, target: detail.target,
                                                                   in: model.libraries))
+                }
+                // **関連する操作履歴へ** [NT-04]。無効にする分岐を持たないのは、
+                // **実在が確かめられた ID しか入っていない**ため——リンク先が
+                // 消えた通知ではそもそも `nil` になる（`StoredNotification
+                // .operationLogID` の doc。通知は 30 日、操作は 90 日で保持の
+                // 効き方が違うので、この食い違いは実際に起きる）。
+                if let logID = detail.operationLogID {
+                    Button("notifications.showOperation") {
+                        OperationHistoryNavigation.open(selecting: logID,
+                                                        openWindow: openWindow)
+                    }
                 }
             }
         }
@@ -311,10 +322,9 @@ struct NotificationHistoryWindow: View {
                             model.selection.count))
                     .font(.system(size: Tokens.fontSize.caption))
                     .foregroundStyle(.secondary)
-                // 操作履歴への導線 [OH-06][NT-04]。**行ごとではなく窓の水準**
-                // ——通知 1 件と操作 1 件を結び付けるには、通知を出すすべての
-                // 呼び出し元が「どの操作の話か」を持ち回る必要があり、そこまでの
-                // 配線をしていない（`NotificationRecord.operationLogID` 参照）。
+                // 操作履歴への導線 [OH-06]。**窓の水準**——行を選んでいない
+                // ときの入口で、行ごとの導線 [NT-04] は上の詳細ペインにある
+                // （対応する操作を持つ通知だけに出る）。
                 Button("operations.windowTitle") {
                     OperationHistoryNavigation.open(openWindow: openWindow)
                 }

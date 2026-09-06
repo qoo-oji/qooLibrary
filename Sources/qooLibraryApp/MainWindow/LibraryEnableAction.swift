@@ -174,6 +174,9 @@ enum LibraryEnableAction {
                     detail: scanDetailText(progress, locale: locale))
             }
         }, totalItems: 0, totalBytes: 0)
+        // この走査が操作履歴へ残す行を受け取る [NT-04]。走査結果の通知から
+        // 「この操作を見る」で辿れるようにする。
+        let logReceipt = OperationLogReceipt()
         do {
             let summary = try await task.run {
                 try await LibraryServices.shared.scan(
@@ -183,12 +186,14 @@ enum LibraryEnableAction {
                             completedItems: scan.processed,
                             totalItems: scan.total,
                             currentItemName: scan.currentName))
-                    })
+                    },
+                    logReceipt: logReceipt)
             }
             guard !summary.cancelled else { return }
             await notifyIfNoteworthy(summary, displayName: displayName,
                                      libraryID: libraryID, locale: locale,
-                                     openWindow: openWindow)
+                                     openWindow: openWindow,
+                                     operationLogID: logReceipt.id)
             // **ここで要約を再掲しない。** `ScanEngine` が同じ数字を
             // `[Scan] スキャン完了` として既に書いており、二重に出るだけで
             // 情報が増えない。しかもこの関数は初回と再スキャンの両方から
@@ -283,7 +288,8 @@ enum LibraryEnableAction {
                                            displayName: String,
                                            libraryID: LibraryID?,
                                            locale: Locale,
-                                           openWindow: OpenWindowAction) async {
+                                           openWindow: OpenWindowAction,
+                                           operationLogID: OperationLogID?) async {
         var lines: [String] = []
         if summary.orphaned > 0 {
             lines.append(String(format: AppStrings.text("library.scan.orphaned", locale: locale),
@@ -329,7 +335,8 @@ enum LibraryEnableAction {
             target: target(for: libraryID, displayName: displayName),
             title: reviewTitle(summary, displayName: displayName, locale: locale),
             body: lines.joined(separator: "\n"),
-            actions: actions))
+            actions: actions,
+            operationLogID: operationLogID))
 
         // **ここでダイアログを出す。**要求を View 越しに回すと、メイン
         // ウインドウが閉じているときに黙って何も起きない［既知の失敗］。
@@ -362,15 +369,18 @@ enum LibraryEnableAction {
     /// 強度 4 は 1-12b の時点では出せなかった（提示先が無くログだけに
     /// なって届かない）。通知履歴とステータスバーのバッジ [NT-02] が
     /// できたことで初めて成立する。
+    /// - Parameter operationLogID: その走査が操作履歴へ残した行 [NT-04]。
     @MainActor
     static func notifyAutomaticScan(libraryID: LibraryID, summary: ScanSummary,
-                                    locale: Locale) {
+                                    locale: Locale,
+                                    operationLogID: OperationLogID?) {
         let library = LibraryServices.shared.libraries.first { $0.id == libraryID }
         let displayName = library?.displayName ?? ""
         let target = library.map { NotificationTarget.library(uuid: $0.uuid,
                                                               name: $0.displayName) }
         recordQuietFindings(summary, libraryID: libraryID, displayName: displayName,
-                            target: target, locale: locale)
+                            target: target, locale: locale,
+                            operationLogID: operationLogID)
 
     }
 
@@ -397,7 +407,8 @@ enum LibraryEnableAction {
     @MainActor
     private static func recordQuietFindings(_ summary: ScanSummary, libraryID: LibraryID,
                                             displayName: String,
-                                            target: NotificationTarget?, locale: Locale) {
+                                            target: NotificationTarget?, locale: Locale,
+                                            operationLogID: OperationLogID?) {
         let findings = ScanFindingsDigest.Findings(
             orphaned: summary.orphaned,
             unresolved: summary.unresolvedNames,
@@ -435,7 +446,8 @@ enum LibraryEnableAction {
             target: target,
             title: reviewTitle(summary, displayName: displayName, locale: locale),
             body: lines.joined(separator: "\n"),
-            actions: actions)
+            actions: actions,
+            operationLogID: operationLogID)
         Task { await NotificationRouter.shared.present(item) }
     }
 

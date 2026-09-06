@@ -1,5 +1,6 @@
 import Foundation
 import QooInfrastructure
+import QooKit
 
 /// Undo/Redo 可能な操作の単位 [11章 §11.1、A-03][UD-01]。
 ///
@@ -113,6 +114,34 @@ extension Command {
 public enum CommandResult: Sendable {
     case success
     case partial(succeeded: Int, failed: [FailedItem])
+}
+
+/// 1 回の実行が操作履歴へ残した行を受け取る箱 [NT-04]。
+///
+/// **返り値ではなく箱にしたのは、失敗（`run` が投げる経路）でも運ぶため。**
+/// 失敗も操作履歴には `failed` として載る（`PartialTransferFailure` のように
+/// 「失敗」でありながらファイルは動いているものがある）ので、その行への
+/// リンクは成功時と同じく意味を持つ——返り値に載せると `throw` した瞬間に
+/// 失われる。
+///
+/// **`CommandStack` に「直近の ID」を持たせる形は採らなかった**。`run` は
+/// `await` を挟むので、呼び出し元が読むまでの間に別の実行が上書きしうる
+/// ——「`run` の直後に `await` を挟まず読むこと」という**暗黙の規約**に
+/// 頼ることになり、次に触る人が `await` を 1 つ挟んだだけで静かに壊れる。
+/// 箱なら呼び出し元が自分のものを持つので、その規約自体が要らない。
+///
+/// **渡さなければ追記を待たない。** 箱が無い呼び出しは今までどおり
+/// `record(_:)`（投げっぱなし）を通るので、リンクを使わない経路に待ち時間が
+/// 増えることはない。
+@MainActor
+public final class OperationLogReceipt {
+    /// 書けた行。**書き込みに失敗したときは `nil` のまま**——呼び出し元は
+    /// 通知にリンクを付けない（押しても何も無い導線を出さないため）。
+    public private(set) var id: OperationLogID?
+
+    public init() {}
+
+    func set(_ id: OperationLogID?) { self.id = id }
 }
 
 extension PartialTransferFailure {

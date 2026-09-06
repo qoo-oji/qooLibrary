@@ -12183,6 +12183,23 @@
         }
       }
     },
+    "notifications.showOperation": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show This Operation"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この操作を見る"
+          }
+        }
+      }
+    },
     "notifications.windowTitle": {
       "extractionState": "manual",
       "localizations": {
@@ -12655,6 +12672,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "%d 件"
+          }
+        }
+      }
+    },
+    "operations.revealFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That operation isn’t in the list. Older entries may not be loaded."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "その操作は一覧に見つかりませんでした（古い記録は読み込まれないことがあります）。"
           }
         }
       }

@@ -121,10 +121,11 @@ struct QooLibraryApp: App {
             //
             // **`bootstrap()` より前に配線する。** 起動直後の追随でも
             // 取りこぼさないため（`startSync()` はこの後）。
-            LibraryServices.shared.onAutomaticScanFinished = { id, summary in
+            LibraryServices.shared.onAutomaticScanFinished = { id, summary, logID in
                 LibraryEnableAction.notifyAutomaticScan(
                     libraryID: id, summary: summary,
-                    locale: AppLanguage.effectiveLocale)
+                    locale: AppLanguage.effectiveLocale,
+                    operationLogID: logID)
             }
             await LibraryServices.shared.bootstrap()
             // **実体への追随を始める** [SY-01][VD-01]。ここまで来ると
@@ -971,13 +972,23 @@ private struct UndoRedoMenuCommands: View {
             // `DirectoryChangeHub` へ伝える [10章 §10.0]。取り消しも
             // 結局そのサービスを通ってファイルを動かすため、ここで
             // 別途知らせる必要は無い。
-            Task { await Self.present(await CommandStack.shared.undo(), isUndo: true) }
+            Task {
+                // 取り消しの結果も操作履歴に載る（`undone` / `undonePartially` /
+                // `undoFailed`）ので、失敗を知らせるときにその行へ辿れる [NT-04]。
+                let receipt = OperationLogReceipt()
+                await Self.present(await CommandStack.shared.undo(logReceipt: receipt),
+                                   isUndo: true, operationLogID: receipt.id)
+            }
         }
         .fixedKeyboardShortcut(.undo)
         .disabled(!stack.canUndo)
 
         Button(redoTitle(stack.redoTitle), systemImage: "arrow.uturn.forward") {
-            Task { await Self.present(await CommandStack.shared.redo(), isUndo: false) }
+            Task {
+                let receipt = OperationLogReceipt()
+                await Self.present(await CommandStack.shared.redo(logReceipt: receipt),
+                                   isUndo: false, operationLogID: receipt.id)
+            }
         }
         .fixedKeyboardShortcut(.redo)
         .disabled(!stack.canRedo)
@@ -994,12 +1005,14 @@ private struct UndoRedoMenuCommands: View {
     /// 提示を `CommandStack` の中で行わないのは、そこが `NotificationRouter`
     /// を待つとテストで永久に返らないため（`CommandStack.undo()` のコメント参照）。
     @MainActor
-    private static func present(_ outcome: UndoOutcome, isUndo: Bool) async {
+    private static func present(_ outcome: UndoOutcome, isUndo: Bool,
+                                operationLogID: OperationLogID?) async {
         guard outcome.needsAttention else { return }
-        let locale = AppLanguage.effectiveLocale
-        let title = String(
-            localized: isUndo ? "error.undoFailed" : "error.redoFailed"
-        )
+        // **`String(localized:)` を使わない**——`locale:` はどの `.lproj` から
+        // 読むかに影響しないので、アプリ内で表示言語を切り替えても追随しない
+        // ［2026-09-06 の実測］。ここは移行の取り残しで、`locale` が未使用の
+        // まま警告になっていた。
+        let title = AppStrings.text(isUndo ? "error.undoFailed" : "error.redoFailed")
         let body: String
         switch outcome {
         case let .partial(operationName, succeeded, failed):
@@ -1020,7 +1033,8 @@ private struct UndoRedoMenuCommands: View {
             return
         }
         await NotificationRouter.shared.present(NotificationItem(
-            category: .error, severity: .sheet, title: title, body: body
+            category: .error, severity: .sheet, title: title, body: body,
+            operationLogID: operationLogID
         ))
     }
 

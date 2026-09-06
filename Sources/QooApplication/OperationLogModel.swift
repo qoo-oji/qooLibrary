@@ -140,6 +140,47 @@ public final class OperationLogModel {
         }
     }
 
+    /// 絞り込みを解いて 1 件を選ぶ [NT-04]。通知履歴の「この操作を見る」から呼ぶ。
+    ///
+    /// **絞り込みを解く**のは、前回の絞り込みが残っていると目的の行が一覧に
+    /// 無く「押しても何も起きない」ように見えるため［ユーザー判断: その 1 行
+    /// だけに絞るのではなく、全件のまま選択してスクロールする。操作履歴は
+    /// 「そのとき何をしたか」の連なりなので、前後が見えるほうが役に立つ］。
+    ///
+    /// **判定をここに置くのは View から触れないようにするため**——`group` 等を
+    /// View が直に書くと、絞り込みの解き方が画面ごとにばらつく。
+    ///
+    /// **見つからなければ絞り込みを元へ戻す**［レビューで発見］。実在は
+    /// 通知履歴の読み出しが確かめている [NT-04] が、それは「表に行が在る」
+    /// ことしか保証しない——一覧の読み込みには
+    /// `AppLimits.Operations.queryLimit`（2,000）があるので、保持件数の上限を
+    /// それより大きくすると**古い行を指す通知でボタンが出るのに引けない**。
+    /// 読み込み自体が失敗したときも同じ。戻さずに抜けると、押した利用者からは
+    /// 「絞り込みだけ消えて何も起きない」＝壊れたように見える。
+    ///
+    /// - Returns: その行が実際に一覧にあったか。**呼び出し側は `false` の
+    ///   ときに理由を伝えること**——黙って何も起きないのが最も分かりにくい。
+    @discardableResult
+    public func reveal(_ id: OperationLogID) async -> Bool {
+        let previous = (group: group, period: period, keyword: keyword)
+        // 代入のたびに `didSet` が読み直しを投げるが、最後に明示的な
+        // `reload()` を待つので一覧は必ず最新になる。投げられたほうが後から
+        // 走っても、選択は「一覧にあるもの」として保たれる。
+        group = nil
+        period = .all
+        keyword = ""
+        await reload()
+        guard rows.contains(where: { $0.id == id }) else {
+            group = previous.group
+            period = previous.period
+            keyword = previous.keyword
+            await reload()
+            return false
+        }
+        selection = [id]
+        return true
+    }
+
     private func reloadIfChanged(_ changed: Bool) {
         guard changed, state != .notReady else { return }
         Task { await reload() }

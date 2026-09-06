@@ -414,13 +414,14 @@ struct NotificationRecord: Codable, FetchableRecord, MutablePersistableRecord, S
     var title: String
     var body: String
     var isRead: Bool
-    /// 操作履歴の特定の行へのリンク [NT-04]。**まだ誰も書かない。**
+    /// 操作履歴の特定の行へのリンク [NT-04]。
     ///
-    /// 操作履歴そのものは実装済み（`operationLog`、v16）だが、**通知 1 件と
-    /// 操作 1 件を結び付けるには、通知を出すすべての呼び出し元が「どの操作の
-    /// 話か」を持ち回る必要がある**——現状そこまでの配線をしていない。
-    /// 窓の水準の導線（通知履歴 → 操作履歴）は `OperationHistoryNavigation`
-    /// が担う [OH-06]。
+    /// **外部キーを張らない。** `operationLog` を掃除 [HS-04] しても通知は
+    /// 残ってよい（履歴は互いに独立 [NT-08]）——連鎖で消すと「なぜ消えたのか」
+    /// を後から辿れなくなる。代わりに**読み出しで実在を突き合わせ**、消えて
+    /// いれば `nil` として返す（`SQLiteNotificationHistoryStore
+    /// .liveOperationLogIDs`）。通知は 30 日 / 1,000 件、操作は 90 日 /
+    /// 1,000 件で保持の効き方が違うので、この食い違いは実際に起きる。
     var operationLogID: Int64?
     mutating func didInsert(_ inserted: InsertionSuccess) { id = inserted.rowID }
 }

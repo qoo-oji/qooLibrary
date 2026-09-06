@@ -30,6 +30,68 @@ struct NotificationHistoryTests {
                          actions: actions)
     }
 
+    // MARK: - 操作履歴へのリンク [NT-04]
+
+    /// 通知と操作履歴を**同じ DB** に載せる。リンクの実在判定はストアの
+    /// 読み出しが行うので、別々の DB では試せない。
+    private func linkedStores() throws -> (SQLiteNotificationHistoryStore,
+                                           SQLiteOperationLogStore) {
+        let database = try QooDatabase.inMemory()
+        return (SQLiteNotificationHistoryStore(database: database),
+                SQLiteOperationLogStore(database: database))
+    }
+
+    private func operationDraft(_ summary: String = "テスト操作") -> OperationLogDraft {
+        OperationLogDraft(commandName: "TestCommand", kind: .executed, summary: summary)
+    }
+
+    @Test("関連する操作履歴の行が往復する [NT-04]")
+    func operationLogIDRoundTrips() async throws {
+        let (notifications, operations) = try linkedStores()
+        let logID = try await operations.append(operationDraft())
+        try await notifications.append(
+            NotificationItem(category: .warning, severity: .transient,
+                             title: "移動に失敗しました", body: "",
+                             operationLogID: logID))
+        let rows = try await notifications.query(NotificationHistoryFilter())
+        #expect(rows.first?.operationLogID == logID)
+    }
+
+    /// **保持期間の食い違いで宙に浮いたリンクを落とす** [NT-04、ユーザー判断]。
+    ///
+    /// 通知は 30 日 / 1,000 件、操作は 90 日 / 1,000 件で効き方が違い、操作の
+    /// ほうが発生数が多いので**件数上限で先に溢れる**。落とさないと UI が
+    /// 「押しても何も起きない」導線を出すことになる。
+    @Test("リンク先の操作が消えていれば `nil` になる [NT-04]")
+    func danglingOperationLinkIsDropped() async throws {
+        let (notifications, operations) = try linkedStores()
+        // **保持の食い違いを再現する**——操作は 100 日前、通知は今。
+        // 操作側の掃除（既定 90 日）だけが効き、通知は残る。
+        var old = operationDraft()
+        old.date = Date().addingTimeInterval(-100 * 24 * 60 * 60)
+        let logID = try await operations.append(old)
+        try await notifications.append(
+            NotificationItem(category: .warning, severity: .transient,
+                             title: "移動に失敗しました", body: "",
+                             operationLogID: logID))
+        try await operations.purgeExpired(retentionDays: 90, maxCount: 0)
+        #expect(try await operations.count() == 0, "前提: 操作履歴だけが消えている")
+
+        let rows = try await notifications.query(NotificationHistoryFilter())
+        #expect(rows.count == 1, "通知そのものは残る")
+        #expect(rows.first?.operationLogID == nil, "リンクだけが落ちる")
+    }
+
+    @Test("対応する操作が無い通知は `nil` のまま [NT-04]")
+    func notificationsWithoutAnOperationHaveNoLink() async throws {
+        let (notifications, _) = try linkedStores()
+        try await notifications.append(
+            NotificationItem(category: .info, severity: .transient,
+                             title: "テンプレートを保存しました", body: ""))
+        let rows = try await notifications.query(NotificationHistoryFilter())
+        #expect(rows.first?.operationLogID == nil)
+    }
+
     // MARK: - 記録の範囲 [NT-01、ユーザー判断 2026-08]
 
     @Test("強度を問わずすべて記録する")

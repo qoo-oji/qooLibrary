@@ -29,7 +29,7 @@ public final class OperationLogRecorder {
     private var droppedBeforeStore = 0
 
     /// 直前の追記。**投入順に書くための鎖**（理由は `record(_:)` の doc）。
-    private var lastAppend: Task<Void, Never>?
+    private var lastAppend: Task<OperationLogID?, Never>?
 
     public init() {}
 
@@ -50,21 +50,49 @@ public final class OperationLogRecorder {
     /// ことで、その `id` を実際に起きた順序と一致させる
     /// （`DiagnosticLog` が `AsyncStream` の FIFO を選んだのと同じ理由 [CB-21]）。
     public func record(_ draft: OperationLogDraft) {
+        _ = enqueue(draft)
+    }
+
+    /// 1 件記録し、**書けた行の ID を返す** [NT-04]。
+    ///
+    /// `record(_:)` と違い追記の完了を待つ——通知へリンクを持たせるには
+    /// ID が要る。呼び出し元（`CommandStack.run`）は既に実 I/O を終えており、
+    /// ここで待つのは SQLite への 1 行の追記だけ。
+    ///
+    /// **待つのは自分の 1 件だけではない**［レビューで指摘、doc を訂正］。
+    /// 鎖は投入順を保つために前のタスクを待つので、投げっぱなしの `record(_:)`
+    /// が N 件溜まった直後に呼ぶと**その N 件ぶんも待つ**。1 件あたりは数 ms
+    /// なので実用上の待ちは短いが、「直前の 1 つだけ」ではない。
+    ///
+    /// 書けなかったときは `nil`。**呼び出し元は通知にリンクを付けない**
+    /// ——押しても何も無い導線を出さないため。
+    public func recordReturningID(_ draft: OperationLogDraft) async -> OperationLogID? {
+        guard let task = enqueue(draft) else { return nil }
+        return await task.value
+    }
+
+    /// 追記を鎖へ繋ぐ。**`record` と `recordReturningID` の実装はこの 1 つ**
+    /// ——同じに見える記録に独立した経路を作ると片方だけ直して取り残す。
+    private func enqueue(_ draft: OperationLogDraft) -> Task<OperationLogID?, Never>? {
         guard let store else {
             bufferBeforeStore(draft)
-            return
+            return nil
         }
         let previous = lastAppend
-        lastAppend = Task { [weak self] in
-            await previous?.value
+        let task = Task { [weak self] () -> OperationLogID? in
+            _ = await previous?.value
+            let id: OperationLogID
             do {
-                try await store.append(draft)
+                id = try await store.append(draft)
             } catch {
                 Log.command.warning("操作を履歴に残せなかった: \(String(describing: error))")
-                return
+                return nil
             }
             self?.bumpRevision()
+            return id
         }
+        lastAppend = task
+        return task
     }
 
     private func bufferBeforeStore(_ draft: OperationLogDraft) {

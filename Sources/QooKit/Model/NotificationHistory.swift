@@ -94,11 +94,21 @@ public struct StoredNotification: Sendable, Hashable, Identifiable {
     public let technicalDetail: String?
     public let links: [NotificationLink]
     public var isRead: Bool
+    /// 関連する操作履歴の行 [NT-04]。
+    ///
+    /// **読み出した時点で実在が確かめられた ID だけが入る**［ユーザー判断］。
+    /// 通知は 30 日 / 1,000 件、操作は 90 日 / 1,000 件で**保持の効き方が
+    /// 違う**——操作のほうが発生数が多いので件数上限で先に溢れ、通知だけが
+    /// 残ることがある。ストアが読み出しで突き合わせるので、**UI はここに
+    /// 値があれば導線を出してよい**（押しても何も起きない導線を出さない
+    /// ＝「存在しない保護を主張しない」）。
+    public let operationLogID: OperationLogID?
 
     public init(id: NotificationID, date: Date, category: NotificationItem.Category,
                 severity: NotificationSeverity, target: NotificationTarget?,
                 title: String, body: String, technicalDetail: String?,
-                links: [NotificationLink], isRead: Bool) {
+                links: [NotificationLink], isRead: Bool,
+                operationLogID: OperationLogID? = nil) {
         self.id = id
         self.date = date
         self.category = category
@@ -109,6 +119,7 @@ public struct StoredNotification: Sendable, Hashable, Identifiable {
         self.technicalDetail = technicalDetail
         self.links = links
         self.isRead = isRead
+        self.operationLogID = operationLogID
     }
 
     /// 未読に数える対象か [NT-02]。

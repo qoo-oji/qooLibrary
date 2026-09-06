@@ -43,7 +43,10 @@ public struct SQLiteNotificationHistoryStore: NotificationHistoryStore, Sendable
                 // 「すべて既読にする」と区別が付かなくなり、後から未読の
                 // 定義を変えられなくなる。
                 isRead: false,
-                operationLogID: nil)
+                // 関連する操作履歴の行 [NT-04]。対応する操作を持たない通知
+                // （テンプレートの保存・JSON 入出力・復元など `CommandStack` を
+                // 通らないもの）では `nil` のまま。
+                operationLogID: item.operationLogID?.rawValue)
             try record.insert(db)
             return NotificationID(rawValue: record.id ?? 0)
         }
@@ -171,12 +174,46 @@ public struct SQLiteNotificationHistoryStore: NotificationHistoryStore, Sendable
         // 並行性検査に止められる）。
         let statement = sql
         let bindings = StatementArguments(arguments) ?? StatementArguments()
-        let records = try await database.writer.read { db in
-            try NotificationRecord.fetchAll(db, sql: statement, arguments: bindings)
+        let (records, liveLogIDs) = try await database.writer.read {
+            db -> ([NotificationRecord], Set<Int64>) in
+            let records = try NotificationRecord.fetchAll(db, sql: statement, arguments: bindings)
+            return (records, try Self.liveOperationLogIDs(in: db, referencedBy: records))
         }
-        return records.compactMap(Self.stored(from:)).filter { row in
-            Self.matches(row, libraryUUID: filter.libraryUUID, keyword: filter.keyword)
+        return records.compactMap { Self.stored(from: $0, liveOperationLogIDs: liveLogIDs) }
+            .filter { row in
+                Self.matches(row, libraryUUID: filter.libraryUUID, keyword: filter.keyword)
+            }
+    }
+
+    /// 通知が指している操作履歴のうち、**まだ実在するものだけ**を返す [NT-04]。
+    ///
+    /// 通知は 30 日 / 1,000 件、操作は 90 日 / 1,000 件で**保持の効き方が違う**
+    /// ——操作のほうが発生数が多いので件数上限で先に溢れ、通知だけが残ることが
+    /// ある（監査ログ一般で知られた落とし穴で、リンクが宙に浮く）。ここで
+    /// 突き合わせておけば、UI は「押しても何も無い導線」を出さずに済む
+    /// ［ユーザー判断: 実在を確かめ、無ければ導線を出さない］。
+    ///
+    /// **行ごとに問い合わせない。** 一覧の全行ぶんの候補をまとめて 1 度
+    /// （900 件を超えるときだけ複数回）引くので、行数に比例したクエリには
+    /// ならない。外部キーを張らないのは、`operationLog` を消しても通知は
+    /// 残ってよい（履歴は互いに独立 [NT-08]）ため。
+    static func liveOperationLogIDs(in db: Database,
+                                    referencedBy records: [NotificationRecord]) throws -> Set<Int64> {
+        let candidates = Array(Set(records.compactMap(\.operationLogID)))
+        guard !candidates.isEmpty else { return [] }
+        var live: Set<Int64> = []
+        // **900 件ずつ区切る**（`markRead` と同じ事情。この環境では外しても
+        // 通るが、上限の低いビルドで壊れる）。
+        for chunk in stride(from: 0, to: candidates.count, by: 900).map({
+            Array(candidates[$0..<min($0 + 900, candidates.count)])
+        }) {
+            let placeholders = chunk.map { _ in "?" }.joined(separator: ", ")
+            let found = try Int64.fetchAll(
+                db, sql: "SELECT id FROM operationLog WHERE id IN (\(placeholders))",
+                arguments: StatementArguments(chunk))
+            live.formUnion(found)
         }
+        return live
     }
 
     /// 対象ライブラリとキーワードの判定 [NW-05]。**純粋関数として切り出して
@@ -193,7 +230,10 @@ public struct SQLiteNotificationHistoryStore: NotificationHistoryStore, Sendable
 
     // MARK: - 変換
 
-    static func stored(from record: NotificationRecord) -> StoredNotification? {
+    /// - Parameter liveOperationLogIDs: 実在が確かめられた操作履歴の行 [NT-04]。
+    ///   ここに無い ID は落とす——**リンク先が消えた通知に導線を出さない**ため。
+    static func stored(from record: NotificationRecord,
+                       liveOperationLogIDs: Set<Int64> = []) -> StoredNotification? {
         guard let id = record.id else { return nil }
         let payload = decodePayload(record.targetJSON)
         return StoredNotification(
@@ -214,7 +254,10 @@ public struct SQLiteNotificationHistoryStore: NotificationHistoryStore, Sendable
             body: record.body,
             technicalDetail: payload.technicalDetail,
             links: payload.links,
-            isRead: record.isRead)
+            isRead: record.isRead,
+            operationLogID: record.operationLogID.flatMap {
+                liveOperationLogIDs.contains($0) ? OperationLogID(rawValue: $0) : nil
+            })
     }
 
     static func encodePayload(_ payload: NotificationPayload) throws -> String? {

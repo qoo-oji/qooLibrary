@@ -154,12 +154,16 @@ public final class NotificationRouter {
     /// 失敗したのか」が消えていた。逆に未準拠の型では 1 本の文字列に
     /// 操作名まで詰め込んでいて、タイトルと本文で「できませんでした」が
     /// 二重になっていた［棚卸しで発見］。両方をここで解消する。
+    /// - Parameter operationLogID: この失敗が操作履歴へ残した行 [NT-04]。
+    ///   `CommandStack` を通った操作なら `OperationLogReceipt` から取れる。
+    ///   通らない経路（イジェクト・JSON 入出力など）では `nil` のまま。
     @discardableResult
     public func presentError(
         _ error: Error,
         whatHappened: String,
         severity: NotificationSeverity = .sheet,
-        category: NotificationItem.Category = .error
+        category: NotificationItem.Category = .error,
+        operationLogID: OperationLogID? = nil
     ) async -> RecoveryAction? {
         if let presentable = error as? any UserPresentableError {
             return await present(NotificationItem(
@@ -168,7 +172,8 @@ public final class NotificationRouter {
                 title: whatHappened,
                 body: Self.body(for: presentable),
                 technicalDetail: presentable.technicalDetail,
-                actions: presentable.recoverySuggestions
+                actions: presentable.recoverySuggestions,
+                operationLogID: operationLogID
             ))
         }
         let rendered = Self.body(for: error)
@@ -177,7 +182,8 @@ public final class NotificationRouter {
             severity: severity,
             title: whatHappened,
             body: rendered.body,
-            technicalDetail: rendered.technicalDetail
+            technicalDetail: rendered.technicalDetail,
+            operationLogID: operationLogID
         ))
     }
 

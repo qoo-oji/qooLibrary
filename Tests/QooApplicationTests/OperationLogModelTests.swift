@@ -150,6 +150,74 @@ struct OperationLogModelTests {
         await model.reload()
         #expect(model.state == .notReady)
     }
+
+    // MARK: - 通知からの遷移 [NT-04]
+
+    /// **絞り込みを解いてから選ぶ**［ユーザー判断: その 1 行だけに絞るのでは
+    /// なく、全件のまま選択してスクロールする］。前回の絞り込みが残っていると
+    /// 目的の行が一覧に無く、「押しても何も起きない」ように見える。
+    @Test("通知から辿ると絞り込みが解ける [NT-04]")
+    func revealClearsFilters() async throws {
+        let store = StubOperationLogStore(rows: [entry(1, "移動"), entry(2, "コピー")])
+        let model = OperationLogModel()
+        await model.prepare(store: store)
+        model.group = .undone
+        model.period = .today
+        model.keyword = "存在しない語"
+
+        let found = await model.reveal(OperationLogID(rawValue: 2))
+
+        #expect(found)
+        #expect(model.group == nil)
+        #expect(model.period == .all)
+        #expect(model.keyword.isEmpty)
+        #expect(model.selection == [OperationLogID(rawValue: 2)])
+    }
+
+    /// 一覧に無ければ**選択も変えない**——呼び出し側はスクロールしない。
+    @Test("一覧に無い行は選ばない [NT-04]")
+    func revealDoesNothingWhenTheRowIsGone() async throws {
+        let store = StubOperationLogStore(rows: [entry(1, "移動")])
+        let model = OperationLogModel()
+        await model.prepare(store: store)
+
+        let found = await model.reveal(OperationLogID(rawValue: 99))
+
+        #expect(!found)
+        #expect(model.selection.isEmpty)
+    }
+
+    /// **絞り込みだけ消えて何も起きない状態を作らない**［レビューで発見］。
+    /// 通知の側は実在を確かめてから導線を出すが、それは「表に行が在る」こと
+    /// しか保証しない——一覧の読み込み上限より古い行は引けない。
+    @Test("見つからなければ絞り込みを元へ戻す [NT-04]")
+    func revealRestoresFiltersWhenTheRowIsGone() async throws {
+        let store = StubOperationLogStore(rows: [entry(1, "移動")])
+        let model = OperationLogModel()
+        await model.prepare(store: store)
+        model.group = .undone
+        model.period = .today
+        model.keyword = "移動"
+
+        let found = await model.reveal(OperationLogID(rawValue: 99))
+
+        #expect(!found)
+        #expect(model.group == .undone)
+        #expect(model.period == .today)
+        #expect(model.keyword == "移動")
+    }
+
+    @Test("辿った 1 件が詳細に出る [OH-04][NT-04]")
+    func revealedRowBecomesTheDetail() async throws {
+        let store = StubOperationLogStore(rows: [entry(1, "移動"), entry(2, "コピー")])
+        let model = OperationLogModel()
+        await model.prepare(store: store)
+
+        _ = await model.reveal(OperationLogID(rawValue: 2))
+
+        #expect(model.detail?.summary == "コピー")
+    }
+
 }
 
 @Suite("操作履歴の種別 [OH-02]")
