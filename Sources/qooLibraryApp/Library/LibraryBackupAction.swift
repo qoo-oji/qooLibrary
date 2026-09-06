@@ -73,7 +73,10 @@ enum LibraryBackupAction {
 
     // MARK: - 取り込み [IE-11][IE-12][JS-06]
 
-    static func `import`(locale: Locale, state: State? = nil) {
+    /// - Parameter source: 取り込む JSON。**`nil` ならパネルで選ばせる。**
+    ///   自動バックアップの世代一覧から呼ぶときは URL を渡す [BK-03]
+    ///   ——一覧に出ているものを、もう一度ファイルダイアログで探させない。
+    static func `import`(locale: Locale, state: State? = nil, source explicit: URL? = nil) {
         guard state?.isBusy != true else { return }
         let services = LibraryServices.shared
         guard services.isReady else {
@@ -81,13 +84,19 @@ enum LibraryBackupAction {
             return
         }
 
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.json]
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        panel.prompt = String(localized: "backup.importPanelPrompt", locale: locale)
-        panel.message = String(localized: "backup.importPanelMessage", locale: locale)
-        guard panel.runModal() == .OK, let source = panel.url else { return }
+        let source: URL
+        if let explicit {
+            source = explicit
+        } else {
+            let panel = NSOpenPanel()
+            panel.allowedContentTypes = [.json]
+            panel.allowsMultipleSelection = false
+            panel.canChooseDirectories = false
+            panel.prompt = String(localized: "backup.importPanelPrompt", locale: locale)
+            panel.message = String(localized: "backup.importPanelMessage", locale: locale)
+            guard panel.runModal() == .OK, let chosen = panel.url else { return }
+            source = chosen
+        }
 
         state?.isBusy = true
         Task {

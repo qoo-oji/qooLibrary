@@ -29,6 +29,8 @@ struct ResetPreferencesTab: View {
     @State private var backupState = LibraryBackupAction.State()
     @State private var thumbnailBytes: Int64?
     @State private var backupGenerations: [BackupGeneration] = []
+    /// 一覧で選んでいる世代 [BK-03]。
+    @State private var generationSelection: BackupGeneration.ID?
     /// 世代数 [BK-01「環境設定で変更可能」]。`BackupService` が**剪定のたびに
     /// 読み直す**ので、変えたその場から効く（次の起動を待たない）。
     @AppStorage(BackupService.PreferenceKeys.documentGenerations)
@@ -80,6 +82,49 @@ struct ResetPreferencesTab: View {
     /// 前に、そもそも自動で控えが取られていることを見せる。
     private var automaticBackupSection: some View {
         Section {
+            if backupGenerations.isEmpty {
+                Text("preferences.reset.noGenerations").foregroundStyle(.secondary)
+            } else {
+                List(backupGenerations, selection: $generationSelection) { generation in
+                    BackupGenerationRowView(generation: generation)
+                        .tag(generation.id)
+                }
+                .frame(height: 132)
+                .listStyle(.bordered)
+
+                HStack {
+                    // **復元できるのはストア複製だけ** [IE-16]。JSON は
+                    // ライブラリの行を作れない（ブックマークを持てない）ので、
+                    // そちらの戻し方は「取り込み」[IE-11] のほうである。
+                    // ボタンは出したまま**無効にする**——種別によって項目が
+                    // 消えると、何ができるのかが選択のたびに変わって読めない。
+                    Button("preferences.reset.restore", systemImage: "clock.arrow.circlepath") {
+                        if let selected, selected.kind == .store {
+                            BackupRestoreAction.confirmRestore(selected, locale: locale) {}
+                        } else if let selected {
+                            LibraryBackupAction.import(locale: locale, state: backupState,
+                                                       source: selected.url)
+                        }
+                    }
+                    .disabled(selected == nil || (selected?.kind == .document
+                                                  && !LibraryServices.shared.isReady))
+                    Button("preferences.reset.exportGeneration",
+                           systemImage: "square.and.arrow.up") {
+                        if let selected { BackupRestoreAction.exportToFolder(selected, locale: locale) }
+                    }
+                    .disabled(selected == nil)
+                    Spacer()
+                    Button("common.delete", systemImage: "trash", role: .destructive) {
+                        if let selected {
+                            BackupRestoreAction.confirmDelete(selected, locale: locale) {
+                                generationSelection = nil
+                                refreshBackupGenerations()
+                            }
+                        }
+                    }
+                    .disabled(selected == nil)
+                }
+            }
             HStack {
                 Text("preferences.reset.autoBackupStored")
                 Spacer()
@@ -123,8 +168,19 @@ struct ResetPreferencesTab: View {
         }
     }
 
+    private var selected: BackupGeneration? {
+        backupGenerations.first { $0.id == generationSelection }
+    }
+
     private func refreshBackupGenerations() {
         backupGenerations = (try? BackupStore().generations()) ?? []
+        // **消えた世代を指したままにしない**——剪定・削除・復元のあと、
+        // 選択だけが残ると押せるボタンが何にも作用しなくなる
+        // （中央ペインが `entries` に無い選択を落とすのと同じ）。
+        if let generationSelection,
+           !backupGenerations.contains(where: { $0.id == generationSelection }) {
+            self.generationSelection = nil
+        }
     }
 
     private func revealBackupFolder() {
@@ -285,9 +341,33 @@ struct ResetPreferencesTab: View {
 
     /// `ByteCountFormatter` は 0 バイトを「Zero KB」と書く（`CachePreferencesTab`
     /// で実機検証時にユーザーから指摘された既知の癖）。
-    private static func byteCountString(_ bytes: Int64) -> String {
+    static func byteCountString(_ bytes: Int64) -> String {
         guard bytes > 0 else { return "0 KB" }
         return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+}
+
+/// バックアップの世代 1 件 [BK-03]。
+private struct BackupGenerationRowView: View {
+    @Environment(\.locale) private var locale
+    let generation: BackupGeneration
+
+    var body: some View {
+        HStack(spacing: Tokens.spacing.s) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(BackupGenerationFormatting.date(generation.date, locale: locale))
+                Text(BackupGenerationFormatting.reason(generation.reason, locale: locale))
+                    .font(.system(size: Tokens.fontSize.caption))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text(BackupGenerationFormatting.kind(generation.kind, locale: locale))
+                .font(.system(size: Tokens.fontSize.caption))
+                .foregroundStyle(.secondary)
+            Text(ResetPreferencesTab.byteCountString(generation.byteCount))
+                .font(.system(size: Tokens.fontSize.caption))
+                .foregroundStyle(.secondary)
+        }
     }
 }
 

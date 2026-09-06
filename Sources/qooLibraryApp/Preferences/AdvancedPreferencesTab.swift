@@ -1,4 +1,5 @@
 import AppKit
+import QooApplication
 import QooInfrastructure
 import QooKit
 import SwiftUI
@@ -28,6 +29,9 @@ struct AdvancedPreferencesTab: View {
 
     @State private var exportState = DiagnosticExportAction.State()
     @State private var logTotalBytes: Int64?
+    @State private var integrityReport: IntegrityReport?
+    @State private var integritySelection: Set<IntegrityFinding.ID> = []
+    @State private var isChecking = false
 
     private var logLevel: Binding<LogLevel> {
         Binding(
@@ -86,6 +90,8 @@ struct AdvancedPreferencesTab: View {
                     .foregroundStyle(.secondary)
             }
 
+            integritySection
+
             Section {
                 Button("preferences.resetToDefaults") {
                     logLevelIdentifier = AppLimits.Logging.defaultLevel.identifier
@@ -102,6 +108,104 @@ struct AdvancedPreferencesTab: View {
         .onChange(of: exportState.isExporting) { _, isExporting in
             guard !isExporting else { return }
             Task { await refreshLogSize() }
+        }
+    }
+
+    // MARK: - 整合性チェック [RB-02][12章 §12.7]
+
+    /// **見つけて、選ばせて、直す。自動修復はしない**
+    /// ［12章 §12.7: 誤った一括修復でラベルを失うリスクを避ける］。
+    ///
+    /// 直せないもの（外部キー違反）も**一覧には出す**——直し方が無いことと、
+    /// 起きていることを知らせないことは別である。
+    private var integritySection: some View {
+        Section {
+            if !LibraryServices.shared.isReady {
+                Text("preferences.reset.libraryUnavailable").foregroundStyle(.secondary)
+            } else {
+                Button("preferences.advanced.checkIntegrity", systemImage: "stethoscope") {
+                    runIntegrityCheck()
+                }
+                .disabled(isChecking)
+
+                if isChecking {
+                    HStack { ProgressView().controlSize(.small)
+                             Text("preferences.advanced.checkingIntegrity") }
+                } else if let report = integrityReport {
+                    if report.isEmpty {
+                        Text("preferences.advanced.integrityClean").foregroundStyle(.secondary)
+                    } else {
+                        List(integrityFindings, selection: $integritySelection) { finding in
+                            IntegrityFindingRow(finding: finding).tag(finding.id)
+                        }
+                        .frame(height: 120)
+                        .listStyle(.bordered)
+
+                        Button("preferences.advanced.repairSelected", systemImage: "wrench") {
+                            repairSelected()
+                        }
+                        // **直し方のある項目を選んだときだけ押せる。** 外部キー
+                        // 違反は一覧に出るが直せない——押せてしまうと「押したのに
+                        // 何も起きない」ことになる。
+                        .disabled(selectedRepairable.isEmpty)
+                    }
+                }
+            }
+        } header: {
+            Text("preferences.advanced.integrityHeader")
+        } footer: {
+            Text("preferences.advanced.integrityFooter")
+                .font(.system(size: Tokens.fontSize.caption))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var integrityFindings: [IntegrityFinding] {
+        guard let report = integrityReport else { return [] }
+        return report.brokenCoverRefs + report.archiveMismatches
+            + report.orphanedProtectedTokens + report.foreignKeyViolations
+    }
+
+    private var selectedRepairable: [IntegrityFinding] {
+        integrityFindings.filter { integritySelection.contains($0.id) && $0.repair != nil }
+    }
+
+    private func runIntegrityCheck() {
+        isChecking = true
+        integritySelection = []
+        Task {
+            defer { isChecking = false }
+            do {
+                integrityReport = try await LibraryServices.shared.checkIntegrity()
+            } catch {
+                await NotificationRouter.shared.presentError(
+                    error,
+                    whatHappened: String(localized: "preferences.advanced.checkIntegrityFailed",
+                                         locale: locale))
+            }
+        }
+    }
+
+    private func repairSelected() {
+        let targets = selectedRepairable
+        Task {
+            do {
+                let repaired = try await LibraryServices.shared.repairIntegrity(targets)
+                // **直したあとは必ず取り直す**——直った項目が一覧に残ったままだと、
+                // もう一度押せてしまう（2 度目は何も起きない）。
+                integritySelection = []
+                integrityReport = try await LibraryServices.shared.checkIntegrity()
+                await NotificationRouter.shared.present(NotificationItem(
+                    category: .info, severity: .transient,
+                    title: String(localized: "preferences.advanced.repairedTitle", locale: locale),
+                    body: String(format: String(localized: "preferences.advanced.repairedBody",
+                                                locale: locale), repaired)))
+            } catch {
+                await NotificationRouter.shared.presentError(
+                    error,
+                    whatHappened: String(localized: "preferences.advanced.repairFailed",
+                                         locale: locale))
+            }
         }
     }
 
@@ -130,5 +234,30 @@ struct AdvancedPreferencesTab: View {
     private static func byteCountString(_ bytes: Int64) -> String {
         guard bytes > 0 else { return "0 KB" }
         return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+}
+
+/// 不整合 1 件 [RB-02]。
+private struct IntegrityFindingRow: View {
+    let finding: IntegrityFinding
+
+    var body: some View {
+        HStack(spacing: Tokens.spacing.s) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(finding.subject).lineLimit(1).truncationMode(.middle)
+                Text(finding.detail)
+                    .font(.system(size: Tokens.fontSize.caption))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1).truncationMode(.middle)
+            }
+            Spacer()
+            // **直せないことを行に出す。** 選んでも「修復」が効かない理由が
+            // 分からないと、押しても何も起きないように見える。
+            if finding.repair == nil {
+                Text("preferences.advanced.notRepairable")
+                    .font(.system(size: Tokens.fontSize.caption))
+                    .foregroundStyle(.orange)
+            }
+        }
     }
 }

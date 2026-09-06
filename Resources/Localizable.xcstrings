@@ -1224,6 +1224,40 @@
         }
       }
     },
+    "backup.kind.document" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Metadata (JSON)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "メタデータ（JSON）"
+          }
+        }
+      }
+    },
+    "backup.kind.store" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Database copy"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "データベース複製"
+          }
+        }
+      }
+    },
     "backup.nothingToImportTitle": {
       "extractionState": "manual",
       "localizations": {
@@ -1237,6 +1271,125 @@
           "stringUnit": {
             "state": "translated",
             "value": "読み込むものがありません"
+          }
+        }
+      }
+    },
+    "backup.reason.beforeRestore" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Before restoring"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "復元の前"
+          }
+        }
+      }
+    },
+    "backup.reason.bulkLabelDelete" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Before deleting labels"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ラベルの一括削除の前"
+          }
+        }
+      }
+    },
+    "backup.reason.jsonImport" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Before import"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取り込みの前"
+          }
+        }
+      }
+    },
+    "backup.reason.launch" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Startup"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "起動時"
+          }
+        }
+      }
+    },
+    "backup.reason.libraryDelete" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Before deleting a library"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリ削除の前"
+          }
+        }
+      }
+    },
+    "backup.reason.schemaMigration" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Before upgrade"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アップグレードの前"
+          }
+        }
+      }
+    },
+    "backup.reason.templateApply" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Before applying a template"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "テンプレート適用の前"
           }
         }
       }
@@ -1991,6 +2144,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "作成"
+          }
+        }
+      }
+    },
+    "common.delete" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "削除"
           }
         }
       }
@@ -7868,6 +8038,125 @@
         }
       }
     },
+    "library.storeCorrupt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The database file is damaged. Ratings, labels and titles cannot be read from it."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "データベースのファイルが壊れています。評価・ラベル・タイトルを読み出せません。"
+          }
+        }
+      }
+    },
+    "library.storeNoBackup" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "There is no database backup to go back to. Your files on disk are not affected — re-registering the folders will scan them again."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "戻せるデータベースの控えがありません。ディスク上のファイルには影響しません——フォルダを登録し直せば、もう一度読み込まれます。"
+          }
+        }
+      }
+    },
+    "library.storeRestoreAvailable" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You can go back to an automatic backup. Your files on disk are not affected either way."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自動バックアップから戻せます。どちらにしてもディスク上のファイルには影響しません。"
+          }
+        }
+      }
+    },
+    "library.storeTooNew" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The database was made by a newer version of qooLibrary and cannot be opened by this one."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このデータベースは新しいバージョンの qooLibrary が作ったもので、こちらでは開けません。"
+          }
+        }
+      }
+    },
+    "library.storeUnhealthyTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "There is a problem with the library database"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリのデータベースに問題があります"
+          }
+        }
+      }
+    },
+    "library.storeUnopenableButReadable" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "qooLibrary could not open the database, but the contents are still readable — your ratings, labels and titles are still in there."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "qooLibrary はデータベースを開けませんでしたが、中身はまだ読める状態です——評価・ラベル・タイトルは残っています。"
+          }
+        }
+      }
+    },
+    "library.storeUpdateApp" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Update qooLibrary to open it. Restoring an older backup would lose everything saved since."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "qooLibrary を更新すると開けます。古い控えへ戻すと、それ以降の内容は失われます。"
+          }
+        }
+      }
+    },
     "library.templateUpdate.body" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -13129,6 +13418,57 @@
         }
       }
     },
+    "preferences.advanced.checkIntegrity" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check Now"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "いま点検する"
+          }
+        }
+      }
+    },
+    "preferences.advanced.checkIntegrityFailed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not check the database"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "データベースを点検できませんでした"
+          }
+        }
+      }
+    },
+    "preferences.advanced.checkingIntegrity" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Checking…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "点検しています…"
+          }
+        }
+      }
+    },
     "preferences.advanced.exportDiagnostics": {
       "extractionState": "stale",
       "localizations": {
@@ -13174,6 +13514,57 @@
           "stringUnit": {
             "state": "translated",
             "value": "診断情報"
+          }
+        }
+      }
+    },
+    "preferences.advanced.integrityClean" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nothing to fix."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "直すところはありません。"
+          }
+        }
+      }
+    },
+    "preferences.advanced.integrityFooter" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Looks for records that no longer match what is on disk. Missing and unrecognised files are not listed here — rescanning a library handles those."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ディスク上の実体と食い違っている記録を探します。見つからないファイル・未整理のファイルはここには出ません——そちらはライブラリの再スキャンが扱います。"
+          }
+        }
+      }
+    },
+    "preferences.advanced.integrityHeader" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Database Check"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "データベースの点検"
           }
         }
       }
@@ -13303,6 +13694,91 @@
           "stringUnit": {
             "state": "translated",
             "value": "現在のサイズ"
+          }
+        }
+      }
+    },
+    "preferences.advanced.notRepairable" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cannot fix"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "直せません"
+          }
+        }
+      }
+    },
+    "preferences.advanced.repairFailed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not fix the items"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "直せませんでした"
+          }
+        }
+      }
+    },
+    "preferences.advanced.repairSelected" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fix Selected"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選んだ項目を直す"
+          }
+        }
+      }
+    },
+    "preferences.advanced.repairedBody" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fixed %d item(s)."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d 件を直しました。"
+          }
+        }
+      }
+    },
+    "preferences.advanced.repairedTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fixed"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "直しました"
           }
         }
       }
@@ -14932,13 +15408,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "A snapshot is taken on launch, and immediately before operations that cannot be undone (deleting a library, importing JSON, deleting labels in bulk, applying a template, migrating the schema). A copy of the database is kept as well, so a future release can restore it whole."
+            "value": "A snapshot is taken on launch, and immediately before operations that cannot be undone (deleting a library, importing JSON, deleting labels in bulk, applying a template, migrating the schema). A copy of the database is kept as well, so you can restore it whole from the list above."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "起動時と、取り返しのつかない操作（ライブラリの削除・JSON の取り込み・ラベルの一括削除・テンプレートの適用・スキーマの移行）の直前に、自動で控えを取ります。データベースの複製もあわせて保存します（復元の画面は次の段で作ります）。"
+            "value": "起動時と、取り返しのつかない操作（ライブラリの削除・JSON の取り込み・ラベルの一括削除・テンプレートの適用・スキーマの移行）の直前に、自動で控えを取ります。データベースの複製もあわせて保存し、上の一覧から丸ごと復元できます。"
           }
         }
       }
@@ -15079,6 +15555,74 @@
         }
       }
     },
+    "preferences.reset.deleteGenerationBody" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete the backup taken on %@?"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ に取った控えを削除しますか？"
+          }
+        }
+      }
+    },
+    "preferences.reset.deleteGenerationFailed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not delete the backup"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "控えを削除できませんでした"
+          }
+        }
+      }
+    },
+    "preferences.reset.deleteGenerationNotice" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your library is not affected. This cannot be undone."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリには影響しません。この操作は取り消せません。"
+          }
+        }
+      }
+    },
+    "preferences.reset.deleteGenerationTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Backup"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "控えを削除"
+          }
+        }
+      }
+    },
     "preferences.reset.deleteKeepsFiles": {
       "extractionState": "manual",
       "localizations": {
@@ -15177,6 +15721,91 @@
           "stringUnit": {
             "state": "translated",
             "value": "書き出す…"
+          }
+        }
+      }
+    },
+    "preferences.reset.exportGeneration" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save a Copy…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "コピーを保存…"
+          }
+        }
+      }
+    },
+    "preferences.reset.exportGenerationFailed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not save the copy"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "コピーを保存できませんでした"
+          }
+        }
+      }
+    },
+    "preferences.reset.exportGenerationMessage" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose where to keep a copy of this backup."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この控えのコピーを置く場所を選んでください。"
+          }
+        }
+      }
+    },
+    "preferences.reset.exportGenerationPrompt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save Here"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ここに保存"
+          }
+        }
+      }
+    },
+    "preferences.reset.exportingGeneration" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saving a copy…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "コピーを保存しています…"
           }
         }
       }
@@ -15283,6 +15912,23 @@
         }
       }
     },
+    "preferences.reset.noGenerations" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No backups have been saved yet."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存された控えはまだありません。"
+          }
+        }
+      }
+    },
     "preferences.reset.noLibraries": {
       "extractionState": "manual",
       "localizations": {
@@ -15300,6 +15946,23 @@
         }
       }
     },
+    "preferences.reset.openRestore" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Backups…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "控えを表示…"
+          }
+        }
+      }
+    },
     "preferences.reset.orphanBadge": {
       "extractionState": "manual",
       "localizations": {
@@ -15313,6 +15976,227 @@
           "stringUnit": {
             "state": "translated",
             "value": "登録が見つかりません"
+          }
+        }
+      }
+    },
+    "preferences.reset.restore" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restore…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "復元…"
+          }
+        }
+      }
+    },
+    "preferences.reset.restoreConfirm" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quit and Restore"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "終了して復元"
+          }
+        }
+      }
+    },
+    "preferences.reset.restoreConfirmTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restore from Backup"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "バックアップから復元"
+          }
+        }
+      }
+    },
+    "preferences.reset.restoreExplanation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The current library database will be replaced by this backup. Ratings, labels and titles saved after this backup was taken will be lost. The state being replaced is kept as another backup, so you can go back."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現在のライブラリのデータベースが、この控えの内容に置き換わります。この控えを取ったあとに付けた評価・ラベル・タイトルは失われます。置き換わる前の状態も控えとして残るので、戻すこともできます。"
+          }
+        }
+      }
+    },
+    "preferences.reset.restoreFailed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not start the restore"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "復元を開始できませんでした"
+          }
+        }
+      }
+    },
+    "preferences.reset.restoreFailedCorrupt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The backup is damaged and was not used. Your library is unchanged — try an older backup."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "その控えは壊れていたため使いませんでした。ライブラリはそのままです——ひとつ古い控えをお試しください。"
+          }
+        }
+      }
+    },
+    "preferences.reset.restoreFailedMissing" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The backup is no longer there. Your library is unchanged."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "その控えが見つかりませんでした。ライブラリはそのままです。"
+          }
+        }
+      }
+    },
+    "preferences.reset.restoreFailedSwap" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The files could not be replaced. Your library is unchanged. Check the free space on the startup disk."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ファイルを置き換えられませんでした。ライブラリはそのままです。起動ディスクの空き容量をご確認ください。"
+          }
+        }
+      }
+    },
+    "preferences.reset.restoreFailedTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not restore the backup"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "バックアップから復元できませんでした"
+          }
+        }
+      }
+    },
+    "preferences.reset.restoreFailedTooNew" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The backup was made by a newer version of qooLibrary. Your library is unchanged — update qooLibrary and try again."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "その控えは新しいバージョンの qooLibrary が作ったものです。ライブラリはそのままです——qooLibrary を更新してからお試しください。"
+          }
+        }
+      }
+    },
+    "preferences.reset.restoreQuitNotice" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "qooLibrary quits now. The backup is restored the next time you open it."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "qooLibrary をいま終了します。復元は次に起動したときに行われます。"
+          }
+        }
+      }
+    },
+    "preferences.reset.restoredBody" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The library database was replaced by the backup you chose. The state it replaced is kept as another backup."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリのデータベースを、選んだ控えの内容に置き換えました。置き換える前の状態も控えとして残してあります。"
+          }
+        }
+      }
+    },
+    "preferences.reset.restoredTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restored from a backup"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "バックアップから復元しました"
           }
         }
       }

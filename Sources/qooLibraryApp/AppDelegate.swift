@@ -33,9 +33,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// 暗黙に待つ**ため、`flush()` が返ってこない状況（ディスクが固まった等）
     /// では結局終了できない。`flush()` は `withCheckedContinuation` で待つ
     /// 構造上キャンセルにも反応しないので、`cancelAll()` も効かない。
-    /// そのため、独立した 2 本の非構造化タスクを走らせ、**先に着いた方が
-    /// 1 回だけ**返答する形にしている。取り残された方はプロセスの終了と
-    /// ともに消える。
+    /// そのため、後始末（`Task`）と上限時間（ランループのタイマー）を
+    /// 独立に走らせ、**先に着いた方が 1 回だけ**返答する形にしている。
+    /// 取り残された方はプロセスの終了とともに消える。
+    ///
+    /// **上限時間をメインキューへ直に載せるのが要点**——`terminate:` は
+    /// 入れ子のイベントループでメインスレッドを占有したまま返答を待つので、
+    /// 呼び出し元がメインアクタのジョブの中だと `Task` は 1 つも走れない
+    /// （実測、2026-09-06。詳しくは `BackupRestoreAction.restore`）。
     ///
     /// ログの消費側は 1 レコードずつ即座に書き込んでいるため、ここで待つのは
     /// 待ち行列に残った僅かな分だけで、通常は一瞬で返る。
@@ -52,10 +57,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await Log.endSession()
             reply.fire()
         }
-        Task {
-            try? await Task.sleep(for: .seconds(2))
-            reply.fire()
+        // **上限時間はランループのタイマーで持つ**［実機検証で修正、2026-09-06］。
+        // `terminate:` は `.terminateLater` を返すと入れ子のイベントループで
+        // 返答を待つが、そのループは**メインキューを再入ドレインできない**
+        // （`BackupRestoreAction.restore` の注記）。`Task` も
+        // `DispatchQueue.main.asyncAfter` もメインキュー経由なので、
+        // 呼び出し元がドレインの中だと**上のタスクも、この上限時間も走れない**
+        // ——上限時間が要るのはまさにその状況である。ランループのタイマーは
+        // 入れ子のループがそのまま発火させるので、そこを通らない。
+        //
+        // `.common` へ入れるのは、待ちループのモードが既定とは限らないため。
+        let deadline = Timer(timeInterval: 2, repeats: false) { _ in
+            MainActor.assumeIsolated { reply.fire() }
         }
+        RunLoop.main.add(deadline, forMode: .common)
         return .terminateLater
     }
 }

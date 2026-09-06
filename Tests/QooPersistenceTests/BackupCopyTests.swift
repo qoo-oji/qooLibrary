@@ -85,4 +85,52 @@ struct BackupCopyTests {
         }
         #expect(count == 1)
     }
+
+    /// **複製のジャーナル形式は正規化されている**［実測、2026-09-06］。
+    ///
+    /// ヘッダの 18〜19 バイト目が書き込み／読み取りバージョンで、`2` なら
+    /// WAL、`1` ならロールバックジャーナル。**バイトを直接見る**——
+    /// `inspect` の結果で確かめると、あちらが持つ互換経路（WAL ヘッダの
+    /// 世代を正規化してから読む）が吸収してしまい、この主張を一度も
+    /// 検査しないまま通る（実際に変異が空振りした）。
+    ///
+    /// **標本はファイル由来の（＝WAL の）ストアでなければならない**——
+    /// 上の 2 件は `inMemory()` を元にしており、メモリ上の DB は WAL に
+    /// ならないので**この経路を一度も通っていなかった**。
+    @Test("複製はロールバックジャーナル形式で書かれる [BK3-08][BK-03]")
+    func theCopyIsNormalisedToRollbackJournal() throws {
+        let directory = makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let sourceURL = directory.appendingPathComponent("live.sqlite")
+        let source = try QooDatabase.open(at: sourceURL)   // ここで WAL になる
+        let destination = directory.appendingPathComponent("copy.sqlite")
+        try QooDatabase.backup(writer: source.writer, to: destination)
+        try source.writer.close()
+
+        let header = try FileHandle(forReadingFrom: destination).readToEnd() ?? Data()
+        #expect(header.count > 20)
+        #expect(Array(header[18 ... 19]) == [1, 1],
+                "複製のヘッダが WAL のまま: \(Array(header[18 ... 19]))")
+    }
+
+    /// 第 1 段（2026-09-05）が書いた世代は**ヘッダが WAL のまま**で、
+    /// 素の読み取り専用では開けない。それでも検分できなければ、
+    /// **その世代は二度と復元できない**ことになる [BK-03]。
+    @Test("WAL ヘッダのままの世代も検分できる [BK-03]")
+    func aWalHeaderedGenerationCanStillBeInspected() throws {
+        let directory = makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let sourceURL = directory.appendingPathComponent("live.sqlite")
+        let source = try QooDatabase.open(at: sourceURL)
+        try source.writer.writeWithoutTransaction { try $0.execute(sql: "PRAGMA wal_checkpoint(TRUNCATE)") }
+        try source.writer.close()
+
+        // 素のファイルコピーは WAL ヘッダをそのまま持つ＝第 1 段の世代と同じ形。
+        let legacy = directory.appendingPathComponent("legacy.sqlite")
+        try FileManager.default.copyItem(at: sourceURL, to: legacy)
+        let header = try FileHandle(forReadingFrom: legacy).readToEnd() ?? Data()
+        #expect(Array(header[18 ... 19]) == [2, 2], "標本が WAL ヘッダを持っていない")
+
+        #expect(QooDatabase.inspect(at: legacy).isUsable)
+    }
 }

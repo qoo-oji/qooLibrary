@@ -174,3 +174,68 @@ public protocol PreMigrationSource: Sendable {
     /// 移行前の DB が健全か [RB-03]。
     func integrityCheck() throws -> Bool
 }
+
+/// 「次の起動で復元する」という予約 [BK-03][IE-16]。
+///
+/// ## なぜ印を置いて再起動を挟むのか［ユーザー判断、2026-09-06］
+///
+/// 復元は**動いているアプリの中では行わない**。印を `backups/` へ置いて
+/// 終了し、**次の起動で `QooDatabase.open` の前に**差し替える。
+///
+/// | 得られること | 理由 |
+/// |---|---|
+/// | **DB を開けなかった起動からも同じ経路で戻せる** [RB-03][RB-06] | 差し替えが `open` より前にあるので、直前の起動でストアが開けたかどうかに一切依存しない。ライブ復元だと接続が無い場面で使えず、**同じ機能に経路が 2 本**できる（このリポジトリが繰り返し取り残してきた形）|
+/// | Undo スタック・開いているウインドウ・リポジトリの食い違いが**構造的に起きない** | 差し替えの時点でそれらがまだ存在しない。ライブ復元だと行 ID を握ったままの画面が残る |
+/// | 自分のプロセスが DB を掴んだまま差し替える危険が無い | ［外部調査: 掴まれていると復元が失敗し、しかも「破損」と誤報告される］|
+///
+/// **自動で再起動はしない**［設計判断］。`createsNewApplicationInstance` で
+/// 新しいインスタンスを先に起こすと、**古いインスタンスがまだストアを
+/// 掴んでいる間に新しいほうが差し替えにかかる**——避けたかった当の状況を
+/// 自分で作ることになる。印を書いたら**すぐ終了する**（それ以上の変更を
+/// 失わせないため）ことだけを守り、起動し直すのは利用者に委ねる。
+public struct PendingRestore: Codable, Sendable, Equatable {
+    /// 戻す世代のファイル名。**URL ではなく名前**——`backups/` の場所は
+    /// `BackupStore` が決めるので、印が絶対パスを持つと置き場所が 2 箇所に
+    /// なる（App Support の場所は環境で変わりうる）。
+    public var fileName: String
+    public var requestedAt: Date
+
+    public init(fileName: String, requestedAt: Date = Date()) {
+        self.fileName = fileName
+        self.requestedAt = requestedAt
+    }
+
+    /// 印そのもののファイル名。**先頭がドットで拡張子が `json`** なので
+    /// `BackupFileName.parse` は解釈できず、世代として数えられない
+    /// ——数えられると剪定がこれを消しにかかる。
+    public static let fileName = ".pending-restore.json"
+}
+
+/// 復元の結果 [BK-03]。起動時に 1 度だけ報告する。
+public struct RestoreOutcome: Sendable, Equatable {
+    public enum Failure: Sendable, Equatable {
+        /// 印はあったが、その世代が既に無い（利用者が消した・剪定された）。
+        case generationMissing(String)
+        /// 複製が壊れている [RB-03]。**差し替えない。**
+        case sourceCorrupt(String)
+        /// 複製のほうがアプリより新しい [MG-12]。**差し替えない**
+        /// ——戻した瞬間に `schemaTooNew` で起動できなくなる。
+        case sourceTooNew(String)
+        /// 差し替えそのものに失敗した。**元のストアは巻き戻してある。**
+        case swapFailed(String)
+    }
+
+    public var restoredFrom: String
+    /// 差し替え前のストアを退避した先。**これが「戻しすぎた」の戻り道**。
+    public var previousStoreURL: URL?
+    public var failure: Failure?
+
+    public init(restoredFrom: String, previousStoreURL: URL? = nil,
+                failure: Failure? = nil) {
+        self.restoredFrom = restoredFrom
+        self.previousStoreURL = previousStoreURL
+        self.failure = failure
+    }
+
+    public var succeeded: Bool { failure == nil }
+}

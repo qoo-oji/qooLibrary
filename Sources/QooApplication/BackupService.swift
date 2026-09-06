@@ -148,6 +148,113 @@ public struct BackupService: Sendable {
                              storeURL: storeURL, prunedCount: prunedCountIgnoringFailure())
     }
 
+    // MARK: - 復元 [BK-03][IE-16]
+
+    /// 「次の起動で復元する」予約を置く [BK-03]。
+    ///
+    /// **ここでは何も差し替えない。** 実際の入れ替えは次の起動で
+    /// ``applyPendingRestore(storeURL:now:)`` が `QooDatabase.open` の前に行う
+    /// （理由は `PendingRestore` の doc）。
+    ///
+    /// - Throws: 世代が使えない（壊れている／アプリより新しい）ときは
+    ///   **予約せずに投げる**。押した直後に理由を言えるほうが、終了して
+    ///   起動し直してから「戻せませんでした」と言われるより親切で、
+    ///   何より**戻らないと分かっているのにアプリを終了させない**。
+    ///
+    /// **`async`**——検分は `PRAGMA integrity_check` を走らせる実 I/O で、
+    /// 呼び出し側はメインアクタ（環境設定の画面）である。同期で呼ぶと
+    /// **復元…を押した瞬間に画面が固まる**［code-review が実測: 34 MB で
+    /// 0.39 秒］。`FileIO` の上で回す [NV6-01][NV6-02]。
+    public func requestRestore(_ generation: BackupGeneration) async throws {
+        guard generation.kind == .store else { throw RestoreError.notAStoreCopy }
+        let store = store
+        let inspection = await FileIO.perform {
+            let result = QooDatabase.inspect(at: generation.url)
+            // 第 1 段が書いた世代を検分すると、畳むために一度 WAL のまま
+            // 開くので `-shm` が残る。ここで捨てる（この層は削除できる）。
+            if result.didNormalizeJournal { store.discardSidecars(of: generation.url) }
+            return result
+        }
+        switch inspection.kind {
+        case .usable: break
+        case .missing: throw RestoreError.unusable(.generationMissing(generation.fileName))
+        case .corrupt: throw RestoreError.unusable(.sourceCorrupt(generation.fileName))
+        case .tooNew: throw RestoreError.unusable(.sourceTooNew(generation.fileName))
+        case .unreadable(let detail):
+            throw RestoreError.unusable(.swapFailed(detail))
+        }
+        try store.writePendingRestore(PendingRestore(fileName: generation.fileName))
+    }
+
+    public func pendingRestore() -> PendingRestore? { store.readPendingRestore() }
+    public func cancelPendingRestore() { store.clearPendingRestore() }
+
+    /// 予約があれば差し替える [BK-03][IE-16]。**`QooDatabase.open` の前に呼ぶ。**
+    ///
+    /// **決して投げない。** ここで投げると、復元に失敗しただけでアプリが
+    /// 起動できなくなる——いちばん困っている場面で最後の足場を外すことになる。
+    /// 失敗は `RestoreOutcome.failure` として返し、呼び出し側が現ストアの
+    /// まま起動を続ける。
+    ///
+    /// **印は成否に関わらず必ず消す。** 残すと起動のたびに同じ復元を試み、
+    /// しかも失敗する理由（世代が無い・壊れている）は繰り返しても変わらない。
+    public func applyPendingRestore(storeURL: URL, now: Date = Date()) -> RestoreOutcome? {
+        guard let pending = store.readPendingRestore() else { return nil }
+        defer { store.clearPendingRestore() }
+
+        let source = store.directory.appendingPathComponent(pending.fileName, isDirectory: false)
+        var outcome = RestoreOutcome(restoredFrom: pending.fileName)
+
+        // **差し替える前に確かめる。** 壊れた複製・アプリより新しい複製で
+        // 戻すと、その瞬間から起動できなくなる [MG-12]——戻したことで
+        // 状況が悪化する形だけは避ける。
+        let inspection = QooDatabase.inspect(at: source)
+        if inspection.didNormalizeJournal { store.discardSidecars(of: source) }
+        switch inspection.kind {
+        case .usable: break
+        case .missing: outcome.failure = .generationMissing(pending.fileName)
+        case .corrupt: outcome.failure = .sourceCorrupt(pending.fileName)
+        case .tooNew: outcome.failure = .sourceTooNew(pending.fileName)
+        case .unreadable(let detail): outcome.failure = .swapFailed(detail)
+        }
+        if outcome.failure != nil { return outcome }
+
+        // 退避先は**成否に関わらず**受け取る（`swapInStore` の doc）。
+        var archived: URL?
+        do {
+            outcome.previousStoreURL = try store.swapInStore(
+                from: source, storeURL: storeURL, date: now, archivedTo: &archived)
+            // 退避したのは**ライブストア**なので WAL のまま `-wal` を連れて
+            // きている。畳んで 1 ファイルに揃える——**世代は常に 1 ファイル**
+            // という不変条件を保つ（`QooDatabase.normalizeJournal` の doc）。
+            if let archived = outcome.previousStoreURL {
+                if !QooDatabase.normalizeJournal(at: archived) {
+                    Log.db.warning("退避したストアのジャーナルを畳めない: \(Log.path(archived))")
+                }
+                // 畳むために一度 WAL のまま開くので、その最中に作られた
+                // `-shm` が残る［実測］。畳んだ後は意味を持たないので捨てる。
+                store.discardSidecars(of: archived)
+            }
+        } catch {
+            outcome.failure = .swapFailed(String(describing: error))
+            // 巻き戻しにも失敗していれば、退避先だけが唯一の足場になる。
+            //
+            // **この分岐はテストで固定できていない**——「複製に失敗し、かつ
+            // 巻き戻しにも失敗する」状態を、production へテスト用の口を足さずに
+            // 作る手が無い（`swapInStore` の中で 2 段階の I/O を失敗させる
+            // 必要がある）。変異を当てても検出できないことを確認済み。
+            outcome.previousStoreURL = archived
+        }
+        return outcome
+    }
+
+    public enum RestoreError: Error, Equatable {
+        /// JSON の世代を渡された。**あちらは取り込み** [IE-11] で戻す
+        /// ——ライブラリの行は作れない（ブックマークを JSON に持てない）。
+        case notAStoreCopy
+        case unusable(RestoreOutcome.Failure)
+    }
+
     // MARK: - 一覧・剪定
 
     public func generations() throws -> [BackupGeneration] { try store.generations() }
@@ -184,6 +291,16 @@ public struct BackupService: Sendable {
     private func copyingStore(to destination: URL, _ copy: (URL) throws -> Void) throws {
         do { try copy(destination) }
         catch { store.discard(destination); throw error }
+        // **付随ファイルを残さない**［実機検証で発見、2026-09-06］。
+        //
+        // 複製の直後にジャーナル形式を畳む（`QooDatabase.backup`）際、
+        // 写されたページのヘッダが WAL なので接続が一度 WAL へ入り、
+        // **`-shm` を作って閉じても残す**。`generations()` は解釈しないので
+        // **誰にも見えないまま容量を食い、剪定にもかからない**。
+        //
+        // 消せるのはこの層だけ——`QooPersistence` は削除系の `FileManager`
+        // API を呼べない [B-10]。
+        store.discardSidecars(of: destination)
     }
 
     /// 剪定の失敗で**スナップショットそのものを失敗にしない**

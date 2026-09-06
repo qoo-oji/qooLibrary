@@ -155,6 +155,22 @@ public struct BackupStore: Sendable {
         }
     }
 
+    /// 世代の隣に残った `-wal` / `-shm` を捨てる。
+    ///
+    /// **`QooPersistence` が自分で消せないので、ここが引き取る**（`discard`
+    /// と同じ理由——あの層は削除系の `FileManager` API を呼べない [B-10]）。
+    ///
+    /// ジャーナルを畳んだ直後に呼ぶ [QooDatabase.normalizeJournal]。畳む
+    /// ために一度 WAL のまま開くので、**その最中に `-shm` が作られ、閉じても
+    /// 残る**［実測、2026-09-06］。畳んだ後の `-shm` は意味を持たないが、
+    /// `generations()` は解釈しないので**見えないまま容量を食い、剪定にも
+    /// かからない**。
+    public func discardSidecars(of url: URL) {
+        for suffix in ["-wal", "-shm"] {
+            try? FileManager.default.removeItem(at: URL(fileURLWithPath: url.path + suffix))
+        }
+    }
+
     public func remove(_ generation: BackupGeneration) throws {
         try removeFiles(of: generation)
     }
@@ -177,5 +193,159 @@ public struct BackupStore: Sendable {
     /// 置いてある全世代の合計サイズ。環境設定の表示に使う。
     public func totalByteCount() throws -> Int64 {
         try generations().reduce(0) { $0 + $1.byteCount }
+    }
+
+    // MARK: - 復元の予約 [BK-03][IE-16]
+
+    private var pendingRestoreURL: URL {
+        directory.appendingPathComponent(PendingRestore.fileName, isDirectory: false)
+    }
+
+    /// 「次の起動で復元する」印を置く。
+    public func writePendingRestore(_ pending: PendingRestore) throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        // **`.atomic`**——書いている途中で落ちて半分だけの印が残ると、
+        // 次の起動が「解釈できない印」で止まる（世代の JSON と同じ理由）。
+        try encoder.encode(pending).write(to: pendingRestoreURL, options: .atomic)
+    }
+
+    /// 印を読む。**解釈できなければ `nil`**（壊れた印で起動を止めない）。
+    public func readPendingRestore() -> PendingRestore? {
+        guard let data = try? Data(contentsOf: pendingRestoreURL) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try? decoder.decode(PendingRestore.self, from: data)
+    }
+
+    /// 印を消す。**成功しても失敗しても必ず呼ぶ**——残すと起動のたびに
+    /// 同じ復元を試み、しかも失敗する理由（世代が無い・壊れている）は
+    /// 起動を繰り返しても変わらない。
+    public func clearPendingRestore() {
+        try? FileManager.default.removeItem(at: pendingRestoreURL)
+    }
+
+    // MARK: - 差し替え [BK-03][IE-16]
+
+    /// 現ストアを退避してから、世代を所定の場所へ写す。
+    ///
+    /// **`QooDatabase.open` の前にだけ呼ぶこと。** 誰もストアを掴んでいない
+    /// この一瞬だけが、ファイルを直接動かしてよい唯一の機会である
+    /// ［外部調査: 掴まれていると復元が失敗し、しかも「破損」と誤報告される］。
+    ///
+    /// 順序は **①退避（移動）→ ②複製（コピー）→ ③失敗したら①を巻き戻す**。
+    /// 退避を*移動*にしてあるのは、
+    /// - 壊れたストアでも接続を要さずに保管でき（オンラインバックアップは
+    ///   開ける必要があるが、いま戻したいのはまさに開けないストアである）、
+    /// - 71 MB を写し直さずに済み［Spikes T-03 実測］、
+    /// - `-wal` を道連れにできる（置き去りにすると**別の DB の WAL が
+    ///   新しいストアの隣に残る**——それは破損の作り込みそのもの）
+    /// ため。
+    ///
+    /// **剪定はここでは行わない。** この最中に剪定が走ると、いま写している
+    /// 元の世代を消しにかかりうる。次の通常のスナップショットに任せる。
+    ///
+    /// - Returns: 退避先（`beforeRestore` の世代）。
+    /// - Parameter archivedTo: 退避先を**失敗した場合でも**呼び出し側へ返す。
+    ///   戻り値だけだと、巻き戻しに失敗したとき（＝**ストアが 1 つも無い**
+    ///   最悪の状態）に「退避なし」と報告してしまう——実際には退避した
+    ///   ストアが `backups/` に居るので、そこから戻せることを言えなければ
+    ///   ならない［code-review で発見］。
+    @discardableResult
+    public func swapInStore(from generation: URL, storeURL: URL,
+                            date: Date = Date(),
+                            archivedTo: inout URL?) throws -> URL?
+    {
+        let fm = FileManager.default
+        try fm.createDirectory(at: directory, withIntermediateDirectories: true)
+        try fm.createDirectory(at: storeURL.deletingLastPathComponent(),
+                               withIntermediateDirectories: true)
+
+        // ① 退避。**ストアがまだ無い初回起動でも復元できる**ので、
+        //    存在しなければ退避せずに進む。
+        var archived: URL?
+        if fm.fileExists(atPath: storeURL.path) {
+            let destination = try prepare(reason: .beforeRestore, kind: .store, date: date)
+            try moveStore(from: storeURL, to: destination)
+            archived = destination
+            archivedTo = destination
+        }
+
+        // ② 複製。
+        do {
+            try copyStore(from: generation, to: storeURL)
+        } catch {
+            // ③ 巻き戻す。**ここで諦めるとストアが 1 つも無い状態で起動する**
+            //    ——復元しようとしただけで蔵書の記録を失ったように見える。
+            if let archived {
+                removeStoreFiles(at: storeURL)
+                do {
+                    try moveStore(from: archived, to: storeURL)
+                    archivedTo = nil   // 元へ戻したので退避は残っていない
+                } catch {
+                    // **巻き戻しにも失敗した。** ストアが 1 つも無い状態だが、
+                    // 退避したものは `backups/` に居る——`archivedTo` はその
+                    // ままにして、呼び出し側がそれを言えるようにする。
+                    Log.db.error(
+                        "復元の巻き戻しにも失敗した。退避先: \(Log.path(archived))")
+                }
+            }
+            throw error
+        }
+        return archived
+    }
+
+    /// ストア本体と `-wal` / `-shm` をまとめて動かす。
+    ///
+    /// 通常の世代は WAL を持たない（`QooDatabase.backupTargetConfiguration` が
+    /// `journal_mode = DELETE` にする [BK3-08]）が、**退避したライブストアは
+    /// 持つ**。本体だけを動かすと WAL の末尾——直前のトランザクション——が
+    /// 置き去りになる。
+    private func moveStore(from source: URL, to destination: URL) throws {
+        removeStoreFiles(at: destination)
+        try FileManager.default.moveItem(at: source, to: destination)
+        // **`-wal` だけを連れて行く。** あれは本体へまだ書き戻されていない
+        // トランザクションを持つので、置き去りにすると直前の変更が落ちる。
+        let wal = URL(fileURLWithPath: source.path + "-wal")
+        if FileManager.default.fileExists(atPath: wal.path) {
+            try? FileManager.default.moveItem(
+                at: wal, to: URL(fileURLWithPath: destination.path + "-wal"))
+        }
+        // **`-shm` は連れて行かない。** あれは WAL の索引を載せた共有メモリで、
+        // 中身は `-wal` から再構築できる（SQLite の仕様）。連れて行っても
+        // 使われず、しかも**誰も消さないまま世代の隣に残る**——`generations()`
+        // は解釈しないので、見えないまま容量を食い、剪定にもかからない
+        // ［実測、2026-09-06: ここを移していたせいで実際に残った］。
+        try? FileManager.default.removeItem(at: URL(fileURLWithPath: source.path + "-shm"))
+    }
+
+    private func copyStore(from source: URL, to destination: URL) throws {
+        removeStoreFiles(at: destination)
+        try FileManager.default.copyItem(at: source, to: destination)
+        for suffix in ["-wal", "-shm"] {
+            let from = URL(fileURLWithPath: source.path + suffix)
+            guard FileManager.default.fileExists(atPath: from.path) else { continue }
+            try? FileManager.default.copyItem(
+                at: from, to: URL(fileURLWithPath: destination.path + suffix))
+        }
+    }
+
+    /// 差し替え先に**古い `-wal` / `-shm` を残さない**。
+    ///
+    /// **これは守りであって、いま何かを防いでいる証拠は無い**［実測、
+    /// 2026-09-06］——外しても復元は成功する。SQLite は WAL の magic・salt・
+    /// チェックサムを DB と突き合わせ、**一致しない WAL は無視して捨てる**
+    /// ので、取り残された sidecar が誤って再生されることはなかった
+    /// （変異を当てて確認済み。作れる入力の範囲では等価）。
+    ///
+    /// それでも消しておくのは、①誰にも見えないまま容量を食い続けるのを
+    /// 避けるため ②「本体だけ消して sidecar を残す」形をコードに残すと、
+    /// 次に読む人が SQLite の検証に頼ってよいと読み替えかねないため。
+    private func removeStoreFiles(at url: URL) {
+        try? FileManager.default.removeItem(at: url)
+        for suffix in ["-wal", "-shm"] {
+            try? FileManager.default.removeItem(at: URL(fileURLWithPath: url.path + suffix))
+        }
     }
 }

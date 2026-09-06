@@ -951,6 +951,10 @@ struct MainWindowView: View {
             // 登録済みだが未有効のライブラリがあれば、ウィザードをステップ 3
             // から再開して有効化まで導く [§19.10 ステージ 2]。起動につき 1 回。
             LibrarySetupPrompt.runOnce(locale: locale, openWindow: openWindow)
+            // 直前の起動で予約された復元の結果と、ストアが不調なときの
+            // 復元の提案 [BK-03][RB-03][RB-06]。**同じ位置から呼ぶ**——
+            // どちらも「起動直後に 1 度だけ、ウインドウが出てから」。
+            BackupRestoreAction.runOnce(locale: locale, openWindow: openWindow)
             // プリセットが改訂されていたら履歴とバッジにだけ残す [LT-12]。
             // **設定には触れない** [LT-11] し、割り込まない——改訂は急ぐ話では
             // ないうえ、起動のたびにシートが出ると本当に見てほしい 1 枚まで

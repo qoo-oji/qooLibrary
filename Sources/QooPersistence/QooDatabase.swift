@@ -100,7 +100,21 @@ public final class QooDatabase: Sendable {
     /// 直したときに移行前だけが壊れる。
     public var synchronousHandle: PreMigrationSnapshot { PreMigrationSnapshot(writer: writer) }
 
-    /// 整合性検査 [RB-03]。
+    /// 軽い整合性検査 [RB-03]。**起動のたびに走らせる用。**
+    ///
+    /// `integrity_check` との違いは索引の食い違いを見ないこと。構造の破損
+    /// （ページ・B ツリー）はどちらも見つけるので、**復元を提案すべきか**の
+    /// 判断にはこちらで足りる——索引は再生成できる [MG-22] ものであって、
+    /// 控えへ戻す理由にはならない。［実測、2026-09-06: 128 MB で 0.050 秒
+    /// 対 0.128 秒］
+    public func quickCheck() async throws -> Bool {
+        try await writer.read { db in
+            try String.fetchOne(db, sql: "PRAGMA quick_check") == "ok"
+        }
+    }
+
+    /// 整合性検査 [RB-03]。**控えを書く前の関門** [BK3-05] はこちら
+    /// ——壊れた状態を世代として残さないことのほうが、数十ミリ秒より重い。
     public func integrityCheck() async throws -> Bool {
         try await writer.read { db in
             try String.fetchOne(db, sql: "PRAGMA integrity_check") == "ok"
@@ -143,6 +157,21 @@ public final class QooDatabase: Sendable {
             guard let progress, p.totalPageCount > 0 else { return }
             progress(1 - Double(p.remainingPageCount) / Double(p.totalPageCount))
         }
+        // **複製の後にもう一度 DELETE へ落とす**［実測、2026-09-06］。
+        //
+        // `backupTargetConfiguration()` の `journal_mode = DELETE` は
+        // **複製の前**に効くだけで、`sqlite3_backup` はヘッダを含む全ページを
+        // 写すので、**出来上がったファイルのヘッダは元の WAL のまま**になる
+        // （実測: ヘッダ 18〜19 バイト目が `0202`）。sidecar ができないという
+        // BK3-08 の観測は正しかったが、理由の説明が足りていなかった。
+        //
+        // ヘッダが WAL のままだと、**その世代を読み取り専用で開けない**
+        // ——`-shm` を作れないため `SQLITE_CANTOPEN` になる。復元の前に
+        // 「使えるか」を確かめられないのは、いちばん確かめたい場面で
+        // 確かめられないということである [BK-03]。
+        // `PRAGMA journal_mode` はトランザクションの中では変えられないので
+        // `writeWithoutTransaction` を使う（GRDB の `write` は必ず囲う）。
+        try target.writeWithoutTransaction { try $0.execute(sql: "PRAGMA journal_mode = DELETE") }
     }
 
     /// 複製先の設定。**WAL にしない。**
@@ -172,6 +201,135 @@ public final class QooDatabase: Sendable {
         /// アプリが知らない移行が適用済み [MG-12]。起動を中止する。
         case schemaTooNew
         case migrationFailed(String)
+    }
+
+    // MARK: - 検分 [BK-03][RB-03][RB-06]
+
+    /// ストアファイルを**読み取り専用で開いて**素性を調べる。
+    ///
+    /// 2 つの用途がある。どちらも「そのファイルを使ってよいか」を、
+    /// 使う前に知りたいという同じ問いである:
+    ///
+    /// | 用途 | 何を見るか |
+    /// |---|---|
+    /// | 復元の前 [BK-03] | 壊れていないか・**アプリより新しくないか**。新しい複製で戻すと、その瞬間から `schemaTooNew` で起動できなくなる [MG-12] |
+    /// | 移行に失敗した起動 [RB-06] | 中身が生きているか——利用者に「データは残っている」と言えるかどうか |
+    ///
+    /// **移行を走らせない。** 読み取り専用なので走らせようがなく、それが
+    /// 正しい——検分のために相手を書き換えてはならない。
+    ///
+    /// - Note: 開けなかったこと自体が答え（`openFailed`）なので投げない。
+    public static func inspect(at url: URL) -> StoreInspection {
+        guard FileManager.default.fileExists(atPath: url.path) else { return .init(kind: .missing) }
+        do {
+            let (queue, normalized) = try openForInspection(at: url)
+            defer { try? queue.close() }
+            let intact = try queue.read { db in
+                try String.fetchOne(db, sql: "PRAGMA integrity_check") == "ok"
+            }
+            guard intact else { return .init(kind: .corrupt) }
+            let migrator = QooMigrations.migrator
+            let superseded = try queue.read { try migrator.hasBeenSuperseded($0) }
+            if superseded { return .init(kind: .tooNew) }
+            let applied = try queue.read { try migrator.appliedIdentifiers($0).count }
+            return .init(kind: .usable, appliedMigrations: applied,
+                         didNormalizeJournal: normalized,
+                         pendingMigrations: QooMigrations.identifiers.count - applied)
+        } catch {
+            return .init(kind: .unreadable(String(describing: error)))
+        }
+    }
+
+    /// ジャーナル形式をロールバックへ落とし、`-wal` を本体へ畳む。
+    ///
+    /// **世代は常に 1 ファイルである**という不変条件をここが作る。
+    /// 復元で脇へ退避したライブストアだけは WAL のまま `-wal` を連れて
+    /// くるので、そのままだと
+    /// - 任意フォルダへ書き出す [BK-04] ときに本体だけが写り、**直前の
+    ///   トランザクションが落ちる**
+    /// - `generations()` は sidecar を解釈しないので、**誰にも見えないまま
+    ///   容量を食う**
+    ///
+    /// という 2 つの取りこぼしが残る。畳んでしまえばどちらも起きない。
+    ///
+    /// - Note: 失敗しても投げない——畳めなくてもファイルは使えるままで、
+    ///   復元そのものを失敗にする理由にはならない。**記録は呼び出し側**
+    ///   （この層は `Log` を持たない [A-01]）。
+    /// - Returns: 畳めたら `true`。
+    @discardableResult
+    public static func normalizeJournal(at url: URL) -> Bool {
+        guard FileManager.default.fileExists(atPath: url.path) else { return false }
+        do {
+            let queue = try DatabaseQueue(path: url.path,
+                                          configuration: backupTargetConfiguration())
+            defer { try? queue.close() }
+            // `PRAGMA journal_mode` はトランザクションの中では変えられない。
+            try queue.writeWithoutTransaction {
+                try $0.execute(sql: "PRAGMA journal_mode = DELETE")
+            }
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// 検分のために開く。**読み取り専用を先に試す。**
+    ///
+    /// 読み取り専用で開けないファイルが 1 種類だけある——**第 1 段
+    /// （2026-09-05）が書いた世代**で、あれはヘッダが WAL のままなので
+    /// `-shm` を作れず `SQLITE_CANTOPEN` になる（上記 ``backup`` の注記）。
+    /// そこだけは**中身を変えずにジャーナル形式を正規化してから**読む
+    /// ——さもないと第 1 段で取った世代が二度と検分できず、**戻せない**。
+    ///
+    /// 本当に壊れているファイルは、こちらの経路でも開けないので
+    /// `.unreadable` に落ちる。
+    ///
+    /// - Important: **書き込み権限の無いファイルは検分できない**（この経路が
+    ///   開けないため `.unreadable` になる）。自分が書いた世代はいつも
+    ///   書き込めるので実運用では起きないが、利用者が読み取り専用にした
+    ///   ファイルを持ち込むと戻せない——既知の限界。
+    /// - Returns: 開いた接続と、**ジャーナル形式を書き換えたか**。
+    ///   後者が真なら、呼び出し側は残った `-shm` を捨てること
+    ///   （`BackupStore.discardSidecars`。この層は削除系の `FileManager`
+    ///   API を呼べない [B-10]）——畳むために一度 WAL のまま開くので、
+    ///   閉じても `-shm` が残る［実測、2026-09-06］。
+    private static func openForInspection(at url: URL) throws -> (DatabaseQueue, Bool) {
+        var readOnly = Configuration()
+        readOnly.readonly = true
+        readOnly.prepareDatabase { db in db.add(collation: naturalOrder) }
+        if let queue = try? DatabaseQueue(path: url.path, configuration: readOnly) {
+            return (queue, false)
+        }
+        let queue = try DatabaseQueue(path: url.path,
+                                      configuration: backupTargetConfiguration())
+        try queue.writeWithoutTransaction { try $0.execute(sql: "PRAGMA journal_mode = DELETE") }
+        return (queue, true)
+    }
+
+    public struct StoreInspection: Sendable, Equatable {
+        public enum Kind: Sendable, Equatable {
+            /// そのファイルが無い。
+            case missing
+            /// 開けない（暗号化された別形式・切り詰められた等）。
+            case unreadable(String)
+            /// `PRAGMA integrity_check` に通らない [RB-03]。
+            case corrupt
+            /// アプリが知らない移行が適用済み [MG-12]。
+            case tooNew
+            /// 使える。移行が要るかどうかは ``pendingMigrations`` を見る。
+            case usable
+        }
+
+        public var kind: Kind
+        public var appliedMigrations: Int = 0
+        /// 検分のために**ジャーナル形式を書き換えた**（第 1 段が書いた
+        /// WAL ヘッダの世代だった）。呼び出し側は `-shm` を捨てること。
+        public var didNormalizeJournal: Bool = false
+        /// 開いたときに走る移行の数。**0 でなくても使える**——`open` が
+        /// そこで移行し、その直前に [MG-10] のスナップショットも取る。
+        public var pendingMigrations: Int = 0
+
+        public var isUsable: Bool { kind == .usable }
     }
 }
 

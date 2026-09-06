@@ -331,6 +331,36 @@ struct BackupServiceTests {
         #expect(!names.contains { $0.hasSuffix("-wal") || $0.hasSuffix("-shm") },
                 "見えない付随ファイルが残っている: \(names)")
     }
+
+    /// **標本はファイル由来の（＝WAL の）ストアでなければならない**
+    /// ［実機検証で発見、2026-09-06］。
+    ///
+    /// 上の検査は `Rig` が `inMemory()` を使っており、メモリ上の DB は WAL に
+    /// ならないので**この経路を一度も通っていなかった**——実ストアを写すと
+    /// 複製のヘッダが WAL のままになり、直後にジャーナルを畳む際に接続が
+    /// 一度 WAL へ入って **`-shm` を作り、閉じても残す**。実機で実際に
+    /// 32 KB の `-shm` が世代の隣に残っていた。
+    ///
+    /// `generations()` は sidecar を解釈しないので、**誰にも見えないまま
+    /// 容量を食い、剪定にもかからない。**
+    @Test("実ストアを写しても付随ファイルを残さない [BK3-08]")
+    func copyingALiveStoreLeavesNoSidecars() async throws {
+        let directory = Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let liveURL = directory.appendingPathComponent("live.sqlite")
+        let live = try QooDatabase.open(at: liveURL)   // ここで WAL になる
+        defer { try? live.writer.close() }
+
+        let store = BackupStore(directory: directory.appendingPathComponent("backups"))
+        let service = BackupService(store: store, appVersion: "test")
+        _ = try await service.snapshot(reason: .jsonImport,
+                                       repository: SQLiteBackupRepository(database: live),
+                                       database: live)
+
+        let names = try FileManager.default.contentsOfDirectory(atPath: store.directory.path)
+        #expect(!names.contains { $0.hasSuffix("-wal") || $0.hasSuffix("-shm") },
+                "見えない付随ファイルが残っている: \(names)")
+    }
 }
 
 /// 古いスキーマの移行前ストアを模す。

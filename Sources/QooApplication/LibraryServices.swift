@@ -103,6 +103,16 @@ public final class LibraryServices {
     /// ``startSync()`` で動き出す。
     public private(set) var sync: LibrarySyncCoordinator?
 
+    /// ストアの健全性 [RB-03][RB-06]。**起動時に 1 度だけ調べる。**
+    public private(set) var storeHealth: StoreHealth = .healthy
+
+    /// 直前の起動で予約されていた復元の結果 [BK-03]。**この起動でだけ意味を持つ。**
+    ///
+    /// 成否の両方をここに残す——成功したことを黙っていると「戻したはずなのに
+    /// 戻ったのか分からない」、失敗を黙っていると**戻っていないのに戻ったと
+    /// 思ったまま使い続ける**ことになる。UI が起動後に 1 度読んで提示する。
+    public private(set) var restoreOutcome: RestoreOutcome?
+
     /// - Parameter userCoverStore: ユーザー指定カバーの複製の置き場所 [CV-06]。
     ///   **テストは独立した一時ディレクトリを渡すこと**（`bootstrap(storeURL:)` と
     ///   同じ理由）。既定も `swift test` 中は振り替わるが、テストどうしが
@@ -179,8 +189,18 @@ public final class LibraryServices {
             startupFailure = .storeLocationUnavailable
             return
         }
+
+        // [BK-03][IE-16] **`open` の前**に差し替える。ここが「誰もストアを
+        // 掴んでいない」唯一の瞬間で、しかも**直前の起動でストアが開けたか
+        // どうかに依存しない**——だからこそ壊れたストアからも同じ 1 本の
+        // 経路で戻せる（`PendingRestore` の doc）。
+        let service = backupService
+        restoreOutcome = await FileIO.perform {
+            service.applyPendingRestore(storeURL: storeURL)
+        }
+        if let restoreOutcome { report(restoreOutcome) }
+
         do {
-            let service = backupService
             let takesSnapshots = takesAutomaticSnapshots
             let opened = try await FileIO.perform {
                 // [MG-10] **移行の前に JSON とストア複製の両方を残す。**
@@ -220,14 +240,57 @@ public final class LibraryServices {
             notificationHistory = SQLiteNotificationHistoryStore(database: opened)
             operationLog = SQLiteOperationLogStore(database: opened)
             Log.app.info("ライブラリストアを開いた: \(Log.path(storeURL))")
+            // [RB-03] **開けたことと壊れていないことは別。** 開いた直後に
+            // 一度だけ確かめる——ここで見ておかないと、破損は「あるはずの
+            // ラベルが出てこない」という、原因の分からない形で現れる。
+            //
+            // **`quick_check` を使う**［実測、2026-09-06: 128 MB で
+            // `quick_check` 0.050 秒／`integrity_check` 0.128 秒］。毎起動で
+            // 走るので安いほうを採る——構造の破損（ページ・B ツリー）は
+            // どちらも見つけ、`integrity_check` が加えて見る索引の食い違いは
+            // **再生成できる** [MG-22] ので、復元を提案する理由にはならない。
+            // 控えを書く前の関門 [BK3-05] は従来どおり `integrity_check`。
+            //
+            // **投げたときは破損と見なさない**［code-review で発見］。
+            // 検査そのものが失敗しただけで「壊れています、復元しますか」を
+            // 出すと、**それに従った利用者は控え以降の内容を捨てる**。
+            do {
+                if try await opened.quickCheck() == false {
+                    storeHealth = .corrupt
+                    Log.db.error("ストアが quick_check に通らない [RB-03]")
+                }
+            } catch {
+                // **検査そのものが失敗した。** 破損とは見なさない——I/O の
+                // 一時的な失敗・中断でも投げうるので、それを「壊れています、
+                // 復元しますか」に変えると、**従った利用者は控え以降の内容を
+                // 捨てる**。害が非対称なので、取り逃がす側へ倒す（本当に
+                // 壊れていれば `quick_check` は投げずに `ok` 以外を返すし、
+                // 控えを書く前の関門 [BK3-05] でも `integrity_check` が見る）。
+                //
+                // **この分岐はテストで固定できていない**——`PRAGMA` を投げ
+                // させる注入点が無く、production へテスト用の口を足す
+                // （このリポジトリが避けてきたこと）以外に手が無い。
+                Log.db.warning("quick_check を実行できない: \(String(describing: error))")
+            }
             makeSyncCoordinator()
             await attachNotificationHistory()
             await attachOperationLog()
+        // **健全性を先に決めてから失敗を立てる**［実機検証で発見、2026-09-06］。
+        // `startupFailure` は「起動が終わった」の合図として外から見張られて
+        // いる（`BackupRestoreAction.waitUntilBootstrapFinished`）。先に立てると、
+        // その直後の `await`（検分は実 I/O）の間に見張り側が動き出し、
+        // **`storeHealth` がまだ既定の `.healthy` のまま**復元の提案を判定して
+        // しまう——RB-03／RB-06 の提案が黙って出ない。検分を先に済ませれば
+        // 2 つの代入が同じ実行の中で並ぶので、途中の状態を観測されない。
         } catch let error as QooDatabase.StoreError {
+            let health = await Self.rescueInspection(of: storeURL)
+            storeHealth = health
             startupFailure = StoreStartupFailure(error)
             Log.app.error("ライブラリストアを開けない: \(String(describing: error))")
             return
         } catch {
+            let health = await Self.rescueInspection(of: storeURL)
+            storeHealth = health
             startupFailure = .openFailed(String(describing: error))
             Log.app.error("ライブラリストアを開けない: \(String(describing: error))")
             return
@@ -249,6 +312,84 @@ public final class LibraryServices {
         } catch {
             await reportSnapshotFailure(.launch, error)
         }
+    }
+
+    /// 開けなかったストアを**読み取り専用で検分する** [RB-06]。
+    ///
+    /// ## ここで言う「読み取り専用モード」は救助のためのものである
+    ///
+    /// 要件 RB-06 は「移行の失敗時は読み取り専用モードで起動し、復元を
+    /// 提示する」と定めるが、**アプリを読み取り専用で動かすことはできない**
+    /// ——移行に失敗したストアは（GRDB が移行 1 つずつをトランザクションで
+    /// 囲むので）**巻き戻って古いスキーマのまま**であり、現行の record 型は
+    /// そこに無いテーブルや列を読もうとして落ちる。「普段どおり使えるが
+    /// 書けないだけ」にはならない。
+    ///
+    /// できるのは、**中身が生きているかどうかを利用者に言えるようにする**
+    /// ことである。それが分かれば「復元すれば戻る」のか「この控えも駄目だ」
+    /// のかを選べる——RB-06 が本当に要るのはそこだと解釈した。
+    ///
+    /// **`FileIO` の上で回す** [NV6-01][NV6-02]——`PRAGMA` を走らせる実 I/O で、
+    /// ここはメインアクタである。起動の最後で画面を止めることになる。
+    private static func rescueInspection(of storeURL: URL) async -> StoreHealth {
+        let inspection = await FileIO.perform { QooDatabase.inspect(at: storeURL) }
+        return switch inspection.kind {
+        case .usable: .unopenableButReadable
+        case .corrupt, .unreadable: .corrupt
+        case .tooNew: .tooNew
+        case .missing: .healthy   // 無いものは壊れていない（新規に作られる）
+        }
+    }
+
+    // MARK: - 整合性チェック [RB-02]
+
+    /// DB とファイルシステムの不整合を数える [RB-02][12章 §12.7]。
+    ///
+    /// **非排他** [LK-01]——読むだけなので他の処理と並行してよい。
+    /// **走査がやることはやらない**（`IntegrityReport` の doc）。
+    public func checkIntegrity() async throws -> IntegrityReport {
+        guard let database else { throw ServiceError.notReady }
+        // 複製の実体があるかは `UserCoverStore` にしか分からない——
+        // 置き場所を知っているのはあちらで、`QooPersistence` からは
+        // 依存できない [A-01]。判定だけを渡す。
+        let byLibrary = Dictionary(uniqueKeysWithValues: libraries.map { ($0.id, $0.uuid) })
+        let store = userCoverStore
+        return try await SQLiteIntegrityRepository(database: database).check {
+            libraryID, ref in
+            guard let uuid = byLibrary[libraryID] else { return false }
+            return FileManager.default.fileExists(
+                atPath: store.url(forRef: ref, libraryUUID: uuid).path)
+        }
+    }
+
+    /// 選ばれた項目だけを直す [RB-02][12章 §12.7: 自動修復はしない]。
+    @discardableResult
+    public func repairIntegrity(_ findings: [IntegrityFinding]) async throws -> Int {
+        guard let database else { throw ServiceError.notReady }
+        let repaired = try await SQLiteIntegrityRepository(database: database).repair(findings)
+        if repaired > 0 {
+            // DB を書いたので、開いている画面へ読み直しを促す [§19.13 #2]。
+            LibraryGeneration.shared.bump()
+        }
+        return repaired
+    }
+
+    // MARK: - 復元 [BK-03][IE-16]
+
+    /// 「次の起動で復元する」予約を置く [BK-03]。
+    ///
+    /// **ストアが開けていなくても呼べる**——バックアップの置き場所は DB と
+    /// 独立で、しかも**戻したいのはまさに開けないストア**である。
+    public func requestRestore(_ generation: BackupGeneration) async throws {
+        try await backupService.requestRestore(generation)
+    }
+
+    public func pendingRestore() -> PendingRestore? { backupService.pendingRestore() }
+    public func cancelPendingRestore() { backupService.cancelPendingRestore() }
+
+    /// 置いてある世代 [BK-03]。**DB とは独立**なので `isReady` を問わない。
+    public func backupGenerations() throws -> [BackupGeneration] {
+        try backupService.generations()
     }
 
     /// 破壊的な操作の直前 [BK-02]。**決して投げない。**
@@ -276,6 +417,22 @@ public final class LibraryServices {
                 スナップショットを取った（\(outcome.reason.rawValue)）: JSON \
                 \(outcome.documentURL.map { Log.path($0) } ?? "なし") \
                 / 複製 \(outcome.storeURL == nil ? "なし" : "あり") / 剪定 \(outcome.prunedCount) 件
+                """)
+        }
+    }
+
+    /// 復元の結果をログへ [BK-03]。**利用者への提示は UI 側**——起動直後の
+    /// この時点ではウインドウがまだ無い。
+    private func report(_ outcome: RestoreOutcome) {
+        if let failure = outcome.failure {
+            Log.db.error("""
+                バックアップからの復元に失敗（\(outcome.restoredFrom)）: \
+                \(String(describing: failure))
+                """)
+        } else {
+            Log.db.info("""
+                バックアップから復元した: \(outcome.restoredFrom) — 差し替え前のストアは \
+                \(outcome.previousStoreURL.map { Log.path($0) } ?? "退避なし（ストアが無かった）")
                 """)
         }
     }
@@ -1526,6 +1683,21 @@ public final class LibraryServices {
         /// ボリューム識別子を取れない [NV3-01]。空文字で代用してはならない。
         case volumeIdentityUnavailable
     }
+}
+
+/// ストアの健全性 [RB-03][RB-06]。**復元を提案すべきかの判断材料。**
+public enum StoreHealth: Sendable, Equatable {
+    case healthy
+    /// 開けたが `PRAGMA integrity_check` に通らない [RB-03]。
+    case corrupt
+    /// **アプリとしては開けないが、中身は読めた** [RB-06]。移行に失敗した
+    /// ときの典型で、**復元すれば戻ることを利用者に言える**状態。
+    case unopenableButReadable
+    /// アプリが知らない移行が適用済み [MG-12]。復元ではなくアプリの更新が要る。
+    case tooNew
+
+    /// バックアップからの復元を提案すべきか [RB-03][RB-06]。
+    public var needsRecovery: Bool { self != .healthy }
 }
 
 /// ストアを開けなかった理由 [MG-11][MG-12][RB-06]。
