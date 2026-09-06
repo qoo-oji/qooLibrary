@@ -146,6 +146,13 @@ let generic: Set<String> = [
     // コミットログを走査対象に加えた [MT-29] ことで当たるようになった
     // （"archive preview doubles as the placeholder" の doubles）。
     "doubles",
+    // 外来語の辞書語。利用者向けマニュアル（`MANUAL.md`）の方針を CLAUDE.md へ
+    // 書いたときに当たった [2026-09-06]。**この検査は語の一致しか見ないので、
+    // 文脈（作品名か、こちらが書いた普通名詞か）は区別できない**——「マニュアル」
+    // のような普通名詞を文書に書くと、実蔵書にその語を含むファイルがある限り
+    // 必ず当たる。同じことは「ドキュメント」「プロジェクト」でも起きており、
+    // それらは既にこの一覧にある。
+    "マニュアル",
 ]
 
 let targets = nouns.subtracting(generic).filter { $0.count >= 3 }

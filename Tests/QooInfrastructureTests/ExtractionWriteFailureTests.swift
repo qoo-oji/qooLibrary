@@ -109,7 +109,13 @@ import Testing
             Issue.record("作業領域の不足として断られなかった: \(error)")
             return
         }
-        #expect(error.localizedDescription.contains("起動ディスク"))
+        // **文言そのものを検査してはいけない** [2026-09-06 に CI が落ちて判明]。
+        // エラー文言はカタログから引くようになったので**表示言語に従う**——
+        // 日本語環境の開発機では通り、英語の CI ランナーでは落ちる。
+        // ここで見たいのは「展開先ではなく作業領域の不足として断られた」ことで、
+        // それは上の `guard case .insufficientStagingSpace` が既に保証している。
+        // 訳が実際に引けることは `LocalizedStringsTests` が別途見る。
+        #expect(!error.localizedDescription.isEmpty)
         // 展開先には何も書かれていないこと。
         #expect(try FileManager.default.contentsOfDirectory(atPath: destination.path).isEmpty)
     }
