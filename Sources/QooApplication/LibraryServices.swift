@@ -60,6 +60,23 @@ public final class LibraryServices {
     /// ライブラリ機能が使えるか。UI はこれを見てメニュー項目の有効／無効を決める。
     public var isReady: Bool { database != nil }
 
+    /// `bootstrap()` の完了を待つ。開けなかったと分かった時点で `false`。
+    ///
+    /// **待ち方をここ 1 つにする** [code-review の指摘]——起動時の初回
+    /// セットアップ導線 [OB-01]、未有効登録の再開 [§19.10 ステージ 2]、
+    /// セットアップから登録ウィザードへの引き渡し [SW-02] の 3 箇所が必要と
+    /// する。呼び出し側ごとに書くと、待たない経路が 1 つできた時点で
+    /// 「押しても何も起きない」[ER-01] が生まれる。
+    public func waitUntilReady(timeoutSeconds: Double = 15) async -> Bool {
+        let attempts = Int(timeoutSeconds * 4)   // 250ms 刻み
+        for _ in 0..<attempts {
+            if isReady { return true }
+            if startupFailure != nil { return false }
+            try? await Task.sleep(for: .milliseconds(250))
+        }
+        return isReady
+    }
+
     /// 自動走査が終わったときに UI へ知らせる受け口 [ID-05]。
     ///
     /// **「自動走査はダイアログを出さない」という方針は、判断が要るものに

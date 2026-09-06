@@ -48,7 +48,9 @@ public actor AppAssociationStore: AppAssociationService {
     /// あっても、既存ユーザーには自動反映されない——カスタマイズ可能な
     /// 一覧としては一般的で無害な挙動であり、Finder のお気に入りサイドバー
     /// が新しい既定項目を既存ユーザーへ遡って追加しないのと同じ）。
-    private static let defaultExtensions: Set<String> = ["zip", "cbz", "7z", "cb7", "rar", "cbr", "pdf", "epub"]
+    /// **定義は `ComicFormats.extensions`（`QooKit`）に 1 つだけ**
+    /// [AS-03]。初回セットアップウィザードのステップ 3 と共有する。
+    private static let defaultExtensions = Set(ComicFormats.extensions)
 
     private let storageURL: URL
     private var associations: [String: String] = [:] // 拡張子（小文字） → bundleID

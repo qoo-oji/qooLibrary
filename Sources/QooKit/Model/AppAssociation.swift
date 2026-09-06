@@ -14,6 +14,17 @@ public struct AppCandidate: Sendable, Equatable, Identifiable {
     }
 }
 
+/// qooLibrary が中核として扱うコミック形式の拡張子 [AS-03]。
+///
+/// **定義はここ 1 箇所。** 環境設定「ビューア」タブの初期項目
+/// （`AppAssociationStore`）と、初回セットアップウィザードのステップ 3
+/// （`SetupViewerChoice`）が共有する——2 箇所に書くと、片方に形式を足した
+/// ときにもう片方が取り残される。
+public enum ComicFormats {
+    /// 並びは「アーカイブ → 文書」。設定を適用する順でもある。
+    public static let extensions = ["zip", "cbz", "7z", "cb7", "rar", "cbr", "pdf", "epub"]
+}
+
 /// 拡張子以外の関連付けキー。
 ///
 /// 画像フォルダ（ブックフォルダ [IF-01]）は拡張子を持たないので、

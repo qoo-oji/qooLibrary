@@ -948,9 +948,17 @@ struct MainWindowView: View {
             // メインスレッドで FS を待たない [NV6-02]。
             windowState.title = await FileIO.perform { FileManager.default.displayName(atPath: url.path) }
             startupFolderResolved = true
+            // 初回セットアップウィザード [OB-01]。**未有効登録の再開より先に
+            // 判定する** [SW-07]——条件は排他的（こちらは登録 0 件、あちらは
+            // 登録があって未有効）なので実際には競合しないが、どちらかの条件が
+            // 変わったときに窓が重なる形を構造で防いでおく。
+            let presentedSetup = await SetupWizard.runOnceIfNeeded(
+                locale: locale, openWindow: openWindow)
             // 登録済みだが未有効のライブラリがあれば、ウィザードをステップ 3
             // から再開して有効化まで導く [§19.10 ステージ 2]。起動につき 1 回。
-            LibrarySetupPrompt.runOnce(locale: locale, openWindow: openWindow)
+            if !presentedSetup {
+                LibrarySetupPrompt.runOnce(locale: locale, openWindow: openWindow)
+            }
             // 直前の起動で予約された復元の結果と、ストアが不調なときの
             // 復元の提案 [BK-03][RB-03][RB-06]。**同じ位置から呼ぶ**——
             // どちらも「起動直後に 1 度だけ、ウインドウが出てから」。

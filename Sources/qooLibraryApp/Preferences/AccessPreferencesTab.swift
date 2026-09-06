@@ -54,29 +54,13 @@ struct AccessPreferencesTab: View {
         .task { await reload() }
     }
 
+    /// **実装は `VolumeAccessAction` に 1 つだけ** [SB-03]。初回セットアップ
+    /// ウィザードのステップ 2 と共有する——同じに見える操作に独立した経路を
+    /// 2 つ作ると片方だけ直して取り残す。
     private func addAccess() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.message = String(localized: "preferences.access.panelMessage", locale: locale)
-        // 起動ボリューム（Macintosh HD）を許可すると、実機検証の結果マウント中の
-        // 外部ボリュームもまとめてアクセス可能になることを確認した
-        // [ユーザー要望]。最小限の操作（そのまま「選択」を押すだけ）で選べる
-        // よう、既定でルート（起動ボリューム自身）を指す状態でパネルを開く。
-        panel.directoryURL = URL(fileURLWithPath: "/")
-        guard panel.runModal() == .OK, let url = panel.url else { return }
         Task {
-            do {
-                _ = try await VolumeAccessStore.shared.grantAccess(to: url, displayName: nil)
-                await reload()
-                // フォルダツリーが既にキャッシュしている「アクセス権がありません」
-                // 状態を再読み込みさせる [`FolderTreePane` の `SessionState.reloadToken`
-                // 監視と対になる、`AccessDeniedRow` 経由の許可と同じ理由]。
-                SessionState.shared.reloadToken += 1
-            } catch {
-                await NotificationRouter.shared.presentError(error, whatHappened: String(localized: "error.operationFailed", locale: locale))
-            }
+            await VolumeAccessAction.requestGrant(locale: locale)
+            await reload()
         }
     }
 

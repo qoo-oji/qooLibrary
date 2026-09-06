@@ -202,6 +202,7 @@ struct QooLibraryApp: App {
             }
             CommandGroup(replacing: .appSettings) {
                 PreferencesMenuButton()
+                SetupWizardMenuButton()
             }
             // [Finder/Edit メニュー整備、要件定義書には無いユーザー要望への対応]
             // `.newItem`（既定の「新規ウインドウ」)の直後に追加する。個々の
@@ -381,6 +382,20 @@ private struct PreferencesMenuButton: View {
             openWindow(id: "preferences")
         }
         .keyboardShortcut(",", modifiers: .command)
+    }
+}
+
+/// 「初回セットアップをやり直す」[OB-01、13章 §13.7]。
+///
+/// `.commands` はシーン構築時に評価され `@Environment(\.locale)` が効かない
+/// ので、表示言語は `AppLanguage.effectiveLocale` から取る（既存の慣例）。
+private struct SetupWizardMenuButton: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("setupWizard.rerun", systemImage: "sparkles") {
+            SetupWizard.rerun(locale: AppLanguage.effectiveLocale, openWindow: openWindow)
+        }
     }
 }
 

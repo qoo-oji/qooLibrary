@@ -34,7 +34,7 @@ enum LibrarySetupPrompt {
         // DB の準備を待つ（`bootstrap()` は起動時に走っている）。開けなかった
         // 起動では何もしない——有効化しようとした時点で理由付きで断られる
         // [ER-03] ほうが、起動直後に説明なしのウィザードが出るより読める。
-        guard await waitUntilServicesReady() else { return }
+        guard await LibraryServices.shared.waitUntilReady() else { return }
         let services = LibraryServices.shared
         // **一覧を読み直してから判定する**——`isReady` は DB が開いた瞬間に
         // 真になるが、`libraries` の初回読み込みは `bootstrap()` の末尾で走る。
@@ -61,16 +61,5 @@ enum LibrarySetupPrompt {
             }
             return   // 1 度に 1 件だけ
         }
-    }
-
-    /// `LibraryServices` の準備完了を待つ。上限を過ぎたら諦める（起動が
-    /// 失敗している・初回でテーブル作成に時間がかかっている等）。
-    private static func waitUntilServicesReady() async -> Bool {
-        for _ in 0..<60 {   // 250ms × 60 = 15 秒
-            if LibraryServices.shared.isReady { return true }
-            if LibraryServices.shared.startupFailure != nil { return false }
-            try? await Task.sleep(for: .milliseconds(250))
-        }
-        return LibraryServices.shared.isReady
     }
 }
