@@ -87,17 +87,34 @@ public struct BackupService: Sendable {
 
     // MARK: - 設定 [BK-07]
 
-    /// この契機を実行するか [BK-07]。**既定はすべて OFF**（``BackupSettings``）。
+    /// この契機を実行するか [BK-07]。**利用者が選ぶ 3 つは既定 OFF**
+    /// （``BackupSettings``）。
     ///
     /// 起動時 [BK-01] は頻度が別に効くので、ここでは「取らない」だけを見る。
+    /// 復元前の退避 [BK-03] だけは設定の対象外——理由は `case` のコメント。
     func isEnabled(_ reason: BackupReason) -> Bool {
         switch reason {
         case .launch:
             resolvedLaunchInterval.seconds != nil
         case .schemaMigration:
             beforeMigrationOverride ?? Self.configuredSnapshotsBeforeMigration()
-        case .jsonImport, .bulkLabelDelete, .templateApply, .libraryDelete, .beforeRestore:
+        case .jsonImport, .bulkLabelDelete, .templateApply, .libraryDelete:
             beforeDestructiveOverride ?? Self.configuredSnapshotsBeforeDestructive()
+        case .beforeRestore:
+            // **設定では切れない**［2026-09-07］。退避は `BackupStore.swapInStore`
+            // が無条件に行う——復元は取り返しがつかないので「戻す前」へ帰る道は
+            // 常に要り、しかも退避は*移動*なので追加の容量を使わない。
+            //
+            // いま `snapshot` へこの契機が渡る経路は無い。それでも
+            // `beforeDestructiveOverride` を返すようにしておくと**「設定で
+            // 切れる」と読めてしまい**、通った日に `store` はあるのに
+            // `appData` が無い世代ができる [BK3-11]。
+            //
+            // **この分岐はテストで固定できていない**——`isEnabled` へ
+            // `.beforeRestore` が渡る経路が 1 つも無いので、`false` を返す
+            // 変異を当てても落ちない［実測、2026-09-07］。守っているのは
+            // 「通った日に対が崩れないこと」で、それは今日の観測には出ない。
+            true
         }
     }
 
@@ -332,6 +349,25 @@ public struct BackupService: Sendable {
             // 必要がある）。変異を当てても検出できないことを確認済み。
             outcome.previousStoreURL = archived
         }
+        // **退避したなら、対の束も同じ時刻で残す** [BK-06][BK3-11]。
+        //
+        // `swapInStore` が動かすのは DB だけなので、ここで写す
+        // `registeredFolders.json` などは**まだ差し替え前**のもの
+        // （`restoreAppData` はこの後）。名前で対を引けるよう `now` を共有する。
+        //
+        // **条件を `previousStoreURL` にしてあるのが要点**——退避が実際に
+        // 起きたときだけ真になるので、①ストアがまだ無い初回起動 ②複製に
+        // 失敗して巻き戻せた（`.store` が元へ戻り退避は残らない）の
+        // どちらでも**片方だけの世代を作らない**。巻き戻しにも失敗した
+        // ときは非 `nil` のままなので、**そのときは書く**——その退避が
+        // 唯一の足場で、そこから戻すのに束が要る。
+        //
+        // **BK-07 の設定は見ない。** 退避そのものが設定に関わらず行われる
+        // 以上、束だけ設定で切ると「`store` はあるのに `appData` が無い」
+        // 世代ができ、BK3-11 が塞ごうとした食い違いをこちらで作ることになる。
+        if outcome.previousStoreURL != nil {
+            _ = writeAppDataIgnoringFailure(reason: .beforeRestore, now: now)
+        }
         if outcome.failure == nil {
             outcome.appDataRestored = restoreAppData(pairedWith: pending.fileName)
         }
@@ -393,7 +429,7 @@ public struct BackupService: Sendable {
                 try? store.remove(paired)
             }
         }
-        try? store.pruneUserCoverPool()
+        _ = try? store.pruneUserCoverPool()
     }
 
     // MARK: - 書き込みの共通部分
@@ -406,8 +442,16 @@ public struct BackupService: Sendable {
     private func persist(reason: BackupReason, document: BackupDocument, now: Date,
                          copyStore: (URL) throws -> Void) throws -> BackupOutcome
     {
-        let data = try BackupCoding.encode(document)
-        let documentURL = try store.writeDocument(data, reason: reason, date: now)
+        // **3 種とも `kinds` で判断する** [BK3-11]。`document` だけ無条件に
+        // 書いていると、`kinds` から外した契機が**宣言に反して JSON を書く**
+        // ——2026-09-07 に `beforeRestore` を外した時点でその食い違いが
+        // 生まれた（`persist` へ渡る経路は今のところ無いが、通った日に
+        // 静かに壊れる形を残さない）。
+        var documentURL: URL?
+        if reason.kinds.contains(.document) {
+            let data = try BackupCoding.encode(document)
+            documentURL = try store.writeDocument(data, reason: reason, date: now)
+        }
         var storeURL: URL?
         if reason.kinds.contains(.store) {
             let destination = try store.prepareStoreDestination(reason: reason, date: now)

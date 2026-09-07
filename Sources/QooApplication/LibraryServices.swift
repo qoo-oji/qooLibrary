@@ -467,6 +467,17 @@ public final class LibraryServices {
         try backupService.generations()
     }
 
+    /// 世代を 1 つ消す [BK-06]。**対の束とカバーの共有プールも片付ける。**
+    ///
+    /// `BackupStore.remove` を直に呼んではならない——束（`.appdata`）は
+    /// 一覧に出さないので**孤児として残り、誰も消せなくなる**。しかも
+    /// [BK-07] の既定（すべて OFF）ではスナップショットが走らず
+    /// `pruneUserCoverPool()` の到達経路が他に無いので、その束が
+    /// 押さえているカバーの実体も回収されない。
+    public func removeBackupGeneration(_ generation: BackupGeneration) throws {
+        try backupService.remove(generation)
+    }
+
     /// 破壊的な操作の直前 [BK-02]。**決して投げない。**
     ///
     /// バックアップを取れないことを理由に、利用者が頼んだ操作そのものを

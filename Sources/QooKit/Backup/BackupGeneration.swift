@@ -54,11 +54,26 @@ extension BackupReason {
     /// DB とブックマークは**対でしか意味を持たない**——片方だけ残る世代を作ると、
     /// そこから復元しても「ライブラリの行はあるが実体に到達できない」状態になる。
     ///
+    /// **``BackupReason/beforeRestore`` だけは
+    /// ``BackupGeneration/Kind/document`` を取らない**［2026-09-07］。
+    /// 退避を作る `BackupStore.swapInStore` は `QooDatabase.open` の**前**に
+    /// 走るので、JSON を書くのに要るリポジトリがまだ無い——**構造的に
+    /// 書けない**。
+    ///
+    /// > 2026-09-07 までここが 3 種を返していたが、実装は `store` しか
+    /// > 作っていなかった。**宣言と実装が食い違うと、その差はいちばん
+    /// > 気づきにくい形で出る**——「戻しすぎた」から退避へ戻したときに
+    /// > `restoreAppData` が対の束を見つけられず、DB は退避した時点・
+    /// > `registeredFolders.json` は 1 回目の復元で書き戻された時点、で
+    /// > 食い違った。BK3-11 が塞ごうとした穴と同じ形である。
+    ///
     /// `switch` を網羅的に書いてあるので、契機を足す人は必ず何を取るか選ぶ。
     public var kinds: Set<BackupGeneration.Kind> {
         switch self {
-        case .launch, .schemaMigration, .jsonImport, .beforeRestore, .libraryDelete:
+        case .launch, .schemaMigration, .jsonImport, .libraryDelete:
             [.document, .store, .appData]
+        case .beforeRestore:
+            [.store, .appData]
         case .bulkLabelDelete, .templateApply:
             [.document]
         }

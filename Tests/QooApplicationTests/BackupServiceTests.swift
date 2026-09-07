@@ -106,6 +106,27 @@ struct BackupServiceTests {
         #expect(stems.count == 1, "store と appData の名前が対になっていない")
     }
 
+    @Test("kinds に無い種別は書かない——document も例外ではない [BK3-11]")
+    func persistHonoursKindsForTheDocumentToo() async throws {
+        let directory = Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let rig = try Rig(directory: directory)
+        let service = BackupService(store: rig.store, appVersion: "t",
+                                    appDataLocation: try Self.makeAppDataLocation(under: directory),
+                                    launchInterval: .daily,
+                                    snapshotsBeforeDestructive: true,
+                                    snapshotsBeforeMigration: true)
+        // `.beforeRestore` は JSON を取らない——退避は `QooDatabase.open` の
+        // 前に走る契機なので、書くのに要るリポジトリがそもそも無い。
+        // `persist` が `document` だけ無条件に書いていると、**宣言に反した
+        // 世代がここで生まれる**（`kinds` を 1 箇所で決める意味が消える）。
+        let outcome = try await service.snapshot(reason: .beforeRestore,
+                                                 repository: rig.repository,
+                                                 database: rig.database)
+        #expect(outcome.documentURL == nil)
+        #expect(!(try rig.store.generations().contains { $0.kind == .document }))
+    }
+
     // MARK: - 設定 [BK-07]
 
     @Test("既定はすべて OFF [BK-07]［ユーザー判断: Time Machine と二重に溜めない］")
@@ -370,8 +391,10 @@ struct BackupServiceTests {
         let rig = try Rig(directory: Self.temporaryDirectory(), documents: 50, stores: 50)
         var urls: Set<URL> = []
         for _ in 0 ..< 3 {
+            // 契機は**JSON を取るもの**なら何でもよい（`.beforeRestore` は
+            // 取らない [BK3-11]）。主張は「毎回別の名前で書く」ことだけ。
             let outcome = try await rig.service.snapshot(
-                reason: .beforeRestore, repository: rig.repository, database: rig.database)
+                reason: .libraryDelete, repository: rig.repository, database: rig.database)
             urls.insert(try #require(outcome.documentURL))
         }
         #expect(urls.count == 3, "3 回とも別のファイルへ書く")

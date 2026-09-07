@@ -129,7 +129,7 @@ enum BackupRestoreAction {
         ) { _ in
             BackupGenerationDeleteDialog(generation: generation) {
                 do {
-                    try BackupStore().remove(generation)
+                    try LibraryServices.shared.removeBackupGeneration(generation)
                 } catch {
                     Task {
                         await NotificationRouter.shared.presentError(

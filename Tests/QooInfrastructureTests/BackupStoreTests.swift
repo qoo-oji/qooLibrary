@@ -291,10 +291,18 @@ struct BackupStoreTests {
         }
     }
 
-    @Test("どの契機でも JSON 文書は取る [BK-01][BK-05]")
+    @Test("復元前の退避を除き、どの契機でも JSON 文書は取る [BK-01][BK-05]")
     func everyReasonWritesTheDocument() {
-        for reason in BackupReason.allCases {
+        for reason in BackupReason.allCases where reason != .beforeRestore {
             #expect(reason.kinds.contains(.document), "\(reason) が文書を取らない")
         }
+        // **`beforeRestore` だけは構造的に書けない**［2026-09-07］。退避を
+        // 作る `BackupStore.swapInStore` は `QooDatabase.open` の**前**に走る
+        // ので、JSON を書くのに要るリポジトリがまだ無い。
+        //
+        // ここを緩めても戻り道は減らない——退避から戻すのに要るのは
+        // `store` と、対の `appData`（`registeredFolders.json` を持つ）で、
+        // その対は上の `theStoreCopyAndAppDataAlwaysComeAsAPair` が固定する。
+        #expect(BackupReason.beforeRestore.kinds == [.store, .appData])
     }
 }

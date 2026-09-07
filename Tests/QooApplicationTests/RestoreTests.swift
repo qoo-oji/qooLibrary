@@ -27,6 +27,8 @@ struct RestoreTests {
         let backupDirectory: URL
         let coverDirectory: URL
         let templateStoreURL: URL
+        /// DB の外にあるデータの置き場所 [BK-06]。**実データには触れない。**
+        let appDirectory: URL
 
         init() {
             base = URL(fileURLWithPath: NSTemporaryDirectory())
@@ -35,6 +37,19 @@ struct RestoreTests {
             backupDirectory = base.appendingPathComponent("backups")
             coverDirectory = base.appendingPathComponent("usercovers")
             templateStoreURL = base.appendingPathComponent("userTemplates.json")
+            appDirectory = base.appendingPathComponent("app")
+        }
+
+        var appDataLocation: AppDataSnapshot.Location {
+            AppDataSnapshot.Location(
+                registeredFolders: appDirectory.appendingPathComponent("registeredFolders.json"),
+                volumeAccess: appDirectory.appendingPathComponent("volumeAccess.json"),
+                appAssociations: appDirectory.appendingPathComponent("appAssociations.json"),
+                // **`DefaultUserCoverStore` と同じ場所を指す**——本番は
+                // `userCoverStore.baseDirectory` を渡す。ずれていると
+                // `manifest.userCovers` が常に空になり、カバーの取り込みも
+                // 書き戻しも一度も通らない［code-review で発見］。
+                userCovers: coverDirectory)
         }
 
         deinit { try? FileManager.default.removeItem(at: base) }
@@ -42,7 +57,8 @@ struct RestoreTests {
         var store: BackupStore { BackupStore(directory: backupDirectory) }
         // [BK-07] 既定は OFF なので、契機を試すテストは明示的に ON にする。
         var service: BackupService {
-            BackupService(store: store, appVersion: "test", launchInterval: .daily,
+            BackupService(store: store, appVersion: "test",
+                          appDataLocation: appDataLocation, launchInterval: .daily,
                           snapshotsBeforeDestructive: true, snapshotsBeforeMigration: true)
         }
 
@@ -83,13 +99,38 @@ struct RestoreTests {
 
     /// 「戻したい状態」の複製を 1 世代作る。中身に印を付けて返す。
     @MainActor
-    private static func makeGeneration(_ rig: Rig, mark: String) async throws -> BackupGeneration {
+    private static func makeGeneration(_ rig: Rig, mark: String,
+                                       bundlingAppData: Bool = false) async throws
+        -> BackupGeneration
+    {
         try await stamp(rig.storeURL, mark)
-        let destination = try rig.store.prepareStoreDestination(reason: .launch)
+        let now = Date()
+        let destination = try rig.store.prepareStoreDestination(reason: .launch, date: now)
         let db = try QooDatabase.open(at: rig.storeURL)
         try QooDatabase.backup(writer: db.writer, to: destination)
         try db.writer.close()
+        if bundlingAppData {
+            // `restoreAppData` は**名前で対を引く**ので `date` を揃える。
+            let archive = try AppDataSnapshot.capture(rig.appDataLocation,
+                                                      linkingCoversInto: rig.store.userCoverPool)
+            _ = try rig.store.writeAppData(archive, reason: .launch, date: now)
+        }
         return try #require(try rig.generations().first { $0.url == destination })
+    }
+
+    /// 登録の中身に印を付ける。**DB の外にあるデータが戻るか**を見るため。
+    @MainActor
+    private static func stampRegistrations(_ rig: Rig, _ mark: String) throws {
+        try FileManager.default.createDirectory(at: rig.appDirectory,
+                                                withIntermediateDirectories: true)
+        try Data(mark.utf8).write(to: rig.appDataLocation.registeredFolders)
+    }
+
+    @MainActor
+    private static func readRegistrations(_ rig: Rig) -> String? {
+        guard let data = try? Data(contentsOf: rig.appDataLocation.registeredFolders)
+        else { return nil }
+        return String(decoding: data, as: UTF8.self)
     }
 
     // MARK: - 通し [BK-03][IE-16]
@@ -135,8 +176,10 @@ struct RestoreTests {
         let previous = try #require(services.restoreOutcome?.previousStoreURL)
         #expect(try await Self.readStamp(previous) == "new")
         let archived = try rig.generations().filter { $0.reason == .beforeRestore }
-        #expect(archived.count == 1, "世代として一覧に出る")
-        #expect(archived.first?.kind == .store)
+        #expect(archived.filter { $0.kind == .store }.count == 1, "世代として一覧に出る")
+        // 対の束も残る [BK-06][BK3-11]——無いと、この退避から戻したときに
+        // `registeredFolders.json` が戻らず DB と食い違う。
+        #expect(archived.contains { $0.kind == .appData })
     }
 
     @Test("退避した世代からもう一度戻せる [BK-03]")
@@ -150,10 +193,109 @@ struct RestoreTests {
         await rig.launch()
 
         // 戻しすぎたので、退避されたほうへ戻す。
-        let archived = try #require(try rig.generations().first { $0.reason == .beforeRestore })
+        let archived = try #require(try rig.generations()
+            .first { $0.reason == .beforeRestore && $0.kind == .store })
         try await rig.service.requestRestore(archived)
         await rig.launch()
         #expect(try await Self.readStamp(rig.storeURL) == "new")
+    }
+
+    @Test("退避すると対の束も残る [BK-06][BK3-11]")
+    @MainActor
+    func theArchivedStoreGetsAPairedBundle() async throws {
+        let rig = Rig()
+        await rig.launch()
+        try Self.stampRegistrations(rig, "v1")
+        let old = try await Self.makeGeneration(rig, mark: "old")
+        try await Self.stamp(rig.storeURL, "new")
+        try await rig.service.requestRestore(old)
+        await rig.launch()
+
+        // **片方だけの世代を作らない** [BK3-11]。退避した `.store` の隣に
+        // 同じ名前の `.appData` が要る——無いと、その退避から戻したときに
+        // `registeredFolders.json` が戻らず DB と食い違う。
+        let archived = try rig.generations().filter { $0.reason == .beforeRestore }
+        let stems = Set(archived.map { ($0.fileName as NSString).deletingPathExtension })
+        #expect(stems.count == 1, "store と appData の名前が対になっていない")
+        #expect(archived.contains { $0.kind == .store })
+        #expect(archived.contains { $0.kind == .appData })
+    }
+
+    @Test("退避から戻すと DB の外にあるデータも一緒に戻る [BK-06][IE-16]")
+    @MainActor
+    func restoringTheArchivedStoreAlsoBringsBackAppData() async throws {
+        let rig = Rig()
+        await rig.launch()
+
+        // v1——ここへ戻れる世代を 1 つ作る（DB と束の両方）。
+        try Self.stampRegistrations(rig, "v1")
+        let old = try await Self.makeGeneration(rig, mark: "old", bundlingAppData: true)
+
+        // v2——いまの状態。「戻しすぎた」ときはここへ帰ってくる。
+        try await Self.stamp(rig.storeURL, "new")
+        try Self.stampRegistrations(rig, "v2")
+
+        // 1 回目。DB も登録も v1 になる。
+        try await rig.service.requestRestore(old)
+        await rig.launch()
+        #expect(try await Self.readStamp(rig.storeURL) == "old")
+        #expect(Self.readRegistrations(rig) == "v1")
+
+        // 2 回目——退避へ戻す。**両方 v2 でなければならない。**
+        // `library.uuid` は登録フォルダ ID そのもの [§7.3] なので、DB だけ
+        // v2 で登録が v1 のままだと**行が指す登録が存在しない**状態になる
+        // ——BK-06 が塞ごうとした食い違いを、復元の側で作ることになる。
+        let archived = try #require(try rig.generations()
+            .first { $0.reason == .beforeRestore && $0.kind == .store })
+        try await rig.service.requestRestore(archived)
+        await rig.launch()
+        #expect(try await Self.readStamp(rig.storeURL) == "new")
+        #expect(Self.readRegistrations(rig) == "v2", "DB は戻ったのに登録が戻っていない")
+    }
+
+    @Test("復元するとユーザー指定カバーも共有プールから戻る [BK-06][CV-08]")
+    @MainActor
+    func restoringAlsoBringsBackUserCovers() async throws {
+        let rig = Rig()
+        await rig.launch()
+
+        // ライブラリ UUID の下に 1 枚置く（`AppDataSnapshot` はその形しか
+        // 数えない）。カバーは**元画像が消えている前提**の複製 [CV-08] で、
+        // 再生成できない。
+        let library = UUID().uuidString
+        let cover = rig.coverDirectory.appendingPathComponent(library)
+            .appendingPathComponent("cover.png")
+        try FileManager.default.createDirectory(at: cover.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        try Data("image".utf8).write(to: cover)
+        let old = try await Self.makeGeneration(rig, mark: "old", bundlingAppData: true)
+
+        // **アプリ自身が消す経路**（起動時の掃除・ライブラリの削除）を模す。
+        try FileManager.default.removeItem(at: cover)
+
+        try await rig.service.requestRestore(old)
+        await rig.launch()
+        #expect(FileManager.default.fileExists(atPath: cover.path),
+                "共有プールから戻っていない [CV-08]")
+    }
+
+    @Test("退避が起きなければ束も書かない [BK3-11]")
+    @MainActor
+    func noBundleIsWrittenWhenThereIsNothingToArchive() async throws {
+        let rig = Rig()
+        await rig.launch()
+        try Self.stampRegistrations(rig, "v1")
+        let old = try await Self.makeGeneration(rig, mark: "old", bundlingAppData: true)
+
+        // ストアがまだ無い状態での復元（初回起動で予約を拾う形）。
+        try FileManager.default.removeItem(at: rig.storeURL)
+        try await rig.service.requestRestore(old)
+        await rig.launch()
+
+        // 退避していないので `beforeRestore` の世代は 1 つも無い
+        // ——**束だけが孤児として残る形を作らない**（対の相手がいない束は
+        // `generations()` に出るのに、そこから戻す DB が存在しない）。
+        #expect(try rig.generations().allSatisfy { $0.reason != .beforeRestore })
     }
 
     @Test("退避したストアは 1 ファイルに畳まれる [BK-04]")
