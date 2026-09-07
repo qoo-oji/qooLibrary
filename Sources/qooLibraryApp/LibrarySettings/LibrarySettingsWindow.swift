@@ -428,34 +428,3 @@ struct UnsavedChangesDialog: View {
         }
     }
 }
-
-private struct RescanPromptDialog: View {
-    @Environment(\.locale) private var locale
-    @Environment(\.dialogDismiss) private var dismiss
-
-    let libraryName: String
-    let onRescan: () -> Void
-
-    var body: some View {
-        DialogScaffold(
-            width: 440,
-            // 「あとで」は廃止した［ユーザー判断 A1、2026-09-07］——手動で
-            // スキャンを起こす入口は §19.6 で廃止済みなので、あとで選んでも
-            // 起こす手段が無い。ボタンは 1 つ（Return／Esc とも同じ）。
-            confirm: DialogButton(title: AppStrings.text("librarySettings.rescanNow", locale: locale)) {
-                onRescan()
-                dismiss()
-            }
-        ) {
-            VStack(alignment: .leading, spacing: Tokens.spacing.s) {
-                Text(String(format: AppStrings.text("librarySettings.rescanExplanation",
-                                           locale: locale), libraryName))
-                    .fixedSize(horizontal: false, vertical: true)
-                Text("librarySettings.rescanNote")
-                    .font(.system(size: Tokens.fontSize.caption))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-}

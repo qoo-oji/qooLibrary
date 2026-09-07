@@ -9704,57 +9704,6 @@
         }
       }
     },
-    "librarySettings.rescanExplanation": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The settings for “%@” were saved. Labels on files already in the library stay as they are until the library is scanned again."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "「%@」の設定を保存しました。すでに取り込んだファイルのラベルは、スキャンし直すまで変わりません。"
-          }
-        }
-      }
-    },
-    "librarySettings.rescanNote": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Labels you set by hand are kept. Only automatically assigned labels are recalculated."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "手動で付けたラベルは保持されます。自動で付いたラベルだけが計算し直されます。"
-          }
-        }
-      }
-    },
-    "librarySettings.rescanNow": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Scan Now"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "今すぐスキャン"
-          }
-        }
-      }
-    },
     "librarySettings.revert": {
       "extractionState": "manual",
       "localizations": {
