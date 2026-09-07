@@ -52,7 +52,11 @@ public actor AppAssociationStore: AppAssociationService {
     /// [AS-03]。初回セットアップウィザードのステップ 3 と共有する。
     private static let defaultExtensions = Set(ComicFormats.extensions)
 
-    private let storageURL: URL
+    /// 永続化先。**バックアップ [BK-06] が一式を写すのに要る。**
+    ///
+    /// `nonisolated` なのは不変だから——読むのに actor の順番待ちをする
+    /// 理由が無い（場所は `init` で決まり、以後変わらない）。
+    public nonisolated let storageURL: URL
     private var associations: [String: String] = [:] // 拡張子（小文字） → bundleID
     private var extensionSet: Set<String> = [] // このタブが管理する拡張子（小文字）
     private var didLoad = false

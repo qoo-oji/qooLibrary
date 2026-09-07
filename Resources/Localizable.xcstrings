@@ -1224,6 +1224,23 @@
         }
       }
     },
+    "backup.kind.appData": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registrations and covers"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登録とカバー"
+          }
+        }
+      }
+    },
     "backup.kind.document" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -15442,13 +15459,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "A snapshot is taken on launch, and immediately before operations that cannot be undone (deleting a library, importing JSON, deleting labels in bulk, applying a template, migrating the schema). A copy of the database is kept as well, so you can restore it whole from the list above."
+            "value": "All three are off by default: if you need this, you are likely already using Time Machine, which backs up the whole app container every hour. Turning them on stores snapshots under Application Support, and you can restore one in a single step from the list above. Cover images you replaced by hand are shared across generations, so keeping more generations costs almost nothing. The database option is separate because that snapshot is taken when the app changes its own format, not when you do something."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "起動時と、取り返しのつかない操作（ライブラリの削除・JSON の取り込み・ラベルの一括削除・テンプレートの適用・スキーマの移行）の直前に、自動で控えを取ります。データベースの複製もあわせて保存し、上の一覧から丸ごと復元できます。"
+            "value": "3 つとも既定は OFF です。この機能を必要とする方は、すでに Time Machine（アプリのデータごと 1 時間おきに控えを取る）をお使いの可能性が高いためです。ON にすると控えが Application Support に保存され、上の一覧から 1 操作で丸ごと復元できます。手で差し替えたカバー画像は世代をまたいで共有するので、世代数を増やしてもほとんど容量は増えません。「アプリがデータベースを更新するとき」だけ分けてあるのは、それがご自身の操作ではなくアプリの更新で起きるためです。"
           }
         }
       }
@@ -15487,6 +15504,40 @@
         }
       }
     },
+    "preferences.reset.backupBeforeDestructive": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Snapshot before operations that cannot be undone"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取り返しのつかない操作の前に控えを取る"
+          }
+        }
+      }
+    },
+    "preferences.reset.backupBeforeMigration": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Snapshot when the app updates its database"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アプリがデータベースを更新するときに控えを取る"
+          }
+        }
+      }
+    },
     "preferences.reset.backupFooter": {
       "extractionState": "manual",
       "localizations": {
@@ -15517,6 +15568,91 @@
           "stringUnit": {
             "state": "translated",
             "value": "ライブラリのデータ"
+          }
+        }
+      }
+    },
+    "preferences.reset.backupInterval.daily": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Once a day"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 日 1 回"
+          }
+        }
+      }
+    },
+    "preferences.reset.backupInterval.everyLaunch": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every launch"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "起動のたび"
+          }
+        }
+      }
+    },
+    "preferences.reset.backupInterval.never": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Never"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取らない"
+          }
+        }
+      }
+    },
+    "preferences.reset.backupInterval.weekly": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Once a week"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 週間に 1 回"
+          }
+        }
+      }
+    },
+    "preferences.reset.backupLaunchInterval": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Snapshot on launch"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "起動時に控えを取る"
           }
         }
       }
@@ -16010,6 +16146,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "登録が見つかりません"
+          }
+        }
+      }
+    },
+    "preferences.reset.restoredWithoutAppData": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registered folders and cover images were not restored: this generation was created by an older version, or they could not be written back. Libraries in the restored database may not reach their folders until you register them again."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登録フォルダとカバー画像は戻せませんでした（この世代を古い版が作ったか、書き戻せなかったためです）。戻したデータベースのライブラリは、登録し直すまでフォルダに到達できないことがあります。"
           }
         }
       }

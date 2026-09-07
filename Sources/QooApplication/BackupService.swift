@@ -16,8 +16,10 @@ public struct BackupOutcome: Sendable, Equatable {
     /// JSON [BK-05]。**移行前 [MG-10] だけは `nil` になりうる**——古いスキーマは
     /// 現行の record 型で読めないため（下記 ``snapshotBeforeMigration``）。
     public var documentURL: URL?
-    /// ストア複製を取らなかった契機では `nil` [BackupReason.copiesStore]。
+    /// ストア複製を取らなかった契機では `nil` [BackupReason.kinds]。
     public var storeURL: URL?
+    /// DB の外にあるデータの束 [BK-06]。取らなかった契機では `nil`。
+    public var appDataURL: URL?
     /// 剪定で消した世代の数 [BK2-03]。
     public var prunedCount: Int
     /// 整合性検査 [RB-03] を通らなかったため**取らなかった**とき真。
@@ -26,6 +28,13 @@ public struct BackupOutcome: Sendable, Equatable {
     /// ——バックアップが取れないことを理由に、利用者が頼んだ操作そのものを
     /// 断るほうが害が大きい [NV3-01 と同じ判断]。
     public var skippedAsUnhealthy: Bool = false
+
+    /// **設定で切られているため取らなかった**とき真 [BK-07]。
+    ///
+    /// `skippedAsUnhealthy` と分けてあるのは、伝えるべきことが逆だから
+    /// ——あちらは「取れなかった（DB が壊れている）」で調べる必要があるが、
+    /// こちらは利用者が選んだ状態なので、何も言わないのが正しい。
+    public var skippedByPreference: Bool = false
 }
 
 /// スナップショットを取る [BK-01][BK-02]。
@@ -48,12 +57,70 @@ public struct BackupService: Sendable {
     public let documentGenerationsOverride: Int?
     public let storeGenerationsOverride: Int?
 
+    /// DB の外にあるデータの場所 [BK-06]。**`nil` なら束を取らない。**
+    ///
+    /// 場所は各ストアが持っているので、両方を見られる `LibraryServices` が
+    /// 集めて渡す [A-02]——ここで組み立て直すと綴りが 2 箇所になる。
+    public let appDataLocation: AppDataSnapshot.Location?
+
+    /// 設定の上書き [BK-07]。`nil` なら**そのつど環境設定から読み直す**
+    /// （世代数と同じ理由: 構築時に固定すると設定を変えても次の起動まで効かない）。
+    public let launchIntervalOverride: BackupSettings.LaunchInterval?
+    public let beforeDestructiveOverride: Bool?
+    public let beforeMigrationOverride: Bool?
+
     public init(store: BackupStore = BackupStore(), appVersion: String? = nil,
-                documentGenerations: Int? = nil, storeGenerations: Int? = nil) {
+                documentGenerations: Int? = nil, storeGenerations: Int? = nil,
+                appDataLocation: AppDataSnapshot.Location? = nil,
+                launchInterval: BackupSettings.LaunchInterval? = nil,
+                snapshotsBeforeDestructive: Bool? = nil,
+                snapshotsBeforeMigration: Bool? = nil) {
         self.store = store
         self.appVersion = appVersion
         self.documentGenerationsOverride = documentGenerations
         self.storeGenerationsOverride = storeGenerations
+        self.appDataLocation = appDataLocation
+        self.launchIntervalOverride = launchInterval
+        self.beforeDestructiveOverride = snapshotsBeforeDestructive
+        self.beforeMigrationOverride = snapshotsBeforeMigration
+    }
+
+    // MARK: - 設定 [BK-07]
+
+    /// この契機を実行するか [BK-07]。**既定はすべて OFF**（``BackupSettings``）。
+    ///
+    /// 起動時 [BK-01] は頻度が別に効くので、ここでは「取らない」だけを見る。
+    func isEnabled(_ reason: BackupReason) -> Bool {
+        switch reason {
+        case .launch:
+            resolvedLaunchInterval.seconds != nil
+        case .schemaMigration:
+            beforeMigrationOverride ?? Self.configuredSnapshotsBeforeMigration()
+        case .jsonImport, .bulkLabelDelete, .templateApply, .libraryDelete, .beforeRestore:
+            beforeDestructiveOverride ?? Self.configuredSnapshotsBeforeDestructive()
+        }
+    }
+
+    var resolvedLaunchInterval: BackupSettings.LaunchInterval {
+        launchIntervalOverride ?? Self.configuredLaunchInterval()
+    }
+
+    public static func configuredLaunchInterval() -> BackupSettings.LaunchInterval {
+        guard let raw = UserDefaults.standard.string(
+                forKey: BackupSettings.PreferenceKeys.launchInterval),
+              let value = BackupSettings.LaunchInterval(rawValue: raw)
+        else { return .default }
+        return value
+    }
+
+    public static func configuredSnapshotsBeforeDestructive() -> Bool {
+        UserDefaults.standard.object(forKey: BackupSettings.PreferenceKeys.beforeDestructive)
+            as? Bool ?? BackupSettings.defaultBeforeDestructive
+    }
+
+    public static func configuredSnapshotsBeforeMigration() -> Bool {
+        UserDefaults.standard.object(forKey: BackupSettings.PreferenceKeys.beforeMigration)
+            as? Bool ?? BackupSettings.defaultBeforeMigration
     }
 
     // MARK: - 契機
@@ -68,8 +135,10 @@ public struct BackupService: Sendable {
                                  database: QooDatabase,
                                  now: Date = Date()) async throws -> BackupOutcome?
     {
+        // [BK-07] 「取らない」なら間隔を見るまでもない。**既定はこちら**。
+        guard let interval = resolvedLaunchInterval.seconds else { return nil }
         if let last = try store.latest(kind: .document, reason: .launch),
-           now.timeIntervalSince(last.date) < AppLimits.Backup.launchSnapshotInterval
+           now.timeIntervalSince(last.date) < interval
         {
             return nil
         }
@@ -84,6 +153,12 @@ public struct BackupService: Sendable {
                          database: QooDatabase,
                          now: Date = Date()) async throws -> BackupOutcome
     {
+        // [BK-07] 利用者が切っている。**何も言わずに先へ進む**——選んだ状態を
+        // 毎回知らせるのは雑音で、本当に見てほしい 1 枚まで読み飛ばされる。
+        guard isEnabled(reason) else {
+            return BackupOutcome(reason: reason, documentURL: nil, storeURL: nil,
+                                 appDataURL: nil, prunedCount: 0, skippedByPreference: true)
+        }
         guard try await database.integrityCheck() else {
             Log.db.error("整合性検査に通らないのでスナップショットを取らない（理由: \(reason.rawValue)）")
             return BackupOutcome(reason: reason, documentURL: store.directory,
@@ -115,6 +190,13 @@ public struct BackupService: Sendable {
         // 必ずフックを呼ぶので、ここで分けないと毎回の初回起動が
         // 「バックアップに失敗」として記録される。
         guard handle.hasExistingSchema else { return nil }
+        // [BK-07] **別のトグル**［ユーザー判断］——利用者の操作ではなくアプリの
+        // 更新で起きる契機なので、「自分の操作の保険は要らない」という判断と
+        // 一緒に切れてしまうのは意図が違う。
+        guard isEnabled(.schemaMigration) else {
+            return BackupOutcome(reason: .schemaMigration, documentURL: nil, storeURL: nil,
+                                 appDataURL: nil, prunedCount: 0, skippedByPreference: true)
+        }
         guard try handle.integrityCheck() else {
             Log.db.error("整合性検査に通らないので移行前スナップショットを取らない")
             return BackupOutcome(reason: .schemaMigration, documentURL: nil,
@@ -144,8 +226,13 @@ public struct BackupService: Sendable {
                 \(String(describing: error)) — ストア複製は取れている
                 """)
         }
+        // DB の外にあるデータも**同じ時点で**取る [BK-06]。移行はブックマークを
+        // 触らないが、復元は「その時点へ丸ごと戻す」ことなので、対で残さないと
+        // 戻した先が混ざる。
+        let appDataURL = writeAppDataIgnoringFailure(reason: .schemaMigration, now: now)
         return BackupOutcome(reason: .schemaMigration, documentURL: documentURL,
-                             storeURL: storeURL, prunedCount: prunedCountIgnoringFailure())
+                             storeURL: storeURL, appDataURL: appDataURL,
+                             prunedCount: prunedCountIgnoringFailure())
     }
 
     // MARK: - 復元 [BK-03][IE-16]
@@ -245,7 +332,35 @@ public struct BackupService: Sendable {
             // 必要がある）。変異を当てても検出できないことを確認済み。
             outcome.previousStoreURL = archived
         }
+        if outcome.failure == nil {
+            outcome.appDataRestored = restoreAppData(pairedWith: pending.fileName)
+        }
         return outcome
+    }
+
+    /// DB と**同じ時点**の束を戻す [BK-06]。
+    ///
+    /// 対応づけはファイル名（`<timestamp>-<reason>`）で行う——`store` と
+    /// `appData` は同じ契機・同じ時刻で書かれるので、名前だけで対になる。
+    ///
+    /// **束が無くても失敗にしない。** 古い版が作った世代には束が無く、
+    /// そこから DB だけを戻せること自体は正しい。戻せなかったことは
+    /// `RestoreOutcome.appDataRestored` として持ち帰り、UI が伝える。
+    private func restoreAppData(pairedWith storeFileName: String) -> Bool {
+        guard let location = appDataLocation,
+              let parts = BackupFileName.parse(storeFileName) else { return false }
+        let name = BackupFileName.make(date: parts.date, reason: parts.reason, kind: .appData)
+        let url = store.directory.appendingPathComponent(name, isDirectory: false)
+        guard FileManager.default.fileExists(atPath: url.path) else { return false }
+        do {
+            let archive = try store.readAppData(at: url)
+            try AppDataSnapshot.restore(archive, to: location,
+                                        restoringCoversFrom: store.userCoverPool)
+            return true
+        } catch {
+            Log.db.warning("DB の外にあるデータを戻せなかった: \(String(describing: error))")
+            return false
+        }
     }
 
     public enum RestoreError: Error, Equatable {
@@ -259,7 +374,27 @@ public struct BackupService: Sendable {
 
     public func generations() throws -> [BackupGeneration] { try store.generations() }
     public func totalByteCount() throws -> Int64 { try store.totalByteCount() }
-    public func remove(_ generation: BackupGeneration) throws { try store.remove(generation) }
+    /// 世代を 1 件消す。
+    ///
+    /// **対の束も一緒に消し、参照されなくなったカバーを回収する** [BK-06]
+    /// ［code-review で発見］——`appData` は一覧に出さない（`store` と対で、
+    /// 単独では復元できない）ので、ここで消さないと**誰も消せないまま残る**。
+    /// 剪定は「スナップショットを取った直後」にしか走らないため、
+    /// 既定（すべて OFF [BK-07]）ではプールが永久に回収されない。
+    public func remove(_ generation: BackupGeneration) throws {
+        try store.remove(generation)
+        if generation.kind == .store,
+           let parts = BackupFileName.parse(generation.fileName)
+        {
+            let name = BackupFileName.make(date: parts.date, reason: parts.reason,
+                                           kind: .appData)
+            if let paired = try store.generations().first(where: { $0.fileName == name }) {
+                // 1 件の失敗で本体の削除を失敗にしない（剪定と同じ判断）。
+                try? store.remove(paired)
+            }
+        }
+        try? store.pruneUserCoverPool()
+    }
 
     // MARK: - 書き込みの共通部分
 
@@ -274,13 +409,47 @@ public struct BackupService: Sendable {
         let data = try BackupCoding.encode(document)
         let documentURL = try store.writeDocument(data, reason: reason, date: now)
         var storeURL: URL?
-        if reason.copiesStore {
+        if reason.kinds.contains(.store) {
             let destination = try store.prepareStoreDestination(reason: reason, date: now)
             try copyingStore(to: destination, copyStore)
             storeURL = destination
         }
+        var appDataURL: URL?
+        if reason.kinds.contains(.appData) {
+            appDataURL = writeAppDataIgnoringFailure(reason: reason, now: now)
+        }
         return BackupOutcome(reason: reason, documentURL: documentURL,
-                             storeURL: storeURL, prunedCount: prunedCountIgnoringFailure())
+                             storeURL: storeURL, appDataURL: appDataURL,
+                             prunedCount: prunedCountIgnoringFailure())
+    }
+
+    /// DB の外にあるデータの束を書く [BK-06]。
+    ///
+    /// **失敗でスナップショット全体を失敗にしない**（剪定と同じ判断）——
+    /// DB の複製は既に取れており、そちらが主たる戻り道である。束が無い世代は
+    /// 「古い版が作った世代」と同じ扱いで復元でき、DB だけが戻る。
+    private func writeAppDataIgnoringFailure(reason: BackupReason, now: Date) -> URL? {
+        guard let location = appDataLocation else { return nil }
+        do {
+            let archive = try AppDataSnapshot.capture(location,
+                                                      linkingCoversInto: store.userCoverPool)
+            if archive.manifest.userCoversSkipped > 0 {
+                // 「守れていない」ことは残す [BK-06]。複製へ落として肥大化させる
+                // ほうを選ばない以上、せめて数は分かるようにする。
+                Log.db.warning("""
+                    カバーの複製を \(archive.manifest.userCoversSkipped) 件 \
+                    バックアップへ含められなかった（ハードリンクを作れない）
+                    """)
+            }
+            if (archive.manifest.filesUnreadable ?? 0) > 0 {
+                Log.db.warning(
+                    "設定ファイルを \(archive.manifest.filesUnreadable ?? 0) 件 控えに含められなかった")
+            }
+            return try store.writeAppData(archive, reason: reason, date: now)
+        } catch {
+            Log.db.warning("DB の外にあるデータの束を書けなかった: \(String(describing: error))")
+            return nil
+        }
     }
 
     /// 複製を取る。**失敗したら宛先を残さない** [BK3-09]。
@@ -330,6 +499,16 @@ public struct BackupService: Sendable {
                                        keep: AppLimits.Backup.migrationGenerations) {
                 $0 == .schemaMigration
             }.count
+        }
+        // **世代を消した後に**共有プールを掃除する [BK-06]。先に呼ぶと、
+        // これから消える世代の参照を数えてしまい、消せるものが残る。
+        //
+        // **返り値には足さない**［code-review で発見］——`prunedCount` の
+        // doc は「消した世代の数」で、カバーの*ファイル*数を混ぜると
+        // 「剪定 5000 件」のような読めないログになる。
+        let covers = try store.pruneUserCoverPool()
+        if covers > 0 {
+            Log.db.info("共有プールの複製を \(covers) 件回収した")
         }
         return removed
     }

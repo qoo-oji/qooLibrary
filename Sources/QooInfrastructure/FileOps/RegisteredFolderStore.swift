@@ -173,7 +173,11 @@ extension RegisteredFolderError: LocalizedError {
 public actor RegisteredFolderStore {
     public static let shared = RegisteredFolderStore()
 
-    private let storageURL: URL
+    /// 永続化先。**バックアップ [BK-06] が一式を写すのに要る。**
+    ///
+    /// `nonisolated` なのは不変だから——読むのに actor の順番待ちをする
+    /// 理由が無い（場所は `init` で決まり、以後変わらない）。
+    public nonisolated let storageURL: URL
     private let bookmarks: BookmarkResolving
     private let volumeChecker: VolumeEligibilityChecking
     private var folders: [RegisteredFolder] = []

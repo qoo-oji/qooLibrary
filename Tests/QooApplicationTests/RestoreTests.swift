@@ -40,7 +40,11 @@ struct RestoreTests {
         deinit { try? FileManager.default.removeItem(at: base) }
 
         var store: BackupStore { BackupStore(directory: backupDirectory) }
-        var service: BackupService { BackupService(store: store, appVersion: "test") }
+        // [BK-07] 既定は OFF なので、契機を試すテストは明示的に ON にする。
+        var service: BackupService {
+            BackupService(store: store, appVersion: "test", launchInterval: .daily,
+                          snapshotsBeforeDestructive: true, snapshotsBeforeMigration: true)
+        }
 
         /// 1 回ぶんの起動。
         @discardableResult

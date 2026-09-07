@@ -37,6 +37,19 @@ struct ResetPreferencesTab: View {
     private var documentGenerations = AppLimits.Backup.defaultDocumentGenerations
     @AppStorage(BackupService.PreferenceKeys.storeGenerations)
     private var storeGenerations = AppLimits.Backup.defaultStoreGenerations
+    /// 実行の可否と頻度 [BK-07]。**既定はすべて OFF**——この機能を必要とする
+    /// 利用者は既に Time Machine を使っている可能性が高く、独自に世代を溜めると
+    /// 気づかないうちに容量を使う［ユーザー判断］。
+    ///
+    /// **`if` 条件では読まない**（値の束縛にだけ使う）——ビュー構造を
+    /// `@AppStorage` で決めると Observation が無限に再評価してハングする
+    /// ［タブバー表示トグルで実際に踏んだ既知の不具合］。
+    @AppStorage(BackupSettings.PreferenceKeys.launchInterval)
+    private var launchInterval = BackupSettings.LaunchInterval.default
+    @AppStorage(BackupSettings.PreferenceKeys.beforeDestructive)
+    private var beforeDestructive = BackupSettings.defaultBeforeDestructive
+    @AppStorage(BackupSettings.PreferenceKeys.beforeMigration)
+    private var beforeMigration = BackupSettings.defaultBeforeMigration
     @State private var isClearingThumbnails = false
 
     /// 一覧の 1 行。DB の行に、登録フォルダ側の状態を重ねたもの。
@@ -80,6 +93,15 @@ struct ResetPreferencesTab: View {
     /// **一番上に置く。** 「消す前に戻せるようにしておく」という、このタブの
     /// 並びが表している順序 [RS-01 の趣旨] の先頭がここになる——手で書き出す
     /// 前に、そもそも自動で控えが取られていることを見せる。
+    private static func intervalLabel(_ interval: BackupSettings.LaunchInterval) -> LocalizedStringKey {
+        switch interval {
+        case .everyLaunch: "preferences.reset.backupInterval.everyLaunch"
+        case .daily:       "preferences.reset.backupInterval.daily"
+        case .weekly:      "preferences.reset.backupInterval.weekly"
+        case .never:       "preferences.reset.backupInterval.never"
+        }
+    }
+
     private var automaticBackupSection: some View {
         Section {
             if backupGenerations.isEmpty {
@@ -131,9 +153,18 @@ struct ResetPreferencesTab: View {
                 Text(String(format: AppStrings.text("preferences.reset.autoBackupCount",
                                            locale: locale), backupGenerations.count))
                     .foregroundStyle(.secondary)
-                Text(Self.byteCountString(backupGenerations.reduce(0) { $0 + $1.byteCount }))
+                Text(Self.byteCountString(backupTotalBytes))
                     .foregroundStyle(.secondary)
             }
+            Picker(selection: $launchInterval) {
+                ForEach(BackupSettings.LaunchInterval.allCases, id: \.self) { interval in
+                    Text(Self.intervalLabel(interval)).tag(interval)
+                }
+            } label: {
+                Text("preferences.reset.backupLaunchInterval")
+            }
+            Toggle("preferences.reset.backupBeforeDestructive", isOn: $beforeDestructive)
+            Toggle("preferences.reset.backupBeforeMigration", isOn: $beforeMigration)
             Stepper(value: $documentGenerations,
                     in: AppLimits.Backup.minGenerations ... AppLimits.Backup.maxGenerations) {
                 HStack {
@@ -158,6 +189,9 @@ struct ResetPreferencesTab: View {
             Button("preferences.resetToDefaults") {
                 documentGenerations = AppLimits.Backup.defaultDocumentGenerations
                 storeGenerations = AppLimits.Backup.defaultStoreGenerations
+                launchInterval = BackupSettings.LaunchInterval.default
+                beforeDestructive = BackupSettings.defaultBeforeDestructive
+                beforeMigration = BackupSettings.defaultBeforeMigration
             }
         } header: {
             Text("preferences.reset.autoBackupHeader")
@@ -172,8 +206,18 @@ struct ResetPreferencesTab: View {
         backupGenerations.first { $0.id == generationSelection }
     }
 
+    /// 一覧の足し算ではなく実占有を出す [BK-06]——`appData` を一覧から
+    /// 除いてあるうえ、共有プールは世代ではないので数に入らない。
+    @State private var backupTotalBytes: Int64 = 0
+
     private func refreshBackupGenerations() {
-        backupGenerations = (try? BackupStore().generations()) ?? []
+        // **`appData` は一覧に出さない** [BK-06]。`store` と必ず対で取られ、
+        // 単独では復元できない（`requestRestore` は `.store` しか受けない）
+        // ので、行を増やしても「どれを選べばよいか」が分かりにくくなるだけ。
+        // 束があること自体はフッターの説明で伝える。
+        backupGenerations = ((try? BackupStore().generations()) ?? [])
+            .filter { $0.kind != .appData }
+        backupTotalBytes = (try? BackupStore().totalByteCount()) ?? 0
         // **消えた世代を指したままにしない**——剪定・削除・復元のあと、
         // 選択だけが残ると押せるボタンが何にも作用しなくなる
         // （中央ペインが `entries` に無い選択を落とすのと同じ）。

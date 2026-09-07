@@ -53,7 +53,9 @@ final class ServicesWorkspace {
             userTemplateStore: UserTemplateStore(storageURL: templateStoreURL),
             operationLogRecorder: operationLogRecorder,
             backupService: BackupService(
-                store: BackupStore(directory: backupDirectory), appVersion: "test"))
+                store: BackupStore(directory: backupDirectory), appVersion: "test",
+                launchInterval: .daily,
+                snapshotsBeforeDestructive: true, snapshotsBeforeMigration: true))
         try FileManager.default.createDirectory(at: libraryRoot, withIntermediateDirectories: true)
     }
 

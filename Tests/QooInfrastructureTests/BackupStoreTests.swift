@@ -158,15 +158,143 @@ struct BackupStoreTests {
         #expect(!FileManager.default.fileExists(atPath: store.directory.path))
     }
 
-    @Test("DB 全体に及ぶ契機だけがストア複製を取る [copiesStore]")
+    // MARK: - カバーの共有プール [BK-06]
+
+    /// プールに複製を 1 件置き、その参照を持つ世代を書く。
+    private func writeAppData(_ store: BackupStore, reason: BackupReason,
+                              date: Date, covers: [String: [String]]) throws
+    {
+        for (library, refs) in covers {
+            let directory = store.userCoverPool.appendingPathComponent(library, isDirectory: true)
+            try FileManager.default.createDirectory(at: directory,
+                                                    withIntermediateDirectories: true)
+            for ref in refs {
+                try Data("cover".utf8).write(
+                    to: directory.appendingPathComponent(ref, isDirectory: false))
+            }
+        }
+        let manifest = AppDataManifest(files: [], userCovers: covers)
+        _ = try store.writeAppData(AppDataArchive(manifest: manifest, files: [:]),
+                                   reason: reason, date: date)
+    }
+
+    @Test("参照されている複製は剪定で消えない [BK-06]")
+    func referencedCoversSurvivePruning() throws {
+        let store = makeStore()
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let library = UUID().uuidString
+        try writeAppData(store, reason: .launch, date: Date(), covers: [library: ["a.jpg"]])
+
+        #expect(try store.pruneUserCoverPool() == 0)
+        let kept = store.userCoverPool.appendingPathComponent(library)
+            .appendingPathComponent("a.jpg")
+        #expect(FileManager.default.fileExists(atPath: kept.path))
+    }
+
+    @Test("どの世代からも参照されない複製は消える [BK-06]")
+    func unreferencedCoversArePruned() throws {
+        let store = makeStore()
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let library = UUID().uuidString
+        // 世代は `a.jpg` だけを参照。`b.jpg` は「差し替えられて誰も使わなく
+        // なった複製」——**これが残り続けると容量を食う。**
+        try writeAppData(store, reason: .launch, date: Date(),
+                         covers: [library: ["a.jpg"]])
+        try Data("orphan".utf8).write(
+            to: store.userCoverPool.appendingPathComponent(library)
+                .appendingPathComponent("b.jpg"))
+
+        #expect(try store.pruneUserCoverPool() == 1)
+        let gone = store.userCoverPool.appendingPathComponent(library)
+            .appendingPathComponent("b.jpg")
+        #expect(!FileManager.default.fileExists(atPath: gone.path))
+    }
+
+    @Test("世代を消したあとプールも空になる [BK-06]")
+    func pruningGenerationsEventuallyEmptiesThePool() throws {
+        let store = makeStore()
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let library = UUID().uuidString
+        try writeAppData(store, reason: .launch, date: Date(), covers: [library: ["a.jpg"]])
+
+        // 世代を消す → もう誰も参照していない → プールも片付く。
+        for generation in try store.generations() { try store.remove(generation) }
+        #expect(try store.pruneUserCoverPool() == 1)
+        // 空になったライブラリのディレクトリごと畳む（殻を残さない）。
+        #expect(!FileManager.default.fileExists(
+            atPath: store.userCoverPool.appendingPathComponent(library).path))
+    }
+
+    @Test("読めない束があるときは掃除を見送る [BK-06]［code-review で発見］")
+    func unreadableBundlesStopTheSweep() throws {
+        let store = makeStore()
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let library = UUID().uuidString
+        try writeAppData(store, reason: .launch, date: Date(), covers: [library: ["a.jpg"]])
+        // 誰も参照していない複製。**普通なら消える。**
+        try Data("orphan".utf8).write(
+            to: store.userCoverPool.appendingPathComponent(library)
+                .appendingPathComponent("b.jpg"))
+        // 束が壊れた（読み取りの一過性の失敗でも同じ形になる）。
+        let bundle = try #require(try store.generations().first { $0.kind == .appData })
+        try Data("not json".utf8).write(to: bundle.url)
+
+        // **参照ゼロとみなして消してはならない**——再生成できないカバー
+        // [CV-08] を、読めなかったという理由だけで恒久的に失うことになる。
+        #expect(try store.pruneUserCoverPool() == 0)
+        let survivor = store.userCoverPool.appendingPathComponent(library)
+            .appendingPathComponent("b.jpg")
+        #expect(FileManager.default.fileExists(atPath: survivor.path))
+    }
+
+    @Test("元からも参照されている複製は容量に数えない [BK-06]")
+    func sharedCoversDoNotCountTowardTheTotal() throws {
+        let store = makeStore()
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let fm = FileManager.default
+        let library = UUID().uuidString
+        let poolDirectory = store.userCoverPool.appendingPathComponent(library)
+        try fm.createDirectory(at: poolDirectory, withIntermediateDirectories: true)
+
+        // (a) 元がまだ在る複製 = ハードリンク（**追加容量ゼロ**）。
+        let origin = store.directory.appendingPathComponent("origin.jpg")
+        try Data(repeating: 1, count: 8192).write(to: origin)
+        try fm.linkItem(at: origin, to: poolDirectory.appendingPathComponent("shared.jpg"))
+        // (b) 元から消えた複製 = リンク 1 本（**実際に容量を使っている**）。
+        try Data(repeating: 2, count: 4096).write(
+            to: poolDirectory.appendingPathComponent("only.jpg"))
+
+        let exclusive = store.exclusivePoolByteCount()
+        #expect(exclusive == 4096,
+                "ハードリンクを二重計上している（使っていない容量を表示することになる）")
+    }
+
+    @Test("DB 全体に及ぶ契機だけがストア複製を取る [BackupReason.kinds]")
     func onlyWholeDatabaseReasonsCopyTheStore() {
         // 複製は 10 万件で 71 MB。小さな操作で 3 世代を埋めない。
-        #expect(BackupReason.launch.copiesStore)
-        #expect(BackupReason.schemaMigration.copiesStore)
-        #expect(BackupReason.jsonImport.copiesStore)
-        #expect(BackupReason.beforeRestore.copiesStore)
-        #expect(BackupReason.libraryDelete.copiesStore)
-        #expect(!BackupReason.bulkLabelDelete.copiesStore)
-        #expect(!BackupReason.templateApply.copiesStore)
+        for reason in [BackupReason.launch, .schemaMigration, .jsonImport,
+                       .beforeRestore, .libraryDelete] {
+            #expect(reason.kinds.contains(.store), "\(reason) はストア複製を取る")
+        }
+        for reason in [BackupReason.bulkLabelDelete, .templateApply] {
+            #expect(!reason.kinds.contains(.store), "\(reason) はストア複製を取らない")
+        }
+    }
+
+    @Test("ストア複製と DB の外のデータは必ず対で取る [BK-06]")
+    func theStoreCopyAndAppDataAlwaysComeAsAPair() {
+        // `library.uuid` は登録フォルダ ID そのものなので、片方だけ残る世代を
+        // 作ると「行はあるのに実体へ到達できない」状態から戻すことになる。
+        for reason in BackupReason.allCases {
+            #expect(reason.kinds.contains(.store) == reason.kinds.contains(.appData),
+                    "\(reason) で store と appData の要否が食い違っている")
+        }
+    }
+
+    @Test("どの契機でも JSON 文書は取る [BK-01][BK-05]")
+    func everyReasonWritesTheDocument() {
+        for reason in BackupReason.allCases {
+            #expect(reason.kinds.contains(.document), "\(reason) が文書を取らない")
+        }
     }
 }

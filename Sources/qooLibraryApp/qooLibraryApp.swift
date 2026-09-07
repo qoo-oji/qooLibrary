@@ -74,10 +74,19 @@ struct QooLibraryApp: App {
         Task {
             await SecureExtractor.cleanupResidualStaging()
         }
+        // **バックアップからの復元を、どのストアが読み込むよりも先に済ませる**
+        // [BK-06、code-review で発見]。復元は `registeredFolders.json` 等も
+        // 書き戻すが、各ストアは一度読んだら読み直さない——先に読まれると
+        // 復元した内容が無視され、**次の保存がそれを上書きして永久に失う**。
+        // 予約が無ければ即座に返るので、通常の起動は遅くならない。
+        let restore = Task { @MainActor in
+            await LibraryServices.shared.applyPendingRestore()
+        }
         // 登録済みライブラリ／テンポラリフォルダを読み込み、Security-Scoped
         // Bookmark へのアクセスをアプリ終了まで開始したままにする [1-13、
         // `RegisteredFolderStore.loadAndActivateAll()` のコメント参照]。
         Task {
+            _ = await restore.value
             await RegisteredFolderStore.shared.loadAndActivateAll()
             // 「移動」メニューが同期的に読める形で登録フォルダを載せておく
             // [1-16、`RegisteredFolderIndex` のコメント参照]。以降の更新は
@@ -88,6 +97,7 @@ struct QooLibraryApp: App {
         // 同様に、アプリ終了までアクセスを開始したままにする
         // [ユーザー要望、`VolumeAccessStore` のコメント参照]。
         Task {
+            _ = await restore.value
             await VolumeAccessStore.shared.loadAndActivateAll()
         }
         // Quick Look の独自カバープレビュー用に書き出したファイルは

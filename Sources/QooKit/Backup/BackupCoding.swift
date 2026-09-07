@@ -55,6 +55,20 @@ public enum BackupCoding {
         }
     }
 
+    // MARK: - DB の外にあるデータの束 [BK-06]
+
+    public static func encode(_ archive: AppDataArchive) throws -> Data {
+        try encoder().encode(archive)
+    }
+
+    /// - Note: 版の検査は ``AppDataSnapshot`` が書き戻す直前に行う——ここで
+    ///   弾くと「読めるが古い」束を一覧に出せなくなる（利用者は
+    ///   *戻せないこと*も知りたい）。
+    public static func decodeAppData(_ data: Data) throws -> AppDataArchive {
+        do { return try decoder().decode(AppDataArchive.self, from: data) }
+        catch { throw BackupError.malformed(String(describing: error)) }
+    }
+
     private struct SchemaProbe: Decodable {
         let schemaVersion: Int
     }

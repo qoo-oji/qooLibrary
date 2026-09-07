@@ -199,10 +199,19 @@ enum BackupRestoreAction {
                 body: message(for: failure, locale: locale),
                 technicalDetail: String(describing: failure))
         } else {
+            // **束が戻らなかったことは伝える** [BK-06]［code-review で発見］
+            // ——`library.uuid` は登録フォルダ ID そのものなので、DB だけ
+            // 戻ってブックマークが現在のままだと、**行はあるのに実体へ
+            // 到達できないライブラリ**ができる。黙ると原因が分からない。
+            var body = AppStrings.text("preferences.reset.restoredBody", locale: locale)
+            if !outcome.appDataRestored {
+                body += "\n\n"
+                    + AppStrings.text("preferences.reset.restoredWithoutAppData", locale: locale)
+            }
             item = NotificationItem(
                 category: .info, severity: .sheet,
                 title: AppStrings.text("preferences.reset.restoredTitle", locale: locale),
-                body: AppStrings.text("preferences.reset.restoredBody", locale: locale))
+                body: body)
         }
         await NotificationRouter.shared.present(item)
     }
@@ -398,6 +407,7 @@ enum BackupGenerationFormatting {
         switch kind {
         case .document: AppStrings.text("backup.kind.document", locale: locale)
         case .store: AppStrings.text("backup.kind.store", locale: locale)
+        case .appData: AppStrings.text("backup.kind.appData", locale: locale)
         }
     }
 }

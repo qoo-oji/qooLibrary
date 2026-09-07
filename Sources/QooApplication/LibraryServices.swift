@@ -132,6 +132,8 @@ public final class LibraryServices {
     /// 戻ったのか分からない」、失敗を黙っていると**戻っていないのに戻ったと
     /// 思ったまま使い続ける**ことになる。UI が起動後に 1 度読んで提示する。
     public private(set) var restoreOutcome: RestoreOutcome?
+    /// 復元を 1 回きりにする印。``applyPendingRestore(storeURL:)`` を参照。
+    private var didApplyRestore = false
 
     /// - Parameter userCoverStore: ユーザー指定カバーの複製の置き場所 [CV-06]。
     ///   **テストは独立した一時ディレクトリを渡すこと**（`bootstrap(storeURL:)` と
@@ -175,10 +177,62 @@ public final class LibraryServices {
         self.operationLogRecorder = operationLogRecorder
         self.backupServiceWasInjected = backupService != nil
         self.backupService = backupService
-            ?? BackupService(store: BackupStore(), appVersion: Self.appVersion())
+            ?? BackupService(store: BackupStore(), appVersion: Self.appVersion(),
+                             appDataLocation: Self.defaultAppDataLocation(userCoverStore))
+    }
+
+    /// DB の外にあるデータの場所 [BK-06]。
+    ///
+    /// **両方を見られるこの層が集める** [A-02]——場所は各ストアが持っており、
+    /// `BackupService` がそこへ手を伸ばすと綴りが 2 箇所になる。
+    ///
+    /// **`swift test` 中は `nil`**——`RegisteredFolderStore` などは
+    /// `UserCoverStore` と違って既定の置き場所をテスト用へ振り替えないので、
+    /// 渡すと開発機の実データを読み、復元では**書き換える**ことになる。
+    private static func defaultAppDataLocation(
+        _ userCoverStore: any UserCoverStoring) -> AppDataSnapshot.Location?
+    {
+        guard !RuntimeEnvironment.isRunningTests else { return nil }
+        return AppDataSnapshot.Location(
+            registeredFolders: RegisteredFolderStore.shared.storageURL,
+            volumeAccess: VolumeAccessStore.shared.storageURL,
+            appAssociations: AppAssociationStore.shared.storageURL,
+            userCovers: userCoverStore.baseDirectory)
     }
 
     // MARK: - 起動
+
+    /// 予約があればストアを差し替える [BK-03][IE-16]。**何度呼んでも 1 回だけ効く。**
+    ///
+    /// ## `bootstrap()` より前に、単独で呼べる形にしてある［code-review で発見］
+    ///
+    /// 復元は DB だけでなく **`registeredFolders.json` などの JSON も書き戻す**
+    /// [BK-06]。ところが `RegisteredFolderStore` / `VolumeAccessStore` /
+    /// `AppAssociationStore` は**一度読んだら読み直さない**（読み込みを
+    /// メモ化しており、再読み込みの API を持たない）。
+    ///
+    /// アプリはこれらの読み込みと `bootstrap()` を**順序の定まらない別々の
+    /// `Task`** で起動するので、差し替えより先に読まれると
+    ///
+    /// 1. そのセッションは**復元前のブックマーク**で動き、
+    /// 2. 次の `save()`（登録の追加・解除・表示名の変更）が
+    ///    **復元したファイルを黙って上書きして永久に失う**。
+    ///
+    /// そのため `qooLibraryApp.init()` は**まずこれを済ませてから**各ストアの
+    /// 読み込みと `bootstrap()` を起動する。印が無ければ即座に返るので、
+    /// 通常の起動が遅くなることはない。
+    @discardableResult
+    public func applyPendingRestore(storeURL explicit: URL? = nil) async -> RestoreOutcome? {
+        guard !didApplyRestore else { return restoreOutcome }
+        guard let storeURL = explicit ?? Self.defaultStoreURL() else { return nil }
+        didApplyRestore = true
+        let service = backupService
+        restoreOutcome = await FileIO.perform {
+            service.applyPendingRestore(storeURL: storeURL)
+        }
+        if let restoreOutcome { report(restoreOutcome) }
+        return restoreOutcome
+    }
 
     /// ストアを開き、リポジトリとスキャンエンジンを組み立てる。
     /// 何度呼んでも 1 回しか効かない。
@@ -214,13 +268,14 @@ public final class LibraryServices {
         // 掴んでいない」唯一の瞬間で、しかも**直前の起動でストアが開けたか
         // どうかに依存しない**——だからこそ壊れたストアからも同じ 1 本の
         // 経路で戻せる（`PendingRestore` の doc）。
-        let service = backupService
-        restoreOutcome = await FileIO.perform {
-            service.applyPendingRestore(storeURL: storeURL)
-        }
-        if let restoreOutcome { report(restoreOutcome) }
+        //
+        // **アプリは `qooLibraryApp.init()` がこれより先に呼ぶ**（下記）。
+        // ここは二度目なので何もしない——テストや、合成根を直接使う経路の
+        // ための入口として残してある。
+        await applyPendingRestore(storeURL: storeURL)
 
         do {
+            let service = backupService
             let takesSnapshots = takesAutomaticSnapshots
             let opened = try await FileIO.perform {
                 // [MG-10] **移行の前に JSON とストア複製の両方を残す。**
@@ -430,6 +485,9 @@ public final class LibraryServices {
     }
 
     private func report(_ outcome: BackupOutcome) {
+        // [BK-07] 利用者が切っている。**記録もしない**——選んだ状態を毎回
+        // 書くのは雑音で、しかも「取った」と読める記録は嘘になる。
+        if outcome.skippedByPreference { return }
         if outcome.skippedAsUnhealthy {
             Log.db.error("整合性検査に通らないのでスナップショットを取らなかった（\(outcome.reason.rawValue)）")
         } else {

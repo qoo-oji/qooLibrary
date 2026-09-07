@@ -37,14 +37,146 @@ struct BackupServiceTests {
         private let stores: Int?
 
         var service: BackupService {
+            // [BK-07] **既定はすべて OFF**（Time Machine と二重に溜めない）。
+            // 契機の配線そのものを試したいので、ここでは明示的に ON にする。
             BackupService(store: store, appVersion: "test",
-                          documentGenerations: documents, storeGenerations: stores)
+                          documentGenerations: documents, storeGenerations: stores,
+                          launchInterval: .daily,
+                          snapshotsBeforeDestructive: true, snapshotsBeforeMigration: true)
         }
     }
 
     private static func temporaryDirectory() -> URL {
         URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("qoo-backupsvc-\(UUID().uuidString)")
+    }
+
+    // MARK: - 世代の削除 [BK-06]
+
+    @Test("世代を消すと対の束も消える [BK-06]［code-review で発見］")
+    func removingAStoreGenerationAlsoRemovesItsBundle() async throws {
+        let directory = Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let rig = try Rig(directory: directory)
+        let location = try Self.makeAppDataLocation(under: directory)
+        let service = BackupService(store: rig.store, appVersion: "t",
+                                    appDataLocation: location,
+                                    launchInterval: .daily,
+                                    snapshotsBeforeDestructive: true,
+                                    snapshotsBeforeMigration: true)
+        _ = try await service.snapshot(reason: .libraryDelete, repository: rig.repository,
+                                       database: rig.database)
+        let store = try #require(try rig.store.generations().first { $0.kind == .store })
+        #expect(try rig.store.generations().contains { $0.kind == .appData })
+
+        try service.remove(store)
+        // **束は一覧に出ないので、ここで消さないと誰も消せないまま残る。**
+        #expect(!(try rig.store.generations().contains { $0.kind == .appData }))
+    }
+
+    /// 束の書き出し先（テスト用）。実データには触れない。
+    static func makeAppDataLocation(under base: URL) throws -> AppDataSnapshot.Location {
+        let app = base.appendingPathComponent("app")
+        try FileManager.default.createDirectory(at: app, withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: app.appendingPathComponent("registeredFolders.json"))
+        return AppDataSnapshot.Location(
+            registeredFolders: app.appendingPathComponent("registeredFolders.json"),
+            volumeAccess: app.appendingPathComponent("volumeAccess.json"),
+            appAssociations: app.appendingPathComponent("appAssociations.json"),
+            userCovers: app.appendingPathComponent("usercovers"))
+    }
+
+    @Test("束は store と一緒に書かれる [BK-06]")
+    func theBundleIsWrittenAlongsideTheStore() async throws {
+        let directory = Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let rig = try Rig(directory: directory)
+        let service = BackupService(store: rig.store, appVersion: "t",
+                                    appDataLocation: try Self.makeAppDataLocation(under: directory),
+                                    launchInterval: .daily,
+                                    snapshotsBeforeDestructive: true,
+                                    snapshotsBeforeMigration: true)
+        let outcome = try await service.snapshot(reason: .jsonImport,
+                                                 repository: rig.repository,
+                                                 database: rig.database)
+        #expect(outcome.appDataURL != nil)
+        // 同じ時刻・同じ契機なので、名前で対になる（復元がそれで引く）。
+        let names = try rig.store.generations().map(\.fileName)
+        let stems = Set(names.map { ($0 as NSString).deletingPathExtension })
+        #expect(stems.count == 1, "store と appData の名前が対になっていない")
+    }
+
+    // MARK: - 設定 [BK-07]
+
+    @Test("既定はすべて OFF [BK-07]［ユーザー判断: Time Machine と二重に溜めない］")
+    func everythingIsOffByDefault() {
+        // **この 3 つが既定 ON に戻ると、利用者が何も選んでいないのに
+        // 世代が溜まり始める。** 理由は BackupSettings の型コメント。
+        #expect(BackupSettings.LaunchInterval.default == .never)
+        #expect(BackupSettings.defaultBeforeDestructive == false)
+        #expect(BackupSettings.defaultBeforeMigration == false)
+    }
+
+    @Test("頻度のプリセットが間隔に対応する [BK-07]")
+    func launchIntervalPresets() {
+        #expect(BackupSettings.LaunchInterval.never.seconds == nil)
+        #expect(BackupSettings.LaunchInterval.everyLaunch.seconds == 0)
+        #expect(BackupSettings.LaunchInterval.daily.seconds == TimeInterval(24 * 60 * 60))
+        #expect(BackupSettings.LaunchInterval.weekly.seconds == TimeInterval(7 * 24 * 60 * 60))
+    }
+
+    @Test("移行前は破壊的操作とは別のトグル [BK-07]［ユーザー判断］")
+    func migrationHasItsOwnToggle() throws {
+        let directory = Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = BackupStore(directory: directory)
+
+        // 利用者が「自分の操作の保険は要らない」と決めても、
+        // **アプリの更新で壊れる場面の保険まで一緒に切れてはならない。**
+        let a = BackupService(store: store, appVersion: "t",
+                              snapshotsBeforeDestructive: false, snapshotsBeforeMigration: true)
+        #expect(!a.isEnabled(.libraryDelete))
+        #expect(!a.isEnabled(.jsonImport))
+        #expect(a.isEnabled(.schemaMigration))
+
+        // 逆向きも成り立つ（片方だけを切れる）。
+        let b = BackupService(store: store, appVersion: "t",
+                              snapshotsBeforeDestructive: true, snapshotsBeforeMigration: false)
+        #expect(b.isEnabled(.libraryDelete))
+        #expect(!b.isEnabled(.schemaMigration))
+    }
+
+    @Test("「取らない」なら起動時に何も書かない [BK-07]")
+    func neverWritesNothingOnLaunch() async throws {
+        let directory = Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let rig = try Rig(directory: directory)
+        let service = BackupService(store: rig.store, appVersion: "t",
+                                    launchInterval: .never,
+                                    snapshotsBeforeDestructive: true,
+                                    snapshotsBeforeMigration: true)
+        let outcome = try await service.snapshotOnLaunch(repository: rig.repository,
+                                                         database: rig.database)
+        #expect(outcome == nil)
+        #expect(try rig.store.generations().isEmpty)
+    }
+
+    @Test("破壊的操作の直前を切ると、取らずに先へ進む [BK-07]")
+    func destructiveSnapshotCanBeTurnedOff() async throws {
+        let directory = Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let rig = try Rig(directory: directory)
+        let service = BackupService(store: rig.store, appVersion: "t",
+                                    snapshotsBeforeDestructive: false,
+                                    snapshotsBeforeMigration: false)
+        let outcome = try await service.snapshot(reason: .libraryDelete,
+                                                 repository: rig.repository,
+                                                 database: rig.database)
+        // **失敗ではない。** 利用者が選んだ状態なので、呼び出し側は先へ進む。
+        #expect(outcome.skippedByPreference)
+        #expect(!outcome.skippedAsUnhealthy)
+        #expect(outcome.documentURL == nil)
+        #expect(try rig.store.generations().isEmpty)
     }
 
     // MARK: - 起動時 [BK-01]
@@ -75,7 +207,10 @@ struct BackupServiceTests {
     func migrationSnapshotSkipsAFreshStore() throws {
         let directory = Self.temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let service = BackupService(store: BackupStore(directory: directory), appVersion: "test")
+        let service = BackupService(store: BackupStore(directory: directory), appVersion: "test",
+                                    launchInterval: .daily,
+                                    snapshotsBeforeDestructive: true,
+                                    snapshotsBeforeMigration: true)
         let storeURL = directory.appendingPathComponent("qoo.sqlite")
 
         _ = try QooDatabase.open(at: storeURL) { handle in
@@ -254,7 +389,10 @@ struct BackupServiceTests {
     func migrationSnapshotKeepsTheCopyWhenJSONFails() throws {
         let directory = Self.temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let service = BackupService(store: BackupStore(directory: directory), appVersion: "test")
+        let service = BackupService(store: BackupStore(directory: directory), appVersion: "test",
+                                    launchInterval: .daily,
+                                    snapshotsBeforeDestructive: true,
+                                    snapshotsBeforeMigration: true)
         let source = StaleSchemaSource(storeContents: "old database bytes")
 
         let outcome = try #require(try service.snapshotBeforeMigration(source))
@@ -307,7 +445,10 @@ struct BackupServiceTests {
     func failedCopyLeavesNothing() throws {
         let directory = Self.temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let service = BackupService(store: BackupStore(directory: directory), appVersion: "test")
+        let service = BackupService(store: BackupStore(directory: directory), appVersion: "test",
+                                    launchInterval: .daily,
+                                    snapshotsBeforeDestructive: true,
+                                    snapshotsBeforeMigration: true)
         let source = StaleSchemaSource(storeContents: nil)   // 複製が失敗する
 
         #expect(throws: (any Error).self) {
@@ -352,7 +493,10 @@ struct BackupServiceTests {
         defer { try? live.writer.close() }
 
         let store = BackupStore(directory: directory.appendingPathComponent("backups"))
-        let service = BackupService(store: store, appVersion: "test")
+        let service = BackupService(store: store, appVersion: "test",
+                                    launchInterval: .daily,
+                                    snapshotsBeforeDestructive: true,
+                                    snapshotsBeforeMigration: true)
         _ = try await service.snapshot(reason: .jsonImport,
                                        repository: SQLiteBackupRepository(database: live),
                                        database: live)

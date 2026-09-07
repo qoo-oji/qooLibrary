@@ -35,6 +35,12 @@ import UniformTypeIdentifiers
 /// [B-10。`CoverImageCache`/`QuickLookCoverStore` と同じ設計判断: アプリ内部の
 /// 保管領域で、期待変更台帳・Undo の対象外]。
 public protocol UserCoverStoring: Sendable {
+    /// 複製の置き場所。**バックアップ [BK-06] が一式を写すのに要る。**
+    ///
+    /// 個々の複製は ``url(forRef:libraryUUID:)`` で引けるが、バックアップは
+    /// 「いま在るもの全部」を写すので、木の根が要る。
+    var baseDirectory: URL { get }
+
     /// 参照から複製の場所を求める。**存在するかは呼び出し側が判定する**
     /// （複製が失われていても表示は既定へ落とすだけで済ませたいため）。
     func url(forRef ref: String, libraryUUID: UUID) -> URL
@@ -60,7 +66,7 @@ public enum UserCoverStoreError: Error, Equatable {
 public struct DefaultUserCoverStore: UserCoverStoring {
     public static let shared = DefaultUserCoverStore()
 
-    private let baseDirectory: URL
+    public let baseDirectory: URL
 
     /// テストでは独立した一時ディレクトリを渡せる（`DefaultCoverImageCache` と
     /// 同じ設計判断）。

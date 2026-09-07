@@ -90,6 +90,82 @@ public struct BackupStore: Sendable {
         return url
     }
 
+    /// DB の外にあるデータの束を書く [BK-06]。
+    public func writeAppData(_ archive: AppDataArchive, reason: BackupReason,
+                             date: Date = Date()) throws -> URL
+    {
+        let url = try prepare(reason: reason, kind: .appData, date: date)
+        try BackupCoding.encode(archive).write(to: url, options: .atomic)
+        return url
+    }
+
+    public func readAppData(at url: URL) throws -> AppDataArchive {
+        try BackupCoding.decodeAppData(Data(contentsOf: url))
+    }
+
+    /// カバーの複製を溜める共有プール [BK-06]。
+    ///
+    /// **世代ごとに写さない**——複製は保存のたびに UUID を振るので中身が
+    /// 変わらず、ハードリンクで全世代から共有できる［実測: 実占有は 1 つ分］。
+    /// 素朴に世代へ写すと、カバーを多く差し替えた利用者で容量が世代数倍に
+    /// 膨らむ［ユーザー要望: 意図しないところで肥大化させない］。
+    public var userCoverPool: URL {
+        directory.appendingPathComponent(AppDataBundle.userCoverPool, isDirectory: true)
+    }
+
+    /// どの世代からも参照されなくなった複製を捨てる [BK-06]。
+    ///
+    /// **剪定の後に呼ぶ**——先に呼ぶと、これから消える世代の参照を数えて
+    /// しまい、消せるものが残る。
+    @discardableResult
+    public func pruneUserCoverPool() throws -> Int {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: userCoverPool.path) else { return 0 }
+
+        // 生きている参照を集める。
+        //
+        // **読めない束が 1 つでもあれば掃除しない**［code-review で発見］
+        // ——「参照ゼロ」とみなすと、一過性の読み取り失敗で*再生成できない*
+        // カバー [CV-08] を恒久的に失う。同じ変更の `AppDataSnapshot.restore`
+        // が「消すと取り返しがつかない」として追加だけに留めているのと
+        // 方針を揃える。容量を食い続けるほうが、取り返しのつかない削除より軽い。
+        var referenced: [String: Set<String>] = [:]
+        for generation in try generations() where generation.kind == .appData {
+            guard let archive = try? readAppData(at: generation.url) else {
+                Log.db.warning(
+                    "束を読めないので共有プールの掃除を見送る: \(Log.path(generation.url))")
+                return 0
+            }
+            for (uuid, refs) in archive.manifest.userCovers {
+                referenced[uuid, default: []].formUnion(refs)
+            }
+        }
+
+        var removed = 0
+        let libraries = (try? fm.contentsOfDirectory(at: userCoverPool,
+                                                     includingPropertiesForKeys: nil)) ?? []
+        for library in libraries {
+            let live = referenced[library.lastPathComponent] ?? []
+            let refs = (try? fm.contentsOfDirectory(at: library,
+                                                    includingPropertiesForKeys: nil)) ?? []
+            for ref in refs where !live.contains(ref.lastPathComponent) {
+                // 1 件の失敗で残りを諦めない（`prune` と同じ理由）。
+                do { try fm.removeItem(at: ref); removed += 1 }
+                catch {
+                    Log.db.warning(
+                        "共有プールの複製を消せない: \(Log.path(ref)) — \(error.localizedDescription)")
+                }
+            }
+            // 空になったライブラリのディレクトリも畳む。残すと、次の走査で
+            // 毎回開いて数えるだけの殻が積み上がる。
+            if let rest = try? fm.contentsOfDirectory(at: library, includingPropertiesForKeys: nil),
+               rest.isEmpty {
+                try? fm.removeItem(at: library)
+            }
+        }
+        return removed
+    }
+
     /// ストア複製の宛先を用意して返す [BK-03]。
     ///
     /// **書くのは呼び出し側**（`QooDatabase.backup(to:)`）——SQLite の
@@ -191,8 +267,35 @@ public struct BackupStore: Sendable {
     }
 
     /// 置いてある全世代の合計サイズ。環境設定の表示に使う。
+    /// 世代と共有プールが**実際に使っている**容量 [BK-06]。
+    ///
+    /// **プールのうち、まだ `usercovers/` からも参照されているものは数えない**
+    /// ——ハードリンクなので、その間バックアップが追加で使っている容量は
+    /// ゼロである［実測: `du` は 1 つ分］。数えると「使っていない容量」を見せて、
+    /// 利用者が要らぬ判断（世代数を減らす）をすることになる。
+    ///
+    /// 実際に容量を食うのは「利用者が差し替えて `usercovers/` からは消えたが、
+    /// まだどれかの世代が参照しているもの」だけで、それはリンクが 1 本になる。
     public func totalByteCount() throws -> Int64 {
-        try generations().reduce(0) { $0 + $1.byteCount }
+        try generations().reduce(0) { $0 + $1.byteCount } + exclusivePoolByteCount()
+    }
+
+    /// 共有プールのうち、リンクが 1 本だけ（＝実占有）のものの合計。
+    func exclusivePoolByteCount() -> Int64 {
+        let fm = FileManager.default
+        guard let walker = fm.enumerator(at: userCoverPool,
+                                         includingPropertiesForKeys: [.fileSizeKey,
+                                                                      .isRegularFileKey])
+        else { return 0 }
+        var total: Int64 = 0
+        for case let url as URL in walker {
+            guard let attributes = try? fm.attributesOfItem(atPath: url.path),
+                  (attributes[.type] as? FileAttributeType) == .typeRegular else { continue }
+            let links = (attributes[.referenceCount] as? Int) ?? 1
+            guard links <= 1 else { continue }   // 元からも参照されている
+            total += (attributes[.size] as? NSNumber)?.int64Value ?? 0
+        }
+        return total
     }
 
     // MARK: - 復元の予約 [BK-03][IE-16]

@@ -25,7 +25,11 @@ public struct GrantedVolumeAccess: Codable, Sendable, Identifiable, Equatable {
 public actor VolumeAccessStore {
     public static let shared = VolumeAccessStore()
 
-    private let storageURL: URL
+    /// 永続化先。**バックアップ [BK-06] が一式を写すのに要る。**
+    ///
+    /// `nonisolated` なのは不変だから——読むのに actor の順番待ちをする
+    /// 理由が無い（場所は `init` で決まり、以後変わらない）。
+    public nonisolated let storageURL: URL
     private let bookmarks: BookmarkResolving
     private var grants: [GrantedVolumeAccess] = []
     /// 解決済み URL ごとの有効なアクセス数。`Set<URL>` だと同じ URL に対する

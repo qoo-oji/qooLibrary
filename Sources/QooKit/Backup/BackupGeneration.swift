@@ -39,24 +39,97 @@ public enum BackupReason: String, Sendable, CaseIterable, Codable {
 }
 
 extension BackupReason {
-    /// この契機で**ストア複製も**取るか [BK-03][IE-16]。
+    /// この契機で**何を写すか** [BK-03][BK-06][IE-16]。
     ///
-    /// **DB 全体に及ぶ操作の直前と、起動時だけ**［設計判断、2026-09-05］。
-    /// 複製は 10 万件で 71 MB ある［Spikes T-03 実測］ので、そのライブラリの
+    /// **DB 全体に及ぶ操作の直前と、起動時は一式**［設計判断、2026-09-05］。
+    /// ストア複製は 10 万件で 71 MB ある［Spikes T-03 実測］ので、そのライブラリの
     /// 中に閉じる操作（ラベルの一括削除・テンプレートの適用）の直前まで
     /// 取ると、**3 世代が小さな操作で埋まって「丸ごと戻したい」場面に
     /// 残らない**——そちらは JSON が持つ範囲（手動ラベル・保護された基本
-    /// 情報・設定）で足りる。
+    /// 情報・設定）で足りる。同じ理由で ``BackupGeneration/Kind/appData`` も
+    /// 外す——それらの操作はブックマークにもカバーの複製にも触れない。
     ///
-    /// `switch` を網羅的に書いてあるので、契機を足す人は必ずどちらかを選ぶ。
-    public var copiesStore: Bool {
+    /// **``BackupGeneration/Kind/store`` と ``BackupGeneration/Kind/appData``
+    /// は必ず対で取る** [BK-06]。`library.uuid` は登録フォルダ ID そのものなので、
+    /// DB とブックマークは**対でしか意味を持たない**——片方だけ残る世代を作ると、
+    /// そこから復元しても「ライブラリの行はあるが実体に到達できない」状態になる。
+    ///
+    /// `switch` を網羅的に書いてあるので、契機を足す人は必ず何を取るか選ぶ。
+    public var kinds: Set<BackupGeneration.Kind> {
         switch self {
         case .launch, .schemaMigration, .jsonImport, .beforeRestore, .libraryDelete:
-            true
+            [.document, .store, .appData]
         case .bulkLabelDelete, .templateApply:
-            false
+            [.document]
         }
     }
+}
+
+/// 自動バックアップの設定 [BK-01]［ユーザー要望: ON/OFF と頻度の決定権を持つ］。
+///
+/// ## 3 つとも既定は OFF［ユーザー判断、v2.17］
+///
+/// **この機能を必要とする利用者は、すでに Time Machine を使っている可能性が
+/// 高い**——OS の仕組みが同じことをより広く（アプリのコンテナごと、1 時間ごとに）
+/// やっているのに、アプリが独自に世代を溜めると**気づかないうちに容量を使う**。
+/// 必要な人が明示的に ON にする形にした。
+///
+/// OFF でも失われるものは無い: `backups/` に何も書かないだけで、DB も
+/// `usercovers/` も通常どおり動く。ON にすれば次の契機から溜まり始める。
+///
+/// ## 3 つに分けてある
+///
+/// 契機ごとに「利用者が止めてよいか」の性質が違う。
+///
+/// | 設定 | 効く契機 | なぜ分けるか |
+/// |---|---|---|
+/// | ``LaunchInterval`` | 起動時 [BK-01] | 日常的に溜まるのはここだけ。頻度に「取らない」を含めるので、ON/OFF を別に持たなくてよい |
+/// | `beforeDestructive` | 破壊的操作の直前 [BK-02] | 利用者の操作に紐づく。止めれば「⌘Z で戻せない操作」の戻り道が消えるが、それは利用者の判断 |
+/// | `beforeMigration` | スキーマ移行の直前 [MG-10] | **利用者の操作ではなくアプリの更新で起きる**。R-14（致命的）への直接の備えなので、他と同じトグルに混ぜない［ユーザー判断、v2.17］ |
+public enum BackupSettings {
+    /// 起動時に控えを取る頻度 [BK-01]。
+    ///
+    /// **「取らない」を選択肢に含める**——ON/OFF と頻度を別々の設定にすると、
+    /// 「OFF なのに頻度が選べる」という意味の無い組み合わせができる。
+    public enum LaunchInterval: String, Sendable, CaseIterable, Codable {
+        /// 起動のたび。
+        case everyLaunch
+        /// 1 日 1 回（既定）。
+        case daily
+        /// 1 週間に 1 回。
+        case weekly
+        /// 取らない。**破壊的操作の直前 [BK-02] と移行前 [MG-10] は別の設定**なので、
+        /// これを選んでもそちらは止まらない。
+        case never
+
+        /// **既定は「取らない」**［ユーザー判断、v2.17］。理由は ``BackupSettings`` の
+        /// 型コメント（Time Machine と二重に溜めない）。
+        public static let `default` = LaunchInterval.never
+
+        /// 前回からこれだけ空いていれば取る。`never` は `nil`。
+        public var seconds: TimeInterval? {
+            switch self {
+            case .everyLaunch: 0
+            case .daily: 24 * 60 * 60
+            case .weekly: 7 * 24 * 60 * 60
+            case .never: nil
+            }
+        }
+    }
+
+    public enum PreferenceKeys {
+        public static let launchInterval = "qoo.backup.launchInterval"
+        public static let beforeDestructive = "qoo.backup.beforeDestructive"
+        public static let beforeMigration = "qoo.backup.beforeMigration"
+    }
+
+    /// 破壊的操作の直前に取るか [BK-02]。**既定は取らない。**
+    public static let defaultBeforeDestructive = false
+    /// スキーマ移行の直前に取るか [MG-10]。**既定は取らない。**
+    ///
+    /// 要件 MG-10 は当初「必ず作成する」と書いていたが、v2.17 で
+    /// 「既定は取らない。設定で ON にできる」へ改めた［ユーザー判断］。
+    public static let defaultBeforeMigration = false
 }
 
 /// 置いてあるスナップショット 1 件。
@@ -74,12 +147,28 @@ public struct BackupGeneration: Sendable, Equatable, Hashable, Identifiable {
         /// `library.uuid` は登録フォルダ ID そのものなので、DB を戻せば
         /// ライブラリの行も生きた登録を指す。
         case store
+        /// **DB の外にある、再生成できないデータ一式** [BK-06]（v2.17 で追加）。
+        ///
+        /// 中身は ``AppDataArchive``（JSON 1 ファイル、数 KB）。登録フォルダと
+        /// Security-Scoped Bookmark・ボリューム許可・アプリの関連付けを収める。
+        ///
+        /// **カバーの複製は入らない**——共有プールへハードリンクし、ここには
+        /// 参照の一覧だけを持つ（``AppDataBundle/userCoverPool``）。束を
+        /// 書庫にしないのはそのため: 中身が数 KB になったので圧縮する意味が無く、
+        /// 書き込みが同期のまま済む（移行前フック [MG-10] は同期である）。
+        ///
+        /// **``store`` と対で意味を持つ**——`library.uuid` は登録フォルダ ID
+        /// そのものなので、DB だけ戻してもブックマークが古ければライブラリは
+        /// 実体に到達できない。IE-16 の「1 操作で完全に戻せる」は、v2.17 まで
+        /// **このファイルが無事であることを暗黙の前提にしていた**。
+        case appData
 
         /// ファイル名の拡張子。
         public var filenameExtension: String {
             switch self {
             case .document: "json"
             case .store: "sqlite"
+            case .appData: "appdata"
             }
         }
     }
@@ -158,6 +247,151 @@ public enum BackupFileName {
     public static func parseTimestamp(_ text: String) -> Date? { formatter().date(from: text) }
 }
 
+/// `appData` の束に入れるものの綴り [BK-06]。
+///
+/// 束の実体は **JSON 1 ファイル**（``AppDataArchive``、拡張子 `.appdata`）。
+/// 中身が数 KB なので書庫にしていない [BK3-13]。
+///
+/// **書く側と読む側で 1 箇所にする**——`BackupFileName` と同じ理由で、
+/// ここがずれると書いたものを自分で読み戻せない。しかも壊れ方が静かで、
+/// 「復元したのにブックマークが戻っていない」と気づくのは *次に起動して
+/// ライブラリが消えて見えたとき* になる。
+///
+/// ## 何を入れ、何を入れないか [BK-06]
+///
+/// | 入れる | なぜ |
+/// |---|---|
+/// | `registeredFolders.json` | Security-Scoped Bookmark。**環境固有で作り直せない**（利用者がフォルダを選び直すしかない）。`library.uuid` はこの登録の ID そのものなので、DB と対でしか意味を持たない |
+/// | `volumeAccess.json` | 同上。失うとボリュームへ到達できなくなる |
+/// | `usercovers/` | 元画像は消えている前提 [CV-08]。**アプリ自身が消す経路**（起動時の掃除・ライブラリの削除）を持つ |
+/// | `appAssociations.json` | 再設定はできるが手間。小さいので入れる |
+///
+/// サムネイルキャッシュ・Quick Look の一時複製・診断ログは**入れない**
+/// ——いずれも再生成できる [MG-21] か、戻す意味が無い。
+public enum AppDataBundle {
+    public static let registeredFolders = "registeredFolders.json"
+    public static let volumeAccess = "volumeAccess.json"
+    public static let appAssociations = "appAssociations.json"
+
+    /// カバーの複製を溜める**共有プール**の名前（束の中ではなく `backups/` の直下）。
+    ///
+    /// ## 束に入れず、ハードリンクで共有する［ユーザー要望: 肥大化を防ぐ］
+    ///
+    /// カバーの複製は**保存のたびに新しい UUID を振る**（`UserCoverStore`）ので
+    /// **一度書かれたら中身が変わらない**。この不変性のおかげで、世代ごとに
+    /// 中身を写す必要がまったく無い——`backups/usercovers/<libraryUUID>/<ref>`
+    /// へハードリンクを張れば、**実占有は 1 つ分のまま**で全世代から参照できる
+    /// ［実測: 同一ボリューム内で inode を共有し、`du` は 1 つ分。元を消しても
+    /// リンク先の中身は無事］。
+    ///
+    /// 世代ごとに中身を写す素朴な造りだと、カバーを多く差し替えた利用者で
+    /// **世代数倍に膨らむ**（1 万冊を全部差し替えれば数 GB × 世代数）。
+    /// しかも画像は既に圧縮済みなので、書庫に入れても縮まない。
+    ///
+    /// 実際に容量を食うのは「利用者が差し替えて `usercovers/` からは消えたが、
+    /// まだどれかの世代が参照しているもの」だけで、その世代が剪定されれば
+    /// 一緒に消える（``BackupStore`` のゴミ集め）。
+    public static let userCoverPool = "usercovers"
+
+    /// 復元で**置き換える**もの [BK-06]。
+    ///
+    /// DB と整合していなければ意味を持たない——古いブックマークと新しい DB が
+    /// 混ざると、行はあるのに到達できないライブラリができる。
+    public static let replacedFiles = [registeredFolders, volumeAccess, appAssociations]
+
+    /// 記述子。**常に入れる**［外部調査への答え］。
+    ///
+    /// 3 つの役目を 1 つで果たす。
+    ///
+    /// 1. **この束が qooLibrary の `appData` であることの判定。** 外部調査で
+    ///    出た既知の不具合（Confluence の `exportDescriptor.properties` 欠落で
+    ///    復元が失敗する）への答え。
+    /// 2. **「入っていない」と「その時点で 0 件だった」の区別。** 登録が 1 件も
+    ///    無い状態も状態であり、復元でそこへ戻せなければ対の意味が崩れる。
+    ///    一覧を持てば、書き漏らしと空を取り違えない。
+    /// 3. **中身が空の束を書く分岐が生じない。** 記述子が常にあるので、
+    ///    「1 つも入っていない束をどう扱うか」を考えずに済む。
+    public static let manifest = "manifest.json"
+}
+
+/// `appData` の束に入る記述子 [BK-06]。
+public struct AppDataManifest: Codable, Sendable, Equatable {
+    /// この束の形式の版。**中身の綴りを変えたら上げる。**
+    ///
+    /// 読む側は `<=` で判定する [IE-14 と同じ規則]——アプリより新しい束は
+    /// 「読めない」と正しく断り、黙って一部だけ復元しない。
+    public static let currentVersion = 1
+
+    public var version: Int
+    public var createdAt: Date
+    /// 実際に入っているファイル（``AppDataBundle/replacedFiles`` のうち、
+    /// 取った時点で存在したもの）。
+    public var files: [String]
+    /// この世代が参照しているカバーの複製 [BK-06]。
+    ///
+    /// **実体は束の中ではなく共有プール**（``AppDataBundle/userCoverPool``）に
+    /// ある。ここが持つのは「どれを参照しているか」だけで、
+    ///
+    /// - **復元**は、この一覧を見てプールから `usercovers/` へ戻す。
+    /// - **剪定**は、全世代のこの一覧を集めて、どこからも参照されない実体を消す。
+    ///
+    /// 鍵はライブラリ UUID の文字列、値はその配下の複製の名前（`<uuid>.<ext>`）。
+    public var userCovers: [String: [String]]
+
+    /// 参照している複製の総数。表示と照合に使う。
+    public var userCoverCount: Int { userCovers.values.reduce(0) { $0 + $1.count } }
+
+    /// 写せなかった複製の件数。**0 でないことは「守れていない」の印**
+    /// ——ハードリンクを作れない環境（ファイルシステムが非対応）で起きる。
+    /// 黙って複製へ落とすと肥大化を招くので、**含めずに数だけ残す**。
+    public var userCoversSkipped: Int
+
+    /// 在るのに**読めなかった**設定ファイルの件数。
+    ///
+    /// `files` に載らないことは「その時点で無かった」を意味する [BK3-14] ので、
+    /// 読めなかったものを同じ扱いにすると**束が静かに欠けたまま成功として
+    /// 書かれる**［code-review で発見］。`userCoversSkipped` と同じく、
+    /// 0 でないことが「守れていない」の印。
+    ///
+    /// **Optional にしてある**——この鍵を持たない束（v2.17 の最初の実装が
+    /// 書いたもの）を読めなくしないため [IE-14 と同じ配慮]。
+    public var filesUnreadable: Int?
+
+    public init(version: Int = AppDataManifest.currentVersion,
+                createdAt: Date = Date(),
+                files: [String],
+                userCovers: [String: [String]] = [:],
+                userCoversSkipped: Int = 0,
+                filesUnreadable: Int = 0)
+    {
+        self.version = version
+        self.createdAt = createdAt
+        self.files = files
+        self.userCovers = userCovers
+        self.userCoversSkipped = userCoversSkipped
+        self.filesUnreadable = filesUnreadable
+    }
+}
+
+/// `appData` の中身 [BK-06]。
+///
+/// **ファイルの中身は解釈しない。** そのときのバイト列をそのまま戻すのが
+/// バックアップの仕事で、形式を理解しようとすると*その形式が変わった日*に
+/// 読めなくなる——守ろうとしている当のもの（形式変更で壊れること）に
+/// 自分で当たることになる。
+public struct AppDataArchive: Codable, Sendable, Equatable {
+    public var manifest: AppDataManifest
+    /// ファイル名（``AppDataBundle`` の綴り）→ そのときのバイト列。
+    ///
+    /// `JSONEncoder` は `Data` を base64 で書くので、中身が何であっても壊れない。
+    public var files: [String: Data]
+
+    public init(manifest: AppDataManifest, files: [String: Data]) {
+        self.manifest = manifest
+        self.files = files
+    }
+}
+
 /// 移行前の DB へ触れる窓口 [MG-10]。実装は `QooPersistence`。
 ///
 /// **ポートに分けてあるのは、いちばん危ない経路を試せるようにするため**
@@ -230,11 +464,20 @@ public struct RestoreOutcome: Sendable, Equatable {
     public var previousStoreURL: URL?
     public var failure: Failure?
 
+    /// DB の外にあるデータ [BK-06] も戻したか。
+    ///
+    /// **偽のとき、DB は戻っているがブックマークは現在のまま**——古い版が
+    /// 作った世代（束を持たない）か、書き戻しに失敗したか。`library.uuid` は
+    /// 登録フォルダ ID そのものなので、**戻した DB のライブラリが現在の登録に
+    /// 無ければ、その行は実体へ到達できない**。利用者に伝える必要がある。
+    public var appDataRestored: Bool = false
+
     public init(restoredFrom: String, previousStoreURL: URL? = nil,
-                failure: Failure? = nil) {
+                failure: Failure? = nil, appDataRestored: Bool = false) {
         self.restoredFrom = restoredFrom
         self.previousStoreURL = previousStoreURL
         self.failure = failure
+        self.appDataRestored = appDataRestored
     }
 
     public var succeeded: Bool { failure == nil }
