@@ -439,12 +439,13 @@ private struct RescanPromptDialog: View {
     var body: some View {
         DialogScaffold(
             width: 440,
+            // 「あとで」は廃止した［ユーザー判断 A1、2026-09-07］——手動で
+            // スキャンを起こす入口は §19.6 で廃止済みなので、あとで選んでも
+            // 起こす手段が無い。ボタンは 1 つ（Return／Esc とも同じ）。
             confirm: DialogButton(title: AppStrings.text("librarySettings.rescanNow", locale: locale)) {
                 onRescan()
                 dismiss()
-            },
-            cancel: DialogButton(title: AppStrings.text("librarySettings.rescanLater", locale: locale),
-                                 role: .cancel) { dismiss() }
+            }
         ) {
             VStack(alignment: .leading, spacing: Tokens.spacing.s) {
                 Text(String(format: AppStrings.text("librarySettings.rescanExplanation",

@@ -417,7 +417,7 @@ public enum AppLimits {
         public static let comicInfoMaxDepth = 2
     }
 
-    /// 自動バックアップ [BK-01〜BK-05]。環境設定「リセット」タブで変更できる。
+    /// 自動バックアップ [BK-01〜BK-05]。環境設定「バックアップ」タブで変更できる。
     public enum Backup {
         /// JSON スナップショットの世代数。**既定 10** [BK-01]。
         ///

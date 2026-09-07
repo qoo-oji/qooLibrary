@@ -666,6 +666,13 @@ private struct ViewMenuCommands: View {
             window?.setSeriesStacking(window?.seriesStacking != true)
         }
         .disabled(window?.canUseSeriesStacking != true)
+        // 重複のみを表示 [DU-11]。空きスペースの右クリックにもあるが、
+        // サムネイル・シリーズスタックと同じ「見え方」の切り替えなので
+        // 表示メニューにも置く（A5、2026-09-07）。畳んでいなければ無効。
+        Toggle("folder.showDuplicatesOnly", isOn: Binding(
+            get: { window?.showsDuplicatesOnly == true },
+            set: { window?.setShowsDuplicatesOnly($0) }))
+        .disabled(window?.canShowDuplicatesOnly != true)
         Divider()
         Menu("common.sortBy", systemImage: "arrow.up.arrow.down") { // [LV-01]
             Picker("common.sortBy", selection: sortKeyBinding) {

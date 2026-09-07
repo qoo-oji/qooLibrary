@@ -444,6 +444,13 @@ public final class WindowState {
         libraryContent.setSeriesStacking(on)
     }
 
+    /// 「重複のみを表示」の切り替え [DU-11]。表示メニューと空きスペースの
+    /// 右クリックが同じ経路を通る。読み直しは `FolderContentView.libraryLoadKey`
+    /// が `duplicatesOnly` を鍵に含むことで起きる（`setSeriesStacking` と同じ形）。
+    public func setDuplicatesOnly(_ on: Bool) {
+        libraryContent.setDuplicatesOnly(on)
+    }
+
     /// 戻る／進むでドリルインの状態を復元する [VM3-03]。
     ///
     /// **読み直しの合図は張らない**——`FolderContentView.libraryLoadKey` が

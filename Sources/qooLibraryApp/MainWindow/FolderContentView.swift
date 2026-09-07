@@ -1727,6 +1727,8 @@ struct FolderContentView: View {
         /// `unresolvedFilter` と同じ理由でここに要る。
         let seriesStacking: Bool
         let drilledSeries: String?
+        /// 「重複のみを表示」[DU-11]。表示メニューからも変わる（A5、2026-09-07）。
+        let duplicatesOnly: Bool
     }
 
     /// いまの表示モードで選べる並び替えキー [LV-01][LV-04][VM-15]。
@@ -1771,7 +1773,8 @@ struct FolderContentView: View {
                        generation: LibraryGeneration.shared.value,
                        unresolvedFilter: libraryContent.unresolvedFilter,
                        seriesStacking: libraryContent.seriesStacking,
-                       drilledSeries: libraryContent.drilledSeries)
+                       drilledSeries: libraryContent.drilledSeries,
+                       duplicatesOnly: libraryContent.duplicatesOnly)
     }
 
     /// ライブラリ表示モードでだけ現れる列 [LV-04]。
@@ -2197,15 +2200,11 @@ struct FolderContentView: View {
             // 「重複」が定義されない。
             if libraryContent.grouping.isEnabled {
                 Divider()
+                // 読み直しは `libraryLoadKey` が `duplicatesOnly` を含むことで
+                // 起きる（表示メニューの同じ項目と経路を揃える [A5]）。
                 Toggle("folder.showDuplicatesOnly", isOn: Binding(
                     get: { libraryContent.duplicatesOnly },
-                    set: { on in
-                        libraryContent.setDuplicatesOnly(on)
-                        Task {
-                            await loadLibraryRows(
-                                sortOrder.first?.librarySortSpec ?? .byFilename)
-                        }
-                    }))
+                    set: { libraryContent.setDuplicatesOnly($0) }))
             }
             Button("action.selectAll", systemImage: "character.textbox") { selectAllInCurrentFolder() }
                 .disabled(displayedEntries.isEmpty)

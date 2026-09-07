@@ -5,7 +5,12 @@ import QooApplication
 import QooKit
 import SwiftUI
 
-/// 埋め込みメタデータの設定 [EM-06][EM-30〜EM-35]。
+/// 埋め込みメタデータの設定 [EM-06][EM-35]。
+///
+/// **ここに残すのは読み取りの有無だけ**——`ComicInfo.xml` の巻数をどちらから
+/// 取るか [EM-30] は高度な設定「巻数フォーマット」へ移した
+/// （`ComicInfoVolumeSourceSettingsView`、ユーザー判断 A9・2026-09-07）。
+/// コミック専用かつ一度決めたら触らない設定で、基本に置く理由が無かった。
 ///
 /// **`Form` の中に置く節として切り出してある** [§19.7]——独立したセクション
 /// だったものを「基本」の中へ統合したため（`LibraryBasicsSettingsView` 参照）。
@@ -24,37 +29,6 @@ struct EmbeddedMetadataFormSections: View {
             Text("librarySettings.section.embeddedMetadata")
         } footer: {
             Text("librarySettings.embeddedMetadata.enabledHint")
-                .font(.system(size: Tokens.fontSize.caption))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        Section {
-            // 丸が右端へ飛ぶのを防ぐ [CP-07]。理由は
-            // `LibrarySettingsBasicViews` の同じ印のコメント。
-            // ここは見出しが既に説明を持つので、ラベルは空のまま包む。
-            LabeledContent {
-                Picker("", selection: $draft.comicInfoVolumeSource) {
-                    Text("librarySettings.embeddedMetadata.volumeSource.ask")
-                        .tag(ComicInfoVolumeSource.ask)
-                    Text("librarySettings.embeddedMetadata.volumeSource.number")
-                        .tag(ComicInfoVolumeSource.number)
-                    Text("librarySettings.embeddedMetadata.volumeSource.volume")
-                        .tag(ComicInfoVolumeSource.volume)
-                }
-                .labelsHidden()
-                .pickerStyle(.radioGroup)
-            } label: {
-                EmptyView()
-            }
-            .disabled(!draft.readsEmbeddedMetadata)
-        } header: {
-            Text("librarySettings.embeddedMetadata.volumeSource")
-        } footer: {
-            // **なぜ聞くのかを書く。**`Number` と `Volume` のどちらが
-            // 巻数かは実装によって真逆なので、選択肢の名前だけでは
-            // 何を選んでいるのか分からない。
-            Text("librarySettings.embeddedMetadata.volumeSourceHint")
                 .font(.system(size: Tokens.fontSize.caption))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -225,5 +199,36 @@ struct VolumeDecisionDialog: View {
 
     private func setAll(_ source: ComicInfoVolumeSource) {
         for candidate in candidates { choices[candidate.id] = source }
+    }
+}
+
+/// `ComicInfo.xml` の巻数をどちらの要素から取るか [EM-30〜EM-33]。
+///
+/// **高度な設定「巻数フォーマット」の末尾に置く**——巻数の読み方という
+/// 同じ関心事で、しかも `Form` の外（`VStack`）に並ぶので、ここでは
+/// `Section` ではなく見出し＋ラジオの形にする。読み取りが無効なら押せない。
+struct ComicInfoVolumeSourceSettingsView: View {
+    @Binding var draft: LibrarySettingsDraft
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Tokens.spacing.s) {
+            Text("librarySettings.embeddedMetadata.volumeSource")
+                .font(.system(size: Tokens.fontSize.body, weight: .semibold))
+            Picker("", selection: $draft.comicInfoVolumeSource) {
+                Text("librarySettings.embeddedMetadata.volumeSource.ask")
+                    .tag(ComicInfoVolumeSource.ask)
+                Text("librarySettings.embeddedMetadata.volumeSource.number")
+                    .tag(ComicInfoVolumeSource.number)
+                Text("librarySettings.embeddedMetadata.volumeSource.volume")
+                    .tag(ComicInfoVolumeSource.volume)
+            }
+            .labelsHidden()
+            .pickerStyle(.radioGroup)
+            .disabled(!draft.readsEmbeddedMetadata)
+            Text("librarySettings.embeddedMetadata.volumeSourceHint")
+                .font(.system(size: Tokens.fontSize.caption))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }

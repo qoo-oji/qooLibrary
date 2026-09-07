@@ -34,6 +34,13 @@ struct WindowMenuActions {
     var seriesStacking = false
     var setSeriesStacking: (Bool) -> Void = { _ in }
 
+    /// 「重複のみを表示」[DU-11]。ライブラリ表示モードで、かつ重複を畳む
+    /// 設定 [DU-01] のときだけ意味を持つ——畳んでいなければ「重複」が
+    /// 定義されない。無効化の考え方はシリーズスタックと同じ。
+    var canShowDuplicatesOnly = false
+    var showsDuplicatesOnly = false
+    var setShowsDuplicatesOnly: (Bool) -> Void = { _ in }
+
     var canGoBack = false
     var canGoForward = false
     var canGoToParent = false

@@ -98,7 +98,7 @@ struct AdvancedSettingsEditor: View {
 /// **草案を編集するだけで、保存はしない**——閉じても設定ウインドウの「保存」を
 /// 押すまで DB には何も書かない（現行の settingsRevision 経路をそのまま保つ
 /// [RG3-27]）。閉じるボタンが「完了」なのはそのため。取り消したければ
-/// 設定ウインドウの「変更を戻す」を押す。
+/// 設定ウインドウの「変更を破棄」を押す。
 struct AdvancedSettingsDialog: View {
     @Environment(\.locale) private var locale
     @Environment(\.dialogDismiss) private var dismiss

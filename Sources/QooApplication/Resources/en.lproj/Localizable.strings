@@ -110,7 +110,7 @@
 
 /* Automatic backup failure [BK-02] */
 "backup.failed.title" = "The automatic backup couldn't be created";
-"backup.failed.body" = "The state just before this operation couldn't be saved. The operation itself is going ahead. Check the location and the free space in Settings › Reset.";
+"backup.failed.body" = "The state just before this operation could not be saved. The operation itself continues. Check the backup location and free space in Settings › Backup.";
 
 /* Safety net for when no type carried an explanation [ER-03]. */
 "notification.unidentifiedError" = "An error occurred that couldn't be identified.\nIf it happens again when you repeat the same steps, save a record with Help › Export Diagnostics.";

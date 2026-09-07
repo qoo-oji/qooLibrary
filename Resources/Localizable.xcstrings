@@ -9721,23 +9721,6 @@
         }
       }
     },
-    "librarySettings.rescanLater": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Later"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "あとで"
-          }
-        }
-      }
-    },
     "librarySettings.rescanNote": {
       "extractionState": "manual",
       "localizations": {
@@ -9778,13 +9761,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Revert"
+            "value": "Discard Changes"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "変更を戻す"
+            "value": "変更を破棄"
           }
         }
       }
@@ -16350,6 +16333,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "詳細"
+          }
+        }
+      }
+    },
+    "preferences.tab.backup": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Backup"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "バックアップ"
           }
         }
       }

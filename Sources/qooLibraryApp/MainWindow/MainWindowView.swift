@@ -191,6 +191,10 @@ struct MainWindowView: View {
             canUseSeriesStacking: windowState.displayMode == .library,   // [VM3-05]
             seriesStacking: windowState.libraryContent.seriesStacking,
             setSeriesStacking: { windowState.setSeriesStacking($0) },
+            canShowDuplicatesOnly: windowState.displayMode == .library
+                && windowState.libraryContent.grouping.isEnabled,             // [DU-11]
+            showsDuplicatesOnly: windowState.libraryContent.duplicatesOnly,
+            setShowsDuplicatesOnly: { windowState.setDuplicatesOnly($0) },
             canGoBack: windowState.canGoBack,
             canGoForward: windowState.canGoForward,
             canGoToParent: windowState.canGoToParent,

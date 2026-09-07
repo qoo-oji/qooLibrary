@@ -845,6 +845,9 @@ struct LibraryVolumeFormatsSettingsView: View {
                 .disabled(selectedID == nil)
             }
             .frame(maxWidth: 620, alignment: .leading)
+            // ComicInfo.xml の巻数 [EM-30]。基本から移した（A9、2026-09-07）。
+            ComicInfoVolumeSourceSettingsView(draft: $draft)
+                .frame(maxWidth: 620, alignment: .leading)
         }
     }
 

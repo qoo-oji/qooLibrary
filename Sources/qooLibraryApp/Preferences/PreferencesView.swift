@@ -9,8 +9,8 @@ import SwiftUI
 /// 詳細の大半は `AppAssociationService`/`ScanEngine`/`NotificationHistoryStore`/
 /// 診断ログ基盤（当時いずれも未実装）に依存するため、実際に意味を持つ
 /// カテゴリのみを実装する [設計判断、CLAUDE.md 1-12 節参照]。
-/// **「リセット」タブはフェーズ 2 の DB が入った時点で中身が付いた**
-/// （`ResetPreferencesTab`）。
+/// **「リセット」タブはフェーズ 2 の DB が入った時点で中身が付き、2026-09-07 に
+/// バックアップ・復元・点検を「バックアップ」タブへ分けた**（`BackupPreferencesTab`）。
 /// **「圧縮／展開」タブ**は仕様書 §15.10 の定義には無い、ユーザー要望による
 /// 追加（`CompressionPreferencesTab` 参照）。
 ///
@@ -92,6 +92,7 @@ struct PreferencesView: View {
                 case .cache: CachePreferencesTab()
                 case .notifications: NotificationPreferencesTab()
                 case .advanced: AdvancedPreferencesTab()
+                case .backup: BackupPreferencesTab()
                 case .reset: ResetPreferencesTab()
                 case nil: EmptyView()
                 }
@@ -136,14 +137,14 @@ enum PreferencesCategory: CaseIterable, Identifiable {
     case notifications
     /// [15.10 節、1-15] 診断ログ [LG2-01〜LG2-08]。`AdvancedPreferencesTab` 参照。
     case advanced
-    /// 一番下に置く [ユーザー要望]。ライブラリ単位の削除・JSON の書き出しと
-    /// 取り込み・サムネイルの一括削除を扱う（`ResetPreferencesTab` 参照）。
-    ///
-    /// **「エクスポート/インポートを先に実装してから削除を出す」という制約**
-    /// ［ユーザーからの明示的な制約］は満たしている——同じタブの上段に
-    /// 書き出しと取り込みがあり、順序そのものが案内になっている。
-    /// **DB 全体を一度に消すボタンはまだ無い**。追加するなら、まず
-    /// 2-16 の本番（世代管理・復元 UI [BK-01〜BK-04]）を済ませること。
+    /// 自動バックアップ・書き出し／読み込み・復元・データベースの点検
+    /// （`BackupPreferencesTab` 参照）［ユーザー判断 A3、2026-09-07］。
+    /// **「リセット」の直前に置く**——「エクスポート/インポートを先に実装して
+    /// から削除を出す」というユーザーの制約を並びで保つ。
+    case backup
+    /// 一番下に置く [ユーザー要望]。**消す操作だけ**——ライブラリ単位の削除・
+    /// サムネイルの一括削除（`ResetPreferencesTab` 参照）。
+    /// **DB 全体を一度に消すボタンは作らない**（15章 RS-07）。
     case reset
 
     var id: Self { self }
@@ -160,6 +161,7 @@ enum PreferencesCategory: CaseIterable, Identifiable {
         case .cache: "preferences.tab.cache"
         case .notifications: "preferences.tab.notifications"
         case .advanced: "preferences.tab.advanced"
+        case .backup: "preferences.tab.backup"
         case .reset: "preferences.tab.reset"
         }
     }
@@ -178,6 +180,7 @@ enum PreferencesCategory: CaseIterable, Identifiable {
         // （鍵と型名は据え置き。詳細は `NotificationPreferencesTab` の doc）。
         case .notifications: "clock"
         case .advanced: "wrench.and.screwdriver"
+        case .backup: "externaldrive.badge.timemachine"
         case .reset: "arrow.counterclockwise.circle"
         }
     }

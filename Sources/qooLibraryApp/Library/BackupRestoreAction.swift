@@ -224,7 +224,7 @@ enum BackupRestoreAction {
     /// ときにだけ出るので、**いちばん復元が要る場面で誰も気づかない**
     /// ——起動した時点で言うのが RB-03 の趣旨である。
     ///
-    /// 行き先は環境設定「リセット」タブの世代一覧。**専用のダイアログに
+    /// 行き先は環境設定「バックアップ」タブの世代一覧。**専用のダイアログに
     /// 一覧を作らない**——同じ一覧が 2 箇所にできると、片方だけ直して
     /// 取り残す（このリポジトリが繰り返し踏んでいる形）。
     static func proposeRecoveryIfNeeded(locale: Locale,
@@ -253,15 +253,15 @@ enum BackupRestoreAction {
         if chosen?.id == openRestore { openRestoreTab(openWindow: openWindow) }
     }
 
-    /// 「リセット」タブを開く導線の識別子。**ドットを含めない**——
+    /// 「バックアップ」タブを開く導線の識別子。**ドットを含めない**——
     /// `check-localization-keys` が文字列カタログの鍵と誤検出するため。
     static let openRestore = "open-backup-restore"
 
-    /// 環境設定「リセット」タブを開く。**行き先を先に予約してから開く**
+    /// 環境設定「バックアップ」タブを開く。**行き先を先に予約してから開く**
     /// ——既に開いているウインドウが前面に来ただけのときにも届くように
     /// （`PreferencesNavigation` の doc、`AccessDeniedRow` と同じ形）。
     static func openRestoreTab(openWindow: OpenWindowAction) {
-        PreferencesNavigation.shared.pendingCategory = .reset
+        PreferencesNavigation.shared.pendingCategory = .backup
         openWindow(id: "preferences")
     }
 

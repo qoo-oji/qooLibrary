@@ -27,7 +27,7 @@ struct CachePreferencesTab: View {
                     Text("preferences.cache.currentSize")
                     Spacer()
                     if let currentSize {
-                        Text(Self.byteCountString(currentSize))
+                        Text(PreferencesByteCount.string(currentSize))
                             .foregroundStyle(.secondary)
                     } else {
                         ProgressView().controlSize(.small)
@@ -42,7 +42,7 @@ struct CachePreferencesTab: View {
                                 await refresh()
                             }
                         }
-                    Text(Self.byteCountString(Int64(maxSizeBytes)))
+                    Text(PreferencesByteCount.string(Int64(maxSizeBytes)))
                         .foregroundStyle(.secondary)
                         .frame(width: 80, alignment: .trailing)
                 }
@@ -96,11 +96,4 @@ struct CachePreferencesTab: View {
         currentSize = await cache.totalSize()
     }
 
-    /// `ByteCountFormatter` は 0 バイトを既定で「Zero KB」という人間向けの
-    /// 特別表記にしてしまう（実機検証でユーザーから指摘）。クリア直後など
-    /// 0 バイトのときだけ素直な「0 KB」に置き換える。
-    private static func byteCountString(_ bytes: Int64) -> String {
-        guard bytes > 0 else { return "0 KB" }
-        return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
-    }
 }
