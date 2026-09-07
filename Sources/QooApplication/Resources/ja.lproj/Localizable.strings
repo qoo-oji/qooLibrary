@@ -28,6 +28,8 @@
 /* ライブラリの記録に対する操作 */
 "command.deleteOrphanRecords.one" = "「%@」の記録の削除";
 "command.deleteOrphanRecords.many" = "%d 件のファイルの記録の削除";
+"command.importBackup" = "「ライブラリのデータ」の取り込み";
+"command.importBackup.templatesRemaining" = "ユーザー定義テンプレート %d 件";
 "command.protectMetadata" = "「%@」のメタデータの保護";
 "command.unprotectMetadata" = "「%@」のメタデータの保護の解除";
 "command.setRating" = "「%1$@」の評価（★%2$d）";

@@ -343,7 +343,7 @@ struct BackupTests {
         }
 
         let restored = try BackupCoding.decode(encoded)
-        let plan = try await backup.import(restored)
+        let plan = try await backup.import(restored).plan
         #expect(plan.libraries.count == 1)
         #expect(plan.libraries[0].kind == .update)
         #expect(plan.filesMissing == 0)
@@ -433,7 +433,7 @@ struct BackupTests {
         var document = try await backup.export(scope: .everything, appVersion: nil)
         document.libraries[0].displayName = "存在しないライブラリ"
 
-        let plan = try await backup.import(document)
+        let plan = try await backup.import(document).plan
         #expect(plan.libraries[0].kind == .missing)
         #expect(plan.missingLibraries.count == 1)
         let count = try await f.database.writer.read { db in
@@ -449,7 +449,7 @@ struct BackupTests {
         try await f.database.writer.write { db in
             try db.execute(sql: "DELETE FROM managedFile")
         }
-        let plan = try await backup.import(document)
+        let plan = try await backup.import(document).plan
         #expect(plan.filesMissing == 3)
         #expect(plan.filesUpdated == 0)
         let count = try await f.database.writer.read { db in

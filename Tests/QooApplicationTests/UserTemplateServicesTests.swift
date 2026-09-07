@@ -118,7 +118,7 @@ import Testing
         #expect(!plan.isEmpty, "テンプレートだけでも「取り込むものがある」")
 
         let applied = try await w.services.importBackup(document)
-        #expect(applied.templatesAdded == 1)
+        #expect(applied.plan.templatesAdded == 1)
         #expect(await w.services.userTemplates.map(\.name) == ["テンプレートだけ"])
     }
 

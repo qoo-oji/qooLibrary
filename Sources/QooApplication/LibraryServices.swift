@@ -678,9 +678,9 @@ public final class LibraryServices {
 
     /// JSON バックアップからの復元 [★8]。**併合する**（`merge` の解説）。
     @discardableResult
-    public func mergeUserTemplates(_ templates: [UserTemplate]) async throws -> Int {
+    public func mergeUserTemplates(_ templates: [UserTemplate]) async throws -> [UUID] {
         let added = try await userTemplateStore.merge(templates)
-        if added > 0 { await refreshUserTemplates() }
+        if !added.isEmpty { await refreshUserTemplates() }
         return added
     }
 
@@ -1569,33 +1569,111 @@ public final class LibraryServices {
         return incoming.filter { !known.contains($0.id) }.count
     }
 
+    /// 取り込みの結果 [IE-13]。計画と、⌘Z で戻すために要るもの一式。
+    public struct BackupImportResult: Sendable, Equatable {
+        public var plan: ImportPlan
+        /// DB 側の写し。`revertImport` へ渡す。
+        public var snapshot: ImportSnapshot
+        /// 取り込みが足したユーザー定義テンプレート [★8]。DB の外にあるので
+        /// 写しとは別に持ち、Undo で `remove` する。
+        public var addedTemplateIDs: [UUID]
+    }
+
     /// 取り込む [JS-08]。承認を得てから呼ぶこと——`planImport` の結果を
     /// 見せずに実行してはならない [IE-11]。
+    ///
+    /// **画面からは `ImportBackupCommand` を通して呼ぶ** [IE-13]——⌘Z で戻せるのは
+    /// そちらだけ。ここを直に呼ぶと取り込みが Undo スタックにも操作履歴にも
+    /// 載らない。
     @discardableResult
-    public func importBackup(_ document: BackupDocument) async throws -> ImportPlan {
+    public func importBackup(_ document: BackupDocument) async throws -> BackupImportResult {
         guard let repository = backupRepository else { throw ServiceError.notReady }
         // [JS-07][IE-12] 取り込みは既存のラベル・評価を書き換える。**戻せる
-        // ようにしてから始める**——取り込み自体はまだ Undo に載っていない
-        // [IE-13 は未]ので、いまはこのスナップショットが唯一の戻り道である。
+        // ようにしてから始める**——⌘Z [IE-13] はメモリの上にしか無くセッションを
+        // 跨げないので、[BK-07] の設定が有効ならディスクにも控える。
         await snapshotBeforeDestructive(.jsonImport)
-        var plan = try await repository.import(document)
+        var outcome = try await repository.import(document)
         // テンプレートは DB の外なので、永続化層の取り込みでは戻らない [★8]。
         // **`try?` で握りつぶさない**——書き込めない場所（アクセス権・容量）
         // なら「0 件」と成功を報告するのではなく、この関数の呼び出し側へ
         // 理由を返す［code-review で発見。他のストアで直したのと同じ形］。
-        var addedTemplates = 0
+        var addedTemplates: [UUID] = []
         if let templates = document.userTemplates {
-            addedTemplates = try await mergeUserTemplates(templates)
+            do {
+                addedTemplates = try await mergeUserTemplates(templates)
+            } catch {
+                // **DB は既にコミットされている。巻き戻してから投げる**
+                // ［code-review で発見］。そうしないと「取り込みに失敗した」と
+                // 報告しながら DB の取り込みだけが残り、しかも `execute()` が
+                // 投げるので `CommandStack` は Undo スタックへ積まない
+                // ——**誰も戻せない取り込み**になる。
+                //
+                // 巻き戻しにも失敗したら、その旨をログへ残して**元のエラーを
+                // 投げる**——利用者に見せるべきは「なぜ取り込めなかったか」で、
+                // 後始末の失敗はその次。
+                do {
+                    try await repository.revertImport(outcome.snapshot)
+                } catch let revertError {
+                    Log.app.error("""
+                        取り込みの巻き戻しに失敗した: \(String(describing: revertError))
+                        """)
+                }
+                await refreshLibraries()
+                throw error
+            }
         }
-        plan.templatesAdded = addedTemplates
+        outcome.plan.templatesAdded = addedTemplates.count
+        let plan = outcome.plan
         Log.app.info("""
             バックアップを取り込んだ: ライブラリ \(plan.libraries.count) 件 \
             / ファイル更新 \(plan.filesUpdated) 件 / ラベル追加 \(plan.labelsAdded) 件 \
             / 取り込めないライブラリ \(plan.missingLibraries.count) 件 \
-            / テンプレート追加 \(addedTemplates) 件
+            / テンプレート追加 \(addedTemplates.count) 件
             """)
         await refreshLibraries()
-        return plan
+        return BackupImportResult(plan: plan, snapshot: outcome.snapshot,
+                                  addedTemplateIDs: addedTemplates)
+    }
+
+    /// 取り込みの Undo が途中までしか進めなかった [IE-13][ER-13]。
+    ///
+    /// **「何も戻らなかった」と報告させないためにある**［code-review で発見］。
+    /// DB は 2 つの書き込み先（ストアと `userTemplates.json`）のうち先に戻る
+    /// ので、後半だけが失敗しうる——それを素の `Error` として投げると
+    /// `ImportBackupCommand.undo` が `.impossible` に畳み、利用者は
+    /// 「取り消しは失敗した（＝評価もラベルも取り込み後のまま）」と読む。
+    public struct ImportRevertPartialFailure: Error {
+        /// DB は戻ったが消せなかったテンプレートの件数。
+        public let templatesRemaining: Int
+        public let underlying: any Error
+    }
+
+    /// 取り込みを戻す [IE-13][UD-03]。`ImportBackupCommand.undo` から呼ぶ。
+    ///
+    /// DB は 1 トランザクションで戻し、そのあとテンプレートを消す。**順序は
+    /// DB が先**——テンプレートの削除が失敗しても DB は戻っており、残るのは
+    /// 「足したテンプレートが残る」だけで、逆順だと「テンプレートは消えたのに
+    /// 評価やラベルは取り込み後のまま」という読みにくい状態になる。
+    ///
+    /// - Throws: DB を戻せなければ素のエラー（何も戻っていない）。DB は戻った
+    ///   がテンプレートを消せなければ ``ImportRevertPartialFailure``。
+    public func revertImport(_ result: BackupImportResult) async throws {
+        guard let repository = backupRepository else { throw ServiceError.notReady }
+        try await repository.revertImport(result.snapshot)
+        await refreshLibraries()
+        if !result.addedTemplateIDs.isEmpty {
+            do {
+                try await userTemplateStore.remove(ids: Set(result.addedTemplateIDs))
+            } catch {
+                Log.app.error("""
+                    取り込みの Undo でテンプレートを消せなかった: \(String(describing: error))
+                    """)
+                throw ImportRevertPartialFailure(
+                    templatesRemaining: result.addedTemplateIDs.count, underlying: error)
+            }
+            await refreshUserTemplates()
+        }
+        Log.app.info("バックアップの取り込みを戻した: ライブラリ \(result.snapshot.libraries.count) 件")
     }
 
     static func appVersion() -> String? {

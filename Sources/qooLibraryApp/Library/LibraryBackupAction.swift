@@ -167,8 +167,16 @@ enum LibraryBackupAction {
                         OperationProgressCenter.shared.finish(handle)
                     }
                     do {
-                        let applied = try await LibraryServices.shared.importBackup(document)
-                        presentResult(applied, locale: locale)
+                        // [IE-13] `CommandStack` を通す——⌘Z で取り込み全体を
+                        // 戻せるのと、操作履歴に載るのはこの経路だけ。
+                        let command = ImportBackupCommand(document: document,
+                                                          services: LibraryServices.shared)
+                        let logReceipt = OperationLogReceipt()
+                        _ = try await CommandStack.shared.run(command, logReceipt: logReceipt)
+                        if let applied = command.result {
+                            presentResult(applied.plan, locale: locale,
+                                          operationLogID: logReceipt.id)
+                        }
                     } catch {
                         await NotificationRouter.shared.presentError(
                             error,
@@ -182,7 +190,8 @@ enum LibraryBackupAction {
     /// 結果を伝える [ER-01]。**取り込めなかったライブラリがあるときは
     /// 必ず言う**——黙って一部だけ取り込むと、戻ったつもりで戻っていない
     /// 状態になる。
-    private static func presentResult(_ plan: ImportPlan, locale: Locale) {
+    private static func presentResult(_ plan: ImportPlan, locale: Locale,
+                                      operationLogID: OperationLogID?) {
         var lines = [String(format: AppStrings.text("backup.importResultBody", locale: locale),
                             plan.filesUpdated, plan.labelsAdded, plan.fileLabelsAdded)]
         if !plan.missingLibraries.isEmpty {
@@ -209,7 +218,8 @@ enum LibraryBackupAction {
                 category: plan.missingLibraries.isEmpty ? .info : .warning,
                 severity: .sheet,
                 title: AppStrings.text("backup.importResultTitle", locale: locale),
-                body: lines.joined(separator: "\n")))
+                body: lines.joined(separator: "\n"),
+                operationLogID: operationLogID))
         }
     }
 
@@ -256,6 +266,17 @@ struct BackupImportConfirmationDialog: View {
                             .font(.system(size: Tokens.fontSize.caption))
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                // **テンプレートも承認の対象** [IE-11]。結果には出るのに
+                // 承認前に出ないと、何が増えるか知らないまま押すことになる
+                // ——⌘Z の範囲に入った [IE-13] ぶん、なおさら先に言う。
+                if plan.templatesAdded > 0 {
+                    HStack(spacing: Tokens.spacing.xs) {
+                        Image(systemName: "arrow.down.circle").foregroundStyle(.secondary)
+                        Text(String(format: AppStrings.text("backup.importPlanTemplates",
+                                                            locale: locale),
+                                    plan.templatesAdded))
                     }
                 }
                 Text("backup.importFootnote")

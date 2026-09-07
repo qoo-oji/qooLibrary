@@ -1122,6 +1122,22 @@
         }
       }
     },
+    "backup.importPlanTemplates" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d user templates"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ユーザー定義テンプレート %d 件"
+          }
+        }
+      }
+    },
     "backup.importResultBody": {
       "extractionState": "manual",
       "localizations": {

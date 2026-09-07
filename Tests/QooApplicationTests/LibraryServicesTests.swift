@@ -40,13 +40,21 @@ final class ServicesWorkspace {
     /// - Parameter operationLogRecorder: 走査の記録 [OH-03] を見たいテストが
     ///   **独立した書き手**を渡す。既定（`.shared`）のままだとテスト中は
     ///   繋がれない（`LibraryServices.attachOperationLog` 参照）。
-    init(operationLogRecorder: OperationLogRecorder = .shared) throws {
+    /// - Parameter templateStoreDirectory: テンプレートの置き場所を**書けない
+    ///   場所**にできるようにしてある——取り込みが DB をコミットした後で
+    ///   `userTemplates.json` を書けない、という状況を作るため [IE-13]。
+    init(operationLogRecorder: OperationLogRecorder = .shared,
+         blockedTemplateStore: Bool = false) throws {
         let base = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("qoo-services-\(UUID().uuidString)")
         storeDirectory = base.appendingPathComponent("store")
         libraryRoot = base.appendingPathComponent("library")
         coverDirectory = base.appendingPathComponent("usercovers")
-        templateStoreURL = base.appendingPathComponent("userTemplates.json")
+        // **専用のディレクトリへ置く。** 書き込みを塞ぐ検査がここを chmod する
+        // ので、ストアやライブラリと同じ階層にあると巻き添えで書けなくなる。
+        templateStoreURL = blockedTemplateStore
+            ? URL(fileURLWithPath: "/dev/null/blocked/userTemplates.json")
+            : base.appendingPathComponent("templates/userTemplates.json")
         backupDirectory = base.appendingPathComponent("backups")
         services = LibraryServices(
             userCoverStore: DefaultUserCoverStore(baseDirectory: coverDirectory),
@@ -388,7 +396,7 @@ struct LibraryBackupServicesTests {
 
         let restoredID = try await w.enable()
         let applied = try await w.services.importBackup(document)
-        #expect(applied.libraries.first?.kind == .update)
+        #expect(applied.plan.libraries.first?.kind == .update)
 
         let restored = try #require(try await w.services.settingsDraft(libraryID: restoredID))
         #expect(restored.fields[0].name == "自分で付けた名前")

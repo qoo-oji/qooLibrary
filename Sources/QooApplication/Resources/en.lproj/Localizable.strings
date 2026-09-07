@@ -28,6 +28,8 @@
 /* Operations on library records */
 "command.deleteOrphanRecords.one" = "Delete the Record for “%@”";
 "command.deleteOrphanRecords.many" = "Delete the Records for %d Files";
+"command.importBackup" = "Import of Library Data";
+"command.importBackup.templatesRemaining" = "%d User Templates";
 "command.protectMetadata" = "Protect Metadata of “%@”";
 "command.unprotectMetadata" = "Unprotect Metadata of “%@”";
 "command.setRating" = "Rate “%1$@” %2$d Stars";

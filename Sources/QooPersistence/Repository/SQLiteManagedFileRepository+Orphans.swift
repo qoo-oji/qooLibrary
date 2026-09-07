@@ -108,6 +108,14 @@ extension SQLiteManagedFileRepository {
     public func restoreFiles(_ snapshots: [ManagedFileSnapshot]) async throws {
         guard !snapshots.isEmpty else { return }
         try await database.writer.write { db in
+            try Self.restoreFileRows(db, snapshots)
+        }
+    }
+
+    /// `restoreFiles` の本体。**取り込みの Undo [IE-13] も同じ関数を通す**
+    /// （`SQLiteBackupRepository.revertImport`）——「ちょうど戻す」の規則を
+    /// 2 箇所に書くと、片方だけ直したときに戻り方が食い違う。
+    static func restoreFileRows(_ db: Database, _ snapshots: [ManagedFileSnapshot]) throws {
             for snapshot in snapshots {
                 // ライブラリごと消えていたら戻せない（登録解除・無効化）。
                 // Undo の対象そのものが失われているので黙って飛ばす。
@@ -139,7 +147,6 @@ extension SQLiteManagedFileRepository {
                                          label.labelID.rawValue])
                 }
             }
-        }
     }
 
 }

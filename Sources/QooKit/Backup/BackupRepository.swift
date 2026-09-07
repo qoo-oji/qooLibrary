@@ -115,5 +115,13 @@ public protocol BackupRepository: Sendable {
     func plan(_ document: BackupDocument) async throws -> ImportPlan
     /// 取り込む。**単一のトランザクションで行う** [JS-08]——途中で失敗した
     /// ときに半分だけ取り込まれた状態を残さない。
-    func `import`(_ document: BackupDocument) async throws -> ImportPlan
+    ///
+    /// 戻すための写し [IE-13] を同じトランザクションの中で取って返す。
+    /// 別に読むと、間に別の書き込みが挟まったときに写しと実際が食い違う。
+    func `import`(_ document: BackupDocument) async throws -> ImportOutcome
+    /// 取り込みを戻す [IE-13][UD-03]。**単一のトランザクションで行う。**
+    ///
+    /// 取り込みの後に登録解除されたライブラリの分は黙って飛ばす——Undo の
+    /// 対象そのものが失われている（`restoreFiles` と同じ判断）。
+    func revertImport(_ snapshot: ImportSnapshot) async throws
 }

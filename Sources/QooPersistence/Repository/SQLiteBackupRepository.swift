@@ -350,13 +350,15 @@ extension SQLiteBackupRepository {
 
     public func plan(_ document: BackupDocument) async throws -> ImportPlan {
         try await database.writer.read { db in
-            try Self.apply(db, document, dryRun: true)
+            try Self.apply(db, document, dryRun: true).plan
         }
     }
 
-    public func `import`(_ document: BackupDocument) async throws -> ImportPlan {
+    public func `import`(_ document: BackupDocument) async throws -> ImportOutcome {
         // `write` の閉包全体が 1 つのトランザクション [JS-08]。途中で投げれば
-        // すべて巻き戻る——半分だけ取り込まれた状態を残さない。
+        // すべて巻き戻る——半分だけ取り込まれた状態を残さない。**写し [IE-13]
+        // も同じ閉包の中で取る**——先に別の読みで取ると、その間に挟まった
+        // 書き込みが写しに含まれず、Undo が「取り込みの前」ではない状態へ戻す。
         try await database.writer.write { db in
             try Self.apply(db, document, dryRun: false)
         }
@@ -366,19 +368,31 @@ extension SQLiteBackupRepository {
     /// 片方だけ直したときに「承認した内容と違うことが起きる」——承認を
     /// 求める意味そのものが消える壊れ方をする。`dryRun` は書き込みだけを
     /// 抑え、数え方は共有する。
+    ///
+    /// `dryRun` のとき写しは空（何も書かないので戻すものが無い）。
     static func apply(_ db: Database, _ document: BackupDocument,
-                      dryRun: Bool) throws -> ImportPlan {
+                      dryRun: Bool) throws -> ImportOutcome {
         guard document.schemaVersion <= BackupDocument.currentSchemaVersion else {
             throw BackupError.schemaTooNew(found: document.schemaVersion,
                                            supported: BackupDocument.currentSchemaVersion)
         }
-        return ImportPlan(libraries: try document.libraries.map {
-            try applyLibrary(db, $0, dryRun: dryRun)
-        })
+        var changes: [ImportPlan.LibraryChange] = []
+        var parts: [ImportSnapshot.LibraryPart] = []
+        for backup in document.libraries {
+            let (change, part) = try applyLibrary(db, backup, dryRun: dryRun)
+            changes.append(change)
+            if let part { parts.append(part) }
+        }
+        return ImportOutcome(plan: ImportPlan(libraries: changes),
+                             snapshot: ImportSnapshot(libraries: parts))
     }
 
+    /// - Returns: 計画と、`dryRun` でなければ**この関数が書く前**の写し [IE-13]。
+    ///   写しは書く直前に 1 行ずつ取る——「更新した行の前の値」と「作った行の
+    ///   ID」を、書いたその場で控えるのが最も取りこぼしにくい。
     private static func applyLibrary(_ db: Database, _ backup: LibraryBackup,
-                                     dryRun: Bool) throws -> ImportPlan.LibraryChange {
+                                     dryRun: Bool) throws
+        -> (ImportPlan.LibraryChange, ImportSnapshot.LibraryPart?) {
         // 同一性キーは表示名 + 根のパス [IE-10][JS-04]。行 ID も UUID も使わない
         // ——前者は環境固有、後者は別のマシンでは別の登録フォルダを指す。
         let record = try LibraryRecord
@@ -388,15 +402,18 @@ extension SQLiteBackupRepository {
         guard let record, let libraryID = record.id else {
             // ライブラリを作るにはブックマークが要り、それは JSON に持てない。
             // 取り込まずに報告する（`BackupRepository` の型コメント参照）。
-            return ImportPlan.LibraryChange(
+            return (ImportPlan.LibraryChange(
                 identityKey: backup.identityKey, displayName: backup.displayName,
                 kind: .missing, filesMissing: backup.files.count, filesUpdated: 0,
-                fieldsAdded: 0, labelsAdded: 0, fileLabelsAdded: 0)
+                fieldsAdded: 0, labelsAdded: 0, fileLabelsAdded: 0), nil)
         }
 
         var groupsAdded = 0
         var labelsAdded = 0
         var fileLabelsAdded = 0
+        // 写し [IE-13]。`dryRun` では作らない——`nil` への追記は何もしない。
+        var part: ImportSnapshot.LibraryPart? =
+            dryRun ? nil : try captureSettings(db, record, libraryID: libraryID)
 
         // --- 設定 ---------------------------------------------------------
         // 設定は**置き換える**。「重ねる」原則の例外で、フォーマットの一覧や
@@ -419,6 +436,12 @@ extension SQLiteBackupRepository {
             if let existing, let id = existing.id {
                 groupIDByIndex[field.groupIndex] = id
                 if !dryRun {
+                    part?.updatedFields.append(.init(
+                        id: FieldID(rawValue: id), name: existing.name,
+                        colorHexLight: existing.colorHexLight,
+                        colorHexDark: existing.colorHexDark,
+                        displayOrder: existing.displayOrder,
+                        assignsAutomatically: existing.assignsAutomatically))
                     var updated = existing
                     updated.name = field.name
                     updated.colorHexLight = field.colorHexLight
@@ -437,6 +460,7 @@ extension SQLiteBackupRepository {
                     assignsAutomatically: field.assignsAutomatically)
                 try created.insert(db)
                 groupIDByIndex[field.groupIndex] = created.id
+                if let id = created.id { part?.insertedFieldIDs.append(FieldID(rawValue: id)) }
             }
         }
 
@@ -457,6 +481,10 @@ extension SQLiteBackupRepository {
                 if let existing, let id = existing.id {
                     labelIDByKey[LabelKey(groupIndex: field.groupIndex, normalized: normalized)] = id
                     if !dryRun {
+                        part?.updatedLabels.append(.init(
+                            id: LabelID(rawValue: id), name: existing.name,
+                            colorHex: existing.colorHex, isPinned: existing.isPinned,
+                            isHidden: existing.isHidden))
                         var updated = existing
                         // 原文・色・ピン・非表示はユーザーの設定 [MG-22]。
                         // **件数の列はもう無い** [DB-02 撤回]。
@@ -476,6 +504,7 @@ extension SQLiteBackupRepository {
                     try created.insert(db)
                     labelIDByKey[LabelKey(groupIndex: field.groupIndex,
                                           normalized: normalized)] = created.id
+                    if let id = created.id { part?.insertedLabelIDs.append(LabelID(rawValue: id)) }
                 }
             }
         }
@@ -486,7 +515,7 @@ extension SQLiteBackupRepository {
         // 別の絞り込みを失う経路を作らない [JS-05 と同じ判断]。
         if !dryRun {
             try applyShelves(db, libraryID: libraryID, backup: backup,
-                             labelIDByKey: labelIDByKey)
+                             labelIDByKey: labelIDByKey, part: &part)
         }
 
         // --- ファイル -----------------------------------------------------
@@ -507,6 +536,8 @@ extension SQLiteBackupRepository {
             }
             filesUpdated += 1
             if !dryRun {
+                try captureFile(db, existing, fileID: fileID, willSetIgnored: file.isUnresolvedIgnored == true,
+                                into: &part)
                 try writeBack(db, file, into: existing, fileID: fileID,
                               scopes: importScopes(file, groupIDByIndex: groupIDByIndex))
             }
@@ -532,11 +563,75 @@ extension SQLiteBackupRepository {
             }
         }
 
-        return ImportPlan.LibraryChange(
+        return (ImportPlan.LibraryChange(
             identityKey: backup.identityKey, displayName: backup.displayName,
             kind: .update, filesMissing: filesMissing, filesUpdated: filesUpdated,
             fieldsAdded: groupsAdded, labelsAdded: labelsAdded,
-            fileLabelsAdded: fileLabelsAdded)
+            fileLabelsAdded: fileLabelsAdded), part)
+    }
+
+    // MARK: - 写し [IE-13]
+
+    /// `library` 行と付随テーブル（置き換えられる側）を、置き換える前に控える。
+    private static func captureSettings(_ db: Database, _ record: LibraryRecord,
+                                        libraryID: Int64) throws -> ImportSnapshot.LibraryPart {
+        let formats = try FilenameFormatRecord
+            .filter(sql: "libraryId = ?", arguments: [libraryID])
+            .order(sql: "priority, id").fetchAll(db)
+            .map { ImportSnapshot.LibraryPart.FilenameFormatRow(
+                source: $0.source, priority: $0.priority, isEnabled: $0.isEnabled) }
+        let volumes = try VolumeFormatRecord
+            .filter(sql: "libraryId = ?", arguments: [libraryID])
+            .order(sql: "priority, id").fetchAll(db)
+            .map { ImportSnapshot.LibraryPart.VolumeFormatRow(
+                source: $0.source, priority: $0.priority, isEnabled: $0.isEnabled, kind: $0.kind) }
+        let levels = try FolderLevelMappingRecord
+            .filter(sql: "libraryId = ?", arguments: [libraryID])
+            .order(sql: "level, id").fetchAll(db)
+            .map { ImportSnapshot.LibraryPart.FolderLevelRow(
+                level: $0.level, assignmentKind: $0.assignmentKind,
+                labelGroupIndex: $0.labelGroupIndex, formatSource: $0.formatSource) }
+        let tokens = try ProtectedTokenRecord
+            .filter(sql: "ownerKind = 'library' AND ownerID = ?", arguments: [libraryID])
+            .order(sql: "id").fetchAll(db)
+            .map { ImportSnapshot.LibraryPart.ProtectedTokenRow(
+                pattern: $0.pattern, position: $0.position, isEnabled: $0.isEnabled) }
+        return ImportSnapshot.LibraryPart(
+            libraryID: LibraryID(rawValue: libraryID),
+            settings: .init(settingsJSON: record.settingsJSON,
+                            duplicateGrouping: record.duplicateGrouping,
+                            thumbnailsAlwaysHidden: record.thumbnailsAlwaysHidden,
+                            registeredTemplateJSON: record.registeredTemplateJSON),
+            filenameFormats: formats, volumeFormats: volumes,
+            folderLevels: levels, protectedTokens: tokens,
+            updatedFields: [], insertedFieldIDs: [],
+            updatedLabels: [], insertedLabelIDs: [],
+            updatedShelves: [], insertedShelfIDs: [],
+            files: [], unresolvedIgnored: [])
+    }
+
+    /// ファイル 1 件の全列と紐づけを、書き戻す前に控える [ManagedFileSnapshot]。
+    ///
+    /// 「以後無視する」の前の値は、取り込みが立てようとしているときだけ
+    /// 控える——それ以外は触らないので戻すものが無い。
+    private static func captureFile(_ db: Database, _ existing: ManagedFileRecord,
+                                    fileID: Int64, willSetIgnored: Bool,
+                                    into part: inout ImportSnapshot.LibraryPart?) throws {
+        guard part != nil else { return }
+        let rows = try Row.fetchAll(db, sql: """
+            SELECT labelId, assignedAt FROM fileLabel WHERE managedFileId = ?
+            """, arguments: [fileID])
+        part?.files.append(existing.snapshotForUndo(labels: rows.map { row in
+            ManagedFileSnapshot.LabelAssignment(
+                labelID: LabelID(rawValue: row["labelId"]),
+                assignedAt: Date(timeIntervalSinceReferenceDate: row["assignedAt"]))
+        }))
+        if willSetIgnored,
+           let ignored = try Bool.fetchOne(db, sql: """
+               SELECT isIgnored FROM unresolvedFile WHERE managedFileId = ?
+               """, arguments: [fileID]) {
+            part?.unresolvedIgnored.append(.init(fileID: FileID(rawValue: fileID), isIgnored: ignored))
+        }
     }
 
     /// ファイル 1 件に、再生成できない値だけを書き戻す [MG-22]。
@@ -602,7 +697,8 @@ extension SQLiteBackupRepository {
     /// 読めない列挙の生値は既定へ落とす（`ShelfBackup` の型コメント参照）。
     private static func applyShelves(_ db: Database, libraryID: Int64,
                                      backup: LibraryBackup,
-                                     labelIDByKey: [LabelKey: Int64]) throws {
+                                     labelIDByKey: [LabelKey: Int64],
+                                     part: inout ImportSnapshot.LibraryPart?) throws {
         guard let shelves = backup.shelves, !shelves.isEmpty else { return }
 
         // **同じ名前の行を 1 つずつ消費する**［code-review の指摘］。SH-03 は
@@ -639,6 +735,13 @@ extension SQLiteBackupRepository {
 
             if let existing = unclaimed[shelf.name]?.first {
                 unclaimed[shelf.name]?.removeFirst()
+                if let row = try Row.fetchOne(db, sql: """
+                    SELECT displayOrder, conditionJSON FROM shelf WHERE id = ?
+                    """, arguments: [existing]) {
+                    part?.updatedShelves.append(.init(
+                        id: ShelfID(rawValue: existing),
+                        displayOrder: row["displayOrder"], conditionJSON: row["conditionJSON"]))
+                }
                 try db.execute(sql: """
                     UPDATE shelf SET conditionJSON = ?, displayOrder = ? WHERE id = ?
                     """, arguments: [json, shelf.displayOrder, existing])
@@ -648,6 +751,7 @@ extension SQLiteBackupRepository {
                     VALUES (?, ?, ?, ?, ?)
                     """, arguments: [libraryID, shelf.name, shelf.displayOrder, json,
                                      Date().timeIntervalSince1970])
+                part?.insertedShelfIDs.append(ShelfID(rawValue: db.lastInsertedRowID))
             }
         }
     }
@@ -707,5 +811,130 @@ extension SQLiteBackupRepository {
     private struct LabelKey: Hashable {
         let groupIndex: Int
         let normalized: String
+    }
+}
+
+// MARK: - 取り込みの Undo [IE-13][UD-03]
+
+extension SQLiteBackupRepository {
+
+    /// 写しの状態へちょうど戻す。**1 トランザクション**——取り込みが 1 つの
+    /// トランザクションである以上、その Undo が半分で止まると「取り込んだ」
+    /// とも「取り込んでいない」とも言えない状態が残る。
+    ///
+    /// 順序は「作った行を消す → 更新した行を戻す → ファイルを戻す → 設定を
+    /// 戻す」。作った行のうちフィールドは、その下に取り込みが作ったラベルと
+    /// 紐づけを連鎖で持っていくので、先に消しておけば以後の書き戻しが
+    /// 消えた行を指すことは無い。
+    public func revertImport(_ snapshot: ImportSnapshot) async throws {
+        guard !snapshot.isEmpty else { return }
+        try await database.writer.write { db in
+            for part in snapshot.libraries {
+                try Self.revertLibrary(db, part)
+            }
+        }
+    }
+
+    private static func revertLibrary(_ db: Database, _ part: ImportSnapshot.LibraryPart) throws {
+        let libraryID = part.libraryID.rawValue
+        // ライブラリごと消えていたら戻せない（登録解除・無効化）。Undo の
+        // 対象そのものが失われているので黙って飛ばす（`restoreFiles` と同じ）。
+        guard var library = try LibraryRecord.fetchOne(db, key: libraryID) else { return }
+
+        // 1. 作った行を消す。**件数は取り込み次第**（別の環境の文書には
+        //    手元に無いラベルがいくらでもありうる）ので、`IN` は区切る
+        //    ——ホスト変数の上限が低いビルドで壊れる／巨大な `IN` は遅い
+        //    （`setRating` と同じ理由。実測は `matchingRelativePaths` の注記）。
+        try deleteByID(db, table: "shelf", ids: part.insertedShelfIDs.map(\.rawValue))
+        try deleteByID(db, table: "label", ids: part.insertedLabelIDs.map(\.rawValue))
+        try deleteByID(db, table: "labelGroup", ids: part.insertedFieldIDs.map(\.rawValue))
+
+        // 2. 更新した行を戻す。**消えていた行は作り直さない**——取り込みの後に
+        //    利用者が消したものを Undo が蘇らせるのは「取り込みの前」ではない。
+        for field in part.updatedFields {
+            try db.execute(sql: """
+                UPDATE labelGroup
+                   SET name = ?, colorHexLight = ?, colorHexDark = ?,
+                       displayOrder = ?, assignsAutomatically = ?
+                 WHERE id = ?
+                """, arguments: [field.name, field.colorHexLight, field.colorHexDark,
+                                 field.displayOrder, field.assignsAutomatically,
+                                 field.id.rawValue])
+        }
+        for label in part.updatedLabels {
+            try db.execute(sql: """
+                UPDATE label SET name = ?, colorHex = ?, isPinned = ?, isHidden = ? WHERE id = ?
+                """, arguments: [label.name, label.colorHex, label.isPinned, label.isHidden,
+                                 label.id.rawValue])
+        }
+        for shelf in part.updatedShelves {
+            try db.execute(sql: """
+                UPDATE shelf SET displayOrder = ?, conditionJSON = ? WHERE id = ?
+                """, arguments: [shelf.displayOrder, shelf.conditionJSON, shelf.id.rawValue])
+        }
+
+        // 3. ファイルを全列ちょうど戻す（紐づけも写しどおりに）。
+        try SQLiteManagedFileRepository.restoreFileRows(db, part.files)
+        for flag in part.unresolvedIgnored {
+            try db.execute(sql: """
+                UPDATE unresolvedFile SET isIgnored = ? WHERE managedFileId = ?
+                """, arguments: [flag.isIgnored, flag.fileID.rawValue])
+        }
+
+        // 4. 設定を戻す。**`settingsRevision` は戻さず上げる** [VT-02]——
+        //    パーサのキャッシュ鍵は単調増加でなければならない。
+        library.settingsJSON = part.settings.settingsJSON
+        library.duplicateGrouping = part.settings.duplicateGrouping
+        library.thumbnailsAlwaysHidden = part.settings.thumbnailsAlwaysHidden
+        library.registeredTemplateJSON = part.settings.registeredTemplateJSON
+        library.settingsRevision += 1
+        try library.update(db)
+
+        try db.execute(sql: "DELETE FROM filenameFormat WHERE libraryId = ?", arguments: [libraryID])
+        for row in part.filenameFormats {
+            var record = FilenameFormatRecord(id: nil, libraryId: libraryID, source: row.source,
+                                              priority: row.priority, isEnabled: row.isEnabled)
+            try record.insert(db)
+        }
+        try db.execute(sql: "DELETE FROM volumeFormat WHERE libraryId = ?", arguments: [libraryID])
+        for row in part.volumeFormats {
+            var record = VolumeFormatRecord(id: nil, libraryId: libraryID, source: row.source,
+                                            priority: row.priority, isEnabled: row.isEnabled,
+                                            kind: row.kind)
+            try record.insert(db)
+        }
+        try db.execute(sql: "DELETE FROM folderLevelMapping WHERE libraryId = ?",
+                       arguments: [libraryID])
+        for row in part.folderLevels {
+            var record = FolderLevelMappingRecord(
+                id: nil, libraryId: libraryID, level: row.level,
+                assignmentKind: row.assignmentKind,
+                labelGroupIndex: row.labelGroupIndex, formatSource: row.formatSource)
+            try record.insert(db)
+        }
+        try db.execute(sql: "DELETE FROM protectedToken WHERE ownerKind = 'library' AND ownerID = ?",
+                       arguments: [libraryID])
+        for row in part.protectedTokens {
+            var record = ProtectedTokenRecord(id: nil, ownerKind: "library", ownerID: libraryID,
+                                              pattern: row.pattern, position: row.position,
+                                              isEnabled: row.isEnabled)
+            try record.insert(db)
+        }
+    }
+
+    /// 行 ID で消す。**900 件ずつに区切る**（`SQLiteManagedFileRepository`
+    /// の `maxBoundParameters` と同じ理由）。
+    private static func deleteByID(_ db: Database, table: String, ids: [Int64]) throws {
+        let limit = SQLiteManagedFileRepository.maxBoundParameters
+        for start in stride(from: 0, to: ids.count, by: limit) {
+            let chunk = Array(ids[start..<min(start + limit, ids.count)])
+            try db.execute(
+                sql: "DELETE FROM \(table) WHERE id IN (\(placeholders(chunk.count)))",
+                arguments: StatementArguments(chunk))
+        }
+    }
+
+    private static func placeholders(_ n: Int) -> String {
+        Array(repeating: "?", count: n).joined(separator: ",")
     }
 }

@@ -136,16 +136,26 @@ public actor UserTemplateStore {
     /// 2 度取り込んでも増えない（冪等）。あちらは「他人が書き出した文書を
     /// 自分の一覧へ足す」、こちらは「自分の状態を戻す」——目的が違う。
     ///
-    /// - Returns: 実際に足した件数。
+    /// - Returns: 実際に足したテンプレートの ID。**件数ではなく ID を返す**
+    ///   ——取り込みの Undo [IE-13] が「足した分だけを消す」ために要る。
     @discardableResult
-    public func merge(_ templates: [UserTemplate]) throws -> Int {
+    public func merge(_ templates: [UserTemplate]) throws -> [UUID] {
         ensureLoaded()
         let known = Set(stored.map(\.id))
         let incoming = templates.filter { !known.contains($0.id) }
-        guard !incoming.isEmpty else { return 0 }
+        guard !incoming.isEmpty else { return [] }
         stored.append(contentsOf: incoming)
         try write()
-        return incoming.count
+        return incoming.map(\.id)
+    }
+
+    /// 複数件を 1 度の書き込みで消す [IE-13]。**無いものは飛ばす**——取り込みの
+    /// 後に利用者が手で消していても、残りを戻せなくしない。
+    public func remove(ids: Set<UUID>) throws {
+        ensureLoaded()
+        guard stored.contains(where: { ids.contains($0.id) }) else { return }
+        stored.removeAll { ids.contains($0.id) }
+        try write()
     }
 
     // MARK: - 入出力 [LT-06]
