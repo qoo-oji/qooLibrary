@@ -32,8 +32,8 @@
 "command.unprotectMetadata" = "Unprotect Metadata of “%@”";
 "command.setRating" = "Rate “%1$@” %2$d Stars";
 "command.clearRating" = "Clear Rating of “%@”";
-"command.setRatingForSeries" = "Rate %2$d Volumes of “%1$@” %3$d Stars";
-"command.clearRatingForSeries" = "Clear Rating of %2$d Volumes of “%1$@”";
+"command.setRatingForSeries" = "Rate %2$d Items of “%1$@” %3$d Stars";
+"command.clearRatingForSeries" = "Clear Rating of %2$d Items of “%1$@”";
 "command.assignLabel" = "Add Label “%2$@” to “%1$@”";
 "command.removeLabel" = "Remove Label “%2$@” from “%1$@”";
 "command.editTitle" = "Change Title of “%@”";
@@ -71,18 +71,18 @@
 "command.moveFolderToVault" = "Move “%@” to the Vault";
 
 /* Files that match no format [AL-30–34] */
-"command.ignoreUnresolved.one" = "Ignore “%@” from Now On";
-"command.ignoreUnresolved.many" = "Ignore %d Files from Now On";
-"command.unignoreUnresolved.one" = "Stop Ignoring “%@”";
-"command.unignoreUnresolved.many" = "Stop Ignoring %d Files";
+"command.ignoreUnresolved.one" = "Dismiss “%@”";
+"command.ignoreUnresolved.many" = "Dismiss %d Files";
+"command.unignoreUnresolved.one" = "Undismiss “%@”";
+"command.unignoreUnresolved.many" = "Undismiss %d Files";
 
 /* Series suggestions [SS-01–08] */
-"command.setSeries" = "Set the Series for %2$d Volumes of “%1$@”";
+"command.setSeries" = "Set the Series for %2$d Items of “%1$@”";
 "command.setSeriesMany" = "Set the Series for %d Suggestions";
-"command.ignoreSuggestion" = "Stop Suggesting “%@”";
-"command.unignoreSuggestion" = "Suggest “%@” Again";
-"command.ignoreSuggestionMany" = "Stop Suggesting %d Series";
-"command.unignoreSuggestionMany" = "Suggest %d Series Again";
+"command.ignoreSuggestion" = "Dismiss the Suggestion for “%@”";
+"command.unignoreSuggestion" = "Undismiss the Suggestion for “%@”";
+"command.ignoreSuggestionMany" = "Dismiss %d Suggestions";
+"command.unignoreSuggestionMany" = "Undismiss %d Suggestions";
 
 /* Template revisions [LT-10–17] */
 "command.acknowledgeTemplateUpdate" = "Mark the Template Revision for “%@” as Reviewed";
@@ -93,17 +93,17 @@
 
 /* Scans [SY-01–12]. These land in the operation history [OH-03]. */
 "command.scan" = "Scan “%@”";
-"command.scanAutomatically" = "Scan “%@” Automatically";
+"command.scanAutomatically" = "Automatic Scan of “%@”";
 "scan.summary.added" = "%d added";
 "scan.summary.updated" = "%d updated";
 "scan.summary.reidentified" = "%d carried over";
 "scan.summary.orphaned" = "%d missing";
 "scan.summary.unresolved" = "%d unsorted";
-"scan.summary.bookFoldersReleased" = "%d no longer treated as one book";
+"scan.summary.bookFoldersReleased" = "%d no longer book folders";
 "scan.summary.cancelled" = "cancelled";
 
 /* Results of undoing */
-"command.undo.nothingToRestore" = "There's nothing to restore.";
+"command.undo.nothingToRestore" = "There is nothing to undo.";
 "command.bulkRename.partialRestoreFailed" = "Some of the names couldn't be put back.";
 "operation.partialDetail" = "%1$d succeeded, %2$d failed";
 "operation.subjectItems" = "%d items";
@@ -118,7 +118,7 @@
 /* Why something can't be undone. These land in the operation history [OH-04]. */
 "command.shelf.createdRowUnknown" = "The row that was created can't be identified.";
 "command.shelf.snapshotMissing" = "There's no snapshot from before the deletion.";
-"command.trash.restoreFailed" = "Restoring from the Trash failed.";
+"command.trash.restoreFailed" = "Could not put back from the Trash.";
 "command.deletePermanently.notUndoable" = "Items deleted for good can't be brought back.";
 "command.createFolder.notEmpty" = "The folder isn't empty.";
 "command.templateUpdate.previousUnknown" = "The settings from before the change can't be identified.";

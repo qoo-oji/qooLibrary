@@ -27,7 +27,7 @@
 "fileOp.why.destinationIsReadOnly" = "このボリュームには書き込めない設定になっています。";
 "fileOp.why.trashUnavailable" = "ネットワーク上の共有や一部のボリュームは、ゴミ箱を持ちません。";
 "fileOp.why.timedOut" = "%@ 秒待っても応答がありませんでした。ネットワーク上の場所では、サーバの応答が返らないことがあります。";
-"fileOp.why.sourceChanged" = "途中までの内容を写してしまうため中止しました。";
+"fileOp.why.sourceChanged" = "途中まで書き換えられた内容をコピーしないよう中止しました。";
 "fileOp.why.nameTooLongInBytes" = "%1$d バイトありますが、上限は %2$d バイトです。書き込み先は名前の長さをバイト数で数えます（日本語は 1 文字あたり 3 バイト）。";
 "fileOp.why.nameTooLongInCharacters" = "%1$d 文字ぶんありますが、上限は %2$d 文字ぶんです。";
 "fileOp.why.fileTooLarge" = "%1$@ ありますが、上限は %2$@ です。";
@@ -39,7 +39,7 @@
 "fileOp.hint.insufficientFreeSpace" = "不要な項目を削除して空きを増やすか、別の場所を選んでください。";
 "fileOp.hint.destinationInsideSource" = "そのフォルダの外にある場所を選んでください。";
 "fileOp.hint.destinationIsReadOnly" = "書き込みできる別の場所を選ぶか、ボリュームの設定を確認してください。";
-"fileOp.hint.trashUnavailable" = "完全に削除してよければ、「完全に削除」をお使いください。取り消せません。";
+"fileOp.hint.trashUnavailable" = "完全に削除してよければ「完全に削除」を使ってください。取り消せません。";
 "fileOp.hint.timedOut" = "接続を確認してから、もう一度お試しください。";
 "fileOp.hint.destinationNotWritable" = "この場所への書き込み権限を確認してください。共有フォルダの場合は、サーバ側のアクセス許可も確認が必要です。";
 "fileOp.hint.nameEmpty" = "名前を入力してください。";
@@ -68,7 +68,7 @@
 "registeredFolder.what.unsupportedFileSystem" = "このフォルダがあるボリュームは登録に対応していません。";
 "registeredFolder.what.notRegistered" = "この登録フォルダは見つかりませんでした。";
 "registeredFolder.why.nestedRegistration" = "すでに登録されているフォルダの中、または親にあたるフォルダだからです。";
-"registeredFolder.why.notRegistered" = "操作している間に、別の場所で登録が解除されたようです。";
+"registeredFolder.why.notRegistered" = "操作している間に登録が解除された可能性があります。";
 "registeredFolder.why.unsupportedFileSystem" = "%@ は、ファイルを移動しても同一と判別できる仕組みに対応していません。この仕組みが無いと、移動や改名のたびにラベル・評価・カバー画像との結びつきが失われてしまいます。";
 "registeredFolder.hint.nestedRegistration" = "すでに登録した場所と重ならないフォルダを選んでください。";
 "registeredFolder.hint.unsupportedFileSystem" = "APFS または Mac OS 拡張のボリューム上のフォルダを選んでください。";

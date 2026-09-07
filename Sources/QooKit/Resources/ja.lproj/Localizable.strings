@@ -134,7 +134,7 @@
    同じ鍵がエラーにも警告にもなる（有効なフォーマットかどうかで severity が変わる）
    ため、鍵名には error / warning を含めない。 */
 "draft.displayNameRequired" = "表示名を入力してください。";
-"draft.extensionsEmpty" = "対象拡張子が空です。空にすると、隠しファイルを含むすべてのファイルが蔵書として取り込まれます。";
+"draft.extensionsEmpty" = "対象拡張子が空です。空にすると、隠しファイルを含むすべてのファイルがライブラリに取り込まれます。";
 "draft.extensionOverlap" = "対象拡張子と画像拡張子が重複しています: %@";
 "draft.fieldIndexOutOfRange" = "フィールド番号 %1$d は 1〜%2$d の範囲外です。";
 "draft.fieldIndexDuplicated" = "フィールド番号 %d が重複しています。";

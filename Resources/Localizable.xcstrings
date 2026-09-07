@@ -506,7 +506,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ゴミ箱へ移動"
+            "value": "ゴミ箱に入れる"
           }
         }
       }
@@ -523,7 +523,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "保管庫へ移動"
+            "value": "保管庫に移動"
           }
         }
       }
@@ -1032,7 +1032,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "読み込みは追加と更新だけを行います。ライブラリ・ラベル・評価を削除することはありません。まだスキャンしていないファイルは飛ばされるので、先にライブラリをスキャンしてから読み込んでください。"
+            "value": "読み込みは追加と更新だけを行います。ライブラリ・ラベル・評価を削除することはありません。まだスキャンしていないファイルはスキップされるので、先にライブラリをスキャンしてから読み込んでください。"
           }
         }
       }
@@ -1094,13 +1094,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Not in the database. Enable this folder as a library first, then import again."
+            "value": "Not in the database. Register this folder as a library first, then import again."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "データベースにありません。先にこのフォルダをライブラリとして有効にしてから、もう一度読み込んでください。"
+            "value": "データベースにありません。先にこのフォルダをライブラリとして登録してから、もう一度読み込んでください。"
           }
         }
       }
@@ -1151,7 +1151,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ファイル内の %d 件はまだスキャンされていないため飛ばしました。ライブラリをスキャンしてから、もう一度読み込んでください。"
+            "value": "ファイル内の %d 件はまだスキャンされていないためスキップしました。ライブラリをスキャンしてから、もう一度読み込んでください。"
           }
         }
       }
@@ -1162,13 +1162,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d library(ies) were skipped because they are not in the database. Enable them as libraries first, then import again:"
+            "value": "%d librar(ies) were skipped because they are not in the database. Register them as libraries first, then import again:"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d 件のライブラリはデータベースに無いため飛ばしました。先にライブラリとして有効にしてから、もう一度読み込んでください:"
+            "value": "%d 件のライブラリはデータベースに無いためスキップしました。先にライブラリとして登録してから、もう一度読み込んでください:"
           }
         }
       }
@@ -1230,13 +1230,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Registrations and covers"
+            "value": "Registrations and cover images"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "登録とカバー"
+            "value": "登録とカバー画像"
           }
         }
       }
@@ -1247,13 +1247,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Metadata (JSON)"
+            "value" : "Library data (JSON)"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "メタデータ（JSON）"
+            "value" : "ライブラリのデータ（JSON）"
           }
         }
       }
@@ -1270,7 +1270,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "データベース複製"
+            "value" : "データベースの複製"
           }
         }
       }
@@ -1338,7 +1338,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "取り込みの前"
+            "value" : "読み込みの前"
           }
         }
       }
@@ -1649,23 +1649,6 @@
         }
       }
     },
-    "bulkRename.preview": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Preview"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "プレビュー"
-          }
-        }
-      }
-    },
     "bulkRename.rename": {
       "extractionState": "manual",
       "localizations": {
@@ -1679,23 +1662,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "名前を変更"
-          }
-        }
-      }
-    },
-    "bulkRename.replaceOriginalName": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Replace the original name"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "元のファイル名を任意の文字列で置き換える"
           }
         }
       }
@@ -2548,23 +2514,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "削除"
-          }
-        }
-      }
-    },
-    "duplicates.confirmTitle": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Delete the other copies?"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "他のファイルを削除しますか？"
           }
         }
       }
@@ -3482,7 +3431,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ゴミ箱への移動に失敗しました"
+            "value": "ゴミ箱に入れられませんでした"
           }
         }
       }
@@ -3499,7 +3448,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "元に戻せませんでした"
+            "value": "取り消せませんでした"
           }
         }
       }
@@ -3533,7 +3482,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "保管庫への移動に失敗しました"
+            "value": "保管庫に移動できませんでした"
           }
         }
       }
@@ -3544,13 +3493,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Restore from Vault failed"
+            "value": "Take Out of Vault failed"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "保管庫からの復元に失敗しました"
+            "value": "保管庫から戻せませんでした"
           }
         }
       }
@@ -3696,13 +3645,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d in vault"
+            "value": "%d"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "保管庫に %d 件"
+            "value": "%d 件"
           }
         }
       }
@@ -3855,7 +3804,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "保管庫へ移したファイルはここに残り、蔵書の一覧からは外れます。ラベルと評価はそのまま保たれます。"
+            "value": "保管庫に移したファイルはここに残り、ライブラリの一覧からは外れます。ラベルと評価はそのまま保たれます。"
           }
         }
       }
@@ -3985,13 +3934,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "File Vault"
+            "value": "Vault"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ファイルの保管庫"
+            "value": "保管庫"
           }
         }
       }
@@ -6210,13 +6159,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "No labels in this group"
+            "value": "No labels in this field"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "このグループにラベルがありません"
+            "value": "このフィールドにラベルがありません"
           }
         }
       }
@@ -6312,13 +6261,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Apply to all %@ volumes in this series"
+            "value": "Apply to all %@ items in this series"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "このシリーズ全巻（%@ 冊）に適用"
+            "value": "このシリーズ全体（%@ 件）に適用"
           }
         }
       }
@@ -6329,13 +6278,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Clear the rating for all %@ volumes in this series"
+            "value": "Clear the rating for all %@ items in this series"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "このシリーズ全巻（%@ 冊）の評価を解除"
+            "value": "このシリーズ全体（%@ 件）の評価を解除"
           }
         }
       }
@@ -6363,13 +6312,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Details"
+            "value": "Inspector"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "詳細情報"
+            "value": "インスペクタ"
           }
         }
       }
@@ -6680,23 +6629,6 @@
         }
       }
     },
-    "labelEditor.color": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Color"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "色"
-          }
-        }
-      }
-    },
     "labelEditor.delete": {
       "extractionState": "manual",
       "localizations": {
@@ -6805,13 +6737,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "You can undo this with Edit ▸ Undo."
+            "value": "You can undo this with ⌘Z."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "「編集」▸「取り消す」で元に戻せます。"
+            "value": "⌘Z で取り消せます。"
           }
         }
       }
@@ -6839,13 +6771,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Labels can only be merged within the same group."
+            "value": "Labels can only be merged within the same field."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ラベルは同じグループの中でのみ統合できます。"
+            "value": "ラベルは同じフィールドの中でのみ統合できます。"
           }
         }
       }
@@ -6856,13 +6788,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "A label named “%@” already exists in this group. Merge the two labels instead to combine them."
+            "value": "A label named “%@” already exists in this field. Merge the two labels instead to combine them."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "このグループには「%@」というラベルが既にあります。まとめたい場合は「統合」を使ってください。"
+            "value": "このフィールドには「%@」というラベルが既にあります。まとめたい場合は「統合」を使ってください。"
           }
         }
       }
@@ -7009,13 +6941,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "You can undo this with Edit ▸ Undo."
+            "value": "You can undo this with ⌘Z."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "「編集」▸「取り消す」で元に戻せます。"
+            "value": "⌘Z で取り消せます。"
           }
         }
       }
@@ -7060,13 +6992,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "No labels in this group"
+            "value": "No labels in this field"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "このグループにラベルがありません"
+            "value": "このフィールドにラベルがありません"
           }
         }
       }
@@ -7582,23 +7514,6 @@
         }
       }
     },
-    "library.disable.menuItem": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Disable Library Features"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ライブラリ機能を無効にする"
-          }
-        }
-      }
-    },
     "library.enable.failed": {
       "extractionState": "manual",
       "localizations": {
@@ -7633,52 +7548,18 @@
         }
       }
     },
-    "library.fileVault.menuItem": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "File Vault…"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ファイルの保管庫…"
-          }
-        }
-      }
-    },
-    "library.labels.menuItem": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Edit Labels…"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ラベルを編集…"
-          }
-        }
-      }
-    },
     "library.listEmpty": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "No books here"
+            "value": "No items here"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "本がありません"
+            "value": "項目がありません"
           }
         }
       }
@@ -7688,13 +7569,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "No books match the current filter in this folder or below."
+            "value": "No items match the current filter in this folder or below."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "このフォルダとその配下に、条件に合う本がありません。"
+            "value": "このフォルダとその配下に、条件に合う項目がありません。"
           }
         }
       }
@@ -7711,40 +7592,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "ライブラリの一覧を読み込めませんでした"
-          }
-        }
-      }
-    },
-    "library.orphanCleanup.menuItem": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Missing Files…"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "見つからないファイルを整理…"
-          }
-        }
-      }
-    },
-    "library.rescan.menuItem": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Rescan Now"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "今すぐ再スキャン"
           }
         }
       }
@@ -7772,13 +7619,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The settings were saved. Reconnect the volume and rescan from the folder tree."
+            "value": "Your settings are kept. The library is scanned again once the volume is reconnected."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "設定は保存されています。ボリュームを接続し直してから、フォルダツリーで再スキャンしてください。"
+            "value": "設定は保存されています。ボリュームを接続し直すと再びスキャンされます。"
           }
         }
       }
@@ -7806,13 +7653,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d folder(s) are no longer treated as a single book because they now contain subfolders. The files are still there and their labels are kept."
+            "value": "%d folder(s) are no longer treated as book folders because they now contain subfolders. The files are still there and their labels are kept."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d 件のフォルダにサブフォルダができたため、1 冊としての扱いをやめました。ファイルはそのままで、ラベルも保持しています。"
+            "value": "%d 件のフォルダにサブフォルダができたため、ブックフォルダとして扱わなくなりました。ファイルはそのままで、ラベルも保持しています。"
           }
         }
       }
@@ -7908,13 +7755,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "“%@” has folders no longer treated as one book"
+            "value": "“%@” has folders no longer treated as book folders"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "「%@」に 1 冊としての扱いをやめたフォルダがあります"
+            "value": "「%@」にブックフォルダでなくなったフォルダがあります"
           }
         }
       }
@@ -7965,7 +7812,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "「%@」に巻数が食い違うファイルがあります"
+            "value": "「%@」に巻数が一致しないファイルがあります"
           }
         }
       }
@@ -8010,13 +7857,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d file name(s) did not match any filename format, so no labels were assigned."
+            "value": "%d file(s) are unsorted: their names match no filename format."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d 件のファイル名がどのファイル名フォーマットにも一致せず、ラベルが付いていません。"
+            "value": "%d 件のファイルが未整理です。ファイル名がどのフォーマットにも一致していません。"
           }
         }
       }
@@ -8078,13 +7925,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "There is no database backup to go back to. Your files on disk are not affected — re-registering the folders will scan them again."
+            "value" : "There is no database backup to go back to. Your files on disk are not affected. Re-registering the folders will scan them again."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "戻せるデータベースの控えがありません。ディスク上のファイルには影響しません——フォルダを登録し直せば、もう一度読み込まれます。"
+            "value" : "戻せるデータベースのバックアップがありません。ディスク上のファイルには影響しません。フォルダを登録し直せば、もう一度読み込まれます。"
           }
         }
       }
@@ -8152,7 +7999,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "qooLibrary はデータベースを開けませんでしたが、中身はまだ読める状態です——評価・ラベル・タイトルは残っています。"
+            "value" : "qooLibrary はデータベースを開けませんでしたが、中身はまだ読める状態です。評価・ラベル・タイトルは残っています。"
           }
         }
       }
@@ -8169,7 +8016,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "qooLibrary を更新すると開けます。古い控えへ戻すと、それ以降の内容は失われます。"
+            "value" : "qooLibrary を更新すると開けます。古いバックアップへ戻すと、それ以降の内容は失われます。"
           }
         }
       }
@@ -8186,7 +8033,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "「%@」が v%d から v%d へ更新されました。「%@」の設定は変わっていません——差分を見て、適用するものを選べます。"
+            "value" : "「%@」が v%d から v%d へ更新されました。「%@」の設定は変わっていません。差分を見て、適用する変更を選べます。"
           }
         }
       }
@@ -8316,13 +8163,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The built-in book type definitions could not be loaded."
+            "value": "The built-in templates could not be loaded."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "組み込みのブックタイプ定義を読み込めませんでした。"
+            "value": "組み込みのテンプレートを読み込めませんでした。"
           }
         }
       }
@@ -8333,13 +8180,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "“%@” is enabled as a library. Unregistering it also removes its library data."
+            "value": "“%@” is registered as a library. Unregistering it also removes its library data."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "「%@」はライブラリとして有効になっています。登録を解除すると、ライブラリのデータも一緒に削除されます。"
+            "value": "「%@」はライブラリとして登録されています。登録を解除すると、ライブラリのデータも一緒に削除されます。"
           }
         }
       }
@@ -8357,23 +8204,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "手動で設定したラベル・評価・カバー画像は失われます。ファイル自体には手を加えません。"
-          }
-        }
-      }
-    },
-    "library.unresolvedFiles.menuItem": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Files Not Matching a Filename Format…"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ファイル名フォーマットに一致しないファイルを整理…"
           }
         }
       }
@@ -8469,13 +8299,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d files tried · %d matched · %d not matched"
+            "value": "%d files tried · %d matched · %d unsorted"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d 件を試して %d 件が一致 · %d 件が一致せず"
+            "value": "%d 件を試して %d 件が一致 · %d 件が未整理"
           }
         }
       }
@@ -8520,13 +8350,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "No filename format matches. It will be imported without labels."
+            "value": "Unsorted: no filename format matches."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "どのファイル名フォーマットにも一致しません。ラベルが付かないまま取り込まれます。"
+            "value": "未整理: どのファイル名フォーマットにも一致しません。"
           }
         }
       }
@@ -8679,7 +8509,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "まとめた組は件数バッジの付いた 1 行として表示されます。ファイルは削除されません——どれを残すかは比較ウインドウで選びます。"
+            "value": "まとめた組は件数バッジの付いた 1 行として表示されます。ファイルは削除されません。どれを残すかは比較ウインドウで選びます。"
           }
         }
       }
@@ -8690,13 +8520,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "A template only seeds these settings when the library is enabled. Everything here belongs to this library and can be changed at any time."
+            "value": "A template only seeds these settings when the library is registered. Everything here belongs to this library and can be changed at any time."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "テンプレートは有効化のときに初期値を写すだけの雛形です。ここから先の設定はこのライブラリのもので、いつでも変えられます。"
+            "value": "テンプレートは登録のときに初期値をコピーするだけです。ここから先の設定はこのライブラリのもので、いつでも変えられます。"
           }
         }
       }
@@ -8724,13 +8554,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "A book folder holds the images of a single book. When off, opening one shows the images inside it."
+            "value": "A book folder holds only images. When off, opening one shows the images inside it."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ブックフォルダは 1 冊分の画像が入ったフォルダです。オフのときは、開くと中の画像が一覧表示されます。"
+            "value": "ブックフォルダは画像だけが入ったフォルダです。オフのときは、開くと中の画像が一覧表示されます。"
           }
         }
       }
@@ -8775,13 +8605,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "What happens when you double-click a folder that holds the images of a single book."
+            "value": "What happens when you double-click a book folder."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "1 冊分の画像が入ったフォルダをダブルクリックしたときの動きです。"
+            "value": "ブックフォルダをダブルクリックしたときの動きです。"
           }
         }
       }
@@ -8900,24 +8730,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "各ファイルは一度だけ開き、結果を憶えます。変わっていないファイルは以後のスキャンで開き直しません。メタデータを持たない蔵書ではオフにすると走査が速くなります。"
-          }
-        }
-      }
-    },
-    "librarySettings.embeddedMetadata.explanation": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Read the metadata stored inside the files themselves (ComicInfo.xml, EPUB, PDF) and use it in preference to what the file and folder names say."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ファイル自身に埋め込まれたメタデータ（ComicInfo.xml・EPUB・PDF）を読み取り、ファイル名やフォルダ名から抽出した情報より優先して使います。"
+            "value": "各ファイルは一度だけ開き、結果を記憶します。変わっていないファイルは以後のスキャンで開き直しません。メタデータを持たないライブラリではオフにするとスキャンが速くなります。"
           }
         }
       }
@@ -9047,13 +8860,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "ComicInfo.xml has two elements that can hold a volume number, and applications disagree about which one to use: Komga treats Number as the volume, Kavita treats Volume as the volume. When a file has both and they differ, qooLibrary can ask you which one to trust."
+            "value": "ComicInfo.xml has two elements that can hold a volume number, and apps disagree on which one to use. This decides which one is used when both are present and differ."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ComicInfo.xml には巻数を表しうる要素が 2 つあり、どちらを使うかはアプリによって食い違います（Komga は Number、Kavita は Volume を巻数として扱います）。両方あって数字が違う場合に、どちらを採るかをここで決めます。"
+            "value": "ComicInfo.xml には巻数を表す要素が 2 つあり、アプリによって扱いが異なります。両方の値が違うときにどちらを使うかを決めます。"
           }
         }
       }
@@ -9070,7 +8883,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "このライブラリが取り込むファイルを決めます。一覧に無い拡張子は走査で無視されます。"
+            "value": "このライブラリが取り込むファイルを決めます。一覧に無い拡張子はスキャンで無視されます。"
           }
         }
       }
@@ -9098,13 +8911,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Used to decide whether a folder of images counts as one book."
+            "value": "Used to decide whether a folder counts as a book folder."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "画像だけのフォルダを 1 冊として扱うかどうかの判定に使います。"
+            "value": "ブックフォルダかどうかの判定に使います。"
           }
         }
       }
@@ -9211,23 +9024,6 @@
         }
       }
     },
-    "librarySettings.filenameFormats.editing": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Selected format"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "選択中のフォーマット"
-          }
-        }
-      }
-    },
     "librarySettings.filenameFormats.editorTitle": {
       "extractionState": "manual",
       "localizations": {
@@ -9274,7 +9070,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "走査でこのフォーマットを試す"
+            "value": "スキャンでこのフォーマットを試す"
           }
         }
       }
@@ -9625,13 +9421,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The axes you classify books by. The six defaults (author, circle, genre, event, keyword, book type) are always set up for a new library; you can rename them and add your own."
+            "value": "The axes you classify items by. The six defaults (author, circle, genre, event, keyword, book type) are always set up for a new library; you can rename them and add your own."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "本を分類する軸です。既定の 6 種（著者・サークル・ジャンル・イベント・キーワード・本の種別）は新しいライブラリに最初から用意されます。名前の変更と追加ができます。"
+            "value": "項目を分類する軸です。既定の 6 種（著者・サークル・ジャンル・イベント・キーワード・本の種別）は新しいライブラリに最初から用意されます。名前の変更と追加ができます。"
           }
         }
       }
@@ -9812,13 +9608,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Enable a registered folder as a library from the folder tree first."
+            "value": "Libraries appear here once you register a folder with Library › Register Library Folder…"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "フォルダツリーで登録フォルダを「ライブラリとして有効にする」と、ここに現れます。"
+            "value": "「ライブラリ」メニューの「ライブラリフォルダを登録…」で登録すると、ここに現れます。"
           }
         }
       }
@@ -9852,7 +9648,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "「(完全版)」や括弧に入った年号のように、区切り文字を含むけれど 1 かたまりとして読みたい範囲を表す正規表現です。一致した部分は値として残り、分割されなくなるだけです。"
+            "value": "「(完全版)」や括弧に入った年号のように、区切り文字を含んでいても 1 つの値として読みたい範囲を表す正規表現です。一致した部分は分割されずに値として残ります。"
           }
         }
       }
@@ -9920,7 +9716,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "「%@」の設定を保存しました。すでに取り込んだファイルのラベルは、走査し直すまで変わりません。"
+            "value": "「%@」の設定を保存しました。すでに取り込んだファイルのラベルは、スキャンし直すまで変わりません。"
           }
         }
       }
@@ -9965,30 +9761,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Rescan Now"
+            "value": "Scan Now"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "今すぐ走査する"
-          }
-        }
-      }
-    },
-    "librarySettings.rescanTitle": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Rescan the Library?"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ライブラリを走査し直しますか？"
+            "value": "今すぐスキャン"
           }
         }
       }
@@ -10277,7 +10056,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "変更せずに確認済みにする"
+            "value" : "確認済みにする"
           }
         }
       }
@@ -11059,7 +10838,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ブックタイプ"
+            "value": "本の種別"
           }
         }
       }
@@ -11260,58 +11039,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "詳細を隠す"
-          }
-        }
-      }
-    },
-    "mainWindow.implementedIn28": {
-      "extractionState": "stale",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Not available yet"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "まだ利用できません"
-          }
-        }
-      }
-    },
-    "mainWindow.labelFilter": {
-      "extractionState": "stale",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Label Filter"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ラベルフィルタ"
-          }
-        }
-      }
-    },
-    "mainWindow.noTabs": {
-      "extractionState": "stale",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No Tabs"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "タブがありません"
+            "value": "インスペクタを隠す"
           }
         }
       }
@@ -11328,7 +11056,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "詳細を表示"
+            "value": "インスペクタを表示"
           }
         }
       }
@@ -12025,7 +11753,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "qooLibrary が表示した知らせはここに残ります。後から読み返せます。"
+            "value": "qooLibrary が表示した通知はここに残り、あとから読み返せます。"
           }
         }
       }
@@ -12365,7 +12093,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "CSV を書き出す…"
+            "value": "CSV に書き出す…"
           }
         }
       }
@@ -12484,7 +12212,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "走査"
+            "value": "スキャン"
           }
         }
       }
@@ -12546,13 +12274,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Unsuccessful"
+            "value": "Failed"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "うまくいかなかった"
+            "value": "失敗"
           }
         }
       }
@@ -12699,13 +12427,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "That operation isn’t in the list. Older entries may not be loaded."
+            "value": "That operation was not found in the list. Older entries may not be loaded."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "その操作は一覧に見つかりませんでした（古い記録は読み込まれないことがあります）。"
+            "value": "その操作は一覧に見つかりませんでした。古い履歴は読み込まれないことがあります。"
           }
         }
       }
@@ -12784,13 +12512,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d missing"
+            "value": "%d"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "見つからない %d 件"
+            "value": "%d 件"
           }
         }
       }
@@ -12858,7 +12586,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "「%@」について覚えている記録を削除しますか？"
+            "value": "「%@」の記録を削除しますか？"
           }
         }
       }
@@ -12869,13 +12597,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Only what qooLibrary remembers is deleted. No file on disk is touched."
+            "value": "Only the library record is deleted. The file on disk is not touched."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "削除されるのは qooLibrary が覚えている記録だけです。ディスク上のファイルには触れません。"
+            "value": "削除されるのはライブラリの記録だけです。ディスク上のファイルは変更されません。"
           }
         }
       }
@@ -13542,13 +13270,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The report is a zip archive containing the log files and a summary of your Mac, this build, and your registered folders. Nothing is ever sent over the network — share the file yourself if you're reporting a problem."
+            "value": "Diagnostics are a zip file with the log files and a summary of this Mac, the build, and the registered folders. Nothing is sent over the network. Attach the exported file when you report a problem."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "診断情報は、ログファイルと、この Mac・ビルド・登録フォルダの概要をまとめた zip ファイルです。ネットワークへ送信されることは一切ありません。不具合を報告する際は、書き出したファイルをご自身で共有してください。"
+            "value": "診断情報は、ログファイルと、この Mac・ビルド・登録フォルダの概要をまとめた zip ファイルです。ネットワークへは送信されません。不具合を報告するときに、書き出したファイルを添えてください。"
           }
         }
       }
@@ -13592,13 +13320,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Looks for records that no longer match what is on disk. Missing and unrecognised files are not listed here — rescanning a library handles those."
+            "value" : "Looks for records that no longer match what is on disk. Missing and unsorted files are handled by scanning instead."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ディスク上の実体と食い違っている記録を探します。見つからないファイル・未整理のファイルはここには出ません——そちらはライブラリの再スキャンが扱います。"
+            "value" : "ディスク上の実体と一致しない記録を探します。見つからないファイルと未整理のファイルは対象外で、ライブラリのスキャンが扱います。"
           }
         }
       }
@@ -13907,13 +13635,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Image Folders"
+            "value": "Book Folders"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "画像フォルダ"
+            "value": "ブックフォルダ"
           }
         }
       }
@@ -15193,7 +14921,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "古い記録は qooLibrary の起動時に整理されます。設定を変えたその場では減りません。"
+            "value": "古い履歴は qooLibrary の起動時に整理されます。設定を変えたその場では減りません。"
           }
         }
       }
@@ -15238,13 +14966,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Remove entries after a period"
+            "value": "Delete entries after a set period"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "一定期間を過ぎた記録を削除"
+            "value": "一定期間を過ぎた履歴を削除"
           }
         }
       }
@@ -15261,7 +14989,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "記録の件数を制限"
+            "value": "履歴の件数を制限"
           }
         }
       }
@@ -15340,13 +15068,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The operation history cannot be deleted by hand — it is the record of what you did. Entries are removed only by the limits above, and the cleanup runs once at launch."
+            "value": "The operation history cannot be deleted by hand. Entries beyond the limits above are removed at launch."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "操作履歴は手では消せません——何をしたかの記録だからです。減るのは上の上限によるものだけで、掃除は起動時に 1 度だけ走ります。"
+            "value": "操作履歴は手動では削除できません。上の上限を超えたぶんだけが、起動時に整理されます。"
           }
         }
       }
@@ -15380,7 +15108,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "一定期間を過ぎた記録を削除"
+            "value": "一定期間を過ぎた履歴を削除"
           }
         }
       }
@@ -15397,7 +15125,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "件数の上限を設ける"
+            "value": "履歴の件数を制限"
           }
         }
       }
@@ -15408,13 +15136,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Maximum entries"
+            "value": "Keep at most"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "最大件数"
+            "value": "保持件数"
           }
         }
       }
@@ -15459,13 +15187,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "All three are off by default: if you need this, you are likely already using Time Machine, which backs up the whole app container every hour. Turning them on stores snapshots under Application Support, and you can restore one in a single step from the list above. Cover images you replaced by hand are shared across generations, so keeping more generations costs almost nothing. The database option is separate because that snapshot is taken when the app changes its own format, not when you do something."
+            "value": "All three are off by default. When on, backups are stored under Application Support and can be restored from the list above. Cover images you replaced by hand are shared across generations, so keeping more generations costs almost nothing."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "3 つとも既定は OFF です。この機能を必要とする方は、すでに Time Machine（アプリのデータごと 1 時間おきに控えを取る）をお使いの可能性が高いためです。ON にすると控えが Application Support に保存され、上の一覧から 1 操作で丸ごと復元できます。手で差し替えたカバー画像は世代をまたいで共有するので、世代数を増やしてもほとんど容量は増えません。「アプリがデータベースを更新するとき」だけ分けてあるのは、それがご自身の操作ではなくアプリの更新で起きるためです。"
+            "value": "既定はすべてオフです。オンにするとバックアップが Application Support に保存され、上の一覧から復元できます。手動で差し替えたカバー画像は世代間で共有されるため、世代数を増やしても容量はほとんど増えません。"
           }
         }
       }
@@ -15499,7 +15227,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "保存済みの控え"
+            "value": "保存済みのバックアップ"
           }
         }
       }
@@ -15510,13 +15238,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Snapshot before operations that cannot be undone"
+            "value": "Back up before operations that cannot be undone"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "取り返しのつかない操作の前に控えを取る"
+            "value": "取り消せない操作の前にバックアップを作成"
           }
         }
       }
@@ -15527,13 +15255,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Snapshot when the app updates its database"
+            "value": "Back up before the app updates its database"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "アプリがデータベースを更新するときに控えを取る"
+            "value": "データベースの更新前にバックアップを作成"
           }
         }
       }
@@ -15618,7 +15346,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "取らない"
+            "value": "作成しない"
           }
         }
       }
@@ -15646,13 +15374,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Snapshot on launch"
+            "value": "Back up on launch"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "起動時に控えを取る"
+            "value": "起動時にバックアップを作成"
           }
         }
       }
@@ -15703,7 +15431,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "「%@」のライブラリデータを削除しますか？ %d 件のファイル記録があります。"
+            "value": "「%@」のライブラリのデータを削除しますか？ %d 件のファイルの記録があります。"
           }
         }
       }
@@ -15737,7 +15465,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ に取った控えを削除しますか？"
+            "value" : "%@ に作成したバックアップを削除しますか？"
           }
         }
       }
@@ -15754,7 +15482,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "控えを削除できませんでした"
+            "value" : "バックアップを削除できませんでした"
           }
         }
       }
@@ -15788,7 +15516,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "控えを削除"
+            "value" : "バックアップを削除"
           }
         }
       }
@@ -15799,13 +15527,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Your files and folders are not touched. The folder stays registered and can be enabled as a library again."
+            "value": "Your files and folders are not touched. The folder stays registered and can be set up as a library again."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ファイルとフォルダには触れません。フォルダの登録は残るので、もう一度ライブラリとして有効にできます。"
+            "value": "ファイルとフォルダには触れません。フォルダの登録は残り、ライブラリとして設定し直せます。"
           }
         }
       }
@@ -15867,13 +15595,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Metadata generations to keep"
+            "value": "JSON generations to keep"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "メタデータの世代数"
+            "value": "JSON の世代数"
           }
         }
       }
@@ -15901,13 +15629,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Save a Copy…"
+            "value" : "Export…"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "コピーを保存…"
+            "value" : "書き出す…"
           }
         }
       }
@@ -15918,13 +15646,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Could not save the copy"
+            "value" : "Could not export the backup"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "コピーを保存できませんでした"
+            "value" : "バックアップを書き出せませんでした"
           }
         }
       }
@@ -15935,13 +15663,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Choose where to keep a copy of this backup."
+            "value" : "Choose where to export this backup."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "この控えのコピーを置く場所を選んでください。"
+            "value" : "このバックアップを書き出す場所を選んでください。"
           }
         }
       }
@@ -15952,13 +15680,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Save Here"
+            "value" : "Export"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ここに保存"
+            "value" : "書き出す"
           }
         }
       }
@@ -15969,13 +15697,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Saving a copy…"
+            "value" : "Exporting the backup…"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "コピーを保存しています…"
+            "value" : "バックアップを書き出しています…"
           }
         }
       }
@@ -16094,7 +15822,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "保存された控えはまだありません。"
+            "value" : "保存されたバックアップはまだありません。"
           }
         }
       }
@@ -16128,7 +15856,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "控えを表示…"
+            "value" : "バックアップを表示…"
           }
         }
       }
@@ -16156,13 +15884,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Registered folders and cover images were not restored: this generation was created by an older version, or they could not be written back. Libraries in the restored database may not reach their folders until you register them again."
+            "value": "Registered folders and cover images were not restored. This backup was created by an older version, or they could not be written back. Libraries in the restored database may not reach their folders until you register them again."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "登録フォルダとカバー画像は戻せませんでした（この世代を古い版が作ったか、書き戻せなかったためです）。戻したデータベースのライブラリは、登録し直すまでフォルダに到達できないことがあります。"
+            "value": "登録フォルダとカバー画像は戻せませんでした。このバックアップを古いバージョンが作成したか、書き戻しに失敗したためです。戻したデータベースのライブラリは、登録し直すまでフォルダにアクセスできないことがあります。"
           }
         }
       }
@@ -16230,7 +15958,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "現在のライブラリのデータベースが、この控えの内容に置き換わります。この控えを取ったあとに付けた評価・ラベル・タイトルは失われます。置き換わる前の状態も控えとして残るので、戻すこともできます。"
+            "value" : "現在のライブラリのデータベースが、このバックアップの内容に置き換わります。このバックアップを作成したあとに付けた評価・ラベル・タイトルは失われます。置き換わる前の状態もバックアップとして残るので、戻すこともできます。"
           }
         }
       }
@@ -16258,13 +15986,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The backup is damaged and was not used. Your library is unchanged — try an older backup."
+            "value" : "The backup is damaged and was not used. Your library is unchanged. Try an older backup."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "その控えは壊れていたため使いませんでした。ライブラリはそのままです——ひとつ古い控えをお試しください。"
+            "value" : "そのバックアップは壊れていたため使いませんでした。ライブラリはそのままです。ひとつ古いバックアップをお試しください。"
           }
         }
       }
@@ -16281,7 +16009,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "その控えが見つかりませんでした。ライブラリはそのままです。"
+            "value" : "そのバックアップが見つかりませんでした。ライブラリはそのままです。"
           }
         }
       }
@@ -16326,13 +16054,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The backup was made by a newer version of qooLibrary. Your library is unchanged — update qooLibrary and try again."
+            "value" : "The backup was made by a newer version of qooLibrary. Your library is unchanged. Update qooLibrary and try again."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "その控えは新しいバージョンの qooLibrary が作ったものです。ライブラリはそのままです——qooLibrary を更新してからお試しください。"
+            "value" : "そのバックアップは新しいバージョンの qooLibrary が作成したものです。ライブラリはそのままです。qooLibrary を更新してからお試しください。"
           }
         }
       }
@@ -16366,7 +16094,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ライブラリのデータベースを、選んだ控えの内容に置き換えました。置き換える前の状態も控えとして残してあります。"
+            "value" : "ライブラリのデータベースを、選んだバックアップの内容に置き換えました。置き換える前の状態もバックアップとして残してあります。"
           }
         }
       }
@@ -16479,13 +16207,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "qooLibrary follows changes as they happen, but some changes cannot be detected: those made by another computer on a network share, and those made while qooLibrary was not running on volumes that keep no change history. A periodic full scan catches them."
+            "value": "qooLibrary follows changes as they happen, but it cannot detect changes made by another computer on a network share, or changes made while it was not running on volumes that keep no change history. A periodic full scan picks those up."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "qooLibrary は変更をその都度追いかけますが、検知できない変更もあります——ネットワーク共有で他のコンピュータが加えた変更と、変更履歴を持たないボリュームで qooLibrary の起動中でないときに加えられた変更です。定期フルスキャンがそれを拾います。"
+            "value": "qooLibrary は変更を自動で検知しますが、ネットワーク共有で他のコンピュータが加えた変更と、変更履歴を持たないボリュームで qooLibrary の終了中に加えられた変更は検知できません。定期フルスキャンがこれらを反映します。"
           }
         }
       }
@@ -16553,7 +16281,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "起動時にライブラリを定期的に再スキャン"
+            "value": "起動時にライブラリを定期的にスキャンし直す"
           }
         }
       }
@@ -17022,13 +16750,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%d volumes"
+            "value" : "%d items"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%d 冊"
+            "value" : "%d 件"
           }
         }
       }
@@ -17056,13 +16784,13 @@
       "en" : {
         "stringUnit" : {
           "state" : "translated",
-          "value" : "%d books"
+          "value" : "%d items"
         }
       },
       "ja" : {
         "stringUnit" : {
           "state" : "translated",
-          "value" : "%d 冊"
+          "value" : "%d 件"
         }
       }
       }
@@ -17073,13 +16801,13 @@
       "en" : {
         "stringUnit" : {
           "state" : "translated",
-          "value" : "%d suggestions"
+          "value" : "%d"
         }
       },
       "ja" : {
         "stringUnit" : {
           "state" : "translated",
-          "value" : "%d 件の提案"
+          "value" : "%d 件"
         }
       }
       }
@@ -17107,13 +16835,13 @@
       "en" : {
         "stringUnit" : {
           "state" : "translated",
-          "value" : "qooLibrary suggests a series when several books by the same creator in the same folder share the beginning of their titles."
+          "value" : "qooLibrary suggests a series when several items by the same creator in the same folder share the beginning of their titles."
         }
       },
       "ja" : {
         "stringUnit" : {
           "state" : "translated",
-          "value" : "同じフォルダにある同じ著者・サークルの本で、タイトルの先頭が揃っているものを見つけたときに提案します。"
+          "value" : "同じフォルダにある同じ著者・サークルの項目で、タイトルの先頭が揃っているものを見つけたときに提案します。"
         }
       }
       }
@@ -17524,40 +17252,6 @@
         }
       }
     },
-    "tabBar.closeOtherTabs": {
-      "extractionState": "stale",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Close Other Tabs"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "他のタブを閉じる"
-          }
-        }
-      }
-    },
-    "tabBar.closeTab": {
-      "extractionState": "stale",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Close Tab"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "タブを閉じる"
-          }
-        }
-      }
-    },
     "templates.copyName": {
       "extractionState": "manual",
       "localizations": {
@@ -17604,7 +17298,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "このテンプレートから登録済みのライブラリには影響しません。設定は登録した時点でライブラリ側へ写されています。"
+            "value": "このテンプレートから登録したライブラリには影響しません。設定は登録した時点でライブラリにコピーされています。"
           }
         }
       }
@@ -18023,13 +17717,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d files match none of your filename formats. Adding one format usually makes them all match at once."
+            "value": "%d files are unsorted. Adding one format may make them all match."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d 件がどのファイル名フォーマットにも一致していません。フォーマットを 1 つ足すと、まとめて一致するようになることがほとんどです。"
+            "value": "%d 件が未整理です。フォーマットを 1 つ足すと、まとめて一致することがあります。"
           }
         }
       }
@@ -18040,13 +17734,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ignore from Now On"
+            "value": "Dismiss"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "以後無視する"
+            "value": "以後出さない"
           }
         }
       }
@@ -18057,13 +17751,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ignored. It will not reappear in this list."
+            "value": "Dismissed"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "無視しています。以後この一覧には出ません。"
+            "value": "無視中"
           }
         }
       }
@@ -18080,7 +17774,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "最も近いフォーマット: %@"
+            "value": "近いフォーマット: %@"
           }
         }
       }
@@ -18097,7 +17791,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "%2$d 件のうち %1$d 件が一致するようになりました。"
+            "value": "%2$d 件のうち %1$d 件が一致しました。"
           }
         }
       }
@@ -18108,7 +17802,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Show ignored"
+            "value": "Show dismissed"
           }
         },
         "ja": {
@@ -18125,13 +17819,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Stop Ignoring"
+            "value": "Undismiss"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "無視をやめる"
+            "value": "無視を解除"
           }
         }
       }
@@ -18142,13 +17836,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "These items are not part of the library, so they cannot be moved to the vault. Only files the library has imported can be stored."
+            "value": "These items are not part of the library, so they cannot be moved to the vault."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ライブラリに取り込まれていないため、保管庫へ移せません。保管庫にしまえるのは、ライブラリが取り込んだファイルだけです。"
+            "value": "ライブラリに取り込まれていないため、保管庫に移せません。"
           }
         }
       }
@@ -18499,13 +18193,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "A browsable collection"
+            "value": "A browsable library"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "整理された蔵書一覧"
+            "value": "整理された一覧"
           }
         }
       }
@@ -18539,7 +18233,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "読み取りだけを行います。移動も書き換えもせず、登録を解除してもファイルは無傷のままです。"
+            "value": "読み取りだけを行います。移動も書き換えもせず、登録を解除してもファイルはそのまま残ります。"
           }
         }
       }
@@ -18573,7 +18267,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ファイルに埋め込まれたメタデータ（ComicInfo・EPUB・PDF）を最優先に、次にフォルダ名、最後にファイル名を手がかりとして、タイトル・シリーズ・著者などを自動で取り出します。"
+            "value": "ファイルに埋め込まれたメタデータ（ComicInfo・EPUB・PDF）、フォルダ名、ファイル名の順に優先して、タイトル・シリーズ・著者などを自動で取り出します。"
           }
         }
       }
@@ -18584,13 +18278,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "For comics and e-books"
+            "value": "Supported formats"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "対象はコミック・電子書籍"
+            "value": "対象の形式"
           }
         }
       }
@@ -18601,13 +18295,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "zip, cbz, rar, cbr, 7z, cb7, PDF, and EPUB files are catalogued. You can change the extensions later."
+            "value": "zip, cbz, rar, cbr, 7z, cb7, PDF and EPUB. You can change this later."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "zip・cbz・rar・cbr・7z・cb7・PDF・EPUB が対象です（あとから変更できます）。"
+            "value": "zip・cbz・rar・cbr・7z・cb7・PDF・EPUB が対象です。あとから変更できます。"
           }
         }
       }
@@ -18641,7 +18335,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ファイルの追加・削除・リネームには自動で追随します。ふだんの操作は登録と解除だけです。"
+            "value": "ファイルの追加・削除・リネームには自動で追随します。通常の操作は登録と解除だけです。"
           }
         }
       }
@@ -18652,13 +18346,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Choose the folder that holds your collection."
+            "value": "Choose the folder to use as the library."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "蔵書が入っているフォルダを選んでください。"
+            "value": "ライブラリにするフォルダを選んでください。"
           }
         }
       }
@@ -18782,23 +18476,6 @@
         }
       }
     },
-    "libraryWizard.customize.name": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Library Name"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ライブラリの名前"
-          }
-        }
-      }
-    },
     "libraryWizard.customize.fields": {
       "extractionState": "manual",
       "localizations": {
@@ -18822,30 +18499,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Rename the axes used to organize your books, such as author or circle."
+            "value": "Rename the axes used to organize your items, such as author or circle."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "本を分類する軸の呼び名を変えられます（著者・サークルなど）。"
-          }
-        }
-      }
-    },
-    "libraryWizard.customize.hint": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fine-tuning such as regular expressions is available any time after registration, from Library Settings."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正規表現などの細かい調整は、登録後に「ライブラリの設定」からいつでも行えます。"
+            "value": "項目を分類する軸の呼び名を変えられます（著者・サークルなど）。"
           }
         }
       }
@@ -18890,13 +18550,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%1$d files match no format and will be listed for cleanup later."
+            "value": "%1$d files stay unsorted and can be cleaned up later."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "%1$d 件はどのフォーマットにも一致せず、あとから整理できる一覧に残ります。"
+            "value": "%1$d 件は未整理のまま残り、あとから整理できます。"
           }
         }
       }
@@ -18986,40 +18646,6 @@
         }
       }
     },
-    "mainWindow.sidebarMode.folder": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Folders"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "フォルダ"
-          }
-        }
-      }
-    },
-    "mainWindow.sidebarMode.library": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Library"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ライブラリ"
-          }
-        }
-      }
-    },
     "libraryWizard.customize.folders": {
       "extractionState": "manual",
       "localizations": {
@@ -19094,13 +18720,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Most of your files sit inside subfolders, so using folder names looks like a good fit."
+            "value": "Most files are in subfolders. Using folder names is recommended."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "大半のファイルがサブフォルダの中にあるため、フォルダ名を使うほうが合いそうです。"
+            "value": "ファイルの大半がサブフォルダにあります。フォルダ名を使う設定を推奨します。"
           }
         }
       }
@@ -19111,13 +18737,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Most of your files sit at the top level, so folder names are probably not needed."
+            "value": "Most files are directly in the folder. Not using folder names is recommended."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "大半のファイルがフォルダ直下にあるため、フォルダ名は使わなくてよさそうです。"
+            "value": "ファイルの大半がフォルダ直下にあります。フォルダ名を使わない設定を推奨します。"
           }
         }
       }
@@ -19128,13 +18754,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Folder names are used as hints (%1$@)"
+            "value": "Folder names are used too (%1$@)"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "フォルダ名も手がかりに使います（%1$@）"
+            "value": "フォルダ名も使います（%1$@）"
           }
         }
       }
@@ -19162,13 +18788,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Open Books With"
+            "value": "Open Files With"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "本を開くアプリ"
+            "value": "ファイルを開くアプリ"
           }
         }
       }
@@ -19253,7 +18879,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "%1$d 本"
+            "value": "%1$d 件"
           }
         }
       }
@@ -19281,13 +18907,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Image folders"
+            "value": "Book folders"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "画像フォルダ"
+            "value": "ブックフォルダ"
           }
         }
       }
@@ -19576,7 +19202,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "現在の絞り込みで更新"
+            "value": "この絞り込みで更新"
           }
         }
       }
@@ -19740,13 +19366,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Open comics with"
+            "value" : "Open files with"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "コミックを開くアプリ"
+            "value" : "ファイルを開くアプリ"
           }
         }
       }
@@ -19757,13 +19383,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Choose the app that opens comic files when you double-click them."
+            "value" : "Choose the app that opens library files when you double-click them."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "コミックファイルをダブルクリックしたときに開くアプリを選びます。"
+            "value" : "ライブラリのファイルをダブルクリックしたときに開くアプリを選びます。"
           }
         }
       }
@@ -19842,13 +19468,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "qooLibrary can only read folders you have allowed. Allowing the startup volume once is enough to reach mounted external volumes as well."
+            "value" : "qooLibrary can only read folders you have allowed. Allowing the startup volume also covers the external volumes that are mounted."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "qooLibrary は、許可されたフォルダしか読めません。起動ボリュームを 1 回許可すれば、マウント中の外部ボリュームにも届きます。"
+            "value" : "qooLibrary は、許可されたフォルダだけを読めます。起動ボリュームを許可すると、接続中の外部ボリュームにもアクセスできます。"
           }
         }
       }
@@ -19865,7 +19491,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "取り込んだファイルを整えてからライブラリへ入れるための置き場。"
+            "value" : "新しく入手したファイルを整えてからライブラリに入れるための置き場。"
           }
         }
       }
@@ -20080,13 +19706,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "These names match none of the filename formats. Rename a file, or add a format, and it leaves this list."
+            "value": "These names match none of the filename formats."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ファイル名がどのフォーマットにも一致しませんでした。名前を直すかフォーマットを足すと、この一覧から消えます。"
+            "value": "ファイル名がどのフォーマットにも一致していません。"
           }
         }
       }
@@ -20097,13 +19723,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Show all files again"
+            "value": "Clear the filter"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "すべてのファイルの表示に戻す"
+            "value": "絞り込みを解除"
           }
         }
       }
