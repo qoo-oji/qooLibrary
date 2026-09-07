@@ -10993,6 +10993,38 @@
         }
       }
     },
+    "manual.openMenuItem": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Manual"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "マニュアルを開く"
+          }
+        }
+      }
+    },
+    "manual.sectionLink": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manual"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "マニュアル"
+          }
+        }
+      }
+    },
     "menu.go": {
       "extractionState": "stale",
       "localizations": {

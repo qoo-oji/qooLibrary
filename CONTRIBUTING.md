@@ -66,7 +66,7 @@ AI との会話も含まれます。** 一度書いたものは、あなたが�
 | `check-personal-identifiers.swift` | **あなたの環境**に由来する名前（登録フォルダ名・ユーザー名・ホームパス）。コーパス不要 | 手元（pre-commit）|
 | `check-private-data-leak.swift` | ゴールデンコーパスの固有名詞との全文照合 | 手元（pre-commit）|
 | `check-published-history.swift` | **公開されている面**。force-push で消したつもりの履歴が今も配信されていないか | 手元 |
-| その他の静的検査 6 本 | アーキテクチャ制約 | CI |
+| その他の静的検査（`Scripts/check-*.swift`）| アーキテクチャ制約・カタログ・マニュアルの節の実在 | CI |
 
 ### 秘密を公開してしまったら
 

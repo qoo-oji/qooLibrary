@@ -30,7 +30,8 @@ struct LibraryFieldsSettingsView: View {
         VStack(alignment: .leading, spacing: Tokens.spacing.l) {
             if showsHeader {
                 SettingsSectionHeader(title: "librarySettings.section.fields",
-                                      explanation: "librarySettings.fields.explanation")
+                                      explanation: "librarySettings.fields.explanation",
+                                  manual: .fields)
             }
 
             VStack(spacing: 0) {
@@ -228,7 +229,8 @@ struct LibraryFilenameFormatsSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.l) {
             SettingsSectionHeader(title: "librarySettings.section.filenameFormats",
-                                  explanation: "librarySettings.filenameFormats.explanation")
+                                  explanation: "librarySettings.filenameFormats.explanation",
+                                  manual: .filenameFormats)
             formatList
         }
     }
@@ -413,6 +415,9 @@ struct FilenameFormatEditorDialog: View {
 
             reservedWordPalette
             samplePreview
+            // [HP-07] 記法の説明はアプリ内に持たない [HP-08]。ここからは
+            // 「ファイル名の解析」の節（予約語・区切り・優先順）へ飛ぶ。
+            ManualLinkButton(section: .filenameFormats)
         }
         .frame(maxWidth: 620, alignment: .leading)
     }
@@ -668,7 +673,8 @@ struct LibraryFolderLevelsSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.l) {
             SettingsSectionHeader(title: "librarySettings.section.folderLevels",
-                                  explanation: "librarySettings.folderLevels.explanation")
+                                  explanation: "librarySettings.folderLevels.explanation",
+                                  manual: .folderLevels)
             VStack(spacing: 0) {
                 if draft.folderLevels.isEmpty {
                     // **空は「フォルダ名からはラベルを付けない」という意味**。
@@ -789,7 +795,8 @@ struct LibraryVolumeFormatsSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.l) {
             SettingsSectionHeader(title: "librarySettings.section.volumeFormats",
-                                  explanation: "librarySettings.volumeFormats.explanation")
+                                  explanation: "librarySettings.volumeFormats.explanation",
+                                  manual: .volumeFormats)
             // **最長一致。同長なら登録順** [SE-21 の実測による改訂]。順序だけで
             // 決めると `作品 第01巻` が `01巻` と読まれ、シリーズ名が `作品 第`
             // になる（実データの一般コミックは 94% が `第??巻`）。

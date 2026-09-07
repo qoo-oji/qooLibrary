@@ -52,6 +52,8 @@ jobs:
         run: swift Scripts/check-settings-sections.swift
       - name: The displayed list goes through displayedEntries [§19.13 #6]
         run: swift Scripts/check-raw-entries-access.swift
+      - name: Manual sections opened by the app exist in MANUAL.md [HP-07]
+        run: swift Scripts/check-manual-anchors.swift
 
   # QooKitTests。カバレッジ 80% 未満で失敗させる方針だが、テスト対象コードが
   # まだ存在しないフェーズ 0 の時点では実行のみ確認する [MT-01]。

@@ -233,11 +233,12 @@ struct QooLibraryApp: App {
             CommandGroup(replacing: .pasteboard) {
                 EditMenuCommands()
             }
-            // [13章 §13.5 ヘルプメニュー、LG2-05] 標準の「qooLibrary ヘルプ」は
+            // [13章 §13.5 ヘルプメニュー、HP-07、LG2-05] 標準の「qooLibrary ヘルプ」は
             // ヘルプブックを同梱していないため何も起きない項目のまま残る。
-            // 実際に役立つ「診断ログを書き出す…」に置き換える。
-            // 「README を開く」[HP-07] は今回の対象外。
+            // マニュアル（`MANUAL.md`）を開く項目と「診断ログを書き出す…」に
+            // 置き換える。
             CommandGroup(replacing: .help) {
+                ManualMenuButton()
                 DiagnosticExportMenuButton()
             }
             // [1-16 表示メニュー] **`CommandMenu` で新設しない** — SwiftUI は
@@ -422,6 +423,16 @@ private struct AboutMenuButton: View {
 
 /// ヘルプメニューの「診断ログを書き出す…」[13章 §13.5、LG2-05]。
 /// 実処理は環境設定「詳細」タブと共有する（`DiagnosticExportAction` 参照）。
+/// ヘルプ →「マニュアルを開く」[HP-07]。設定画面の各項目にあるリンクと同じ
+/// `MANUAL.md` を、節を指定せずに開く。
+private struct ManualMenuButton: View {
+    var body: some View {
+        Button("manual.openMenuItem", systemImage: "book") {
+            ManualLink.open(.top)
+        }
+    }
+}
+
 private struct DiagnosticExportMenuButton: View {
     var body: some View {
         // `.commands` には環境が届かないので、表示言語は設定から直に取る

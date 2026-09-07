@@ -32,6 +32,10 @@ macOS 用のマンガ・同人誌ライブラリ管理アプリ（Swift / SwiftU
 変更履歴は [`CHANGELOG.md`](CHANGELOG.md)、詳細な進捗・設計判断の経緯は
 [`CLAUDE.md`](CLAUDE.md) を参照。
 
+**利用者向けの説明（ライブラリ設定の記法・規則）は [`MANUAL.md`](MANUAL.md) にある。**
+この README は開発者向け（ビルド・ライセンス・貢献）で、アプリの設定画面の
+「マニュアル」リンクは `MANUAL.md` の該当する節を開く [HP-07][HP-08]。
+
 ## 設計仕様書
 
 実装の一次資料は [`docs/Specifications/`](docs/Specifications/) にある。

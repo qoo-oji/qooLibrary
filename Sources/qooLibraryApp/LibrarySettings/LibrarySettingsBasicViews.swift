@@ -10,13 +10,20 @@ import SwiftUI
 /// 各設定項目の見出しと一行説明。**説明を必ず添える**——このアプリの設定は
 /// 「何を書けばよいか分からない」ことが最大の障壁（要件定義書 R-04）なので、
 /// 項目名だけを並べても設定しきれない。
+/// 各設定項目の見出し。**マニュアルの該当する節へのリンクを必ず持つ** [HP-07]
+/// ——引数を省略可能にすると、次に項目を足す人が忘れて「その項目だけ
+/// 説明が無い」形になる。
 struct SettingsSectionHeader: View {
     let title: LocalizedStringKey
     let explanation: LocalizedStringKey
+    let manual: ManualSection
 
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
-            Text(title).font(.system(size: Tokens.fontSize.title3, weight: .semibold))
+            HStack(alignment: .firstTextBaseline, spacing: Tokens.spacing.s) {
+                Text(title).font(.system(size: Tokens.fontSize.title3, weight: .semibold))
+                ManualLinkButton(section: manual)
+            }
             Text(explanation)
                 .font(.system(size: Tokens.fontSize.caption))
                 .foregroundStyle(.secondary)
@@ -52,7 +59,8 @@ struct LibraryBasicsSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.l) {
             SettingsSectionHeader(title: "librarySettings.section.basics",
-                                  explanation: "librarySettings.basics.explanation")
+                                  explanation: "librarySettings.basics.explanation",
+                                  manual: .basics)
             // **ブックタイプ名の入力欄は撤去した** [TY-01、2026-09-04]。本の種別は
             // 本の属性であってライブラリの属性ではないので、ライブラリが固有値を
             // 持つ理由が無い——`@booktype` はプリセットの語彙とこのライブラリの
@@ -121,7 +129,8 @@ struct LibrarySeriesTitleSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.l) {
             SettingsSectionHeader(title: "librarySettings.section.seriesTitle",
-                                  explanation: "librarySettings.seriesTitle.explanation")
+                                  explanation: "librarySettings.seriesTitle.explanation",
+                                  manual: .seriesTitle)
             Form {
                 LabeledContent {
                     TextField("", text: $draft.seriesTitleCompositionFormat)
@@ -152,7 +161,8 @@ struct LibraryBookFolderOpeningSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.l) {
             SettingsSectionHeader(title: "librarySettings.section.bookFolderOpening",
-                                  explanation: "librarySettings.bookFolderOpening.explanation")
+                                  explanation: "librarySettings.bookFolderOpening.explanation",
+                                  manual: .bookFolders)
             Form {
                 Section {
                     Toggle("librarySettings.basics.opensBookFolderWithApp",
@@ -179,7 +189,8 @@ struct LibraryExtensionsSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.l) {
             SettingsSectionHeader(title: "librarySettings.section.extensions",
-                                  explanation: "librarySettings.extensions.explanation")
+                                  explanation: "librarySettings.extensions.explanation",
+                                  manual: .extensions)
             ExtensionListEditor(title: "librarySettings.extensions.target",
                                 hint: "librarySettings.extensions.targetHint",
                                 defaults: AppDefaults.Library.targetExtensions.sorted(),
@@ -259,7 +270,8 @@ struct LibraryDelimitersSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.l) {
             SettingsSectionHeader(title: "librarySettings.section.delimiters",
-                                  explanation: "librarySettings.delimiters.explanation")
+                                  explanation: "librarySettings.delimiters.explanation",
+                                  manual: .delimiters)
 
             VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
                 Text("librarySettings.delimiters.pairs")
@@ -328,7 +340,8 @@ struct LibraryProtectedTokensSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.l) {
             SettingsSectionHeader(title: "librarySettings.section.protectedTokens",
-                                  explanation: "librarySettings.protectedTokens.explanation")
+                                  explanation: "librarySettings.protectedTokens.explanation",
+                                  manual: .protectedTokens)
 
             VStack(spacing: 0) {
                 ForEach($draft.protectedTokens) { $token in
