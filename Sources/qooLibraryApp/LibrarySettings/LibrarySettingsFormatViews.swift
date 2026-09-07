@@ -30,7 +30,6 @@ struct LibraryFieldsSettingsView: View {
         VStack(alignment: .leading, spacing: Tokens.spacing.l) {
             if showsHeader {
                 SettingsSectionHeader(title: "librarySettings.section.fields",
-                                      explanation: "librarySettings.fields.explanation",
                                   manual: .fields)
             }
 
@@ -229,7 +228,6 @@ struct LibraryFilenameFormatsSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.l) {
             SettingsSectionHeader(title: "librarySettings.section.filenameFormats",
-                                  explanation: "librarySettings.filenameFormats.explanation",
                                   manual: .filenameFormats)
             formatList
         }
@@ -265,10 +263,8 @@ struct LibraryFilenameFormatsSettingsView: View {
 
     private var formatList: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
-            // 上にあるものほど先に試される [FF-03]。並べ替えで優先順が変わる。
-            Text("librarySettings.filenameFormats.orderHint")
-                .font(.system(size: Tokens.fontSize.caption))
-                .foregroundStyle(.secondary)
+            // 上にあるものほど先に試される [FF-03]。並べ替えで優先順が変わる
+            // （その説明はマニュアルにある [HP-07]）。
             // **高さを内容にあわせて伸ばさない。** 伸ばすと、下にある
             // 「選択中のフォーマット」の編集欄が `ScrollView` の外へ押し出され、
             // 「編集する手段が見当たらない」状態になる（実機で報告された）。
@@ -673,7 +669,6 @@ struct LibraryFolderLevelsSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.l) {
             SettingsSectionHeader(title: "librarySettings.section.folderLevels",
-                                  explanation: "librarySettings.folderLevels.explanation",
                                   manual: .folderLevels)
             VStack(spacing: 0) {
                 if draft.folderLevels.isEmpty {
@@ -795,19 +790,11 @@ struct LibraryVolumeFormatsSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.l) {
             SettingsSectionHeader(title: "librarySettings.section.volumeFormats",
-                                  explanation: "librarySettings.volumeFormats.explanation",
                                   manual: .volumeFormats)
             // **最長一致。同長なら登録順** [SE-21 の実測による改訂]。順序だけで
             // 決めると `作品 第01巻` が `01巻` と読まれ、シリーズ名が `作品 第`
-            // になる（実データの一般コミックは 94% が `第??巻`）。
-            Text("librarySettings.volumeFormats.matchingHint")
-                .font(.system(size: Tokens.fontSize.caption))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Text("librarySettings.volumeFormats.regexHint")
-                .font(.system(size: Tokens.fontSize.caption))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            // になる（実データの一般コミックは 94% が `第??巻`）。この規則と
+            // 正規表現の書き方はマニュアルにある [HP-07]。
 
             EditableListChrome(height: 200) {
                 List(selection: $selectedID) {

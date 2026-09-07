@@ -8497,40 +8497,6 @@
         }
       }
     },
-    "librarySettings.basics.duplicateGroupingHint": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Grouped files appear as a single row with a count badge. Nothing is deleted — use the comparison window to decide which copy to keep."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "まとめた組は件数バッジの付いた 1 行として表示されます。ファイルは削除されません。どれを残すかは比較ウインドウで選びます。"
-          }
-        }
-      }
-    },
-    "librarySettings.basics.explanation": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "A template only seeds these settings when the library is registered. Everything here belongs to this library and can be changed at any time."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "テンプレートは登録のときに初期値をコピーするだけです。ここから先の設定はこのライブラリのもので、いつでも変えられます。"
-          }
-        }
-      }
-    },
     "librarySettings.basics.opensBookFolderWithApp": {
       "extractionState": "manual",
       "localizations": {
@@ -8544,23 +8510,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "ブックフォルダを関連付けアプリで開く"
-          }
-        }
-      }
-    },
-    "librarySettings.basics.opensBookFolderWithAppHint": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "A book folder holds only images. When off, opening one shows the images inside it."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ブックフォルダは画像だけが入ったフォルダです。オフのときは、開くと中の画像が一覧表示されます。"
           }
         }
       }
@@ -8595,40 +8544,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "このライブラリではサムネイルを常に非表示にする"
-          }
-        }
-      }
-    },
-    "librarySettings.bookFolderOpening.explanation": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "What happens when you double-click a book folder."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ブックフォルダをダブルクリックしたときの動きです。"
-          }
-        }
-      }
-    },
-    "librarySettings.delimiters.explanation": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Characters that mark a boundary between fields in a filename."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ファイル名の中でフィールドの境目を示す文字です。"
           }
         }
       }
@@ -8714,23 +8629,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "ファイル内のメタデータを読む"
-          }
-        }
-      }
-    },
-    "librarySettings.embeddedMetadata.enabledHint": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Each file is opened once and the result is remembered, so later scans do not reopen files that have not changed. Turn this off for libraries whose files carry no metadata to make scanning faster."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "各ファイルは一度だけ開き、結果を記憶します。変わっていないファイルは以後のスキャンで開き直しません。メタデータを持たないライブラリではオフにするとスキャンが速くなります。"
           }
         }
       }
@@ -8854,40 +8752,6 @@
         }
       }
     },
-    "librarySettings.embeddedMetadata.volumeSourceHint": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ComicInfo.xml has two elements that can hold a volume number, and apps disagree on which one to use. This decides which one is used when both are present and differ."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ComicInfo.xml には巻数を表す要素が 2 つあり、アプリによって扱いが異なります。両方の値が違うときにどちらを使うかを決めます。"
-          }
-        }
-      }
-    },
-    "librarySettings.extensions.explanation": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Which files this library takes in. Anything outside the list is ignored during a scan."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "このライブラリが取り込むファイルを決めます。一覧に無い拡張子はスキャンで無視されます。"
-          }
-        }
-      }
-    },
     "librarySettings.extensions.image": {
       "extractionState": "manual",
       "localizations": {
@@ -8901,23 +8765,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "画像拡張子"
-          }
-        }
-      }
-    },
-    "librarySettings.extensions.imageHint": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Used to decide whether a folder counts as a book folder."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ブックフォルダかどうかの判定に使います。"
           }
         }
       }
@@ -8962,13 +8809,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Separate with commas. Leaving this empty would take in every file, including .DS_Store."
+            "value": "Leaving this empty would take in every file, including .DS_Store."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "カンマで区切ります。空にすると `.DS_Store` を含むすべてのファイルを取り込んでしまいます。"
+            "value": "空にすると `.DS_Store` を含むすべてのファイルを取り込んでしまいます。"
           }
         }
       }
@@ -9075,23 +8922,6 @@
         }
       }
     },
-    "librarySettings.filenameFormats.explanation": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "How filenames are read. They are tried from the top, and the first one that matches wins."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ファイル名の読み方です。上から順に試し、最初に一致したものが使われます。"
-          }
-        }
-      }
-    },
     "librarySettings.filenameFormats.matched": {
       "extractionState": "manual",
       "localizations": {
@@ -9122,23 +8952,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "このフォーマットでは一致しません"
-          }
-        }
-      }
-    },
-    "librarySettings.filenameFormats.orderHint": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Drag to reorder. The ones nearer the top are tried first."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ドラッグで並べ替えられます。上にあるものほど先に試されます。"
           }
         }
       }
@@ -9241,23 +9054,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "割り当てがありません — フォルダ名は使いません。"
-          }
-        }
-      }
-    },
-    "librarySettings.folderLevels.explanation": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Whether folder names become labels, and what each level means. Level 1 is directly under the library root; with no assignments, folder names are not used."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "フォルダ名からラベルを付けるかどうかと、階層ごとの意味を決めます。階層 1 がライブラリ直下です。割り当てが 1 つも無ければ、フォルダ名は使いません。"
           }
         }
       }
@@ -9411,23 +9207,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "既定のフィールドは削除できません。名前は変更できます。"
-          }
-        }
-      }
-    },
-    "librarySettings.fields.explanation": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The axes you classify items by. The six defaults (author, circle, genre, event, keyword, book type) are always set up for a new library; you can rename them and add your own."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "項目を分類する軸です。既定の 6 種（著者・サークル・ジャンル・イベント・キーワード・本の種別）は新しいライブラリに最初から用意されます。名前の変更と追加ができます。"
           }
         }
       }
@@ -9632,23 +9411,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "位置を問わない"
-          }
-        }
-      }
-    },
-    "librarySettings.protectedTokens.explanation": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Regular expressions for text that contains delimiters but should be read as one piece, such as “(Complete Edition)” or a year in parentheses. Matches stay in the value; they are only kept from being split."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "「(完全版)」や括弧に入った年号のように、区切り文字を含んでいても 1 つの値として読みたい範囲を表す正規表現です。一致した部分は分割されずに値として残ります。"
           }
         }
       }
@@ -9955,23 +9717,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "ライブラリを選択してください"
-          }
-        }
-      }
-    },
-    "librarySettings.seriesTitle.explanation": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "How “series title + volume” is composed for lists and the inspector."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "一覧やインスペクタに出す「シリーズ名 巻数」の書き方です。"
           }
         }
       }
@@ -10605,23 +10350,6 @@
         }
       }
     },
-    "librarySettings.volumeFormats.explanation": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Regular expressions that read a volume number out of a name."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "名前から巻数を読み取る正規表現です。"
-          }
-        }
-      }
-    },
     "librarySettings.volumeFormats.kindSeparator": {
       "extractionState": "manual",
       "localizations": {
@@ -10656,23 +10384,6 @@
         }
       }
     },
-    "librarySettings.volumeFormats.matchingHint": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The longest match wins; ties are broken by the order below. Listing “??vol” before “vol.??” alone would read “Work vol.01” as volume 01 and leave “Work vol.” as the series name."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "最長一致で決まり、同じ長さなら下の順序で決まります。順序だけで決めると「作品 第01巻」が「01巻」と読まれ、シリーズ名が「作品 第」になってしまいます。"
-          }
-        }
-      }
-    },
     "librarySettings.volumeFormats.noCaptureGroup": {
       "extractionState": "manual",
       "localizations": {
@@ -10686,23 +10397,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "巻数を取り出すキャプチャグループがありません。巻数にあたる部分を ( ) で囲んでください（例: 第([0-9]+)巻）。シリーズ名を切るだけなら種別を「区切り」にしてください。"
-          }
-        }
-      }
-    },
-    "librarySettings.volumeFormats.regexHint": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Formats are regular expressions. The volume number is taken from the only capturing group, or from (?<volume>…). Full-width characters are folded to half-width before matching, so [0-9] also matches ０-９."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "フォーマットは正規表現です。巻数は唯一のキャプチャグループ、または (?<volume>…) から取ります。照合前に全角は半角へ畳まれるので、[0-9] は ０-９ にも一致します。"
           }
         }
       }

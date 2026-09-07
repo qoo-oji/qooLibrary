@@ -7,27 +7,24 @@ import SwiftUI
 
 // MARK: - 共通の見出し
 
-/// 各設定項目の見出しと一行説明。**説明を必ず添える**——このアプリの設定は
-/// 「何を書けばよいか分からない」ことが最大の障壁（要件定義書 R-04）なので、
-/// 項目名だけを並べても設定しきれない。
-/// 各設定項目の見出し。**マニュアルの該当する節へのリンクを必ず持つ** [HP-07]
-/// ——引数を省略可能にすると、次に項目を足す人が忘れて「その項目だけ
-/// 説明が無い」形になる。
+/// 各設定項目の見出し。**説明文は置かず、マニュアルの該当する節へのリンクを
+/// 必ず持つ** [HP-07]——記法の説明はアプリ内に重複して持たない [HP-08]。
+/// 引数を省略可能にすると、次に項目を足す人が忘れて「その項目だけ
+/// リンクが無い」形になる。
+///
+/// 以前は一行説明を見出しの下に添えていた（2026-09-07 に撤去）。個々には
+/// 親切でも、10 節に積み上がると読む場所が定まらず、しかも記法の説明は
+/// 一行では書き切れない——右ペインで「説明文を一切出さない」と決めたのと
+/// 同じ判断で、警告の性格を持つ文（対象拡張子の空欄など）だけを各項目の
+/// 脇に残している。
 struct SettingsSectionHeader: View {
     let title: LocalizedStringKey
-    let explanation: LocalizedStringKey
     let manual: ManualSection
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
-            HStack(alignment: .firstTextBaseline, spacing: Tokens.spacing.s) {
-                Text(title).font(.system(size: Tokens.fontSize.title3, weight: .semibold))
-                ManualLinkButton(section: manual)
-            }
-            Text(explanation)
-                .font(.system(size: Tokens.fontSize.caption))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+        HStack(alignment: .firstTextBaseline, spacing: Tokens.spacing.s) {
+            Text(title).font(.system(size: Tokens.fontSize.title3, weight: .semibold))
+            ManualLinkButton(section: manual)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -59,7 +56,6 @@ struct LibraryBasicsSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.l) {
             SettingsSectionHeader(title: "librarySettings.section.basics",
-                                  explanation: "librarySettings.basics.explanation",
                                   manual: .basics)
             // **ブックタイプ名の入力欄は撤去した** [TY-01、2026-09-04]。本の種別は
             // 本の属性であってライブラリの属性ではないので、ライブラリが固有値を
@@ -93,12 +89,6 @@ struct LibraryBasicsSettingsView: View {
                     } label: {
                         Text("librarySettings.basics.duplicateGrouping")
                     }
-                } footer: {
-                    Text("librarySettings.basics.duplicateGroupingHint")
-                        .font(.system(size: Tokens.fontSize.caption))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 EmbeddedMetadataFormSections(draft: $draft)
             }
@@ -129,7 +119,6 @@ struct LibrarySeriesTitleSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.l) {
             SettingsSectionHeader(title: "librarySettings.section.seriesTitle",
-                                  explanation: "librarySettings.seriesTitle.explanation",
                                   manual: .seriesTitle)
             Form {
                 LabeledContent {
@@ -161,18 +150,11 @@ struct LibraryBookFolderOpeningSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.l) {
             SettingsSectionHeader(title: "librarySettings.section.bookFolderOpening",
-                                  explanation: "librarySettings.bookFolderOpening.explanation",
                                   manual: .bookFolders)
             Form {
                 Section {
                     Toggle("librarySettings.basics.opensBookFolderWithApp",
                            isOn: $draft.opensBookFolderWithApp)
-                } footer: {
-                    Text("librarySettings.basics.opensBookFolderWithAppHint")
-                        .font(.system(size: Tokens.fontSize.caption))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
             .formStyle(.grouped)
@@ -189,14 +171,13 @@ struct LibraryExtensionsSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.l) {
             SettingsSectionHeader(title: "librarySettings.section.extensions",
-                                  explanation: "librarySettings.extensions.explanation",
                                   manual: .extensions)
             ExtensionListEditor(title: "librarySettings.extensions.target",
                                 hint: "librarySettings.extensions.targetHint",
                                 defaults: AppDefaults.Library.targetExtensions.sorted(),
                                 extensions: $draft.targetExtensions)
             ExtensionListEditor(title: "librarySettings.extensions.image",
-                                hint: "librarySettings.extensions.imageHint",
+                                hint: nil,
                                 defaults: nil,
                                 extensions: $draft.imageExtensions)
         }
@@ -209,7 +190,9 @@ struct LibraryExtensionsSettingsView: View {
 /// 読点はどれも普通に打たれる。矯正を求めず、受け取ってから正す。
 private struct ExtensionListEditor: View {
     let title: LocalizedStringKey
-    let hint: LocalizedStringKey
+    /// 項目の脇に残す短い注意。記法の説明はマニュアルへ送る [HP-07] ので、
+    /// 警告の性格を持つものだけが入る（対象拡張子を空にしたときの挙動など）。
+    let hint: LocalizedStringKey?
     /// 「既定に戻す」で入れ直す値。既定を持たない一覧では `nil`。
     let defaults: [String]?
     @Binding var extensions: [String]
@@ -227,20 +210,22 @@ private struct ExtensionListEditor: View {
                 .onSubmit { commit() }
                 .onChange(of: isFocused) { if !isFocused { commit() } }
                 .frame(maxWidth: 560)
-            HStack(spacing: Tokens.spacing.xs) {
-                Text(hint)
-                Spacer(minLength: 0)
-                if let defaults {
-                    Button("librarySettings.extensions.restoreDefaults") {
-                        extensions = defaults
-                        text = defaults.joined(separator: ", ")
+            if hint != nil || defaults != nil {
+                HStack(spacing: Tokens.spacing.xs) {
+                    if let hint { Text(hint) }
+                    Spacer(minLength: 0)
+                    if let defaults {
+                        Button("librarySettings.extensions.restoreDefaults") {
+                            extensions = defaults
+                            text = defaults.joined(separator: ", ")
+                        }
+                        .buttonStyle(.link)
                     }
-                    .buttonStyle(.link)
                 }
+                .font(.system(size: Tokens.fontSize.caption))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: 560, alignment: .leading)
             }
-            .font(.system(size: Tokens.fontSize.caption))
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: 560, alignment: .leading)
         }
         .task(id: extensions) {
             guard !isFocused else { return }
@@ -270,7 +255,6 @@ struct LibraryDelimitersSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.l) {
             SettingsSectionHeader(title: "librarySettings.section.delimiters",
-                                  explanation: "librarySettings.delimiters.explanation",
                                   manual: .delimiters)
 
             VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
@@ -340,7 +324,6 @@ struct LibraryProtectedTokensSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.l) {
             SettingsSectionHeader(title: "librarySettings.section.protectedTokens",
-                                  explanation: "librarySettings.protectedTokens.explanation",
                                   manual: .protectedTokens)
 
             VStack(spacing: 0) {

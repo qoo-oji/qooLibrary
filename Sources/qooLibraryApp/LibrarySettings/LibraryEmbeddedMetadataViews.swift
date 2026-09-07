@@ -27,12 +27,6 @@ struct EmbeddedMetadataFormSections: View {
                    isOn: $draft.readsEmbeddedMetadata)
         } header: {
             Text("librarySettings.section.embeddedMetadata")
-        } footer: {
-            Text("librarySettings.embeddedMetadata.enabledHint")
-                .font(.system(size: Tokens.fontSize.caption))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }
@@ -225,10 +219,6 @@ struct ComicInfoVolumeSourceSettingsView: View {
             .labelsHidden()
             .pickerStyle(.radioGroup)
             .disabled(!draft.readsEmbeddedMetadata)
-            Text("librarySettings.embeddedMetadata.volumeSourceHint")
-                .font(.system(size: Tokens.fontSize.caption))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
