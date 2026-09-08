@@ -85,7 +85,7 @@ enum ControlAppCommands {
         // 登録したライブラリと画面から登録したライブラリが微妙に違う。
         let key = args["template"] as? String
         let displayName = args["displayName"] as? String ?? url.lastPathComponent
-        let vocabulary = (try? BuiltInTemplates.bookTypes()) ?? []
+        let vocabulary = (try? BuiltInTemplates.mediaTypes()) ?? []
         var template: LibraryTypeTemplate?
         let draft: LibrarySettingsDraft
         switch key {
@@ -93,18 +93,18 @@ enum ControlAppCommands {
             draft = TemplateInstantiation.blankDraft(
                 volumeSets: volumeSets, displayName: displayName,
                 defaultFieldNames: DefaultFieldNames.localized,
-                bookTypeVocabulary: vocabulary)
+                mediaTypeVocabulary: vocabulary)
         case let key?:
             if let preset = services.presetTemplates.first(where: { $0.key == key }) {
                 template = preset
                 draft = TemplateInstantiation.draft(
                     from: preset, volumeSets: volumeSets, displayName: displayName,
-                    bookTypeVocabulary: vocabulary)
+                    mediaTypeVocabulary: vocabulary)
             } else if let user = services.userTemplates.first(where: {
                 $0.id.uuidString.caseInsensitiveCompare(key) == .orderedSame || $0.name == key
             }) {
                 draft = user.settings.draft(displayName: displayName,
-                                            bookTypeVocabulary: vocabulary)
+                                            mediaTypeVocabulary: vocabulary)
             } else {
                 return ControlOutcome.failure("テンプレートがありません: \(key)")
             }

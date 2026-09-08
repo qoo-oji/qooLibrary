@@ -59,13 +59,13 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
     /// ——`searchKey` は 2-9 の時点で実際にそうなっていた（CLAUDE.md）。
     static func refreshDerivedKeys(_ db: Database, id: FileID) throws {
         let stmt = try db.cachedStatement(sql:
-            "SELECT filename, title, seriesName FROM managedFile WHERE id = ?")
+            "SELECT filename, title, seriesName, subtitle FROM managedFile WHERE id = ?")
         guard let row = try Row.fetchOne(stmt, arguments: [id.rawValue]) else { return }
         let filename: String = row["filename"]
         let title: String? = row["title"]
         let key = ManagedFileSearchKey.make(
             stem: ManagedFileSearchKey.stem(ofFilename: filename),
-            title: title, seriesName: row["seriesName"])
+            title: title, seriesName: row["seriesName"], subtitle: row["subtitle"])
         // `nil` は「グループ化の対象外」——空文字にしてはならない [DU-02]。
         let titleKey = DuplicateGroupKey.titleKey(title: title)
         try db.execute(sql: "UPDATE managedFile SET searchKey = ?, titleKey = ? WHERE id = ?",
@@ -335,6 +335,8 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
                         UPDATE managedFile SET seriesName = NULL, seriesKey = NULL,
                             volumeNumber = NULL, volumeKind = 'none', volumeRaw = NULL,
                             authorName = NULL, title = NULL,
+                            subtitle = NULL, seasonNumber = NULL,
+                            episodeNumber = NULL, releaseDate = NULL,
                             lastParsedFormatID = NULL
                         WHERE id = ?
                         """, arguments: [id.rawValue])
@@ -352,7 +354,9 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
                     UPDATE managedFile SET
                         title = ?, seriesName = ?, seriesKey = ?,
                         volumeNumber = ?, volumeKind = ?, volumeRaw = ?,
-                        authorName = ?, lastParsedFormatID = ?
+                        authorName = ?,
+                        subtitle = ?, seasonNumber = ?, episodeNumber = ?, releaseDate = ?,
+                        lastParsedFormatID = ?
                     WHERE id = ?
                     """, arguments: [
                         fields.title,
@@ -362,6 +366,10 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
                         fields.volume.kind.rawValue,
                         fields.volume.raw,
                         fields.authorName,
+                        fields.subtitle,          // [MF-03]
+                        fields.season,            // [MF-04]
+                        fields.episode,           // [MF-05]
+                        fields.releaseDate,       // [MF-19]
                         fields.matchedFormatID.uuidString,
                         id.rawValue])
             }

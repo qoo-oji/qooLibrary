@@ -56,6 +56,11 @@ public struct ManagedFileSnapshot: Sendable, Hashable {
     public let seriesKey: String?              // [RA-04][DU-02]
     public let volume: VolumeValue             // volumeNumber / volumeKind / volumeRaw
     public let authorName: String?             // [RW-16]
+    /// メディア向けの 4 値 [MF-03〜05][MF-19]。**Undo は「ちょうど戻す」**ので写す。
+    public let subtitle: String?
+    public let season: Double?
+    public let episode: Double?
+    public let releaseDate: String?
     public let rating: Int                     // [RA-01]
     public let coverImageRef: String?          // [CV-06]
     public let coverImageSource: CoverSource   // [IV-03]
@@ -84,7 +89,10 @@ public struct ManagedFileSnapshot: Sendable, Hashable {
                 fileSize: Int64, createdAt: Date, modifiedAt: Date,
                 title: String?, protectedScopes: Set<ProtectionScope>,
                 seriesName: String?, seriesKey: String?,
-                volume: VolumeValue, authorName: String?, rating: Int,
+                volume: VolumeValue, authorName: String?,
+                subtitle: String? = nil, season: Double? = nil,
+                episode: Double? = nil, releaseDate: String? = nil,
+                rating: Int,
                 coverImageRef: String?, coverImageSource: CoverSource,
                 isArchived: Bool, archivedFromPath: String?, archivedAt: Date?,
                 isBookFolder: Bool,
@@ -113,6 +121,10 @@ public struct ManagedFileSnapshot: Sendable, Hashable {
         self.seriesKey = seriesKey
         self.volume = volume
         self.authorName = authorName
+        self.subtitle = subtitle
+        self.season = season
+        self.episode = episode
+        self.releaseDate = releaseDate
         self.rating = rating
         self.coverImageRef = coverImageRef
         self.coverImageSource = coverImageSource

@@ -49,7 +49,7 @@ struct LibraryRepositoryTests {
         #expect(summary.displayName == "テスト")
 
         let fields = try await f.labels.fields(libraryID: f.libraryID)
-        #expect(fields.count == 7)   // 既定 6 種 ＋ プリセット固有の 1 つ
+        #expect(fields.count == 6)   // 既定 6 種（「プレイ」は削除した [MF-22]）
         #expect(fields.map(\.name).contains("サークル"))
         // 既定色が割り当てられている [CO-01][MT-13]。**文字色は色ごとに決まる**
         // [CO-03][CO-05]——彩度を上げた [CO-02、2026-08-30] ので「全部黒」ではない。

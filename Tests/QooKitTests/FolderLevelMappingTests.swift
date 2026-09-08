@@ -6,7 +6,7 @@ import Foundation
 /// [v3 ステージ 5] ので、フィールドへ値が流れる経路は意味予約語だけになった
 /// ——番号を書いた既存の検査をそのまま生かすため、番号を揃えてある。
 private let testBindings: [SemanticKeyword: Int] = [
-    .circle: 1, .genre: 2, .event: 3, .keyword: 4, .author: 5,
+    .studio: 1, .genre: 2, .event: 3, .keyword: 4, .author: 5,
 ]
 
 private func folderSettings(
@@ -42,9 +42,9 @@ struct FolderLabelExtractionTests {
 
     @Test("1 つのフォルダ名から複数のラベルを取り出す [AL-01][AL-02]")
     func formatAssignment() throws {
-        // 一般コミック 第1階層: `[@circle] @genre`
+        // 一般コミック 第1階層: `[@studio] @genre`
         let s = try folderSettings(fileFormats: ["@title"],
-                                   levels: [1: try format("[@circle] @genre")])
+                                   levels: [1: try format("[@studio] @genre")])
         let labels = FolderLabelResolver.labelsFromPath("[佐藤秀峰] ブラックジャック/作品.cbz",
                                                         settings: s)
         #expect(labels[1] == ["佐藤秀峰"])
@@ -63,7 +63,7 @@ struct FolderLabelExtractionTests {
     @Test("想定した階層にフォルダが無い配置ではエラーにしない [AL-23]")
     func missingLevelIsNotAnError() throws {
         let s = try folderSettings(fileFormats: ["@title"],
-                                   levels: [1: try format("[@circle] @genre"),
+                                   levels: [1: try format("[@studio] @genre"),
                                             2: .singleLabelGroup(index: 3)])
         // 第1階層のフォルダ名がフォーマットに合わない → その階層だけ適用しない
         let labels = FolderLabelResolver.labelsFromPath("括弧なしのフォルダ/作品.cbz", settings: s)
@@ -72,9 +72,9 @@ struct FolderLabelExtractionTests {
 
     @Test("同じラベルグループを複数階層に割り当てると両方付与される [FF-17][LB-02][FL-03]")
     func sameGroupAcrossLevels() throws {
-        // 一般コミック: 第1階層 `[@circle] @genre`、第2階層 `@genre`
+        // 一般コミック: 第1階層 `[@studio] @genre`、第2階層 `@genre`
         let s = try folderSettings(fileFormats: ["@title"],
-                                   levels: [1: try format("[@circle] @genre"),
+                                   levels: [1: try format("[@studio] @genre"),
                                             2: try format("@genre")])
         let labels = FolderLabelResolver.labelsFromPath("[著者] シリーズ/サブシリーズ/作品.cbz",
                                                         settings: s)
@@ -110,7 +110,7 @@ struct FolderPriorityTests {
     /// 取れていた正しい値を捨てるため。
     @Test("同じフィールドで衝突したらファイル名を採る [AL-21]")
     func filenameWinsOnConflict() throws {
-        let s = try folderSettings(fileFormats: ["[@circle] @title"],
+        let s = try folderSettings(fileFormats: ["[@studio] @title"],
                                    levels: [1: .singleLabelGroup(index: 1)])
         let r = FolderLabelResolver.resolve(relativePath: "フォルダ側著者/[ファイル側著者] 作品.cbz",
                                             nameWithoutExtension: "[ファイル側著者] 作品",
@@ -135,7 +135,7 @@ struct FolderPriorityTests {
 
     @Test("優先の単位はラベルフィールドごと。フォーマット全体ではない [AL-21][FL-01]")
     func perGroupPriority() throws {
-        let s = try folderSettings(fileFormats: ["[@circle] @title (@keyword)"],
+        let s = try folderSettings(fileFormats: ["[@studio] @title (@keyword)"],
                                    levels: [1: .singleLabelGroup(index: 1)])
         let r = FolderLabelResolver.resolve(
             relativePath: "フォルダ側著者/[ファイル側著者] 作品 (タグ).cbz",
@@ -147,7 +147,7 @@ struct FolderPriorityTests {
 
     @Test("@title は常にファイル名から [AL-22]")
     func titleAlwaysFromFilename() throws {
-        let s = try folderSettings(fileFormats: ["[@circle] @title"],
+        let s = try folderSettings(fileFormats: ["[@studio] @title"],
                                    levels: [1: .singleLabelGroup(index: 1)])
         let r = FolderLabelResolver.resolve(relativePath: "著者/[別著者] 作品名.cbz",
                                             nameWithoutExtension: "[別著者] 作品名",
@@ -157,7 +157,7 @@ struct FolderPriorityTests {
 
     @Test("ファイル名がどのフォーマットにも一致しなくてもフォルダ側は生きる [AL-31]")
     func folderLabelsSurviveUnmatchedFilename() throws {
-        let s = try folderSettings(fileFormats: ["[@circle] @title"],
+        let s = try folderSettings(fileFormats: ["[@studio] @title"],
                                    levels: [1: .singleLabelGroup(index: 1)])
         let r = FolderLabelResolver.resolve(relativePath: "著者/括弧のない名前.cbz",
                                             nameWithoutExtension: "括弧のない名前",
@@ -169,7 +169,7 @@ struct FolderPriorityTests {
 
     @Test("シリーズ・巻数はファイル名から導かれる [SE-02]")
     func seriesFromFilename() throws {
-        let s = try folderSettings(fileFormats: ["[@circle] @title"],
+        let s = try folderSettings(fileFormats: ["[@studio] @title"],
                                    levels: [1: .singleLabelGroup(index: 1)],
                                    volume: vsFull())
         let r = FolderLabelResolver.resolve(

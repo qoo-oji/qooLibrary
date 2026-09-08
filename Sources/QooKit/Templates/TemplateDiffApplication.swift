@@ -65,14 +65,17 @@ extension TemplateDiff {
             case let .reorderFilenameFormats(order):
                 result.filenameFormats = reordered(result.filenameFormats, toMatch: order)
 
-            case let .addVolumeFormat(source, kind):
+            case let .addVolumeFormat(source, kind, role):
                 guard !result.volumeFormats.contains(where: {
-                    $0.source == source && $0.kind == kind
+                    $0.source == source && $0.kind == kind && $0.role == role
                 }) else { continue }
-                result.volumeFormats.append(VolumeFormatDraft(source: source, kind: kind))
+                result.volumeFormats.append(
+                    VolumeFormatDraft(source: source, kind: kind, role: role))
 
-            case let .removeVolumeFormat(source, kind):
-                result.volumeFormats.removeAll { $0.source == source && $0.kind == kind }
+            case let .removeVolumeFormat(source, kind, role):
+                result.volumeFormats.removeAll {
+                    $0.source == source && $0.kind == kind && $0.role == role
+                }
 
             case let .setFolderLevel(level, assignment):
                 result.folderLevels.removeAll { $0.level == level }

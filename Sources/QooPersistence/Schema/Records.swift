@@ -119,6 +119,13 @@ struct ManagedFileRecord: Codable, FetchableRecord, MutablePersistableRecord, Se
     var volumeKind: String
     var volumeRaw: String?
     var authorName: String?
+    /// メディア向けの 4 値 [MF-03〜05][MF-19]。**`title` と同じく
+    /// 「再生成可能だが基本情報の保護で守る」**側である [PR-02]。
+    var subtitle: String?
+    var seasonNumber: Double?
+    var episodeNumber: Double?
+    /// ISO 8601 の部分形（`2024` / `2024-01` / `2024-01-15`）[MF-19]。
+    var releaseDate: String?
     var rating: Int
     var coverImageRef: String?
     var coverImageSource: String
@@ -211,7 +218,11 @@ extension ManagedFileRecord {
             isBookFolder: isBookFolder,
             pageCount: pageCount,
             firstImageWidth: firstImageWidth,
-            firstImageHeight: firstImageHeight)
+            firstImageHeight: firstImageHeight,
+            subtitle: subtitle,
+            season: seasonNumber,
+            episode: episodeNumber,
+            releaseDate: releaseDate)
     }
 
     // MARK: - 孤立レコードの Undo 用の写し [OR-02][OR-04][UD-03]
@@ -245,6 +256,10 @@ extension ManagedFileRecord {
             volume: VolumeValue(kind: VolumeValue.Kind(rawValue: volumeKind) ?? .none,
                                 number: volumeNumber, raw: volumeRaw),
             authorName: authorName,
+            subtitle: subtitle,
+            season: seasonNumber,
+            episode: episodeNumber,
+            releaseDate: releaseDate,
             rating: rating,
             coverImageRef: coverImageRef,
             coverImageSource: CoverSource(rawValue: coverImageSource) ?? .auto,
@@ -291,6 +306,10 @@ extension ManagedFileRecord {
             volumeKind: s.volume.kind.rawValue,
             volumeRaw: s.volume.raw,
             authorName: s.authorName,
+            subtitle: s.subtitle,
+            seasonNumber: s.season,
+            episodeNumber: s.episode,
+            releaseDate: s.releaseDate,
             rating: s.rating,
             coverImageRef: s.coverImageRef,
             coverImageSource: s.coverImageSource.rawValue,
@@ -335,6 +354,8 @@ struct VolumeFormatRecord: Codable, FetchableRecord, MutablePersistableRecord, S
     var isEnabled: Bool
     /// `VolumePatternKind` の生値（`volume` / `separator`）。
     var kind: String
+    /// `PatternRole` の生値（`volume` / `season` / `episode` / `date`）[MF-07]。
+    var role: String
     mutating func didInsert(_ inserted: InsertionSuccess) { id = inserted.rowID }
 }
 

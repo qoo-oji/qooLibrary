@@ -11,8 +11,18 @@ public struct VolumeMatch: Sendable, Equatable {
     /// 入力（文字配列）における範囲。
     public let range: Range<Int>
     public let value: VolumeValue
+    /// `(?<season>…)` を持つパターンが同時に読んだシーズン [MF-06]。
+    public let impliedSeason: Double?
 
     public var length: Int { range.count }
+
+    public init(patternID: UUID?, range: Range<Int>, value: VolumeValue,
+                impliedSeason: Double? = nil) {
+        self.patternID = patternID
+        self.range = range
+        self.value = value
+        self.impliedSeason = impliedSeason
+    }
 }
 
 public enum VolumeMatcher {
@@ -26,9 +36,12 @@ public enum VolumeMatcher {
     /// 型条件 [SE-24] を満たさない。
     public static func matches(in subject: FoldedSubject, at index: Int,
                                patterns: [CompiledVolumePattern],
+                               role: PatternRole = .volume,
                                includeBareDigits: Bool = true) -> [VolumeMatch] {
         var out: [VolumeMatch] = []
-        for pattern in patterns where pattern.kind == .volume {
+        // **role で絞るのはここ 1 箇所。** 呼び出し側に絞らせると、絞り忘れた経路が
+        // 話数のパターンを巻数として拾う（症状は「巻数がいつのまにか話数になる」）。
+        for pattern in patterns where pattern.kind == .volume && pattern.role == role {
             guard !pattern.health.isAbandoned(pattern.id) else { continue }
             switch pattern.regex.match(anchoredAt: index, in: subject,
                                        budget: AppLimits.Format.regexMatchBudget) {
@@ -36,7 +49,8 @@ public enum VolumeMatcher {
                 pattern.health.markAbandoned(pattern.id)
             case .found(let m):
                 if let value = numericValue(of: m, pattern: pattern, in: subject) {
-                    out.append(VolumeMatch(patternID: pattern.id, range: m.range, value: value))
+                    out.append(VolumeMatch(patternID: pattern.id, range: m.range, value: value,
+                                           impliedSeason: impliedSeason(of: m, in: subject)))
                 }
             case .none:
                 break
@@ -66,7 +80,9 @@ public enum VolumeMatcher {
                                   patterns: [CompiledVolumePattern]) -> VolumeMatch? {
         guard !subject.isEmpty else { return nil }
         var best: VolumeMatch?
-        for pattern in patterns {
+        // **シリーズ抽出は巻数の話**なので `role == .volume` に限る [MF-08]。
+        // 絞らないと、話数のパターンがタイトル末尾を切ってシリーズ名を壊す。
+        for pattern in patterns where pattern.role == .volume {
             guard !pattern.health.isAbandoned(pattern.id) else { continue }
             switch pattern.regex.matchAtEnd(in: subject,
                                             budget: AppLimits.Format.regexMatchBudget) {
@@ -105,22 +121,39 @@ public enum VolumeMatcher {
     /// `[Character]` から呼ぶ入口。`ParseInput` を持たない経路用。
     public static func matches(in chars: [Character], at index: Int,
                                patterns: [CompiledVolumePattern],
+                               role: PatternRole = .volume,
                                includeBareDigits: Bool = true) -> [VolumeMatch] {
-        matches(in: FoldedSubject(chars), at: index,
-                patterns: patterns, includeBareDigits: includeBareDigits)
+        matches(in: FoldedSubject(chars), at: index, patterns: patterns,
+                role: role, includeBareDigits: includeBareDigits)
+    }
+
+    /// `(?<season>…)` から読んだシーズン [MF-06]。
+    ///
+    /// `S(?<season>\d{1,2})E(?<volume>\d{1,3})` のように**1 本の正規表現で
+    /// 2 つの値**を取れるようにするためのもの。名前が書かれていなければ nil。
+    static func impliedSeason(of match: RegexMatch, in subject: FoldedSubject) -> Double? {
+        guard let r = match.named["season"] else { return nil }
+        return number(in: r, of: subject)
     }
 
     // MARK: - 値の取り出し
 
     /// 巻数種別のパターンから数値を作る。
     ///
-    /// 値は `(?<volume>…)` か唯一のキャプチャグループから取る。**キャプチャが数値
-    /// として読めないパターンは候補にしない**——`第(一)巻` のようなものを巻数 0 と
-    /// 誤って扱うより、一致しなかったことにするほうが害が小さい。
+    /// 値は**役割と同じ名前のキャプチャ**（`(?<episode>…)` 等）を最優先し、
+    /// 無ければ `(?<volume>…)` か唯一のキャプチャグループから取る。
+    ///
+    /// **役割名を先に見るのが要点** [MF-06][MF-09]。`S(?<season>\d+)E(?<episode>\d+)` は
+    /// 1 つの一致から 2 つの値を持ち、素の「第 1 グループ」規則ではシーズンのほうが
+    /// 取れてしまう——話数のつもりで登録したパターンが、シーズン番号を話数として
+    /// 返す。**画面には数字が出るので、間違っていることに気づけない。**
+    ///
+    /// **キャプチャが数値として読めないパターンは候補にしない**——`第(一)巻` の
+    /// ようなものを巻数 0 と誤って扱うより、一致しなかったことにするほうが害が小さい。
     static func numericValue(of match: RegexMatch, pattern: CompiledVolumePattern,
                              in subject: FoldedSubject) -> VolumeValue? {
-        guard let capture = match.captureRange,
-              let number = number(in: capture, of: subject) else { return nil }
+        let capture = match.named[pattern.role.rawValue] ?? match.captureRange
+        guard let capture, let number = number(in: capture, of: subject) else { return nil }
         return .numeric(number, raw: subject.originalText(in: match.range))
     }
 

@@ -35,7 +35,7 @@ enum LibraryRegistrationWizard {
             templates: services.presetTemplates,
             volumeSets: volumeSets,
             userTemplates: services.userTemplates,
-            bookTypeVocabulary: (try? BuiltInTemplates.bookTypes()) ?? [])
+            mediaTypeVocabulary: (try? BuiltInTemplates.mediaTypes()) ?? [])
         DialogWindowPresenter.shared.present(
             title: AppStrings.text("libraryWizard.title", locale: locale)
         ) { _ in
@@ -73,7 +73,7 @@ enum LibraryRegistrationWizard {
             templates: services.presetTemplates,
             volumeSets: volumeSets,
             userTemplates: services.userTemplates,
-            bookTypeVocabulary: (try? BuiltInTemplates.bookTypes()) ?? [],
+            mediaTypeVocabulary: (try? BuiltInTemplates.mediaTypes()) ?? [],
             minStep: .template)
         model.step = .template
         // サンプル収集は提示と並行に走らせる。`chooseFolder` は先頭で
@@ -132,7 +132,7 @@ final class LibraryRegistrationWizardModel {
     /// 対象から外すと推奨が本来より悪い側を指す。
     let userTemplates: [UserTemplate]
     private let volumeSets: VolumeSetDefinition
-    private let bookTypeVocabulary: [String]
+    private let mediaTypeVocabulary: [String]
 
     /// 一覧の選択。プリセットの key か、ユーザー定義の id か、白紙の番兵。
     private(set) var listSelection: String?
@@ -175,11 +175,11 @@ final class LibraryRegistrationWizardModel {
 
     init(templates: [LibraryTypeTemplate], volumeSets: VolumeSetDefinition,
          userTemplates: [UserTemplate] = [],
-         bookTypeVocabulary: [String] = [], minStep: Step = .intro) {
+         mediaTypeVocabulary: [String] = [], minStep: Step = .intro) {
         self.templates = templates
         self.userTemplates = userTemplates
         self.volumeSets = volumeSets
-        self.bookTypeVocabulary = bookTypeVocabulary
+        self.mediaTypeVocabulary = mediaTypeVocabulary
         self.minStep = minStep
     }
 
@@ -196,7 +196,7 @@ final class LibraryRegistrationWizardModel {
             folderName: url.lastPathComponent, folderURL: url,
             templates: templates, volumeSets: volumeSets,
             userTemplates: userTemplates,
-            bookTypeVocabulary: bookTypeVocabulary)
+            mediaTypeVocabulary: mediaTypeVocabulary)
         enable = model
         isEvaluating = true
         await model.loadSamples()
@@ -221,7 +221,7 @@ final class LibraryRegistrationWizardModel {
             var draft = TemplateInstantiation.draft(
                 from: template, volumeSets: volumeSets,
                 displayName: model.folderName,
-                bookTypeVocabulary: bookTypeVocabulary)
+                mediaTypeVocabulary: mediaTypeVocabulary)
             draft.folderLevels = []
             let outcome = LibraryPreview.run(filenames: model.sampleNames, draft: draft,
                                              truncated: model.sampleTruncated)
@@ -242,7 +242,7 @@ final class LibraryRegistrationWizardModel {
         for template in userTemplates {
             let id = Self.selectionID(forUserTemplate: template.id)
             let draft = template.settings.draft(displayName: model.folderName,
-                                                bookTypeVocabulary: bookTypeVocabulary)
+                                                mediaTypeVocabulary: mediaTypeVocabulary)
             let outcome = LibraryPreview.run(filenames: model.sampleNames, draft: draft,
                                              truncated: model.sampleTruncated)
             map[id] = outcome

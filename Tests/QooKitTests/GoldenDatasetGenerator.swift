@@ -80,8 +80,15 @@ enum GoldenGenerator {
             case .series:       return "シリーズ\(variant)"
             case .author:       return "著者\(variant)"
             case .volume:       return String(format: "%02d", variant % 30 + 1)
-            case .bookType:     return template.libraryTypeName
-            case .circle, .event, .genre, .keyword:
+            case .mediaType:     return template.libraryTypeName
+            // メディア向けの型付き [MF-04][MF-05][MF-19]。**既定セットに当たる形**で
+            // 差し込む——当たらない値を入れると、そのフォーマットが一致しなくなる。
+            case .season:       return String(format: "S%02d", variant % 5 + 1)
+            case .episode:      return "第\(String(format: "%02d", variant % 24 + 1))話"
+            case .subtitle:     return "副題\(variant)"
+            case .date:         return "(20\(String(format: "%02d", variant % 25 + 10)))"
+            case .studio, .event, .genre, .keyword, .actor,
+                 .keyword2, .keyword3, .keyword4, .keyword5:
                 // 束縛先のフィールド名から作る [RWI-02]。番号で書いていた頃と
                 // **同じ文字列**になるので、予約語へ書き換えても入力ファイル名は
                 // 1 バイトも変わらない——変わるのは期待値の鍵だけになる。
@@ -198,7 +205,7 @@ struct GoldenGeneratorTests {
         for preset in presets {
             let settings = try TemplateInstantiation.snapshot(
                 from: preset, volumeSets: volumeSets, libraryID: LibraryID(rawValue: 1),
-                bookTypeVocabulary: typeNames)
+                mediaTypeVocabulary: typeNames)
             let cases = try GoldenGenerator.positives(for: preset, settings: settings, minimum: 22)
                 + GoldenGenerator.negatives(for: preset, settings: settings, minimum: 22)
             let dataset = GoldenDataset(datasetName: preset.key, visibility: "public", cases: cases)
@@ -297,7 +304,7 @@ struct PrivateGoldenGeneratorTests {
                   let preset = presets.first(where: { $0.key == presetKey }) else { continue }
             let settings = try TemplateInstantiation.snapshot(
                 from: preset, volumeSets: volumeSets, libraryID: LibraryID(rawValue: 1),
-                bookTypeVocabulary: typeNames)
+                mediaTypeVocabulary: typeNames)
 
             var report = PrivateGoldenGenerator.Report()
             var cases: [GoldenCase] = []

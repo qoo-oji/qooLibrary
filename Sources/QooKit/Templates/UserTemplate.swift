@@ -95,11 +95,17 @@ public struct UserTemplateSettings: Sendable, Codable, Hashable {
         public var source: String
         public var isEnabled: Bool
         public var kind: VolumePatternKind
+        /// どの予約語のためのパターンか [MF-07]。**保存しないと、映像ライブラリを
+        /// テンプレートにした瞬間に話数・シーズン・日付の正規表現が全部
+        /// 巻数用として復元され、二度と一致しなくなる。**
+        public var role: PatternRole
 
-        public init(source: String, isEnabled: Bool, kind: VolumePatternKind) {
+        public init(source: String, isEnabled: Bool, kind: VolumePatternKind,
+                    role: PatternRole = .volume) {
             self.source = source
             self.isEnabled = isEnabled
             self.kind = kind
+            self.role = role
         }
 
         public init(from decoder: any Decoder) throws {
@@ -107,6 +113,8 @@ public struct UserTemplateSettings: Sendable, Codable, Hashable {
             source = try c.decodeIfPresent(String.self, forKey: .source) ?? ""
             isEnabled = try c.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
             kind = try c.decodeIfPresent(VolumePatternKind.self, forKey: .kind) ?? .volume
+            // `role` を持たない版 1 の文書は、すべて巻数として読む。
+            role = try c.decodeIfPresent(PatternRole.self, forKey: .role) ?? .volume
         }
     }
 

@@ -64,24 +64,24 @@ struct ParserPerformanceTests {
     /// 「興味のあるケースだけ測って一般化した」に当たる。
     static func fiftyFormats() throws -> [CompiledFormat] {
         let ctxt = FormatCompilationContext(
-            bookTypeVocabulary: ["一般コミック", "成年コミック", "同人誌", "同人CG"])
+            mediaTypeVocabulary: ["一般コミック", "成年コミック", "同人誌", "同人CG"])
         var sources = PresetTemplateTests.allPresetFormats
             .flatMap(\.formats)
             .filter { $0 != "@title" }
         // 50 本になるまで、実在する形の変種で埋める（同人誌 / 同人CG 相当）。
         let fillers = [
-            "(@circle) [@genre (@event)] @title [@keyword] (@author)",
-            "(@booktype) (@circle) [@genre] @title",
-            "[@circle] [@genre] @title",
-            "[@circle] @title 【@event】",
-            "(@circle) @title",
-            "[@circle] (@genre) @title",
-            "(@booktype) [@circle] @series (@volume)",
-            "[@circle] @series (@volume)",
-            "[@circle] @title (@volume)",
-            "[@ignore] [@circle] @title",
-            "[@circle] @title (@genre) (@event)",
-            "(@circle) [@genre] @title [@event] (@keyword)",
+            "(@studio) [@genre (@event)] @title [@keyword] (@author)",
+            "(@mediatype) (@studio) [@genre] @title",
+            "[@studio] [@genre] @title",
+            "[@studio] @title 【@event】",
+            "(@studio) @title",
+            "[@studio] (@genre) @title",
+            "(@mediatype) [@studio] @series (@volume)",
+            "[@studio] @series (@volume)",
+            "[@studio] @title (@volume)",
+            "[@ignore] [@studio] @title",
+            "[@studio] @title (@genre) (@event)",
+            "(@studio) [@genre] @title [@event] (@keyword)",
         ]
         var i = 0
         while sources.count < 50 { sources.append(fillers[i % fillers.count] + String(repeating: " ", count: i / fillers.count)); i += 1 }
@@ -95,7 +95,7 @@ struct ParserPerformanceTests {
         let formats = try Self.fiftyFormats()
         let settings = LibrarySettingsSnapshot(
             libraryID: LibraryID(rawValue: 1),
-            bookTypeVocabulary: ["一般コミック", "成年コミック", "同人誌", "同人CG"],
+            mediaTypeVocabulary: ["一般コミック", "成年コミック", "同人誌", "同人CG"],
             filenameFormats: formats,
             volumeFormats: vsDoujin())
         let parser = FilenameParser()
@@ -139,7 +139,7 @@ struct ParserPerformanceTests {
         let formats = try Self.fiftyFormats()
         let settings = LibrarySettingsSnapshot(
             libraryID: LibraryID(rawValue: 1),
-            bookTypeVocabulary: ["一般コミック", "同人誌"],
+            mediaTypeVocabulary: ["一般コミック", "同人誌"],
             filenameFormats: formats,
             volumeFormats: vsDoujin())
         let parser = FilenameParser()
@@ -162,7 +162,7 @@ struct ParserPerformanceTests {
         let ctxt = FormatCompilationContext()
         // 自由文字列を境界で細かく区切った、探索の広いフォーマット
         let f = try FormatCompiler.compile(
-            "[@circle] [@genre] [@event] [@keyword] @title", context: ctxt)
+            "[@studio] [@genre] [@event] [@keyword] @title", context: ctxt)
         let input = ParseInput(String(repeating: "[あ] ", count: 40) + "末尾")
         let outcome = FormatMatcher.match(f, input: input, stepLimit: 500)
         #expect(outcome.steps <= 501)

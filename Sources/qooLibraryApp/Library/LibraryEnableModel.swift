@@ -42,7 +42,7 @@ final class LibraryEnableModel {
     /// ユーザー定義テンプレート [LT-02]。プリセットと同じ一覧に並ぶ。
     let userTemplates: [UserTemplate]
     private let volumeSets: VolumeSetDefinition
-    private let bookTypeVocabulary: [String]
+    private let mediaTypeVocabulary: [String]
 
     var origin: Origin {
         didSet {
@@ -104,23 +104,23 @@ final class LibraryEnableModel {
     init(folderName: String, folderURL: URL, templates: [LibraryTypeTemplate],
          volumeSets: VolumeSetDefinition,
          userTemplates: [UserTemplate] = [],
-         bookTypeVocabulary: [String] = []) {
+         mediaTypeVocabulary: [String] = []) {
         self.folderName = folderName
         self.folderURL = folderURL
         self.templates = templates
         self.userTemplates = userTemplates
         self.volumeSets = volumeSets
-        self.bookTypeVocabulary = bookTypeVocabulary
+        self.mediaTypeVocabulary = mediaTypeVocabulary
         let first = templates.first
         self.origin = first.map { Origin.template(key: $0.key) } ?? .blank
         self.draft = first.map {
             TemplateInstantiation.draft(from: $0, volumeSets: volumeSets,
                                         displayName: folderName,
-                                        bookTypeVocabulary: bookTypeVocabulary)
+                                        mediaTypeVocabulary: mediaTypeVocabulary)
         } ?? TemplateInstantiation.blankDraft(
             volumeSets: volumeSets, displayName: folderName,
             defaultFieldNames: DefaultFieldNames.localized,
-            bookTypeVocabulary: bookTypeVocabulary)
+            mediaTypeVocabulary: mediaTypeVocabulary)
         self.selectedFormatID = draft.filenameFormats.first?.id
     }
 
@@ -131,18 +131,18 @@ final class LibraryEnableModel {
             guard let template = templates.first(where: { $0.key == key }) else { return }
             draft = TemplateInstantiation.draft(
                 from: template, volumeSets: volumeSets, displayName: folderName,
-                bookTypeVocabulary: bookTypeVocabulary)
+                mediaTypeVocabulary: mediaTypeVocabulary)
         case .userTemplate(let id):
             guard let template = userTemplates.first(where: { $0.id == id }) else { return }
             // **保存された設定をそのまま草案へ戻す。** プリセットと違い
             // 既定値の補完は要らない——保存した時点で全項目が入っている。
             draft = template.settings.draft(displayName: folderName,
-                                            bookTypeVocabulary: bookTypeVocabulary)
+                                            mediaTypeVocabulary: mediaTypeVocabulary)
         case .blank:
             draft = TemplateInstantiation.blankDraft(
                 volumeSets: volumeSets, displayName: folderName,
                 defaultFieldNames: DefaultFieldNames.localized,
-                bookTypeVocabulary: bookTypeVocabulary)
+                mediaTypeVocabulary: mediaTypeVocabulary)
         }
         selectedFormatID = draft.filenameFormats.first?.id
     }

@@ -16,20 +16,20 @@ struct ShelfBackupTests {
         let f: Fixture
         let backup: SQLiteBackupRepository
         let shelves: SQLiteShelfRepository
-        let circleGroup: FieldSummary
+        let studioGroup: FieldSummary
         let labelA: LabelID
         let labelB: LabelID
 
         static func make() async throws -> Setup {
             let f = try await Fixture.make(preset: "builtin.doujinshi")
             let fields = try await f.labels.fields(libraryID: f.libraryID)
-            let circle = try #require(fields.first { $0.name == "サークル" })
+            let studio = try #require(fields.first { $0.name == "サークル" })
             return Setup(f: f,
                          backup: SQLiteBackupRepository(database: f.database),
                          shelves: SQLiteShelfRepository(database: f.database),
-                         circleGroup: circle,
-                         labelA: try await f.labels.ensureLabel(fieldID: circle.id, name: "サークル値A"),
-                         labelB: try await f.labels.ensureLabel(fieldID: circle.id, name: "サークル値B"))
+                         studioGroup: studio,
+                         labelA: try await f.labels.ensureLabel(fieldID: studio.id, name: "サークル値A"),
+                         labelB: try await f.labels.ensureLabel(fieldID: studio.id, name: "サークル値B"))
         }
     }
 
@@ -48,7 +48,7 @@ struct ShelfBackupTests {
         #expect(shelves.count == 1)
         #expect(shelves[0].name == "お気に入りサークル")
         #expect(shelves[0].labels.map(\.labelName).sorted() == ["サークル値A", "サークル値B"])
-        #expect(shelves[0].labels.allSatisfy { $0.groupIndex == s.circleGroup.index })
+        #expect(shelves[0].labels.allSatisfy { $0.groupIndex == s.studioGroup.index })
         #expect(shelves[0].ratingStars == 4)
         #expect(shelves[0].ratingMode == "atLeast")
         #expect(shelves[0].searchText == "作品")
@@ -115,7 +115,7 @@ struct ShelfBackupTests {
                                        condition: ShelfCondition(labelIDs: [s.labelA]))
         var document = try await s.backup.export(scope: .everything, appVersion: nil)
         document.libraries[0].shelves?[0].labels
-            .append(ShelfLabelBackup(groupIndex: s.circleGroup.index, labelName: "この環境に無い値"))
+            .append(ShelfLabelBackup(groupIndex: s.studioGroup.index, labelName: "この環境に無い値"))
         // 参照だけ足し、ラベルそのものは文書から消しておく。
         document.libraries[0].labelGroups = document.libraries[0].labelGroups.map { field in
             var copy = field

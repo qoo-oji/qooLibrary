@@ -17,7 +17,7 @@ struct ImportBackupCommandTests {
 
     private func sampleTemplate(_ name: String) -> UserTemplate {
         var settings = UserTemplateSettings()
-        settings.filenameFormats = [.init(source: "[@circle] @title", isEnabled: true)]
+        settings.filenameFormats = [.init(source: "[@studio] @title", isEnabled: true)]
         return UserTemplate(name: name, settings: settings)
     }
 

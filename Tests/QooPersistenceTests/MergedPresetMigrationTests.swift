@@ -104,9 +104,9 @@ struct MergedPresetMigrationTests {
             {"key":"builtin.doujinshi-b","displayName":"同人誌(B)",
              "libraryTypeName":"同人誌","version":5,
              "labelGroups":[{"index":2,"name":"サークル"}],
-             "semanticBindings":{"@circle":2},
+             "semanticBindings":{"@studio":2},
              "folderLevels":{"1":{"kind":"singleLabelGroup","labelGroup":2}},
-             "filenameFormats":["[@circle] @title"],
+             "filenameFormats":["[@studio] @title"],
              "volumeSet":"VS-None"}
             """
         let queue = try v17Store()
@@ -126,7 +126,7 @@ struct MergedPresetMigrationTests {
         // **当時の定義はそのまま残す**——統合は改訂ではないので、
         // 差分（`latest.version > base.version`）に乗せない。
         #expect(decoded.folderLevels["1"]?.labelGroup == 2)
-        #expect(decoded.filenameFormats == ["[@circle] @title"])
+        #expect(decoded.filenameFormats == ["[@studio] @title"])
     }
 
     @Test("ライブラリの設定には触れない [旧 (A) の挙動を勝手に変えない]")

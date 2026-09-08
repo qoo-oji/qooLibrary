@@ -5,7 +5,7 @@
 //  ——`InspectorVaultSection` と同じ分け方。
 //
 //  **行の注記ではなくここに置く**［ユーザー判断、2026-09-01］。フォーマットの
-//  本文（`(@booktype) [@circle (@author)] @title (@genre) [@keyword]`）は長く、
+//  本文（`(@mediatype) [@studio (@author)] @title (@genre) [@keyword]`）は長く、
 //  一覧の行に置くと幅を食ううえ、行には既に印が 2 つある（無視済み・タイプ
 //  不一致）。1 件ずつ直すという実際の作業にも、右ペインのほうが合う。
 //

@@ -108,7 +108,7 @@ struct OrphanRepositoryTests {
         let label = try await s.f.labels.ensureLabel(fieldID: s.field.id, name: "サークル値A")
         try await s.f.labels.assign(fileID: s.orphan, labelID: label)
         let before = try await s.f.recordJSON(id: s.orphan)
-        #expect(before.count >= 37, "標本が全列を埋めていない（Optional が nil のまま）")
+        #expect(before.count >= 41, "標本が全列を埋めていない（Optional が nil のまま）")
 
         let snapshots = try await s.f.files.fileSnapshots(ids: [s.orphan])
         try await s.f.files.deleteFiles([s.orphan])
@@ -219,6 +219,7 @@ extension Fixture {
                     firstImageWidth = ?, firstImageHeight = ?,
                     trashedAt = ?, lastParsedFormatID = ?,
                     metadataStamp = ?, metadataSource = ?, metadataJSON = ?,
+                    subtitle = ?, seasonNumber = ?, episodeNumber = ?, releaseDate = ?,
                     hasVolumeConflict = 1
                 WHERE id = ?
                 """, arguments: ["作品名A", ProtectionScopeCoding.encode([.basic]), "作品名A", "さくひんめいa",
@@ -228,6 +229,7 @@ extension Fixture {
                                  12, 3, 1440, 2048,
                                  800.0, "format-1",
                                  "900|1000", "comicinfo", "{\"title\":\"作品名A\"}",
+                                 "副題A", 2.0, 12.5, "2024-01-15",   // [MF-03][MF-04][MF-05][MF-19]
                                  id.rawValue])
         }
     }

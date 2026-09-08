@@ -321,12 +321,19 @@ public struct VolumeFormatBackup: Codable, Sendable, Equatable {
     public var isEnabled: Bool
     /// `VolumePatternKind` の生値（`volume` / `separator`）。
     public var kind: String
+    /// `PatternRole` の生値 [MF-07]。**Optional なのは古い文書のため**
+    /// ——非 Optional にすると、この列を持たない版の文書が `keyNotFound` で
+    /// **丸ごと読めなくなる**（`LibrarySettingsPayload` で踏んだ罠）。
+    /// キーが増えるだけなので `schemaVersion` は上げない。
+    public var role: String?
 
-    public init(source: String, priority: Int, isEnabled: Bool, kind: String) {
+    public init(source: String, priority: Int, isEnabled: Bool, kind: String,
+                role: String? = nil) {
         self.source = source
         self.priority = priority
         self.isEnabled = isEnabled
         self.kind = kind
+        self.role = role
     }
 
     private enum CodingKeys: String, CodingKey {

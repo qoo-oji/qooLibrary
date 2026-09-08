@@ -331,12 +331,12 @@ public protocol ManagedFileRepository: Sendable {
     /// こちらにも出すと同じ 1 件が 2 つの画面に別の意味で並ぶ
     /// （`unresolvedFiles` と同じ判断）。
     ///
-    /// - Parameter circleFieldID: `@circle` を束縛しているフィールド [SS-02]。
+    /// - Parameter studioFieldID: `@studio` を束縛しているフィールド [SS-02]。
     ///   サークルは `authorName` のような専用列を持たずラベルとして入るので、
     ///   **どのフィールドを見るかは呼び出し側が設定から解決する**。`nil` なら
     ///   著者名だけを鍵にする。
     func seriesSuggestionCandidates(libraryID: LibraryID,
-                                    circleFieldID: FieldID?) async throws
+                                    studioFieldID: FieldID?) async throws
         -> [SeriesSuggestionCandidate]
 
     /// 「以後この提案を出さない」の付け外し [SS-05]。

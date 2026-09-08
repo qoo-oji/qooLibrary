@@ -74,8 +74,13 @@ public struct TemplateDiff: Sendable, Equatable {
         /// 指定し、利用者が自分で足したものは末尾に残す [D3: 更新で利用者の
         /// 項目を落とさない]。
         case reorderFilenameFormats(order: [String])
-        case addVolumeFormat(source: String, kind: VolumePatternKind)
-        case removeVolumeFormat(source: String, kind: VolumePatternKind)
+        /// `role` まで持つ [MF-07][MF-09]。**同じ綴りでも役割が違えば別の行**で、
+        /// 役割を落として当てると、話数の正規表現が巻数として追加され
+        /// `@episode` に一生一致しない。
+        case addVolumeFormat(source: String, kind: VolumePatternKind,
+                             role: PatternRole)
+        case removeVolumeFormat(source: String, kind: VolumePatternKind,
+                                role: PatternRole)
         /// `assignment` が `nil` なら行ごと削除。
         case setFolderLevel(level: Int, assignment: FolderLevelDraft.Assignment?)
     }

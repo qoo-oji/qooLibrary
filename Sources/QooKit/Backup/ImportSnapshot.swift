@@ -62,12 +62,17 @@ public struct ImportSnapshot: Sendable, Equatable {
             public var priority: Int
             public var isEnabled: Bool
             public var kind: String
+            /// `PatternRole` の生値 [MF-07]。**DB の行の写しなので非 Optional**
+            /// ——取り込みの Undo は「ちょうど元へ戻す」ことが役目である。
+            public var role: String
 
-            public init(source: String, priority: Int, isEnabled: Bool, kind: String) {
+            public init(source: String, priority: Int, isEnabled: Bool, kind: String,
+                        role: String = "volume") {
                 self.source = source
                 self.priority = priority
                 self.isEnabled = isEnabled
                 self.kind = kind
+                self.role = role
             }
         }
 

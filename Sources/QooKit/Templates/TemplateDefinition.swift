@@ -25,10 +25,17 @@ public struct VolumeSetDefinition: Sendable, Codable, Hashable {
     public static let empty = VolumeSetDefinition(sets: [:])
 
     /// 名前で引いて `VolumePattern` の列にする。列挙順が優先順になる [SE-21]。
-    public func patterns(named name: String) -> [VolumePattern]? {
+    ///
+    /// **役割は集合そのものではなく、呼び出し側が渡す** [MF-07][MF-09]。
+    /// `ES-Standard` のような名前から推測させると、名前と中身が食い違っても
+    /// コンパイラも静的検査も止められない——テンプレートが `episodeSet:` として
+    /// 指したのだから話数、と決まるほうが取り違えようがない。
+    public func patterns(named name: String,
+                         role: PatternRole = .volume) -> [VolumePattern]? {
         guard let entries = sets[name] else { return nil }
         return entries.enumerated().map { i, e in
-            VolumePattern(source: e.source, priority: i, kind: e.kind ?? .volume)
+            VolumePattern(source: e.source, priority: i,
+                          kind: e.kind ?? .volume, role: role)
         }
     }
 }
@@ -67,8 +74,53 @@ public struct LibraryTypeTemplate: Sendable, Codable, Hashable, Identifiable {
     /// 優先順に並んだファイル名フォーマット [FF-03]。
     public let filenameFormats: [String]
     public let volumeSet: String
+    /// `@episode` 用の正規表現セット名 [MF-09][MF-14]。省略時は使わない。
+    ///
+    /// **`String?` にしてあるのは、この鍵を持たない既存の文書
+    /// （`library-types.json` の 4 プリセット・ユーザー定義テンプレート・
+    /// 登録時の定義 `registeredTemplateJSON`）をそのまま読むため**
+    /// ——非 Optional にすると `keyNotFound` で文書全体の取り込みが失敗する。
+    public let episodeSet: String?
+    /// `@season` 用の正規表現セット名 [MF-09][MF-14]。
+    public let seasonSet: String?
+    /// `@date` 用の正規表現セット名 [MF-09][MF-19]。
+    public let dateSet: String?
 
     public var id: String { key }
+
+    public init(key: String, displayName: String, libraryTypeName: String,
+                version: Int, labelGroups: [FieldSpec],
+                semanticBindings: [String: Int],
+                folderLevels: [String: FolderLevelSpec],
+                filenameFormats: [String], volumeSet: String,
+                episodeSet: String? = nil, seasonSet: String? = nil,
+                dateSet: String? = nil)
+    {
+        self.key = key
+        self.displayName = displayName
+        self.libraryTypeName = libraryTypeName
+        self.version = version
+        self.labelGroups = labelGroups
+        self.semanticBindings = semanticBindings
+        self.folderLevels = folderLevels
+        self.filenameFormats = filenameFormats
+        self.volumeSet = volumeSet
+        self.episodeSet = episodeSet
+        self.seasonSet = seasonSet
+        self.dateSet = dateSet
+    }
+
+    /// 役割ごとに引く集合名。`nil` の役割はこのテンプレートでは使わない。
+    ///
+    /// **`.volume` だけ必須で残りは任意**——コミックのプリセットは巻数しか
+    /// 持たず、映像のプリセットが話数・シーズンを足す [MF-14]。
+    public var patternSetNames: [(role: PatternRole, name: String)] {
+        var out: [(PatternRole, String)] = [(.volume, volumeSet)]
+        if let episodeSet { out.append((.episode, episodeSet)) }
+        if let seasonSet { out.append((.season, seasonSet)) }
+        if let dateSet { out.append((.date, dateSet)) }
+        return out
+    }
 
     public var semanticKeywordBindings: [SemanticKeyword: Int] {
         var out: [SemanticKeyword: Int] = [:]
@@ -102,14 +154,14 @@ public enum BuiltInTemplates {
     }
 
     /// プリセットのライブラリタイプ [11.4]。
-    /// `@booktype` の照合語彙の**既定部分** [TY-01]。
+    /// `@mediatype` の照合語彙の**既定部分** [TY-01]。
     ///
     /// **プリセットの `libraryTypeName` から導出する**——手書きの一覧にすると、
     /// プリセットを足したときに片方だけ古くなる（`check-personal-identifiers` が
     /// 除外語を `library-types.json` から導いているのと同じ考え方）。
     /// 実際に使う語彙はこれに「そのライブラリの『本の種別』フィールドに既に
     /// あるラベル」を合わせたもので、後者があるおかげで**利用者独自の種別も育つ**。
-    public static func bookTypes() throws -> [String] {
+    public static func mediaTypes() throws -> [String] {
         Array(Set(try libraryTypes().map(\.libraryTypeName)))
             .filter { !$0.isEmpty }.sorted()
     }
@@ -141,6 +193,28 @@ public enum TemplateInstantiation {
         case folderFormatFailed(level: Int, FormatCompileError)
     }
 
+    /// テンプレートが参照する正規表現セットを、役割ごとに引いて 1 本の列にする
+    /// [MF-09]。見つからない名前は `missing` に返す（判断は呼び出し側）。
+    ///
+    /// **`priority` は集合ごとに 0 から振り直される。** 照合は役割で絞ってから
+    /// 行う（`VolumeMatcher.matches(role:)`）ので、役割をまたいだ番号の重なりは
+    /// 同長のときの決着 [SE-21] に影響しない。
+    static func volumePatterns(for template: LibraryTypeTemplate,
+                               volumeSets: VolumeSetDefinition)
+        -> (patterns: [VolumePattern], missing: [String])
+    {
+        var patterns: [VolumePattern] = []
+        var missing: [String] = []
+        for (role, name) in template.patternSetNames {
+            guard let found = volumeSets.patterns(named: name, role: role) else {
+                missing.append(name)
+                continue
+            }
+            patterns.append(contentsOf: found)
+        }
+        return (patterns, missing)
+    }
+
     /// テンプレートからパーサ用の設定スナップショットを組み立てる [LT-03]。
     ///
     /// ライブラリ登録時に一度だけ呼び、以後の設定変更はライブラリ側に写す
@@ -149,7 +223,7 @@ public enum TemplateInstantiation {
                                volumeSets: VolumeSetDefinition,
                                libraryID: LibraryID,
                                displayName: String = "",
-                               bookTypeVocabulary: [String] = [],
+                               mediaTypeVocabulary: [String] = [],
                                delimiters: DelimiterSet = .default,
                                /// 省略すると `draft(from:)` と**同じ既定**が入る。
                                /// 揃えないと、ここで測った結果が実際に登録された
@@ -160,14 +234,16 @@ public enum TemplateInstantiation {
                                    })
         throws(Error) -> LibrarySettingsSnapshot
     {
-        guard let volumePatterns = volumeSets.patterns(named: template.volumeSet) else {
-            throw .unknownVolumeSet(template.volumeSet)
-        }
+        let (patterns, missingSets) = volumePatterns(for: template,
+                                                     volumeSets: volumeSets)
+        // **`episodeSet` 等の綴り誤りもここで止める。** 黙って飛ばすと、話数を
+        // 取るはずのライブラリが 1 件も一致しないまま登録される。
+        if let missing = missingSets.first { throw .unknownVolumeSet(missing) }
         let semantic = template.semanticKeywordBindings
         let context = FormatCompilationContext(
             delimiters: delimiters,
-            bookTypeVocabulary: bookTypeVocabulary.isEmpty
-                ? [template.libraryTypeName] : bookTypeVocabulary,
+            mediaTypeVocabulary: mediaTypeVocabulary.isEmpty
+                ? [template.libraryTypeName] : mediaTypeVocabulary,
             semanticBindings: semantic)
 
         var formats: [CompiledFormat] = []
@@ -212,12 +288,12 @@ public enum TemplateInstantiation {
         return LibrarySettingsSnapshot(
             libraryID: libraryID,
             displayName: displayName,
-            bookTypeVocabulary: context.bookTypeVocabulary,
+            mediaTypeVocabulary: context.mediaTypeVocabulary,
             delimiters: delimiters,
             protectedTokens: ProtectedTokenCompiler.compileAll(protectedTokens),
             filenameFormats: formats,
             folderLevelAssignments: levels,
-            volumeFormats: VolumePatternCompiler.compileAll(volumePatterns),
+            volumeFormats: VolumePatternCompiler.compileAll(patterns),
             semanticBindings: semantic)
     }
 }
@@ -246,7 +322,7 @@ extension TemplateInstantiation {
     public static func draft(from template: LibraryTypeTemplate,
                              volumeSets: VolumeSetDefinition,
                              displayName: String,
-                             bookTypeVocabulary: [String] = []) -> LibrarySettingsDraft {
+                             mediaTypeVocabulary: [String] = []) -> LibrarySettingsDraft {
         let colors = LabelColorPalette.palette(count: max(template.fields.count, 1))
         let fields = template.fields
             .sorted { $0.index < $1.index }
@@ -259,8 +335,9 @@ extension TemplateInstantiation {
                     assignsAutomatically: spec.assignsAutomatically)
             }
 
-        let volumes = (volumeSets.patterns(named: template.volumeSet) ?? [])
-            .map { VolumeFormatDraft(source: $0.source, isEnabled: true, kind: $0.kind) }
+        let volumes = volumePatterns(for: template, volumeSets: volumeSets).patterns
+            .map { VolumeFormatDraft(source: $0.source, isEnabled: true,
+                                     kind: $0.kind, role: $0.role) }
 
         // 階層は**番号順に並べる**。辞書の列挙順は不定で、そのまま渡すと
         // 開くたびに行の並びが変わる。
@@ -304,7 +381,7 @@ extension TemplateInstantiation {
             volumeFormats: volumes,
             folderLevels: levels,
             seriesTitleCompositionFormat: "@series @volume",
-            bookTypeVocabulary: bookTypeVocabulary)
+            mediaTypeVocabulary: mediaTypeVocabulary)
     }
 
     /// 既定フィールド 6 種と、その意味束縛を組み立てる [§19.2][RWI-02]。
@@ -356,7 +433,7 @@ extension TemplateInstantiation {
                                   displayName: String,
                                   defaultFieldNames: [String],
                                   volumeSetName: String = "VS-Full",
-                                  bookTypeVocabulary: [String] = []) -> LibrarySettingsDraft {
+                                  mediaTypeVocabulary: [String] = []) -> LibrarySettingsDraft {
         let volumes = (volumeSets.patterns(named: volumeSetName) ?? [])
             .map { VolumeFormatDraft(source: $0.source, isEnabled: true, kind: $0.kind) }
         let (fields, bindings) = defaultFields(named: defaultFieldNames)
@@ -373,6 +450,6 @@ extension TemplateInstantiation {
             fields: fields,
             semanticBindings: bindings,
             volumeFormats: volumes,
-            bookTypeVocabulary: bookTypeVocabulary)
+            mediaTypeVocabulary: mediaTypeVocabulary)
     }
 }

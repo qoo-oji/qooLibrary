@@ -7,7 +7,7 @@
       "expected" : {
         "fields" : {
           "@author" : "著者0",
-          "@booktype" : "成年コミック",
+          "@mediatype" : "成年コミック",
           "@title" : "作品タイトル0"
         },
         "formatIndex" : 0,
@@ -46,7 +46,7 @@
       "expected" : {
         "fields" : {
           "@author" : "著者2",
-          "@booktype" : "成年コミック",
+          "@mediatype" : "成年コミック",
           "@title" : "作品タイトル2ー長音"
         },
         "formatIndex" : 0,
@@ -85,7 +85,7 @@
       "expected" : {
         "fields" : {
           "@author" : "著者4",
-          "@booktype" : "成年コミック",
+          "@mediatype" : "成年コミック",
           "@title" : "サブタイトル付き作品4"
         },
         "formatIndex" : 0,
@@ -124,7 +124,7 @@
       "expected" : {
         "fields" : {
           "@author" : "著者6",
-          "@booktype" : "成年コミック",
+          "@mediatype" : "成年コミック",
           "@title" : "作品 タイトル 6"
         },
         "formatIndex" : 0,
@@ -163,7 +163,7 @@
       "expected" : {
         "fields" : {
           "@author" : "著者8",
-          "@booktype" : "成年コミック",
+          "@mediatype" : "成年コミック",
           "@title" : "作品タイトル8"
         },
         "formatIndex" : 0,
@@ -202,7 +202,7 @@
       "expected" : {
         "fields" : {
           "@author" : "著者10",
-          "@booktype" : "成年コミック",
+          "@mediatype" : "成年コミック",
           "@title" : "作品タイトル10"
         },
         "formatIndex" : 0,
@@ -241,7 +241,7 @@
       "expected" : {
         "fields" : {
           "@author" : "著者12",
-          "@booktype" : "成年コミック",
+          "@mediatype" : "成年コミック",
           "@title" : "作品タイトル12ー長音"
         },
         "formatIndex" : 0,
@@ -280,7 +280,7 @@
       "expected" : {
         "fields" : {
           "@author" : "著者14",
-          "@booktype" : "成年コミック",
+          "@mediatype" : "成年コミック",
           "@title" : "サブタイトル付き作品14"
         },
         "formatIndex" : 0,
@@ -319,7 +319,7 @@
       "expected" : {
         "fields" : {
           "@author" : "著者16",
-          "@booktype" : "成年コミック",
+          "@mediatype" : "成年コミック",
           "@title" : "作品 タイトル 16"
         },
         "formatIndex" : 0,
@@ -358,7 +358,7 @@
       "expected" : {
         "fields" : {
           "@author" : "著者18",
-          "@booktype" : "成年コミック",
+          "@mediatype" : "成年コミック",
           "@title" : "作品タイトル18"
         },
         "formatIndex" : 0,
@@ -397,7 +397,7 @@
       "expected" : {
         "fields" : {
           "@author" : "著者20",
-          "@booktype" : "成年コミック",
+          "@mediatype" : "成年コミック",
           "@title" : "作品タイトル20"
         },
         "formatIndex" : 0,

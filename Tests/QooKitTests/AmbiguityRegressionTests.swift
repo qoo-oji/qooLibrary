@@ -10,7 +10,7 @@
 //  |---|---|---|
 //  | D1 曖昧だが選択は正しい | 基準値 82/82 ほか | 巻数・空白・保護文字列の族は食い違いゼロ |
 //  | D2 選択が誤り | **0 件** | |
-//  | D3 真に曖昧（規則どおり） | 206 ＋ 16 | 値が括弧を含む／値が `@booktype` の語彙と一致 |
+//  | D3 真に曖昧（規則どおり） | 206 ＋ 16 | 値が括弧を含む／値が `@mediatype` の語彙と一致 |
 //  | D4 実は一意 | — | 群の内部の選び方は後続に影響しない（下記） |
 //
 import Testing
@@ -31,7 +31,7 @@ struct AmbiguityRegressionTests {
         }
         let settings = try TemplateInstantiation.snapshot(
             from: preset, volumeSets: volumeSets, libraryID: LibraryID(rawValue: 1),
-            bookTypeVocabulary: names)
+            mediaTypeVocabulary: names)
         return (preset, settings)
     }
 
@@ -39,7 +39,7 @@ struct AmbiguityRegressionTests {
 
     private func context(vocabulary: [String] = []) -> FormatCompilationContext {
         FormatCompilationContext(delimiters: .default, maxFields: 10,
-                                 bookTypeVocabulary: vocabulary, semanticBindings: [:])
+                                 mediaTypeVocabulary: vocabulary, semanticBindings: [:])
     }
 
     // MARK: - 対照: 曖昧でない値なら全フォーマットが意図どおり
@@ -70,7 +70,7 @@ struct AmbiguityRegressionTests {
                                             settings: settings)
         // `[サークル (作者)]` は同人誌の命名規約そのもの——人にも区別できない。
         // 優先順位の高い「著者付き」の形が勝つのが決着 [FF-03]。
-        #expect(result?.fields[.circle]?.text == "集団")
+        #expect(result?.fields[.studio]?.text == "集団")
         #expect(result?.fields[.author]?.text == "仮")
     }
 
@@ -81,7 +81,7 @@ struct AmbiguityRegressionTests {
         // **これが曖昧性の逃げ道であることの実証**——上のテストと 1 文字しか違わない。
         let result = FilenameParser().parse("(同人誌) [集団 (完全版)] 題名 (分野) [鍵語]",
                                             settings: settings)
-        #expect(result?.fields[.circle]?.text == "集団 (完全版)")
+        #expect(result?.fields[.studio]?.text == "集団 (完全版)")
         #expect(result?.fields[.author] == nil)
     }
 
@@ -90,18 +90,18 @@ struct AmbiguityRegressionTests {
         let (_, settings) = try doujinshiA()
         let result = FilenameParser().parse("(同人誌) [集団 (著者) 続き)] 題名 (分野) [鍵語]",
                                             settings: settings)
-        // `[@circle (@author)]` は成立しない（閉じ括弧が余る）ので
-        // `[@circle]` の形へ落ちる。値は丸ごとサークル名になる。
-        #expect(result?.fields[.circle]?.text == "集団 (著者) 続き)")
+        // `[@studio (@author)]` は成立しない（閉じ括弧が余る）ので
+        // `[@studio]` の形へ落ちる。値は丸ごとサークル名になる。
+        #expect(result?.fields[.studio]?.text == "集団 (著者) 続き)")
         #expect(result?.fields[.author] == nil)
     }
 
-    // MARK: - D3: 値が `@booktype` の語彙と一致すると、種別の形が勝つ
+    // MARK: - D3: 値が `@mediatype` の語彙と一致すると、種別の形が勝つ
 
     @Test("イベント名が本の種別の語彙と一致すると、種別として読まれる [TY-01][FF-03]") 
     func eventNameThatCollidesWithTheBookTypeVocabularyIsReadAsBookType() throws {
         let (_, settings) = try doujinshiA()
-        // `(@booktype) …` と `(@event) …` は**先頭以外まったく同じ形**なので、
+        // `(@mediatype) …` と `(@event) …` は**先頭以外まったく同じ形**なので、
         // 優先順位でしか決まらない [2026-09-04 の決定]。語彙に入る語を
         // イベント名に使うと、イベントとしては取れない。
         //
@@ -111,13 +111,13 @@ struct AmbiguityRegressionTests {
         // 未決の穴ではないので、衝突を検知して知らせる仕掛けは作らない。
         let result = FilenameParser().parse("(同人誌) [集団 (著者)] 題名 (分野) [鍵語]",
                                             settings: settings)
-        #expect(result?.fields[.bookType]?.text == "同人誌")
+        #expect(result?.fields[.mediaType]?.text == "同人誌")
         #expect(result?.fields[.event] == nil)
         // 語彙に無い語ならイベントとして取れる（対照）。
         let event = FilenameParser().parse("(C99) [集団 (著者)] 題名 (分野) [鍵語]",
                                            settings: settings)
         #expect(event?.fields[.event]?.text == "C99")
-        #expect(event?.fields[.bookType] == nil)
+        #expect(event?.fields[.mediaType] == nil)
     }
 
     // MARK: - D1/D3: 分岐点ごとの決着
@@ -168,21 +168,21 @@ struct AmbiguityRegressionTests {
         // 利用者が「本の種別」ラベルを足せば通りうるため、ここで固定する。
         // **括弧で囲むと判定に使えない**——群は [開き, 閉じ] の固定範囲を占め、
         // 内部は完全一致を要求されるので、短い候補は必ず余りを出して失敗する。
-        // つまり**プリセットの `(@booktype)` はこの規則を一度も通らない**
+        // つまり**プリセットの `(@mediatype)` はこの規則を一度も通らない**
         // ［変異 M3 が空振りして判明］。囲みの無い形で固定する。
-        let bare = try FormatCompiler.compile("@booktype @title",
+        let bare = try FormatCompiler.compile("@mediatype @title",
                                               context: context(vocabulary: ["同人", "同人誌"]))
         let result = FormatMatcher.match(bare, input: ParseInput("同人誌 題名"),
                                          volumePatterns: []).result
-        #expect(result?.fields[.bookType]?.text == "同人誌")
+        #expect(result?.fields[.mediaType]?.text == "同人誌")
         #expect(result?.fields[.title]?.text == "題名")
 
         // 群の中では順序に関わらず完全一致しか通らない（対照）。
-        let grouped = try FormatCompiler.compile("(@booktype) @title",
+        let grouped = try FormatCompiler.compile("(@mediatype) @title",
                                                  context: context(vocabulary: ["同人", "同人誌"]))
         let inside = FormatMatcher.match(grouped, input: ParseInput("(同人誌) 題名"),
                                          volumePatterns: []).result
-        #expect(inside?.fields[.bookType]?.text == "同人誌")
+        #expect(inside?.fields[.mediaType]?.text == "同人誌")
     }
 
     @Test("群の内部の選び方は後続に影響しない——閉じ括弧が一意に決まるため")
@@ -191,7 +191,7 @@ struct AmbiguityRegressionTests {
         // それでも取りこぼしが起きないのは、群が [開き, 閉じ] の**固定範囲**を占め、
         // 閉じ括弧がネスト計数で一意に決まるから——内部の割り当ては後続と独立している。
         // 掃引 2,558 件で乖離 0 件だったことがこの論証の裏づけ。
-        let format = try FormatCompiler.compile("[@circle (@author)] @title", context: context())
+        let format = try FormatCompiler.compile("[@studio (@author)] @title", context: context())
         for text in ["[集団 (著者)] 題名", "[集団 (著者) 余り] 題名",
                      "[集団 (著) (者)] 題名", "[集団 (著者)] 題名 (続き)"] {
             let input = ParseInput(text)

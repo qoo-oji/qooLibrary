@@ -34,8 +34,21 @@ public enum RegexMatchResult: Sendable, Equatable {
 public struct RegexMatch: Sendable, Equatable {
     /// 一致した範囲（文字添字）。
     public let range: Range<Int>
-    /// 巻数を取り出すグループの範囲（文字添字）。無ければ `nil`。
+    /// 値を取り出すグループの範囲（文字添字）。無ければ `nil`。
     public let captureRange: Range<Int>?
+    /// 名前付きキャプチャ（`SafeRegex.knownGroupNames` にある綴りだけ）[MF-06][MF-19]。
+    ///
+    /// **`captureRange` とは別に持つ。** 前者は「値 1 つを取り出す」ための既存の
+    /// 経路（`(?<volume>…)` か第 1 グループ）で、こちらは `S(?<season>\d+)E(\d+)` の
+    /// ように**1 つの一致から複数の値**を取り出すためのもの。
+    public let named: [String: Range<Int>]
+
+    public init(range: Range<Int>, captureRange: Range<Int>?,
+                named: [String: Range<Int>] = [:]) {
+        self.range = range
+        self.captureRange = captureRange
+        self.named = named
+    }
 }
 
 /// 走査の途中でウォッチドッグに打ち切られたパターンを覚えておく箱。
@@ -75,8 +88,16 @@ public struct SafeRegex: @unchecked Sendable {
     private let regex: NSRegularExpression
     /// 末尾アンカー照合（`matchAtEnd` 相当）に使う `(?:…)\z`。
     private let endAnchored: NSRegularExpression
+    /// 名前で引けるキャプチャグループの綴り [MF-06][MF-19]。
+    ///
+    /// **グループ名を列挙する API が無い**ので、ここに並べた綴りだけを綴りで探す。
+    /// 語を足すときはここへ足すこと——書き忘れると、利用者が正規表現に
+    /// `(?<episode>…)` と書いても**黙って無視される**。
+    public static let knownGroupNames = ["volume", "season", "episode", "year", "month", "day"]
+    /// このパターンに実際に書かれている名前。
+    public let namedGroups: Set<String>
     /// `(?<volume>…)` が書かれているか。
-    public let hasNamedVolumeGroup: Bool
+    public var hasNamedVolumeGroup: Bool { namedGroups.contains(volumeCaptureGroupName) }
     /// キャプチャグループの数。
     public let captureGroupCount: Int
 
@@ -95,8 +116,8 @@ public struct SafeRegex: @unchecked Sendable {
         endAnchored = try NSRegularExpression(pattern: "(?:\(normalized))\\z", options: options)
         captureGroupCount = regex.numberOfCaptureGroups
         // グループ名を列挙する API が無いので綴りで判定する。`(?<=` `(?<!` は
-        // 後読みなので除く。
-        hasNamedVolumeGroup = normalized.contains("(?<\(volumeCaptureGroupName)>")
+        // 後読みなので除く（名前が `=` や `!` で始まることはない）。
+        namedGroups = Set(Self.knownGroupNames.filter { normalized.contains("(?<\($0)>") })
     }
 
     // MARK: - 照合
@@ -149,7 +170,8 @@ public struct SafeRegex: @unchecked Sendable {
             // マスクが無限に増えるのを防ぐ。
             guard !charRange.isEmpty else { return }
             found.append(RegexMatch(range: charRange,
-                                    captureRange: captureRange(of: result, in: subject)))
+                                    captureRange: captureRange(of: result, in: subject),
+                                    named: namedRanges(of: result, in: subject)))
         }
         return (abandoned ? [] : found, abandoned)
     }
@@ -183,7 +205,23 @@ public struct SafeRegex: @unchecked Sendable {
         if abandoned { return .abandoned }
         guard let found, let charRange = subject.characterRange(of: found.range) else { return .none }
         return .found(RegexMatch(range: charRange,
-                                 captureRange: captureRange(of: found, in: subject)))
+                                 captureRange: captureRange(of: found, in: subject),
+                                 named: namedRanges(of: found, in: subject)))
+    }
+
+    /// 書かれている名前付きキャプチャの範囲。**書かれていない名前は引かない**
+    /// ——`range(withName:)` は未知の名前に対しても `NSNotFound` を返すだけだが、
+    /// 引くたびに文字列比較が走るので、実際に書かれているものだけを見る。
+    private func namedRanges(of result: NSTextCheckingResult,
+                             in subject: FoldedSubject) -> [String: Range<Int>] {
+        guard !namedGroups.isEmpty else { return [:] }
+        var out: [String: Range<Int>] = [:]
+        for name in namedGroups {
+            let r = result.range(withName: name)
+            guard r.location != NSNotFound else { continue }
+            out[name] = subject.characterRange(of: r)
+        }
+        return out
     }
 
     /// 巻数の値を取り出す範囲。`(?<volume>…)` があればそれ、無ければ第 1 グループ。

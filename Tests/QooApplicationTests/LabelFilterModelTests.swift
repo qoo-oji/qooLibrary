@@ -28,8 +28,8 @@ struct LabelFilterModelTests {
     }
 
     /// 同人誌 のフォーマットに一致する合成名。
-    static func doujin(_ n: Int, circle: Int? = nil) -> String {
-        "(同人誌) [サークル値\(circle ?? n) (著者値\(n))] 作品タイトル\(n) (ジャンル値\(n)).cbz"
+    static func doujin(_ n: Int, studio: Int? = nil) -> String {
+        "(同人誌) [サークル値\(studio ?? n) (著者値\(n))] 作品タイトル\(n) (ジャンル値\(n)).cbz"
     }
 
     // MARK: - 出す条件 [LF-01][LF-02]
@@ -71,14 +71,14 @@ struct LabelFilterModelTests {
     @MainActor
     func manuallyHiddenLabelsAreOmitted() async throws {
         let (w, model) = try await Self.prepared([Self.doujin(0), Self.doujin(1)])
-        let circle = try #require(model.fields.first { $0.name == "サークル" })
-        let before = try #require(model.labels[circle.id])
+        let studio = try #require(model.fields.first { $0.name == "サークル" })
+        let before = try #require(model.labels[studio.id])
         #expect(before.count == 2)
 
         try await w.services.setLabelHidden([before[0].id], true)
         await model.load(registrationUUID: w.registrationUUID, services: w.services)
 
-        let after = try #require(model.labels[circle.id])
+        let after = try #require(model.labels[studio.id])
         #expect(after.map(\.id) == [before[1].id])
     }
 
@@ -88,8 +88,8 @@ struct LabelFilterModelTests {
     @MainActor
     func labelsWithoutLiveFilesDisappearAndComeBack() async throws {
         let (w, model) = try await Self.prepared([Self.doujin(0), Self.doujin(1)])
-        let circle = try #require(model.fields.first { $0.name == "サークル" })
-        let before = try #require(model.labels[circle.id])
+        let studio = try #require(model.fields.first { $0.name == "サークル" })
+        let before = try #require(model.labels[studio.id])
         #expect(before.count == 2)
 
         // 1 冊をファイル保管庫へ入れる [FA-05] ——そのサークルの実体が 0 になる。
@@ -104,7 +104,7 @@ struct LabelFilterModelTests {
                        previousPath: target.relativePath)],
             archived: true)
         await model.load(registrationUUID: w.registrationUUID, services: w.services)
-        #expect((model.labels[circle.id] ?? []).count == 1, "**手動の印は無い**——実体が無いだけ")
+        #expect((model.labels[studio.id] ?? []).count == 1, "**手動の印は無い**——実体が無いだけ")
 
         // 戻せば、何もしなくても表示へ返る。
         try await w.services.setFileArchived(
@@ -112,7 +112,7 @@ struct LabelFilterModelTests {
                        previousPath: archived)],
             archived: false)
         await model.load(registrationUUID: w.registrationUUID, services: w.services)
-        #expect((model.labels[circle.id] ?? []).count == 2)
+        #expect((model.labels[studio.id] ?? []).count == 2)
     }
 
     /// **見えるラベルが 1 件も無くなったフィールドは出さない** [LF-02][LA3-05]。
@@ -122,11 +122,11 @@ struct LabelFilterModelTests {
     @MainActor
     func fieldsWithNoVisibleLabelsAreOmitted() async throws {
         let (w, model) = try await Self.prepared([Self.doujin(0)])
-        let circle = try #require(model.fields.first { $0.name == "サークル" })
-        let labels = try #require(model.labels[circle.id])
+        let studio = try #require(model.fields.first { $0.name == "サークル" })
+        let labels = try #require(model.labels[studio.id])
         try await w.services.setLabelHidden(labels.map(\.id), true)
         await model.load(registrationUUID: w.registrationUUID, services: w.services)
-        #expect(!model.fields.contains { $0.id == circle.id })
+        #expect(!model.fields.contains { $0.id == studio.id })
     }
 
     /// **ピンを切り替えただけで非表示のラベルが並ばない**［code-review の指摘］。
@@ -135,14 +135,14 @@ struct LabelFilterModelTests {
     @MainActor
     func pinningDoesNotBringBackHiddenLabels() async throws {
         let (w, model) = try await Self.prepared([Self.doujin(0), Self.doujin(1)])
-        let circle = try #require(model.fields.first { $0.name == "サークル" })
-        let before = try #require(model.labels[circle.id])
+        let studio = try #require(model.fields.first { $0.name == "サークル" })
+        let before = try #require(model.labels[studio.id])
         try await w.services.setLabelHidden([before[0].id], true)
         await model.load(registrationUUID: w.registrationUUID, services: w.services)
-        #expect(model.labels[circle.id]?.count == 1)
+        #expect(model.labels[studio.id]?.count == 1)
 
         await model.setPinned(before[1], true, services: w.services)
-        #expect(model.labels[circle.id]?.map(\.id) == [before[1].id],
+        #expect(model.labels[studio.id]?.map(\.id) == [before[1].id],
                 "隠したラベルが戻ってきてはならない")
     }
 
@@ -153,8 +153,8 @@ struct LabelFilterModelTests {
     @MainActor
     func selectionDropsLabelsThatDisappear() async throws {
         let (w, model) = try await Self.prepared([Self.doujin(0), Self.doujin(1)])
-        let circle = try #require(model.fields.first { $0.name == "サークル" })
-        let before = try #require(model.labels[circle.id])
+        let studio = try #require(model.fields.first { $0.name == "サークル" })
+        let before = try #require(model.labels[studio.id])
         model.toggle(before[0])
         model.toggle(before[1])
         #expect(model.selectedLabelCount == 2)
@@ -173,15 +173,15 @@ struct LabelFilterModelTests {
     func orWithinGroupAndAcrossGroups() async throws {
         // サークル値0 を 2 件（著者違い）、サークル値1 を 1 件。
         let (w, model) = try await Self.prepared([
-            Self.doujin(0, circle: 0), Self.doujin(1, circle: 0), Self.doujin(2, circle: 2),
+            Self.doujin(0, studio: 0), Self.doujin(1, studio: 0), Self.doujin(2, studio: 2),
         ])
         #expect(model.totalCount == 3)
 
-        let circle = try #require(model.fields.first { !(model.labels[$0.id] ?? []).isEmpty
+        let studio = try #require(model.fields.first { !(model.labels[$0.id] ?? []).isEmpty
             && (model.labels[$0.id] ?? []).contains { $0.name.hasPrefix("サークル値") } })
-        let circleLabels = try #require(model.labels[circle.id])
-        let circle0 = try #require(circleLabels.first { $0.name == "サークル値0" })
-        let circle2 = try #require(circleLabels.first { $0.name == "サークル値2" })
+        let studioLabels = try #require(model.labels[studio.id])
+        let circle0 = try #require(studioLabels.first { $0.name == "サークル値0" })
+        let circle2 = try #require(studioLabels.first { $0.name == "サークル値2" })
 
         model.toggle(circle0)
         await model.refreshResults(folderRelativePath: "", services: w.services)
@@ -208,10 +208,10 @@ struct LabelFilterModelTests {
             "上位/" + Self.doujin(0),
             "別の場所/" + Self.doujin(1),
         ])
-        let circle = try #require(model.fields.first { field in
+        let studio = try #require(model.fields.first { field in
             (model.labels[field.id] ?? []).contains { $0.name == "サークル値0" }
         })
-        let target = try #require(model.labels[circle.id]?.first { $0.name == "サークル値0" })
+        let target = try #require(model.labels[studio.id]?.first { $0.name == "サークル値0" })
         model.toggle(target)
         await model.refreshResults(folderRelativePath: "", services: w.services)
         // ライブラリ直下から見ると、**該当を含むフォルダ名**が残る。
@@ -238,60 +238,60 @@ struct LabelFilterModelTests {
     @Test("ピン留めが無ければ名前順で上位 10 件 [PN-03]")
     @MainActor
     func collapsedShowsTopTen() async throws {
-        let (w, model) = try await Self.prepared((0..<12).map { Self.doujin($0, circle: $0) })
+        let (w, model) = try await Self.prepared((0..<12).map { Self.doujin($0, studio: $0) })
         _ = w
-        let circle = try #require(model.fields.first { field in
+        let studio = try #require(model.fields.first { field in
             (model.labels[field.id] ?? []).count >= 12
         })
-        #expect(model.visibleLabels(in: circle).count == AppLimits.LabelFilter.collapsedLabelCount)
-        #expect(model.hasMoreLabels(in: circle))
+        #expect(model.visibleLabels(in: studio).count == AppLimits.LabelFilter.collapsedLabelCount)
+        #expect(model.hasMoreLabels(in: studio))
         // 「もっと見る」で全件 [PN-05]。
-        model.revealedFields.insert(circle.id)
-        #expect(model.visibleLabels(in: circle).count == 12)
-        #expect(!model.hasMoreLabels(in: circle))
+        model.revealedFields.insert(studio.id)
+        #expect(model.visibleLabels(in: studio).count == 12)
+        #expect(!model.hasMoreLabels(in: studio))
     }
 
     @Test("ピン留めがあればピン留めだけ [PN-02]")
     @MainActor
     func pinnedLabelsWin() async throws {
-        let (w, model) = try await Self.prepared((0..<12).map { Self.doujin($0, circle: $0) })
+        let (w, model) = try await Self.prepared((0..<12).map { Self.doujin($0, studio: $0) })
         // **件数で引かない。** 12 サークル × 12 著者を作るので件数が同じ
         // フィールドが複数あり、既定フィールドの並び [§19.2] が変わると
         // 別のフィールドを掴む（実際、著者を掴んで落ちた）。
-        let circle = try #require(model.fields.first { $0.name == "サークル" })
-        let pinned = try #require(model.labels[circle.id]?.first)
+        let studio = try #require(model.fields.first { $0.name == "サークル" })
+        let pinned = try #require(model.labels[studio.id]?.first)
         await model.setPinned(pinned, true, services: w.services)
-        #expect(model.visibleLabels(in: circle).map(\.name) == [pinned.name])
+        #expect(model.visibleLabels(in: studio).map(\.name) == [pinned.name])
     }
 
     @Test("チェック中のラベルはピン対象外でも必ず出る [PN-06]")
     @MainActor
     func checkedLabelsAlwaysVisible() async throws {
-        let (w, model) = try await Self.prepared((0..<12).map { Self.doujin($0, circle: $0) })
+        let (w, model) = try await Self.prepared((0..<12).map { Self.doujin($0, studio: $0) })
         // **件数で引かない。** 12 サークル × 12 著者を作るので件数が同じ
         // フィールドが複数あり、既定フィールドの並び [§19.2] が変わると
         // 別のフィールドを掴む（実際、著者を掴んで落ちた）。
-        let circle = try #require(model.fields.first { $0.name == "サークル" })
-        let all = try #require(model.labels[circle.id])
+        let studio = try #require(model.fields.first { $0.name == "サークル" })
+        let all = try #require(model.labels[studio.id])
         let hidden = try #require(all.last)                   // 上位 10 件の外
-        #expect(!model.visibleLabels(in: circle).contains { $0.id == hidden.id })
+        #expect(!model.visibleLabels(in: studio).contains { $0.id == hidden.id })
         model.toggle(hidden)
-        #expect(model.visibleLabels(in: circle).contains { $0.id == hidden.id })
+        #expect(model.visibleLabels(in: studio).contains { $0.id == hidden.id })
         _ = w
     }
 
     @Test("展開中はインクリメンタル検索で絞れる [PN-05]")
     @MainActor
     func revealedGroupSupportsSearch() async throws {
-        let (w, model) = try await Self.prepared((0..<12).map { Self.doujin($0, circle: $0) })
+        let (w, model) = try await Self.prepared((0..<12).map { Self.doujin($0, studio: $0) })
         _ = w
         // **件数で引かない。** 12 サークル × 12 著者を作るので件数が同じ
         // フィールドが複数あり、既定フィールドの並び [§19.2] が変わると
         // 別のフィールドを掴む（実際、著者を掴んで落ちた）。
-        let circle = try #require(model.fields.first { $0.name == "サークル" })
-        model.revealedFields.insert(circle.id)
-        model.searchText[circle.id] = "値11"
-        #expect(model.visibleLabels(in: circle).map(\.name) == ["サークル値11"])
+        let studio = try #require(model.fields.first { $0.name == "サークル" })
+        model.revealedFields.insert(studio.id)
+        model.searchText[studio.id] = "値11"
+        #expect(model.visibleLabels(in: studio).map(\.name) == ["サークル値11"])
     }
 
     // MARK: - 解除とリセット [LF-07][ST-26]

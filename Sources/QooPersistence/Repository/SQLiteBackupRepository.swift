@@ -786,7 +786,8 @@ extension SQLiteBackupRepository {
         for format in backup.volumeFormats {
             var record = VolumeFormatRecord(id: nil, libraryId: libraryID, source: format.source,
                                             priority: format.priority, isEnabled: format.isEnabled,
-                                            kind: format.kind)
+                                            kind: format.kind,
+                                            role: format.role ?? PatternRole.volume.rawValue)
             try record.insert(db)
         }
         try db.execute(sql: "DELETE FROM folderLevelMapping WHERE libraryId = ?",
@@ -900,7 +901,7 @@ extension SQLiteBackupRepository {
         for row in part.volumeFormats {
             var record = VolumeFormatRecord(id: nil, libraryId: libraryID, source: row.source,
                                             priority: row.priority, isEnabled: row.isEnabled,
-                                            kind: row.kind)
+                                            kind: row.kind, role: row.role)
             try record.insert(db)
         }
         try db.execute(sql: "DELETE FROM folderLevelMapping WHERE libraryId = ?",

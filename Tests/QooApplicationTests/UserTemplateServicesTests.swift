@@ -11,7 +11,7 @@ import Testing
 @Suite(.serialized) struct UserTemplateServicesTests {
 
     private func sample(_ name: String,
-                        format: String = "[@circle] @title") -> UserTemplate {
+                        format: String = "[@studio] @title") -> UserTemplate {
         var settings = UserTemplateSettings()
         settings.filenameFormats = [.init(source: format, isEnabled: true)]
         return UserTemplate(name: name, settings: settings)
@@ -61,7 +61,7 @@ import Testing
     @Test func importingABackupAddsMissingTemplatesWithoutTouchingLocalOnes() async throws {
         let w = try ServicesWorkspace()
         await w.bootstrap()
-        let mine = sample("手元のもの", format: "[@circle] 手元で編集した@title")
+        let mine = sample("手元のもの", format: "[@studio] 手元で編集した@title")
         try await w.services.saveUserTemplate(mine)
 
         // 別の環境で書き出された文書（手元に無いものが 1 件）。
@@ -76,7 +76,7 @@ import Testing
         #expect(all.count == 2)
         #expect(all.first { $0.id == mine.id }?.name == "手元のもの")
         #expect(all.first { $0.id == mine.id }?.settings.filenameFormats.first?.source
-                == "[@circle] 手元で編集した@title")
+                == "[@studio] 手元で編集した@title")
         #expect(all.contains { $0.name == "よそのもの" })
     }
 
@@ -174,11 +174,11 @@ import Testing
         settings.protectedTokens = [.init(pattern: #"\(完結\)"#, position: .suffix,
                                           isEnabled: true)]
         settings.seriesTitleCompositionFormat = "@series 第@volume巻"
-        settings.filenameFormats = [.init(source: "[@circle] @title", isEnabled: true)]
+        settings.filenameFormats = [.init(source: "[@studio] @title", isEnabled: true)]
         settings.volumeFormats = [.init(source: #"第(\d+)巻"#, isEnabled: true, kind: .volume)]
         settings.fields = [.init(index: 2, name: "サークル", colorHexLight: "#112233",
                                  colorHexDark: "#445566", assignsAutomatically: true)]
-        settings.semanticBindings = ["@circle": 2]
+        settings.semanticBindings = ["@studio": 2]
 
         let draft = settings.draft(displayName: "テストライブラリ")
         let id = try await w.services.enable(
@@ -190,10 +190,10 @@ import Testing
         #expect(stored.protectedTokens.map(\.pattern) == [#"\(完結\)"#])
         #expect(stored.protectedTokens.map(\.position) == [.suffix])
         #expect(stored.seriesTitleCompositionFormat == "@series 第@volume巻")
-        #expect(stored.filenameFormats.map(\.source) == ["[@circle] @title"])
+        #expect(stored.filenameFormats.map(\.source) == ["[@studio] @title"])
         #expect(stored.volumeFormats.map(\.source) == [#"第(\d+)巻"#])
         #expect(stored.fields.map(\.name) == ["サークル"])
         #expect(stored.fields.map(\.colorHexLight) == ["#112233"])
-        #expect(stored.semanticBindings == [.circle: 2])
+        #expect(stored.semanticBindings == [.studio: 2])
     }
 }

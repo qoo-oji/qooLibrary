@@ -15,7 +15,7 @@ import QooKit
 extension SQLiteManagedFileRepository {
 
     public func seriesSuggestionCandidates(libraryID: LibraryID,
-                                           circleFieldID: FieldID?) async throws
+                                           studioFieldID: FieldID?) async throws
         -> [SeriesSuggestionCandidate]
     {
         try await database.writer.read { db in
@@ -54,11 +54,11 @@ extension SQLiteManagedFileRepository {
 
             // サークルは専用列を持たずラベルとして入る [SS-02][RWI-02]。
             var circles: [Int64: [String]] = [:]
-            if let circleFieldID {
+            if let studioFieldID {
                 for start in stride(from: 0, to: ids.count, by: Self.maxBoundParameters) {
                     let chunk = Array(ids[start..<min(start + Self.maxBoundParameters,
                                                       ids.count)])
-                    var arguments: [DatabaseValueConvertible] = [circleFieldID.rawValue]
+                    var arguments: [DatabaseValueConvertible] = [studioFieldID.rawValue]
                     arguments.append(contentsOf: chunk)
                     for row in try Row.fetchAll(db, sql: """
                         SELECT fileLabel.managedFileId AS fid, label.normalizedName AS name

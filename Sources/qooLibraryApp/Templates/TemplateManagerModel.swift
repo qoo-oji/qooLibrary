@@ -48,7 +48,7 @@ final class TemplateManagerModel {
     private var baselineDraft = LibrarySettingsDraft()
     private var baselineName = ""
 
-    private var bookTypeVocabulary: [String] = []
+    private var mediaTypeVocabulary: [String] = []
 
     // MARK: - 導出
 
@@ -99,7 +99,7 @@ final class TemplateManagerModel {
         let services = LibraryServices.shared
         presets = services.presetTemplates
         userTemplates = services.userTemplates
-        bookTypeVocabulary = (try? BuiltInTemplates.bookTypes()) ?? []
+        mediaTypeVocabulary = (try? BuiltInTemplates.mediaTypes()) ?? []
         syncSelection()
     }
 
@@ -143,12 +143,12 @@ final class TemplateManagerModel {
             // あの 1 箇所に閉じたままにする。
             draft = TemplateInstantiation.draft(
                 from: template, volumeSets: volumeSets, displayName: "",
-                bookTypeVocabulary: bookTypeVocabulary)
+                mediaTypeVocabulary: mediaTypeVocabulary)
             name = template.displayName
         case .user(let id):
             guard let template = userTemplates.first(where: { $0.id == id }) else { return }
             draft = template.settings.draft(displayName: "",
-                                            bookTypeVocabulary: bookTypeVocabulary)
+                                            mediaTypeVocabulary: mediaTypeVocabulary)
             name = template.name
         case nil:
             draft = LibrarySettingsDraft()

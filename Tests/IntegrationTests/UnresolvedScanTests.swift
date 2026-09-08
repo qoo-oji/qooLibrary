@@ -73,12 +73,12 @@ struct UnresolvedScanTests {
         // 先頭が合って途中で落ちる、より近いフォーマットを足す。
         var draft = try #require(try await w.libraries.settingsDraft(libraryID: w.libraryID))
         draft.filenameFormats.append(
-            FilenameFormatDraft(source: "独自形式＿@circle＿@title（@keyword）"))
+            FilenameFormatDraft(source: "独自形式＿@studio＿@title（@keyword）"))
         try await w.libraries.updateSettings(draft, libraryID: w.libraryID)
         _ = try await w.engine.rematchUnresolved(libraryID: w.libraryID)
 
         let after = try #require(try await unresolved(w).first)
-        #expect(after.nearestFormatSource == "独自形式＿@circle＿@title（@keyword）")
+        #expect(after.nearestFormatSource == "独自形式＿@studio＿@title（@keyword）")
         #expect(after.nearestFormatSource != before.nearestFormatSource)
     }
 
@@ -109,7 +109,7 @@ struct UnresolvedScanTests {
         // 「サークル」はプリセット同人誌 の第 2 フィールド [11.4 節]。
         var draft = try #require(try await w.libraries.settingsDraft(libraryID: w.libraryID))
         draft.filenameFormats.append(
-            FilenameFormatDraft(source: "独自形式＿@circle＿@title"))
+            FilenameFormatDraft(source: "独自形式＿@studio＿@title"))
         try await w.libraries.updateSettings(draft, libraryID: w.libraryID)
 
         let outcome = try await w.engine.rematchUnresolved(libraryID: w.libraryID)
@@ -137,7 +137,7 @@ struct UnresolvedScanTests {
 
         var draft = try #require(try await w.libraries.settingsDraft(libraryID: w.libraryID))
         draft.filenameFormats.append(
-            FilenameFormatDraft(source: "独自形式＿@circle＿@title"))
+            FilenameFormatDraft(source: "独自形式＿@studio＿@title"))
         try await w.libraries.updateSettings(draft, libraryID: w.libraryID)
 
         let outcome = try await w.engine.rematchUnresolved(libraryID: w.libraryID)
@@ -172,7 +172,7 @@ struct UnresolvedScanTests {
 
         var draft = try #require(try await w.libraries.settingsDraft(libraryID: w.libraryID))
         draft.filenameFormats.append(
-            FilenameFormatDraft(source: "独自形式＿@circle＿@title"))
+            FilenameFormatDraft(source: "独自形式＿@studio＿@title"))
         try await w.libraries.updateSettings(draft, libraryID: w.libraryID)
 
         let outcome = try await w.engine.rematchUnresolved(libraryID: w.libraryID)
@@ -190,7 +190,7 @@ struct UnresolvedScanTests {
 
         var draft = try #require(try await w.libraries.settingsDraft(libraryID: w.libraryID))
         draft.filenameFormats.append(
-            FilenameFormatDraft(source: "独自形式＿@circle＿@title"))
+            FilenameFormatDraft(source: "独自形式＿@studio＿@title"))
         try await w.libraries.updateSettings(draft, libraryID: w.libraryID)
 
         _ = try await w.scanFull()

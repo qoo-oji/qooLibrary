@@ -97,11 +97,11 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
             let semantic: [SemanticKeyword: Int] = payload.semanticBindings.reduce(into: [:]) {
                 if let k = SemanticKeyword(rawValue: $1.key) { $0[k] = $1.value }
             }
-            let vocabulary = try Self.bookTypeVocabulary(
+            let vocabulary = try Self.mediaTypeVocabulary(
                 db, libraryID: libraryID.rawValue, semanticBindings: semantic)
             let context = FormatCompilationContext(
                 delimiters: payload.delimiters,
-                bookTypeVocabulary: vocabulary,
+                mediaTypeVocabulary: vocabulary,
                 semanticBindings: semantic)
 
             // 壊れたフォーマットは黙って落とす——保存時に検証済みなので通常は起こらない
@@ -122,7 +122,8 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                 .fetchAll(db)
                 .map { VolumePattern(source: $0.source, isEnabled: true,
                                      priority: $0.priority,
-                                     kind: VolumePatternKind(rawValue: $0.kind) ?? .volume) }
+                                     kind: VolumePatternKind(rawValue: $0.kind) ?? .volume,
+                                     role: PatternRole(rawValue: $0.role) ?? .volume) }
 
             var levels: [Int: FolderLevelMappingSpec.Assignment] = [:]
             for record in try FolderLevelMappingRecord
@@ -151,7 +152,7 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                 libraryID: libraryID,
                 settingsRevision: library.settingsRevision,
                 displayName: library.displayName,
-                bookTypeVocabulary: vocabulary,
+                mediaTypeVocabulary: vocabulary,
                 targetExtensions: Set(payload.targetExtensions),
                 imageExtensions: Set(payload.imageExtensions),
                 delimiters: payload.delimiters,
@@ -258,16 +259,16 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
         return try makeCustomType(db, draft: draft, basedOn: nil)
     }
 
-    /// `@booktype` の照合語彙 [TY-01]。
+    /// `@mediatype` の照合語彙 [TY-01]。
     ///
     /// **プリセットが持つ本の種別 ∪ このライブラリの「本の種別」フィールドに
     /// 既にあるラベル。** ライブラリ固有の 1 値ではないので、設定に型名の欄が
     /// 要らない。後者があるおかげで、プリセットが知らない種別も**手で 1 件
     /// ラベルを付ければ次の走査から自動で拾える**——語彙が自分で育つ。
-    static func bookTypeVocabulary(_ db: Database, libraryID: Int64,
+    static func mediaTypeVocabulary(_ db: Database, libraryID: Int64,
                                    semanticBindings: [SemanticKeyword: Int]) throws -> [String] {
         var names = Set(builtInBookTypes)
-        if let index = semanticBindings[.bookType] {
+        if let index = semanticBindings[.mediaType] {
             names.formUnion(try String.fetchAll(db, sql: """
                 SELECT DISTINCT label.name FROM label
                   JOIN labelGroup ON label.labelGroupId = labelGroup.id
@@ -279,7 +280,7 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
 
     /// 既定語彙は**プロセスで 1 度だけ読む**——スナップショットは走査のたびに
     /// 作られるので、そのつどリソースを読み直す理由が無い。
-    private static let builtInBookTypes: [String] = (try? BuiltInTemplates.bookTypes()) ?? []
+    private static let builtInBookTypes: [String] = (try? BuiltInTemplates.mediaTypes()) ?? []
 
     /// このライブラリ専用の非プリセット型を作る [LT-02][LT-05]。
     ///
@@ -444,7 +445,7 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                 payload.semanticBindings.reduce(into: [:]) {
                     if let k = SemanticKeyword(rawValue: $1.key) { $0[k] = $1.value }
                 }
-            let vocabulary = try Self.bookTypeVocabulary(
+            let vocabulary = try Self.mediaTypeVocabulary(
                 db, libraryID: libraryID.rawValue, semanticBindings: semanticForVocabulary)
 
             let fields = try FieldRecord
@@ -470,7 +471,8 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                 .order(sql: "priority")
                 .fetchAll(db)
                 .map { VolumeFormatDraft(source: $0.source, isEnabled: $0.isEnabled,
-                                         kind: VolumePatternKind(rawValue: $0.kind) ?? .volume) }
+                                         kind: VolumePatternKind(rawValue: $0.kind) ?? .volume,
+                                         role: PatternRole(rawValue: $0.role) ?? .volume) }
 
             let levels = try FolderLevelMappingRecord
                 .filter(sql: "libraryId = ?", arguments: [libraryID.rawValue])
@@ -521,7 +523,7 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                 readsEmbeddedMetadata: payload.readsEmbeddedMetadata,
                 comicInfoVolumeSource: payload.comicInfoVolumeSource,
                 opensBookFolderWithApp: payload.opensBookFolderWithApp,   // [IF-18]
-                bookTypeVocabulary: vocabulary)
+                mediaTypeVocabulary: vocabulary)
         }
     }
 
@@ -604,7 +606,8 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
             var record = VolumeFormatRecord(id: nil, libraryId: libraryID,
                                             source: pattern.source, priority: priority,
                                             isEnabled: pattern.isEnabled,
-                                            kind: pattern.kind.rawValue)
+                                            kind: pattern.kind.rawValue,
+                                            role: pattern.role.rawValue)
             try record.insert(db)
         }
 

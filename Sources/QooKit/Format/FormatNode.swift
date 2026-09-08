@@ -10,9 +10,12 @@ import Foundation
 public enum FieldKind: Sendable, Equatable, Hashable {
     /// 自由文字列。非貪欲に伸ばす [FF-13]。
     case free
-    /// 数字表記または登録済み巻数フォーマット [TY-01][SE-24]。
-    case volume
-    /// 列挙された候補のいずれか [TY-01]。`@librarytype` / `@libraryname`。
+    /// 型付き。`role` に対応する正規表現セットで照合する [TY-01][SE-24][MF-08]。
+    ///
+    /// **`@volume` 専用ではない**——`@season` `@episode` `@date` も同じ経路を通り、
+    /// 違いは「どのセットを引くか」と「一致から何を取り出すか」だけである。
+    case pattern(PatternRole)
+    /// 列挙された候補のいずれか [TY-01]。`@mediatype`。
     case enumerated([String])
 }
 
@@ -37,7 +40,7 @@ extension FormatNode {
         case .field(_, let kind):
             switch kind {
             case .free: return false
-            case .volume, .enumerated: return true   // 型条件で終端が決まる [VD-03]
+            case .pattern, .enumerated: return true  // 型条件で終端が決まる [VD-03]
             }
         }
     }

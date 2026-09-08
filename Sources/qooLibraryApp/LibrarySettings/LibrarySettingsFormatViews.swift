@@ -474,7 +474,7 @@ struct FilenameFormatEditorDialog: View {
         var entries: [(String, String?)] = [
             ("@title", AppStrings.text("librarySettings.word.title")),
             ("@volume", AppStrings.text("librarySettings.word.volume")),
-            ("@booktype", AppStrings.text("librarySettings.word.bookType")),
+            ("@mediatype", AppStrings.text("librarySettings.word.mediaType")),
             ("@ignore", AppStrings.text("librarySettings.word.ignore")),
         ]
         // **ファイル名から参照できるフィールドだけを出す。** 束縛の無い
@@ -529,7 +529,7 @@ struct FormatMatchPreview: View {
         settings = LibrarySettingsSnapshot(
             libraryID: settings.libraryID,
             displayName: settings.displayName,
-            bookTypeVocabulary: settings.bookTypeVocabulary,
+            mediaTypeVocabulary: settings.mediaTypeVocabulary,
             targetExtensions: settings.targetExtensions,
             imageExtensions: settings.imageExtensions,
             delimiters: settings.delimiters,
@@ -606,12 +606,21 @@ struct FormatMatchPreview: View {
         case .series:      AppStrings.text("librarySettings.word.series")
         case .author:      AppStrings.text("librarySettings.word.author")
         case .volume:      AppStrings.text("librarySettings.word.volume")
-        case .bookType:    AppStrings.text("librarySettings.word.bookType")
+        case .mediaType:   AppStrings.text("librarySettings.word.mediaType")
         case .ignore:      AppStrings.text("librarySettings.word.ignore")
-        // サークル・ジャンル・イベント・キーワード [RWI-02] は**束縛先の
-        // フィールド名**を出す。構造化列を持たずラベルにしかならないので、
+        // メディア向けの 4 語 [MF-01]。`@subtitle`／`@episode`／`@date` は
+        // 構造化列だけを持ちフィールドへは束縛しない（`@title`／`@volume` の対）
+        // ので、訳語をそのまま出す。`@season` は束縛もできるが、`@series` と
+        // 同じく**構造化列のほうが本体**なので訳語を出す。
+        case .subtitle:    AppStrings.text("librarySettings.word.subtitle")
+        case .season:      AppStrings.text("librarySettings.word.season")
+        case .episode:     AppStrings.text("librarySettings.word.episode")
+        case .date:        AppStrings.text("librarySettings.word.date")
+        // スタジオ・出演・ジャンル・イベント・キーワード [RWI-02][MF-02][MF-22] は
+        // **束縛先のフィールド名**を出す。構造化列を持たずラベルにしかならないので、
         // 予約語の綴りを出すと利用者が見ている「分類の軸」と繋がらない。
-        case .circle, .event, .genre, .keyword:
+        case .studio, .actor, .event, .genre, .keyword,
+             .keyword2, .keyword3, .keyword4, .keyword5:
             fieldName(for: field, draft: draft)
                 ?? (ReservedWordTable.entries.first { $0.field == field }?.word ?? "")
         }

@@ -885,7 +885,7 @@ public final class LibraryServices {
         // 「見たものが登録される」が経路によらず成り立つ。
         let draft = TemplateInstantiation.draft(
             from: template, volumeSets: volumeSets ?? .empty, displayName: displayName,
-            bookTypeVocabulary: (try? BuiltInTemplates.bookTypes()) ?? [])
+            mediaTypeVocabulary: (try? BuiltInTemplates.mediaTypes()) ?? [])
         return try await enable(registrationUUID: uuid, displayName: displayName, url: url,
                                 bookmarkData: bookmarkData, draft: draft, template: template)
     }
@@ -1242,7 +1242,7 @@ public final class LibraryServices {
     {
         guard let repository = fileRepository else { throw ServiceError.notReady }
         let candidates = try await repository.seriesSuggestionCandidates(
-            libraryID: libraryID, circleFieldID: try await circleFieldID(libraryID: libraryID))
+            libraryID: libraryID, studioFieldID: try await studioFieldID(libraryID: libraryID))
         let ignored = Set(candidates.filter(\.isIgnored).map(\.id))
         // メインアクタを塞がない——数百 ms かかりうる純粋な計算である。
         let suggestions = await Task.detached(priority: .userInitiated) {
@@ -1251,15 +1251,15 @@ public final class LibraryServices {
         return SeriesSuggestionReport(suggestions: suggestions, ignoredFileIDs: ignored)
     }
 
-    /// `@circle` を束縛しているフィールド [SS-02][RWI-02]。
+    /// `@studio` を束縛しているフィールド [SS-02][RWI-02]。
     ///
     /// サークルは `authorName` のような専用列を持たずラベルとして入るので、
     /// 「どのフィールドがサークルか」は設定からしか分からない。束縛が無ければ
     /// `nil`（著者名だけで揃える）。
-    public func circleFieldID(libraryID: LibraryID) async throws -> FieldID? {
+    public func studioFieldID(libraryID: LibraryID) async throws -> FieldID? {
         guard let repository = libraryRepository else { throw ServiceError.notReady }
         guard let snapshot = try await repository.settingsSnapshot(libraryID: libraryID),
-              let index = snapshot.semanticBindings[.circle]
+              let index = snapshot.semanticBindings[.studio]
         else { return nil }
         return try await fields(libraryID: libraryID).first { $0.index == index }?.id
     }

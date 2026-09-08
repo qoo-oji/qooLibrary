@@ -63,13 +63,16 @@ public struct VolumeFormatDraft: Sendable, Hashable, Identifiable {
     public var isEnabled: Bool
     /// 巻数を取り出すのか、シリーズ名を切るだけなのか [VolumePatternKind]。
     public var kind: VolumePatternKind
+    /// どの予約語のためのパターンか [MF-07]。設定画面はこれで区画を分ける。
+    public var role: PatternRole
 
     public init(id: UUID = UUID(), source: String, isEnabled: Bool = true,
-                kind: VolumePatternKind = .volume) {
+                kind: VolumePatternKind = .volume, role: PatternRole = .volume) {
         self.id = id
         self.source = source
         self.isEnabled = isEnabled
         self.kind = kind
+        self.role = role
     }
 }
 
@@ -145,11 +148,11 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
     public var opensBookFolderWithApp: Bool
 
     // --- 照合の文脈（編集不可） ---
-    /// `@booktype` の照合語彙 [TY-01]。**ライブラリ固有の 1 値ではない**
+    /// `@mediatype` の照合語彙 [TY-01]。**ライブラリ固有の 1 値ではない**
     /// ——プリセットが持つ本の種別の和集合と、このライブラリの「本の種別」
     /// フィールドに既にあるラベルを合わせたもの。供給するのは永続化層で、
     /// ここは受け取るだけ（草案を編集しても語彙は動かない）。
-    public let bookTypeVocabulary: [String]
+    public let mediaTypeVocabulary: [String]
 
     public init(displayName: String = "",
                 thumbnailsAlwaysHidden: Bool = false,
@@ -167,7 +170,7 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
                 readsEmbeddedMetadata: Bool = true,
                 comicInfoVolumeSource: ComicInfoVolumeSource = .ask,
                 opensBookFolderWithApp: Bool = false,
-                bookTypeVocabulary: [String] = []) {
+                mediaTypeVocabulary: [String] = []) {
         self.displayName = displayName
         self.thumbnailsAlwaysHidden = thumbnailsAlwaysHidden
         self.duplicateGrouping = duplicateGrouping
@@ -184,7 +187,7 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
         self.readsEmbeddedMetadata = readsEmbeddedMetadata
         self.comicInfoVolumeSource = comicInfoVolumeSource
         self.opensBookFolderWithApp = opensBookFolderWithApp
-        self.bookTypeVocabulary = bookTypeVocabulary
+        self.mediaTypeVocabulary = mediaTypeVocabulary
     }
 
     // MARK: - 派生
@@ -194,7 +197,7 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
     public var compilationContext: FormatCompilationContext {
         FormatCompilationContext(delimiters: delimiters,
                                  maxFields: AppLimits.Format.maxFields,
-                                 bookTypeVocabulary: bookTypeVocabulary,
+                                 mediaTypeVocabulary: mediaTypeVocabulary,
                                  semanticBindings: semanticBindings)
     }
 
@@ -348,7 +351,7 @@ extension LibrarySettingsDraft {
                 else { addWarning(.filenameFormats, message) }
                 continue
             }
-            // 束縛の無い意味予約語も同じ壊れ方をする [RW-16][RWI-02]——`@circle`
+            // 束縛の無い意味予約語も同じ壊れ方をする [RW-16][RWI-02]——`@studio`
             // 等は構造化列を持たないので、束縛が無いと切り出した値が捨てられる。
             // **`@labelgroupN` と揃えて弾く**: 片方だけ通すと、フィールドを消した
             // 拍子に「照合は成功するのにラベルが付かない」設定が保存できてしまう。
@@ -496,13 +499,13 @@ extension LibrarySettingsDraft {
     func unboundSemanticKeywords(in source: String,
                                  keepsStructuredColumns: Bool) -> [SemanticKeyword] {
         SemanticKeyword.allCases.filter { keyword in
-            // **`@booktype` は束縛が無くても不備ではない** [TY-01、2026-09-04]。
+            // **`@mediatype` は束縛が無くても不備ではない** [TY-01、2026-09-04]。
             // 他の意味予約語と違い、**照合そのものに意味がある**（語彙に無い語で
             // 始まるファイル名を後続のフォーマットへ落とす型条件）——束縛すれば
             // 本の種別ラベルにもなる、というのが上乗せの利点にすぎない。
-            // ここを外すと、`(@booktype)` を持つ既存ライブラリが「未束縛の予約語」
+            // ここを外すと、`(@mediatype)` を持つ既存ライブラリが「未束縛の予約語」
             // として設定を一切保存できなくなる。
-            if keyword == .bookType { return false }
+            if keyword == .mediaType { return false }
             if keepsStructuredColumns, keyword.hasStructuredColumn { return false }
             guard semanticBindings[keyword] == nil else { return false }
             return source.contains(keyword.rawValue)
@@ -557,7 +560,7 @@ extension LibrarySettingsDraft {
             libraryID: libraryID,
             settingsRevision: settingsRevision,
             displayName: displayName,
-            bookTypeVocabulary: bookTypeVocabulary,
+            mediaTypeVocabulary: mediaTypeVocabulary,
             targetExtensions: Set(targetExtensions),
             imageExtensions: Set(imageExtensions),
             delimiters: delimiters,

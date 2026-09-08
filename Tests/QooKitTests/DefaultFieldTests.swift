@@ -85,7 +85,7 @@ struct DefaultFieldTests {
         let sparse = TemplateInstantiation.blankDraft(
             volumeSets: sets, displayName: "白紙", defaultFieldNames: ["著者"])
         #expect(sparse.fields.count == 6)
-        #expect(sparse.fields[1].name == "circle")
+        #expect(sparse.fields[1].name == "studio")   // [MF-23] @circle → @studio
     }
 
     /// 予約語の綴りが全フィールドで引けること。
@@ -95,8 +95,8 @@ struct DefaultFieldTests {
     /// `FieldRef` の case を教えてくれない**。ここで代わりに固定する。
     @Test("すべてのフィールドが予約語の綴りを持つ")
     func everyFieldHasASpelling() {
-        let cases: [FieldRef] = [.title, .series, .author, .circle, .event, .genre,
-                                 .keyword, .volume, .bookType]
+        let cases: [FieldRef] = [.title, .series, .author, .studio, .event, .genre,
+                                 .keyword, .volume, .mediaType]
         for field in cases {
             let word = FormatCompileError.label(field)
             #expect(word.hasPrefix("@") && word != "@?", "\(field)")
@@ -114,14 +114,14 @@ struct DefaultFieldTests {
         var draft = TemplateInstantiation.blankDraft(
             volumeSets: sets, displayName: "L",
             defaultFieldNames: ["著者", "サークル", "ジャンル", "イベント", "キーワード", "本の種別"])
-        draft.filenameFormats = [FilenameFormatDraft(source: "[@circle] @title")]
+        draft.filenameFormats = [FilenameFormatDraft(source: "[@studio] @title")]
         #expect(draft.validationErrors.isEmpty)             // 束縛があるうちは通る
 
         // キーワードのフィールドを消す＝束縛が外れる。
         let keywordIndex = try #require(draft.semanticBindings[.keyword])
         draft.fields.removeAll { $0.index == keywordIndex }
         draft.semanticBindings[.keyword] = nil
-        draft.filenameFormats = [FilenameFormatDraft(source: "[@circle] @title [@keyword]")]
+        draft.filenameFormats = [FilenameFormatDraft(source: "[@studio] @title [@keyword]")]
         #expect(!draft.validationErrors.isEmpty)
 
         // 構造化列を持つ `@series` / `@author` は束縛が無くても通る [RW-16]
@@ -149,8 +149,8 @@ struct DefaultFieldTests {
         // 対応表にも載っていない（パレットにも出ない）。
         let words = Set(ReservedWordTable.entries.map(\.word))
         #expect(!words.contains("@libraryname"))
-        #expect(!words.contains("@librarytype"))     // → @booktype へ改名
-        #expect(words.contains("@booktype"))
+        #expect(!words.contains("@librarytype"))     // → @mediatype へ改名
+        #expect(words.contains("@mediatype"))
         #expect(!words.contains { $0.hasPrefix("@labelgroup") })
     }
 
@@ -166,12 +166,12 @@ struct DefaultFieldTests {
     }
 
     /// 新しい予約語で切り出した値が、束縛先のフィールドへラベルとして流れる。
-    @Test("@circle・@event・@genre・@keyword がラベルになる [RWI-02]")
+    @Test("@studio・@event・@genre・@keyword がラベルになる [RWI-02]")
     func newKeywordsFlowIntoLabels() throws {
-        let bindings: [SemanticKeyword: Int] = [.author: 1, .circle: 2, .genre: 3,
+        let bindings: [SemanticKeyword: Int] = [.author: 1, .studio: 2, .genre: 3,
                                                 .event: 4, .keyword: 5]
         let settings = try snapshot(
-            "(@event) [@circle (@author)] @title (@genre) [@keyword]", bindings: bindings)
+            "(@event) [@studio (@author)] @title (@genre) [@keyword]", bindings: bindings)
         let outcome = FilenameParser().parse(
             "(C99) [サークルA (著者A)] 作品X (ジャンルA) [キーワードA]",
             settings: settings)
@@ -191,7 +191,7 @@ struct DefaultFieldTests {
     /// どのフィールドへ入れるかが決まっていないので落とす。
     @Test("束縛の無い予約語はラベルにならない [RW-16]")
     func unboundKeywordsProduceNoLabels() throws {
-        let settings = try snapshot("[@circle] @title", bindings: [:])
+        let settings = try snapshot("[@studio] @title", bindings: [:])
         let result = try #require(FilenameParser().parse("[サークルA] 作品X", settings: settings))
         let parsed = FieldPostProcessor.postProcess(result, settings: settings)
         #expect(parsed.labelValues.isEmpty)
@@ -213,7 +213,7 @@ struct DefaultFieldTests {
         draft.filenameFormats = [FilenameFormatDraft(source: "@title")]
 
         // 束縛があるうちは通る
-        draft.folderLevels = [FolderLevelDraft(level: 1, assignment: .format(source: "[@author] @circle"))]
+        draft.folderLevels = [FolderLevelDraft(level: 1, assignment: .format(source: "[@author] @studio"))]
         #expect(draft.validationErrors.isEmpty)
 
         // ファイル名では通る書き方（構造化列があるので照合専用が正当）
@@ -223,13 +223,13 @@ struct DefaultFieldTests {
         #expect(draft.validationErrors.isEmpty)
 
         // 同じ書き方をフォルダ名でやると弾かれる
-        draft.folderLevels = [FolderLevelDraft(level: 1, assignment: .format(source: "[@author] @circle"))]
+        draft.folderLevels = [FolderLevelDraft(level: 1, assignment: .format(source: "[@author] @studio"))]
         #expect(!draft.validationErrors.isEmpty)
     }
 
     /// フォルダ名フォーマットでも予約語がラベルになる [RW-17]。
     ///
-    /// **ファイル名側と揃っていること**が要点——揃っていないと、同じ `@circle`
+    /// **ファイル名側と揃っていること**が要点——揃っていないと、同じ `@studio`
     /// がファイル名では効いてフォルダ名では黙って捨てられる。
     @Test("フォルダ名フォーマットの予約語もラベルになる [RW-17]")
     func folderFormatsAlsoProduceSemanticLabels() throws {

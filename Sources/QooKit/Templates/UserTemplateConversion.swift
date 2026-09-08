@@ -36,7 +36,8 @@ extension UserTemplateSettings {
                 FilenameFormat(source: $0.source, isEnabled: $0.isEnabled)
             },
             volumeFormats: draft.volumeFormats.map {
-                VolumeFormat(source: $0.source, isEnabled: $0.isEnabled, kind: $0.kind)
+                VolumeFormat(source: $0.source, isEnabled: $0.isEnabled,
+                             kind: $0.kind, role: $0.role)
             },
             folderLevels: draft.folderLevels.map { level in
                 switch level.assignment {
@@ -58,7 +59,7 @@ extension UserTemplateSettings {
     ///
     /// - Parameters:
     ///   - displayName: 登録先のフォルダ名 [RG3-31]。テンプレートは持たない。
-    ///   - bookTypeVocabulary: `@booktype` の照合語彙 [TY-01]。プリセットの
+    ///   - mediaTypeVocabulary: `@mediatype` の照合語彙 [TY-01]。プリセットの
     ///     本の種別 ∪ このライブラリの「本の種別」ラベル。
     ///
     /// **未知の予約語は読み飛ばす**——撤去された `@labelgroupN` / `@libraryname`
@@ -68,7 +69,7 @@ extension UserTemplateSettings {
     /// **階層は番号順に並べる**——辞書由来ではないので順序は保たれるが、
     /// 取り込んだ文書が順不同なことはありうる（`draft(from:)` と同じ理由）。
     public func draft(displayName: String,
-                      bookTypeVocabulary: [String] = []) -> LibrarySettingsDraft {
+                      mediaTypeVocabulary: [String] = []) -> LibrarySettingsDraft {
         LibrarySettingsDraft(
             displayName: displayName,
             thumbnailsAlwaysHidden: thumbnailsAlwaysHidden,
@@ -93,7 +94,8 @@ extension UserTemplateSettings {
                 FilenameFormatDraft(source: $0.source, isEnabled: $0.isEnabled)
             },
             volumeFormats: volumeFormats.map {
-                VolumeFormatDraft(source: $0.source, isEnabled: $0.isEnabled, kind: $0.kind)
+                VolumeFormatDraft(source: $0.source, isEnabled: $0.isEnabled,
+                                  kind: $0.kind, role: $0.role)
             },
             folderLevels: folderLevels
                 .sorted { $0.level < $1.level }
@@ -118,7 +120,7 @@ extension UserTemplateSettings {
             readsEmbeddedMetadata: readsEmbeddedMetadata,
             comicInfoVolumeSource: comicInfoVolumeSource,
             opensBookFolderWithApp: opensBookFolderWithApp,
-            bookTypeVocabulary: bookTypeVocabulary)
+            mediaTypeVocabulary: mediaTypeVocabulary)
     }
 }
 

@@ -18,8 +18,12 @@ enum ManagedFileSearchKey {
     ///
     /// - Parameter stem: 拡張子を除いたファイル名（`FileSnapshot.nameWithoutExtension`
     ///   と**同じ導出**であること。食い違うと走査と手動編集で別の鍵が入る）。
-    static func make(stem: String, title: String?, seriesName: String?) -> String {
-        TextNormalizer.searchKey(joining: [stem, title, seriesName])
+    static func make(stem: String, title: String?, seriesName: String?,
+                     subtitle: String? = nil) -> String {
+        // **サブタイトルも検索の対象にする** [MF-03][SR-03]——映像プリセットは
+        // `@title` を持たないことがあり、その場合に人が覚えているのは
+        // 「第 N 話のあの題」のほうである。
+        TextNormalizer.searchKey(joining: [stem, title, seriesName, subtitle])
     }
 
     /// ファイル名から stem を取る。`FileSnapshot.nameWithoutExtension` の写し。

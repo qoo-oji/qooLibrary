@@ -3520,6 +3520,23 @@
         }
       }
     },
+    "field.default.actor": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cast"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "出演"
+          }
+        }
+      }
+    },
     "field.default.author": {
       "extractionState": "manual",
       "localizations": {
@@ -3537,7 +3554,7 @@
         }
       }
     },
-    "field.default.bookType": {
+    "field.default.mediaType": {
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3553,7 +3570,24 @@
         }
       }
     },
-    "field.default.circle": {
+    "field.default.season": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Season"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "シーズン"
+          }
+        }
+      }
+    },
+    "field.default.studio": {
       "extractionState": "manual",
       "localizations": {
         "en": {
@@ -10516,7 +10550,41 @@
         }
       }
     },
-    "librarySettings.word.bookType": {
+    "librarySettings.word.date": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Release date"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "公開日"
+          }
+        }
+      }
+    },
+    "librarySettings.word.episode": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Episode"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "話"
+          }
+        }
+      }
+    },
+    "librarySettings.word.mediaType": {
       "extractionState": "manual",
       "localizations": {
         "en": {
@@ -10550,6 +10618,23 @@
         }
       }
     },
+    "librarySettings.word.season": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Season"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "シーズン"
+          }
+        }
+      }
+    },
     "librarySettings.word.series": {
       "extractionState": "manual",
       "localizations": {
@@ -10563,6 +10648,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "シリーズ名"
+          }
+        }
+      }
+    },
+    "librarySettings.word.subtitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subtitle"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サブタイトル"
           }
         }
       }

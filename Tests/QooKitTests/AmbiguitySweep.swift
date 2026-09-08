@@ -133,8 +133,12 @@ enum ParseEnumerator {
                 }
             }
 
-        case .field(let ref, .volume):
-            for candidate in VolumeMatcher.matches(in: input.folded, at: ii, patterns: patterns)
+        case .field(let ref, .pattern(let role)):
+            // **本番（`FormatMatcher`）と同じ順序で列挙すること。** 第 1 解が
+            // 本番の答えと一致することを掃引が全件で突き合わせている。
+            for candidate in VolumeMatcher.matches(in: input.folded, at: ii,
+                                                   patterns: patterns, role: role,
+                                                   includeBareDigits: role.allowsBareDigits)
             where candidate.range.upperBound <= hi && out.count < limit {
                 out += rest(candidate.range.upperBound,
                             prefix: [Binding(field: ref, range: candidate.range,
@@ -208,13 +212,13 @@ enum Adversary: String, CaseIterable {
     case unbalanced    = "開き括弧だけを含む"
     case closeOnly     = "閉じ括弧だけを含む"
     case volumeLike    = "巻数に見える語を含む"
-    case bookTypeLike  = "列挙値そのもの"
+    case mediaTypeLike  = "列挙値そのもの"
     case doubledSpace  = "空白が連続する"
     /// 既定の保護文字列に当たる形 [PT-01]。`(仮)` と違い**守られるはず**——
     /// この 2 つの対比が、保護文字列が曖昧性の逃げ道として効いていることの実証になる。
     case protectedPair = "保護文字列の対を含む"
 
-    func value(base: String, bookType: String) -> String {
+    func value(base: String, mediaType: String) -> String {
         switch self {
         case .baseline:     return base
         case .separator:    return "\(base) - 続編"
@@ -222,7 +226,7 @@ enum Adversary: String, CaseIterable {
         case .unbalanced:   return "\(base) (未完"
         case .closeOnly:    return "\(base)) 続き"
         case .volumeLike:   return "\(base) 第02巻"
-        case .bookTypeLike: return bookType
+        case .mediaTypeLike: return mediaType
         case .doubledSpace: return "\(base)  空白"
         case .protectedPair: return "\(base) (完全版)"
         }
@@ -264,7 +268,7 @@ enum AmbiguitySweep {
         for preset in presets {
             let settings = try TemplateInstantiation.snapshot(
                 from: preset, volumeSets: volumeSets, libraryID: LibraryID(rawValue: 1),
-                bookTypeVocabulary: typeNames)
+                mediaTypeVocabulary: typeNames)
 
             for (index, compiled) in settings.filenameFormats.enumerated() {
                 let source = preset.filenameFormats[index]
@@ -337,14 +341,14 @@ enum AmbiguitySweep {
         "@title - @author - @keyword",
         "@series @volume",
         "@title @volume [@keyword]",
-        "[@circle] @title @volume",
+        "[@studio] @title @volume",
         "@ignore - @title",
-        "[@circle [@author]] @title",
-        "(@booktype) @title",
+        "[@studio [@author]] @title",
+        "(@mediatype) @title",
         "@title (@genre) (@keyword)",
-        "[@circle] - @title",
+        "[@studio] - @title",
         "@title _ @author",
-        "[@circle] @title (@genre)",
+        "[@studio] @title (@genre)",
     ]
 
     static func runSynthetic() throws -> [SweepObservation] {
@@ -356,7 +360,7 @@ enum AmbiguitySweep {
         let patterns = richest.flatMap { volumeSets.patterns(named: $0) } ?? []
         let compiledPatterns = VolumePatternCompiler.compileAll(patterns)
         let context = FormatCompilationContext(delimiters: .default, maxFields: 10,
-                                               bookTypeVocabulary: typeNames,
+                                               mediaTypeVocabulary: typeNames,
                                                semanticBindings: [:])
         guard let preset = presets.first else { return [] }
         var out: [SweepObservation] = []
@@ -430,7 +434,7 @@ enum AmbiguitySweep {
         for ref in format.fieldOrder {
             let base = baseValue(ref, preset: preset)
             if ref == target {
-                out[ref] = adversary.value(base: base, bookType: preset.libraryTypeName)
+                out[ref] = adversary.value(base: base, mediaType: preset.libraryTypeName)
             } else {
                 out[ref] = base
             }
@@ -444,13 +448,23 @@ enum AmbiguitySweep {
         case .title:    return "題名"
         case .series:   return "叢書"
         case .author:   return "著者"
-        case .circle:   return "集団"
+        case .studio:   return "集団"
         case .event:    return "催事"
         case .genre:    return "分野"
         case .keyword:  return "鍵語"
-        case .bookType: return preset.libraryTypeName
+        case .mediaType: return preset.libraryTypeName
         case .volume:   return "01"
         case .ignore:   return "無視"
+        // メディア向け [MF-01〜]。掃引の標本には現れないが、網羅性のために置く。
+        case .actor:    return "出演"
+        case .season:   return "01"
+        case .episode:  return "01"
+        case .subtitle: return "副題"
+        case .date:     return "2024"
+        case .keyword2: return "軸二"
+        case .keyword3: return "軸三"
+        case .keyword4: return "軸四"
+        case .keyword5: return "軸五"
         }
     }
 
@@ -609,7 +623,7 @@ struct AmbiguityEnumeratorTests {
 
     private func context(semantic: [SemanticKeyword: Int] = [:]) -> FormatCompilationContext {
         FormatCompilationContext(delimiters: .default, maxFields: 10,
-                                 bookTypeVocabulary: [], semanticBindings: semantic)
+                                 mediaTypeVocabulary: [], semanticBindings: semantic)
     }
 
     @Test("区切りで挟んだ自由文字列は多重解になり、列挙器はそれを数える")

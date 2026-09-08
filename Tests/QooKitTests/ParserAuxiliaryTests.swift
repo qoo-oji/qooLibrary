@@ -8,9 +8,9 @@ struct ParseAllTests {
 
     @Test("一致したフォーマットすべての結果を返す")
     func returnsEveryMatch() throws {
-        let s = try settings(formats: ["[@circle] @title (@keyword)",
-                                       "[@circle] @title",
-                                       "(@circle) @title"])
+        let s = try settings(formats: ["[@studio] @title (@keyword)",
+                                       "[@studio] @title",
+                                       "(@studio) @title"])
         let all = parser.parseAll("[著者] タイトル (タグ)", settings: s)
         #expect(all.count == 2)                      // 3 番目は丸括弧始まりなので不一致
         #expect(all[0].fields[.keyword]?.text == "タグ")
@@ -19,7 +19,7 @@ struct ParseAllTests {
 
     @Test("どれにも一致しなければ空を返す")
     func noMatches() throws {
-        let s = try settings(formats: ["[@circle] @title"])
+        let s = try settings(formats: ["[@studio] @title"])
         #expect(parser.parseAll("括弧のない名前", settings: s).isEmpty)
     }
 }
@@ -31,8 +31,8 @@ struct NearestFormatTests {
     @Test("照合が最も進んだフォーマットを返す")
     func picksFurthest() throws {
         let s = try settings(formats: [
-            "(@event) [@circle] @title",   // 先頭で落ちる
-            "[@circle] @title (@keyword)",   // 末尾まで進むが最後で落ちる
+            "(@event) [@studio] @title",   // 先頭で落ちる
+            "[@studio] @title (@keyword)",   // 末尾まで進むが最後で落ちる
         ])
         let near = try #require(parser.nearestFormat("[著者] タイトル", settings: s))
         #expect(near.formatID == s.filenameFormats[1].id)
@@ -51,7 +51,7 @@ struct NearestFormatTests {
     @Test("要素数が第一キー: 自由文字列で始まるフォーマットに引きずられない [UR2-05]")
     func satisfiedNodesBeatSaturatedReach() throws {
         let s = try settings(formats: ["@title (@genre)",              // 先頭が自由文字列
-                                       "[@circle] @title (@genre)"])  // 構造が深く進む
+                                       "[@studio] @title (@genre)"])  // 構造が深く進む
         // 閉じ括弧が欠けた名前（実コーパスに実在する形）。どちらも最後で落ちる。
         let input = "[サークル] 作品名 (ジャンル"
         // 前提: どちらも一致しない。
@@ -69,7 +69,7 @@ struct NearestFormatTests {
 
     @Test("1 要素も満たさないフォーマットは候補にしない [UR2-05]")
     func formatsThatMatchNothingAreNotCandidates() throws {
-        let s = try settings(formats: ["(@booktype) @title", "[@circle] @title"])
+        let s = try settings(formats: ["(@mediatype) @title", "[@studio] @title"])
         // どちらも先頭の括弧すら合わない。**登録順の先頭を無条件に選ばない。**
         #expect(parser.nearestFormat("作品名だけ", settings: s) == nil)
     }
@@ -79,7 +79,7 @@ struct NearestFormatTests {
     @Test("括弧の中は数えない（グループ全体で 1 要素）[UR2-05]")
     func nestedNodesDoNotInflateTheCount() throws {
         // 括弧の**中**のほうが要素数が多い形にする——数えてしまえば 3 を超える。
-        let s = try settings(formats: ["[@circle (@author) @keyword] @title"])
+        let s = try settings(formats: ["[@studio (@author) @keyword] @title"])
         let format = s.filenameFormats[0]
         #expect(format.nodes.count == 3)          // group / 空白 / @title
         let outcome = FormatMatcher.match(
@@ -96,8 +96,8 @@ struct NearestFormatTests {
     /// この検査は空振りする（変異検証で判明）。
     @Test("一致したときは推定しない")
     func noNearestWhenMatched() throws {
-        let s = try settings(formats: ["[@circle] @title (@genre)",  // 惜しいが落ちる
-                                       "[@circle] @title"])          // 当たる
+        let s = try settings(formats: ["[@studio] @title (@genre)",  // 惜しいが落ちる
+                                       "[@studio] @title"])          // 当たる
         // 前提: 1 本目は候補として拾われる形である。
         #expect(parser.nearestFormat("[サークル]", settings: s) != nil)
 
@@ -112,7 +112,7 @@ struct NearestFormatTests {
     /// ［code-review の指摘、実測で確認］。
     @Test("1 文字も進んでいないものは候補にしない [UR2-05]")
     func zeroWidthProgressIsNotACandidate() throws {
-        let s = try settings(formats: [" [@circle] @title"])   // 先頭が弾力的空白
+        let s = try settings(formats: [" [@studio] @title"])   // 先頭が弾力的空白
         let format = s.filenameFormats[0]
         let outcome = FormatMatcher.match(
             format, input: ProtectedTokenMasker.mask("zzz", tokens: []),
@@ -127,7 +127,7 @@ struct NearestFormatTests {
     /// 途中で止めた走査の到達点は「どこまで筋が通ったか」を表さない [MT2-02]。
     @Test("探索を打ち切ったフォーマットは候補にしない [UR2-05][MT2-02]")
     func abandonedSearchIsNotACandidate() throws {
-        let s = try settings(formats: ["[@circle] @title"])
+        let s = try settings(formats: ["[@studio] @title"])
         let format = s.filenameFormats[0]
         let input = ProtectedTokenMasker.mask("[サークル] 作品名", tokens: [])
         let abandoned = MatchOutcome(result: nil, furthestIndex: 9, satisfiedNodes: 3,
@@ -144,7 +144,7 @@ struct NearestFormatTests {
     @Test("到達位置は原文の添字で返る（保護文字列でマスクしても）[UR2-05][PT-03]")
     func reachIsInOriginalCoordinates() throws {
         let token = ProtectedToken(pattern: #"\(完全版\)"#)
-        let s = try settings(formats: ["[@circle] @title (@genre)"],
+        let s = try settings(formats: ["[@studio] @title (@genre)"],
                              protectedTokens: [token])
         // `(完全版)` は 5 文字だがマスク後は 1 文字。原文で数えれば 15 文字目まで進む。
         let near = try #require(parser.nearestFormat("[サークル] 作品名(完全版)",
@@ -157,10 +157,10 @@ struct NearestFormatTests {
 struct ParseResultHelpersTests {
     @Test("意味予約語で切り出した値が取り出せる [RWI-02]")
     func semanticFieldValues() throws {
-        let s = try settings(formats: ["[@circle] @title (@keyword)"])
+        let s = try settings(formats: ["[@studio] @title (@keyword)"])
         let r = try #require(FilenameParser().parse("[サークル] タイトル (タグ)",
                                                      settings: s))
-        #expect(r.fields[.circle]?.text == "サークル")
+        #expect(r.fields[.studio]?.text == "サークル")
         #expect(r.fields[.keyword]?.text == "タグ")
         #expect(r.fields[.title]?.text == "タイトル")
     }
@@ -170,35 +170,37 @@ struct ParseResultHelpersTests {
         #expect(FieldRef.title.isFreeText)
         #expect(FieldRef.series.isFreeText)
         #expect(FieldRef.author.isFreeText)
-        #expect(FieldRef.circle.isFreeText)
+        #expect(FieldRef.studio.isFreeText)
         #expect(FieldRef.ignore(0).isFreeText)
         #expect(!FieldRef.volume.isFreeText)
-        #expect(!FieldRef.bookType.isFreeText)
+        #expect(!FieldRef.mediaType.isFreeText)
 
         // 抽出値を捨てるもの [RW-02][RW-04]
         #expect(FieldRef.ignore(0).discardsValue)
-        // **`@booktype` は捨てない** [TY-01、2026-09-04]——照合した値は
+        // **`@mediatype` は捨てない** [TY-01、2026-09-04]——照合した値は
         // 「本の種別」フィールドのラベルになり、次回以降の照合語彙にもなる。
-        #expect(!FieldRef.bookType.discardsValue)
+        #expect(!FieldRef.mediaType.discardsValue)
         #expect(!FieldRef.title.discardsValue)
         #expect(!FieldRef.volume.discardsValue)
 
         // 重複を許すのは @ignore のみ [RW-03]
         #expect(FieldRef.ignore(3).allowsDuplicates)
         #expect(!FieldRef.title.allowsDuplicates)
-        #expect(!FieldRef.circle.allowsDuplicates)
+        #expect(!FieldRef.studio.allowsDuplicates)
     }
 
     @Test("SemanticKeyword は FieldRef に対応する [RW-13]")
     func semanticKeywordMapping() {
         #expect(SemanticKeyword.series.fieldRef == .series)
         #expect(SemanticKeyword.author.fieldRef == .author)
-        #expect(SemanticKeyword.circle.fieldRef == .circle)
+        #expect(SemanticKeyword.studio.fieldRef == .studio)
         #expect(SemanticKeyword.event.fieldRef == .event)
         #expect(SemanticKeyword.genre.fieldRef == .genre)
         #expect(SemanticKeyword.keyword.fieldRef == .keyword)
-        #expect(SemanticKeyword.bookType.fieldRef == .bookType)
-        #expect(SemanticKeyword.allCases.count == 7)        // [RWI-02] 4 種 ＋ @booktype
+        #expect(SemanticKeyword.mediaType.fieldRef == .mediaType)
+        // [RWI-02] 既定 4 種 ＋ @mediatype ＋ @series ＋ メディア向け 2 種 [MF-02][MF-04]
+        // ＋ カスタム軸 4 種 [MF-22]。
+        #expect(SemanticKeyword.allCases.count == 13)
         #expect(SemanticKeyword(rawValue: "@series") == .series)
 
         // **綴りは `ReservedWordTable` から導出する。** 2 箇所に書くと、case を
@@ -209,10 +211,10 @@ struct ParseResultHelpersTests {
         }
 
         // 既定フィールド 6 種 [§19.2]。`@series` は含まない——シリーズは
-        // 構造化列であってフィールドではない。`@booktype` は**末尾に足す**
+        // 構造化列であってフィールドではない。`@mediatype` は**末尾に足す**
         // ——既定 1〜5 の番号を動かさないため。
         #expect(SemanticKeyword.defaultFields
-                == [.author, .circle, .genre, .event, .keyword, .bookType])
+                == [.author, .studio, .genre, .event, .keyword, .mediaType])
         #expect(!SemanticKeyword.defaultFields.contains(.series))
     }
 
@@ -221,14 +223,14 @@ struct ParseResultHelpersTests {
         #expect(FormatNode.literal("-").isBoundary)
         #expect(!FormatNode.literal("").isBoundary)
         #expect(!FormatNode.whitespace.isBoundary)          // 弾力的空白は境界にならない
-        #expect(FormatNode.field(.volume, kind: .volume).isBoundary)
-        #expect(FormatNode.field(.bookType, kind: .enumerated(["A"])).isBoundary)
+        #expect(FormatNode.field(.volume, kind: .pattern(.volume)).isBoundary)
+        #expect(FormatNode.field(.mediaType, kind: .enumerated(["A"])).isBoundary)
         #expect(!FormatNode.field(.title, kind: .free).isBoundary)
         #expect(FormatNode.separator(SeparatorDelimiter(canonical: "-")).isBoundary)
         #expect(FormatNode.group(PairDelimiter(open: "[", close: "]"), children: []).isBoundary)
 
         #expect(FormatNode.field(.title, kind: .free).freeFieldRef == .title)
-        #expect(FormatNode.field(.volume, kind: .volume).freeFieldRef == nil)
+        #expect(FormatNode.field(.volume, kind: .pattern(.volume)).freeFieldRef == nil)
         #expect(FormatNode.whitespace.freeFieldRef == nil)
     }
 }
@@ -304,12 +306,12 @@ struct SeparatorMatchingTests {
 
     @Test("elastic空白 + variant + elastic空白 を 1 トークンとして消費する [DL-14]")
     func separatorConsumesSurroundingSpace() throws {
-        let s = try separatorSettings(["@series-@circle"])
+        let s = try separatorSettings(["@series-@studio"])
         for input in ["シリーズ名-著者名", "シリーズ名 - 著者名", "シリーズ名　－　著者名"] {
             let r = try #require(parser.parse(input, settings: s),
                                  "一致しない: \(input)")
             #expect(r.fields[.series]?.text == "シリーズ名")
-            #expect(r.fields[.circle]?.text == "著者名")
+            #expect(r.fields[.studio]?.text == "著者名")
         }
     }
 
@@ -321,12 +323,12 @@ struct SeparatorMatchingTests {
                                      PairDelimiter(open: "(", close: ")")],
                              separators: [sep])
         let volume = VolumePatternCompiler.compileAll([VolumePattern(source: "??")])
-        let s = try settings(formats: ["@series（@volume）-@circle"],
+        let s = try settings(formats: ["@series（@volume）-@studio"],
                              volume: volume, delimiters: d)
         let r = try #require(parser.parse("作品タイトル（１２） - 著者名",
                                           settings: s))
         #expect(r.fields[.series]?.text == "作品タイトル")
         #expect(r.fields[.volume]?.volume?.number == 12)
-        #expect(r.fields[.circle]?.text == "著者名")
+        #expect(r.fields[.studio]?.text == "著者名")
     }
 }

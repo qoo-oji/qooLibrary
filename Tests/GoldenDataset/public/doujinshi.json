@@ -7,10 +7,10 @@
       "expected" : {
         "fields" : {
           "@author" : "著者0",
-          "@booktype" : "同人誌",
-          "@circle" : "サークル値0",
           "@genre" : "ジャンル値0",
           "@keyword" : "キーワード値0",
+          "@mediatype" : "同人誌",
+          "@studio" : "サークル値0",
           "@title" : "作品タイトル0 第01巻"
         },
         "formatIndex" : 0,
@@ -33,9 +33,9 @@
       "expected" : {
         "fields" : {
           "@author" : "著者1",
-          "@booktype" : "同人誌",
-          "@circle" : "サークル値1",
           "@genre" : "ジャンル値1",
+          "@mediatype" : "同人誌",
+          "@studio" : "サークル値1",
           "@title" : "作品 タイトル 1 vol.2"
         },
         "formatIndex" : 1,
@@ -58,9 +58,9 @@
       "expected" : {
         "fields" : {
           "@author" : "著者2",
-          "@booktype" : "同人誌",
-          "@circle" : "サークル値2",
           "@keyword" : "キーワード値2",
+          "@mediatype" : "同人誌",
+          "@studio" : "サークル値2",
           "@title" : "作品タイトル2ー長音 上巻"
         },
         "formatIndex" : 2,
@@ -81,8 +81,8 @@
       "expected" : {
         "fields" : {
           "@author" : "著者3",
-          "@booktype" : "同人誌",
-          "@circle" : "サークル値3",
+          "@mediatype" : "同人誌",
+          "@studio" : "サークル値3",
           "@title" : "作品タイトル3"
         },
         "formatIndex" : 3,
@@ -101,10 +101,10 @@
       },
       "expected" : {
         "fields" : {
-          "@booktype" : "同人誌",
-          "@circle" : "サークル値4",
           "@genre" : "ジャンル値4",
           "@keyword" : "キーワード値4",
+          "@mediatype" : "同人誌",
+          "@studio" : "サークル値4",
           "@title" : "サブタイトル付き作品4 第05巻"
         },
         "formatIndex" : 4,
@@ -126,9 +126,9 @@
       },
       "expected" : {
         "fields" : {
-          "@booktype" : "同人誌",
-          "@circle" : "サークル値5",
           "@genre" : "ジャンル値5",
+          "@mediatype" : "同人誌",
+          "@studio" : "サークル値5",
           "@title" : "作品タイトル5 vol.6"
         },
         "formatIndex" : 5,
@@ -150,9 +150,9 @@
       },
       "expected" : {
         "fields" : {
-          "@booktype" : "同人誌",
-          "@circle" : "サークル値6",
           "@keyword" : "キーワード値6",
+          "@mediatype" : "同人誌",
+          "@studio" : "サークル値6",
           "@title" : "作品 タイトル 6 上巻"
         },
         "formatIndex" : 6,
@@ -172,8 +172,8 @@
       },
       "expected" : {
         "fields" : {
-          "@booktype" : "同人誌",
-          "@circle" : "サークル値7",
+          "@mediatype" : "同人誌",
+          "@studio" : "サークル値7",
           "@title" : "作品タイトル7ー長音"
         },
         "formatIndex" : 7,
@@ -193,10 +193,10 @@
       "expected" : {
         "fields" : {
           "@author" : "著者8",
-          "@circle" : "サークル値8",
           "@event" : "イベント値8",
           "@genre" : "ジャンル値8",
           "@keyword" : "キーワード値8",
+          "@studio" : "サークル値8",
           "@title" : "作品タイトル8 第09巻"
         },
         "formatIndex" : 8,
@@ -219,9 +219,9 @@
       "expected" : {
         "fields" : {
           "@author" : "著者9",
-          "@circle" : "サークル値9",
           "@event" : "イベント値9",
           "@genre" : "ジャンル値9",
+          "@studio" : "サークル値9",
           "@title" : "サブタイトル付き作品9 vol.10"
         },
         "formatIndex" : 9,
@@ -244,9 +244,9 @@
       "expected" : {
         "fields" : {
           "@author" : "著者10",
-          "@circle" : "サークル値10",
           "@event" : "イベント値10",
           "@keyword" : "キーワード値10",
+          "@studio" : "サークル値10",
           "@title" : "作品タイトル10 上巻"
         },
         "formatIndex" : 10,
@@ -267,8 +267,8 @@
       "expected" : {
         "fields" : {
           "@author" : "著者11",
-          "@circle" : "サークル値11",
           "@event" : "イベント値11",
+          "@studio" : "サークル値11",
           "@title" : "作品 タイトル 11"
         },
         "formatIndex" : 11,
@@ -287,10 +287,10 @@
       },
       "expected" : {
         "fields" : {
-          "@circle" : "サークル値12",
           "@event" : "イベント値12",
           "@genre" : "ジャンル値12",
           "@keyword" : "キーワード値12",
+          "@studio" : "サークル値12",
           "@title" : "作品タイトル12ー長音 第13巻"
         },
         "formatIndex" : 12,
@@ -312,9 +312,9 @@
       },
       "expected" : {
         "fields" : {
-          "@circle" : "サークル値13",
           "@event" : "イベント値13",
           "@genre" : "ジャンル値13",
+          "@studio" : "サークル値13",
           "@title" : "作品タイトル13 vol.14"
         },
         "formatIndex" : 13,
@@ -336,9 +336,9 @@
       },
       "expected" : {
         "fields" : {
-          "@circle" : "サークル値14",
           "@event" : "イベント値14",
           "@keyword" : "キーワード値14",
+          "@studio" : "サークル値14",
           "@title" : "サブタイトル付き作品14 上巻"
         },
         "formatIndex" : 14,
@@ -358,8 +358,8 @@
       },
       "expected" : {
         "fields" : {
-          "@circle" : "サークル値15",
           "@event" : "イベント値15",
+          "@studio" : "サークル値15",
           "@title" : "作品タイトル15"
         },
         "formatIndex" : 15,
@@ -378,9 +378,9 @@
       },
       "expected" : {
         "fields" : {
-          "@circle" : "サークル値16",
           "@genre" : "ジャンル値16",
           "@keyword" : "キーワード値16",
+          "@studio" : "サークル値16",
           "@title" : "作品 タイトル 16 第17巻"
         },
         "formatIndex" : 16,
@@ -402,8 +402,8 @@
       },
       "expected" : {
         "fields" : {
-          "@circle" : "サークル値17",
           "@genre" : "ジャンル値17",
+          "@studio" : "サークル値17",
           "@title" : "作品タイトル17ー長音 vol.18"
         },
         "formatIndex" : 17,
@@ -425,8 +425,8 @@
       },
       "expected" : {
         "fields" : {
-          "@circle" : "サークル値18",
           "@keyword" : "キーワード値18",
+          "@studio" : "サークル値18",
           "@title" : "作品タイトル18 上巻"
         },
         "formatIndex" : 18,
@@ -446,7 +446,7 @@
       },
       "expected" : {
         "fields" : {
-          "@circle" : "サークル値19",
+          "@studio" : "サークル値19",
           "@title" : "サブタイトル付き作品19"
         },
         "formatIndex" : 19,
@@ -466,10 +466,10 @@
       "expected" : {
         "fields" : {
           "@author" : "著者20",
-          "@booktype" : "同人誌",
-          "@circle" : "サークル値20",
           "@genre" : "ジャンル値20",
           "@keyword" : "キーワード値20",
+          "@mediatype" : "同人誌",
+          "@studio" : "サークル値20",
           "@title" : "作品タイトル20 第21巻"
         },
         "formatIndex" : 0,
@@ -492,9 +492,9 @@
       "expected" : {
         "fields" : {
           "@author" : "著者21",
-          "@booktype" : "同人誌",
-          "@circle" : "サークル値21",
           "@genre" : "ジャンル値21",
+          "@mediatype" : "同人誌",
+          "@studio" : "サークル値21",
           "@title" : "作品 タイトル 21 vol.22"
         },
         "formatIndex" : 1,

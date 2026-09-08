@@ -10,18 +10,31 @@ public struct ParsedFileFields: Sendable {
     public let seriesName: String?
     public let volume: VolumeValue
     public let authorName: String?
+    /// [MF-03] サブタイトル。ラベルにはしない（本ごとの値）。
+    public let subtitle: String?
+    /// [MF-04] シーズン。**明示の `@season` が `@episode` の暗黙より優先** [MF-06]。
+    public let season: Double?
+    /// [MF-05] 話数。
+    public let episode: Double?
+    /// [MF-19] 公開日。**ISO 8601 の部分形**（`2024` / `2024-01` / `2024-01-15`）。
+    public let releaseDate: String?
     /// ラベルグループ番号 → 付与する値。セマンティック予約語ぶんも畳み込み済み。
     public let labelValues: [Int: [String]]
     public let spans: [FieldSpan]
 
     public init(matchedFormatID: UUID, title: String?, seriesName: String?,
                 volume: VolumeValue, authorName: String?, labelValues: [Int: [String]],
-                spans: [FieldSpan]) {
+                spans: [FieldSpan], subtitle: String? = nil, season: Double? = nil,
+                episode: Double? = nil, releaseDate: String? = nil) {
         self.matchedFormatID = matchedFormatID
         self.title = title
         self.seriesName = seriesName
         self.volume = volume
         self.authorName = authorName
+        self.subtitle = subtitle
+        self.season = season
+        self.episode = episode
+        self.releaseDate = releaseDate
         self.labelValues = labelValues
         self.spans = spans
     }
@@ -68,7 +81,7 @@ public enum FieldPostProcessor {
         //
         // **予約語ごとに分岐を書かない。** 書くと、予約語を足したときに
         // ここへ足し忘れて「フォーマットには書けるのにラベルが付かない」という
-        // 静かな壊れ方をする（`@circle` を足した最初の版で実際に踏みかけた）。
+        // 静かな壊れ方をする（`@studio` を足した最初の版で実際に踏みかけた）。
         //
         // 列挙は `allCases` の順で回す——辞書の列挙順は不定で、そのまま使うと
         // 同じ入力でもラベルの並びが実行ごとに変わりうる。
@@ -82,6 +95,15 @@ public enum FieldPostProcessor {
             labels[group, default: []].append(value)
         }
 
+        // メディア向けの 4 値 [MF-03〜06][MF-19]。
+        //
+        // **`@season` は 2 つの出どころを持つ** [MF-06]——明示の `@season` と、
+        // `@episode` のパターンが `(?<season>…)` で同時に読んだ値（`S01E01` 形）。
+        // **明示が暗黙に勝つ**：利用者がフォーマットに `@season` と書いたなら、
+        // それが答えである。
+        let episodeField = result.fields[.episode]
+        let season = result.fields[.season]?.volume?.number ?? episodeField?.impliedSeason
+
         return ParsedFileFields(
             matchedFormatID: result.matchedFormatID,
             title: title,
@@ -89,6 +111,10 @@ public enum FieldPostProcessor {
             volume: volume,
             authorName: authorName,
             labelValues: labels,
-            spans: result.spans)
+            spans: result.spans,
+            subtitle: result.fields[.subtitle]?.text,
+            season: season,
+            episode: episodeField?.volume?.number,
+            releaseDate: result.fields[.date]?.date)
     }
 }

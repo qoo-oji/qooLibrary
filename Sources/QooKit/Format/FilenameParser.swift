@@ -8,7 +8,7 @@ import Foundation
 /// **比較は「満たした要素の数 → 到達位置」の順**［ユーザー判断、2026-09-01］。
 /// 要件の文言は「照合が最も進んだ入力位置が最大のもの」だったが、実測すると
 /// その指標は**飽和する**——自由文字列フィールドに入った時点で走査位置が入力の
-/// 末尾へ届くため、`@title (@genre)` と `[@circle] @title @volume` がどちらも
+/// 末尾へ届くため、`@title (@genre)` と `[@studio] @title @volume` がどちらも
 /// 「16/16 文字まで到達」で同点になり、登録順で前者が勝つ（構造的には後者の
 /// ほうが近い）。要素数を第一キーにすると、この取り違えが解ける。
 public struct NearestFormat: Sendable, Equatable {
@@ -79,7 +79,7 @@ public struct FilenameParser: FilenameParsing, Sendable {
                 continue
             }
 
-            // `@booktype` は語彙で照合するだけ [TY-01]。**ライブラリ自身の型名との
+            // `@mediatype` は語彙で照合するだけ [TY-01]。**ライブラリ自身の型名との
             // 突き合わせはしない**——本の種別はファイルの属性であってライブラリの
             // 属性ではないため、切り出した値は「本の種別」フィールドのラベルとして
             // そのまま残る（束縛があれば）。
@@ -106,7 +106,7 @@ public struct FilenameParser: FilenameParsing, Sendable {
     ///
     /// **要素数だけを見てはいけない**［code-review の指摘］——先頭が
     /// 空マッチしうるノード（弾力的空白 [WS-01]・`@ignore`）だと、入力を
-    /// 1 文字も消費しないまま要素数が 1 進む。`@ignore [@circle] @title` の
+    /// 1 文字も消費しないまま要素数が 1 進む。`@ignore [@studio] @title` の
     /// ようなフォーマットが 1 本あるだけで、それが全部の未整理ファイルの
     /// 「最も近い」になってしまう。
     ///

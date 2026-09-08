@@ -87,6 +87,13 @@ public struct FileRow: Sendable, Hashable, Identifiable {
     /// 先頭画像の解像度 [DU-21]。`pageCount` と同じく遅延取得。
     public let firstImageWidth: Int?
     public let firstImageHeight: Int?
+    /// メディア向けの 4 値 [MF-03〜05][MF-19]。**`title` と同じく基本情報の
+    /// 保護スコープ [PR-02] が守る**——走査は保護されたスコープに触れない。
+    public let subtitle: String?
+    public let season: Double?
+    public let episode: Double?
+    /// ISO 8601 の部分形（`2024` / `2024-01` / `2024-01-15`）[MF-19]。
+    public let releaseDate: String?
 
     public init(id: FileID, libraryID: LibraryID, relativePath: String, filename: String,
                 fileSize: Int64, createdAt: Date, modifiedAt: Date, title: String?,
@@ -99,7 +106,9 @@ public struct FileRow: Sendable, Hashable, Identifiable {
                 archivedFromPath: String? = nil, archivedAt: Date? = nil,
                 isBookFolder: Bool,
                 pageCount: Int? = nil,
-                firstImageWidth: Int? = nil, firstImageHeight: Int? = nil) {
+                firstImageWidth: Int? = nil, firstImageHeight: Int? = nil,
+                subtitle: String? = nil, season: Double? = nil,
+                episode: Double? = nil, releaseDate: String? = nil) {
         self.id = id
         self.libraryID = libraryID
         self.relativePath = relativePath
@@ -123,6 +132,10 @@ public struct FileRow: Sendable, Hashable, Identifiable {
         self.pageCount = pageCount
         self.firstImageWidth = firstImageWidth
         self.firstImageHeight = firstImageHeight
+        self.subtitle = subtitle
+        self.season = season
+        self.episode = episode
+        self.releaseDate = releaseDate
     }
 
     /// 数え終わった遅延メタデータを写した複製を返す [DU-22][MD-02]。
@@ -141,7 +154,9 @@ public struct FileRow: Sendable, Hashable, Identifiable {
                 coverImageSource: coverImageSource, state: state,
                 isArchived: isArchived, archivedFromPath: archivedFromPath,
                 archivedAt: archivedAt, isBookFolder: isBookFolder,
-                pageCount: pageCount, firstImageWidth: width, firstImageHeight: height)
+                pageCount: pageCount, firstImageWidth: width, firstImageHeight: height,
+                subtitle: subtitle, season: season, episode: episode,
+                releaseDate: releaseDate)
     }
 
     /// 拡張子を除いたファイル名。**`FileSnapshot` と同じ導出**（`FilenameStem`）

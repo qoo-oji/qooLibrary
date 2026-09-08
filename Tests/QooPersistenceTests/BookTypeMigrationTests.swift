@@ -76,7 +76,7 @@ struct BookTypeMigrationTests {
 
     /// **列を落とす前に、型名を語彙へ移す** [TY-01]。
     ///
-    /// これが無いと、型名を編集していたライブラリは `(@booktype)` が二度と
+    /// これが無いと、型名を編集していたライブラリは `(@mediatype)` が二度と
     /// 一致せず、次の走査で全件が未整理になって自動ラベルが消える。
     @Test("編集済みの型名が「本の種別」ラベルとして残る")
     func theEditedTypeNameSurvivesAsALabel() throws {
@@ -116,6 +116,8 @@ struct BookTypeMigrationTests {
         // 既定 1 の隣、2 番へ「本の種別」フィールドができる。
         #expect(index == 2)
         #expect(fieldName == "booktype", "移行は表示言語を知らないので予約語の綴りを使う")
+        // **v15 の時点の綴りで検査する**（この移行だけを単体で当てている）。
+        // 新しい綴りへ変わるのは v19 [MF-23] の仕事で、それは別のテストが見る。
         #expect(bindings?.contains("\"@booktype\":2") == true)
         // **編集していた型名がラベルとして残る**——これが語彙になる。
         #expect(labels == ["わたしの同人誌"])

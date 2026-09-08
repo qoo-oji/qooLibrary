@@ -63,7 +63,7 @@ struct LibraryPreviewTests {
         #expect(values.contains("著者値A"), "著者のラベルが出ていない")
         // **ラベルは意味予約語で返る**——束縛先のフィールド名と色の解決は
         // UI 層の仕事（`@labelgroupN` は v3 ステージ 5 で撤去した）。
-        #expect(item.fields.contains { $0.ref == .circle })
+        #expect(item.fields.contains { $0.ref == .studio })
     }
 
     @Test("巻数は原文表記で見せる [SE-02]")
@@ -105,8 +105,8 @@ struct LibraryPreviewTests {
 
     /// **型不一致は「他のライブラリの型名に当たった」ときに立つ** [TY-01]。
     ///
-    /// `@booktype` は型付き照合なので、候補は
-    /// `bookTypeVocabulary`（＝このライブラリの型名 ＋ 他ライブラリの型名）
+    /// `@mediatype` は型付き照合なので、候補は
+    /// `mediaTypeVocabulary`（＝このライブラリの型名 ＋ 他ライブラリの型名）
     /// に限られる。どれにも当たらなければ単に不一致（未解決）で、
     /// **当たったが自分の型名ではなかった**ときだけ警告になる——
     /// 「同人誌のライブラリに成年コミックのファイルが混ざっている」形の検出。
@@ -116,8 +116,8 @@ struct LibraryPreviewTests {
             .first { $0.key == "builtin.doujinshi" })
         var draft = TemplateInstantiation.draft(
             from: template, volumeSets: try BuiltInTemplates.volumeSets(),
-            displayName: "テスト", bookTypeVocabulary: ["同人誌", "成年コミック"])
-        draft.filenameFormats = [FilenameFormatDraft(source: "(@booktype) @title")]
+            displayName: "テスト", mediaTypeVocabulary: ["同人誌", "成年コミック"])
+        draft.filenameFormats = [FilenameFormatDraft(source: "(@mediatype) @title")]
 
         // **語彙にある種別ならどれでも一致する** [TY-01、2026-09-04]。
         // ライブラリ自身の型名という概念が無くなったので、「別の型名だから警告」

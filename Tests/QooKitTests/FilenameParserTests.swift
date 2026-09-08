@@ -34,21 +34,21 @@ func settings(formats: [String],
               volume: [CompiledVolumePattern] = [],
               protectedTokens: [ProtectedToken] = [],
               /// 既定は**旧 `@labelgroupN` と同じ番号**へ束縛する
-              /// （`@circle`→1・`@genre`→2・`@event`→3・`@keyword`→4・`@author`→5）
+              /// （`@studio`→1・`@genre`→2・`@event`→3・`@keyword`→4・`@author`→5）
               /// ——`@labelgroupN` の撤去 [v3 ステージ 5] で予約語へ書き換えた際、
               /// 番号を書いた既存の検査をそのまま生かすため。
-              semantic: [SemanticKeyword: Int] = [.circle: 1, .genre: 2, .event: 3,
+              semantic: [SemanticKeyword: Int] = [.studio: 1, .genre: 2, .event: 3,
                                                   .keyword: 4, .author: 5],
               delimiters: DelimiterSet = .default) throws -> LibrarySettingsSnapshot {
     let ctxt = FormatCompilationContext(delimiters: delimiters,
-                                        bookTypeVocabulary: types,
+                                        mediaTypeVocabulary: types,
                                         semanticBindings: semantic)
     let compiled = try formats.enumerated().map { i, src in
         try FormatCompiler.compile(src, context: ctxt, priority: i)
     }
     return LibrarySettingsSnapshot(
         libraryID: LibraryID(rawValue: 1),
-        bookTypeVocabulary: types,
+        mediaTypeVocabulary: types,
         delimiters: delimiters,
         protectedTokens: ProtectedTokenCompiler.compileAll(protectedTokens),
         filenameFormats: compiled,
@@ -63,52 +63,52 @@ struct PresetTemplateTests {
     /// 要件定義書 11.4 節に列挙されたフォーマットをそのまま書き写したもの。
     /// **ここが落ちたら検証器の解釈が実際のテンプレートと食い違っている。**
     static let allPresetFormats: [(preset: String, formats: [String])] = [
-        ("一般コミック", ["(@booktype) [@circle] @title",
-                          "[@circle] @title"]),
-        ("一般コミック", ["(@booktype) [@circle] @title",
-                          "[@circle] @title",
+        ("一般コミック", ["(@mediatype) [@studio] @title",
+                          "[@studio] @title"]),
+        ("一般コミック", ["(@mediatype) [@studio] @title",
+                          "[@studio] @title",
                           "@title"]),
-        ("成年コミック", ["(@booktype) [@circle] @title",
-                          "[@circle] @title"]),
-        ("成年コミック", ["(@booktype) [@circle] @title",
-                          "[@circle] @title",
+        ("成年コミック", ["(@mediatype) [@studio] @title",
+                          "[@studio] @title"]),
+        ("成年コミック", ["(@mediatype) [@studio] @title",
+                          "[@studio] @title",
                           "@title"]),
         ("同人誌", [
-            "(@circle) [@genre (@event)] @title (@keyword) [@author]",
-            "(@circle) [@genre (@event)] @title (@keyword)",
-            "(@circle) [@genre (@event)] @title [@author]",
-            "(@circle) [@genre (@event)] @title",
-            "(@circle) [@genre] @title (@keyword) [@author]",
-            "(@circle) [@genre] @title (@keyword)",
-            "(@circle) [@genre] @title [@author]",
-            "(@circle) [@genre] @title",
+            "(@studio) [@genre (@event)] @title (@keyword) [@author]",
+            "(@studio) [@genre (@event)] @title (@keyword)",
+            "(@studio) [@genre (@event)] @title [@author]",
+            "(@studio) [@genre (@event)] @title",
+            "(@studio) [@genre] @title (@keyword) [@author]",
+            "(@studio) [@genre] @title (@keyword)",
+            "(@studio) [@genre] @title [@author]",
+            "(@studio) [@genre] @title",
             "[@genre] @title (@keyword) [@author]",
             "[@genre] @title (@keyword)",
             "[@genre] @title [@author]",
             "[@genre] @title"]),
         ("同人CG", [
-            "(@booktype) [@circle (@genre)] @title (@event) [@keyword]",
-            "(@booktype) [@circle (@genre)] @title (@event)",
-            "(@booktype) [@circle (@genre)] @title [@keyword]",
-            "(@booktype) [@circle (@genre)] @title",
-            "(@booktype) [@circle] @title (@event) [@keyword]",
-            "(@booktype) [@circle] @title (@event)",
-            "(@booktype) [@circle] @title [@keyword]",
-            "(@booktype) [@circle] @title",
-            "[@circle (@genre)] @title (@event) [@keyword]",
-            "[@circle (@genre)] @title (@event)",
-            "[@circle (@genre)] @title [@keyword]",
-            "[@circle (@genre)] @title",
-            "[@circle] @title (@event) [@keyword]",
-            "[@circle] @title (@event)",
-            "[@circle] @title [@keyword]",
-            "[@circle] @title"]),
+            "(@mediatype) [@studio (@genre)] @title (@event) [@keyword]",
+            "(@mediatype) [@studio (@genre)] @title (@event)",
+            "(@mediatype) [@studio (@genre)] @title [@keyword]",
+            "(@mediatype) [@studio (@genre)] @title",
+            "(@mediatype) [@studio] @title (@event) [@keyword]",
+            "(@mediatype) [@studio] @title (@event)",
+            "(@mediatype) [@studio] @title [@keyword]",
+            "(@mediatype) [@studio] @title",
+            "[@studio (@genre)] @title (@event) [@keyword]",
+            "[@studio (@genre)] @title (@event)",
+            "[@studio (@genre)] @title [@keyword]",
+            "[@studio (@genre)] @title",
+            "[@studio] @title (@event) [@keyword]",
+            "[@studio] @title (@event)",
+            "[@studio] @title [@keyword]",
+            "[@studio] @title"]),
     ]
 
     @Test("すべてのプリセットのファイル名フォーマットがコンパイルできる",
           arguments: allPresetFormats)
     func presetsCompile(_ preset: (preset: String, formats: [String])) throws {
-        let ctxt = FormatCompilationContext(bookTypeVocabulary: ["一般コミック", "成年コミック", "同人CG"])
+        let ctxt = FormatCompilationContext(mediaTypeVocabulary: ["一般コミック", "成年コミック", "同人CG"])
         for src in preset.formats {
             #expect(throws: Never.self, "\(preset.preset): \(src)") {
                 try FormatCompiler.compile(src, context: ctxt)
@@ -118,11 +118,11 @@ struct PresetTemplateTests {
 
     @Test("フォルダ階層割り当てのフォーマットもコンパイルできる [AL-01][AL-02]")
     func folderLevelFormatsCompile() throws {
-        // 一般コミック 第1階層: `[@circle] @genre`
+        // 一般コミック 第1階層: `[@studio] @genre`
         // 括弧の境界があるので自由文字列の隣接にならない [VD-02]
-        _ = try FormatCompiler.compile("[@circle] @genre", context: FormatCompilationContext())
+        _ = try FormatCompiler.compile("[@studio] @genre", context: FormatCompilationContext())
         _ = try FormatCompiler.compile("@genre", context: FormatCompilationContext())
-        _ = try FormatCompiler.compile("@circle", context: FormatCompilationContext())
+        _ = try FormatCompiler.compile("@studio", context: FormatCompilationContext())
     }
 }
 
@@ -134,19 +134,19 @@ struct FilenameParserRealShapeTests {
 
     @Test("成年コミック: (成年コミック) [作者名] タイトル")
     func adultComic() throws {
-        let s = try settings(formats: ["(@booktype) [@circle] @title",
-                                       "[@circle] @title"])
+        let s = try settings(formats: ["(@mediatype) [@studio] @title",
+                                       "[@studio] @title"])
         let r = try #require(parser.parse("(成年コミック) [98765架空社] タイトル名",
                                           settings: s))
-        #expect(r.fields[.circle]?.text == "98765架空社")
+        #expect(r.fields[.studio]?.text == "98765架空社")
         #expect(r.fields[.title]?.text == "タイトル名")
     }
 
     @Test("同人誌: (同人誌) [サークル (作家)] タイトル (原作) — 入れ子のペア型 [FF-11]")
     func doujinNested() throws {
         let s = try settings(formats: [
-            "(@booktype) [@genre (@event)] @title (@keyword)",
-            "(@booktype) [@genre] @title (@keyword)",
+            "(@mediatype) [@genre (@event)] @title (@keyword)",
+            "(@mediatype) [@genre] @title (@keyword)",
         ], volume: vsDoujin())
         let r = try #require(parser.parse("(同人誌) [サークル名 (作家名)] 作品タイトル (オリジナル)",
                                           settings: s))
@@ -159,8 +159,8 @@ struct FilenameParserRealShapeTests {
     @Test("サークル名のみ（作家名の併記が無い 12%）は 2 番目のフォーマットで拾う [FF-03]")
     func doujinWithoutArtist() throws {
         let s = try settings(formats: [
-            "(@booktype) [@genre (@event)] @title (@keyword)",
-            "(@booktype) [@genre] @title (@keyword)",
+            "(@mediatype) [@genre (@event)] @title (@keyword)",
+            "(@mediatype) [@genre] @title (@keyword)",
         ])
         let r = try #require(parser.parse("(同人誌) [サークル名] 作品タイトル (オリジナル)",
                                           settings: s))
@@ -171,7 +171,7 @@ struct FilenameParserRealShapeTests {
 
     @Test("一般コミック: [著者] タイトル 第01巻 — @title 末尾から巻数を抽出 [SE-02]")
     func generalComicVolume() throws {
-        let s = try settings(formats: ["[@circle] @title"], volume: vsFull())
+        let s = try settings(formats: ["[@studio] @title"], volume: vsFull())
         let r = try #require(parser.parse("[佐藤秀峰] ブラックジャックによろしく 第01巻",
                                           settings: s))
         let f = FieldPostProcessor.postProcess(r, settings: s)
@@ -185,7 +185,7 @@ struct FilenameParserRealShapeTests {
 
     @Test("タイトル中に区切り文字があっても両端アンカーで正しく解釈できる [TY-04][MT2-03]")
     func delimitersInsideTitle() throws {
-        let s = try settings(formats: ["[@circle] @title (@keyword)"])
+        let s = try settings(formats: ["[@studio] @title (@keyword)"])
         let r = try #require(parser.parse("[著者名] 作品 (副題) の話 (オリジナル)",
                                           settings: s))
         #expect(r.fields[.title]?.text == "作品 (副題) の話")
@@ -195,7 +195,7 @@ struct FilenameParserRealShapeTests {
     /// 実コーパスでは `(` 5,953 に対し `)` 5,950 で、**閉じ括弧が欠けたファイル名が実在する**。
     @Test("括弧が閉じていないファイル名で落ちない（照合失敗として扱う）")
     func unbalancedBracketsDoNotCrash() throws {
-        let s = try settings(formats: ["[@circle] @title"])
+        let s = try settings(formats: ["[@studio] @title"])
         #expect(parser.parse("[著者名 タイトル", settings: s) == nil)
         #expect(parser.parse("[[[[[[", settings: s) == nil)
         #expect(parser.parse("]]]]]", settings: s) == nil)
@@ -204,7 +204,7 @@ struct FilenameParserRealShapeTests {
 
     @Test("全角の括弧・スペース・数字を含んでも一致する [N-02][WS-01]")
     func fullwidthInput() throws {
-        let s = try settings(formats: ["[@circle] @title"], volume: vsFull())
+        let s = try settings(formats: ["[@studio] @title"], volume: vsFull())
         // 全角スペースが 2 つ、全角数字の巻数
         let r = try #require(parser.parse("[著者名]　　タイトル 第０１巻",
                                           settings: s))
@@ -215,24 +215,24 @@ struct FilenameParserRealShapeTests {
 
     @Test("フォーマットは登録順に評価し最初にマッチしたものを採る [FF-03][FF-04]")
     func formatPriority() throws {
-        let s = try settings(formats: ["[@circle] @title (@keyword)",
-                                       "[@circle] @title"])
+        let s = try settings(formats: ["[@studio] @title (@keyword)",
+                                       "[@studio] @title"])
         let r = try #require(parser.parse("[著者] タイトル (タグ)", settings: s))
         #expect(r.fields[.keyword]?.text == "タグ")   // 1 番目が勝つ
     }
 
     @Test("空白だけのフィールドは捕捉しない（意味のないラベルを作らない）[WS-05]")
     func whitespaceOnlyFieldRejected() throws {
-        let s = try settings(formats: ["[@circle] @title"])
+        let s = try settings(formats: ["[@studio] @title"])
         #expect(parser.parse("[   ] タイトル", settings: s) == nil)
         #expect(parser.parse("[著者]    ", settings: s) == nil)
     }
 }
 
-// MARK: - @booktype の扱い [TY-01]
+// MARK: - @mediatype の扱い [TY-01]
 
-@Suite("@booktype は語彙で照合し、値はラベルとして残る [TY-01]")
-struct BookTypeMatchingTests {
+@Suite("@mediatype は語彙で照合し、値はラベルとして残る [TY-01]")
+struct MediaTypeMatchingTests {
     let parser = FilenameParser()
 
     /// **ライブラリ自身の型名との突き合わせはしない** [2026-09-04]。本の種別は
@@ -240,28 +240,28 @@ struct BookTypeMatchingTests {
     /// 一致し、切り出した値はそのまま残る。
     @Test("語彙にある種別なら、どれでも一致して値が残る")
     func anyKnownBookTypeMatches() throws {
-        let s = try settings(formats: ["(@booktype) [@circle] @title"])
+        let s = try settings(formats: ["(@mediatype) [@studio] @title"])
         let r = try #require(parser.parse("(成年コミック) [著者] タイトル", settings: s))
-        #expect(r.fields[.bookType]?.text == "成年コミック")
+        #expect(r.fields[.mediaType]?.text == "成年コミック")
         #expect(r.fields[.title]?.text == "タイトル")
     }
 
     /// **型条件そのものは残す**——外して自由文字列にすると、プリセットの
-    /// `(@booktype) …` が `(@event) …` と同型になって先頭の括弧を何でも吸い、
+    /// `(@mediatype) …` が `(@event) …` と同型になって先頭の括弧を何でも吸い、
     /// public ゴールデン 352 件のうち 48 件でイベントが取れなくなる［実測］。
     @Test("語彙に無い語は吸わない（型条件は残る）")
     func unknownBookTypeDoesNotMatch() throws {
-        let s = try settings(formats: ["(@booktype) [@circle] @title"])
+        let s = try settings(formats: ["(@mediatype) [@studio] @title"])
         #expect(parser.parse("(知らない種別) [著者] タイトル", settings: s) == nil)
     }
 
     @Test("語彙に無い語は、後続のフォーマットへ落ちる")
     func unknownBookTypeFallsThroughToTheNextFormat() throws {
-        let s = try settings(formats: ["(@booktype) [@circle] @title",
-                                       "(@event) [@circle] @title"])
+        let s = try settings(formats: ["(@mediatype) [@studio] @title",
+                                       "(@event) [@studio] @title"])
         let r = try #require(parser.parse("(C99) [著者] タイトル", settings: s))
         #expect(r.fields[.event]?.text == "C99")
-        #expect(r.fields[.bookType] == nil)
+        #expect(r.fields[.mediaType] == nil)
     }
 }
 
@@ -275,11 +275,11 @@ struct ProtectedTokenTests {
     @Test("§4.7.3 の例: 事件記者コナン (仮) (01) - 著者")
     func specExample() throws {
         let token = ProtectedToken(pattern: #"\(仮\)"#)
-        let s = try settings(formats: ["@series (@volume) - @circle"],
+        let s = try settings(formats: ["@series (@volume) - @studio"],
                              volume: vsFull(), protectedTokens: [token])
         let r = try #require(parser.parse("事件記者コナン (仮) (01) - 著者",
                                           settings: s))
-        #expect(r.fields[.circle]?.text == "著者")
+        #expect(r.fields[.studio]?.text == "著者")
         #expect(r.fields[.volume]?.volume?.number == 1)
         // 復元されて原文が返る [PT-03]
         #expect(r.fields[.series]?.text == "事件記者コナン (仮)")
@@ -288,7 +288,7 @@ struct ProtectedTokenTests {
     @Test("保護文字列の位置指定 [PT-05]")
     func positionConstraint() throws {
         let suffixOnly = ProtectedToken(pattern: #"\(完全版\)"#, position: .suffix)
-        let s = try settings(formats: ["[@circle] @title"], protectedTokens: [suffixOnly])
+        let s = try settings(formats: ["[@studio] @title"], protectedTokens: [suffixOnly])
         // 末尾にあるのでマスクされ、@title に吸収される
         let r = try #require(parser.parse("[著者] タイトル (完全版)", settings: s))
         #expect(r.fields[.title]?.text == "タイトル (完全版)")

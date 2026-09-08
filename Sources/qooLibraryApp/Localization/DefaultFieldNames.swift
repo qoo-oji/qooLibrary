@@ -23,12 +23,19 @@ enum DefaultFieldNames {
         let locale = AppLanguage.effectiveLocale
         return switch keyword {
         case .author:  AppStrings.text("field.default.author", locale: locale)
-        case .circle:  AppStrings.text("field.default.circle", locale: locale)
+        case .studio:  AppStrings.text("field.default.studio", locale: locale)
         case .genre:   AppStrings.text("field.default.genre", locale: locale)
         case .event:   AppStrings.text("field.default.event", locale: locale)
         case .keyword: AppStrings.text("field.default.keyword", locale: locale)
         case .series:  AppStrings.text("field.default.series", locale: locale)
-        case .bookType: AppStrings.text("field.default.bookType", locale: locale)
+        case .mediaType: AppStrings.text("field.default.mediaType", locale: locale)
+        case .actor:   AppStrings.text("field.default.actor", locale: locale)
+        case .season:  AppStrings.text("field.default.season", locale: locale)
+        // **カスタム軸には既定の名前を持たせない** [MF-22]。何に使うかは
+        // 完全に利用者次第なので、こちらが名前を決めると誤誘導になる。
+        // 予約語の綴りから `@` を落としたものを置き、利用者が改名する。
+        case .keyword2, .keyword3, .keyword4, .keyword5:
+            String(keyword.rawValue.dropFirst())
         }
     }
 }

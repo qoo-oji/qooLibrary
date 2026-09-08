@@ -6,9 +6,9 @@
     "`folderLevels` のキーは階層番号（1 = ライブラリ直下）[AL-01]。",
     "`assignment` は singleLabelGroup / format / none のいずれか [AL-01〜AL-03]。",
     "2026-08 改訂: 実蔵書 2,346 件との突き合わせで、同人誌の先頭 `(同人誌)` が イベント名ではなくライブラリタイプの印であること、同人CG の実際の印が `(同人CG集)` であることが分かったため修正した [要件定義書 v2.10]。",
-    "2026-08 改訂（v3 ステージ 5）: 既定フィールド 5 種（著者 1・サークル 2・ジャンル 3・イベント 4・キーワード 5）を全プリセットに持たせ、意味予約語 @author/@circle/@genre/@event/@keyword で束縛する [§19.2][RWI-02]。フォーマットからは @labelgroupN ではなく予約語で参照する——番号はフィールドの身元ではないので、番号で書くと並べ替え・改名で意味が変わる。追加フィールドは 6 以降（一般コミックの「シリーズ」・その他の「プレイ」）。同人誌／同人CG の旧「その他」は既定の「キーワード」へ統合した［ユーザー判断］。",
-    "2026-08-30 改訂（v3 ステージ 5 の続き）: 予約語 @librarytype を @booktype へ改名した——値（一般コミック／同人誌…）は本の種別であって、ライブラリの種別ではない。あわせて @labelgroupN と @libraryname を撤去した。前者は番号がフィールドの身元ではなく、後者は表示名がフォルダ名へ追随する [RG3-31] ため照合値が改名で変わってしまうため。",
-    "2026-09-04 改訂: 本の種別を既定フィールドへ加えた [TY-01]。全プリセットが フィールド 7 =「本の種別」を持ち @booktype で束縛する——照合は語彙（プリセットが持つ本の種別の和集合 ∪ そのライブラリの「本の種別」ラベル）で行い、切り出した値はラベルとして残る。ライブラリ固有の型名は撤去した。**型条件そのものは残す**——自由文字列にすると (@booktype) … が (@event) … と同型になり、先頭の括弧を何でも吸って public ゴールデン 352 件のうち 48 件でイベントが取れなくなる［実測］。",
+    "2026-08 改訂（v3 ステージ 5）: 既定フィールド 5 種（著者 1・サークル 2・ジャンル 3・イベント 4・キーワード 5）を全プリセットに持たせ、意味予約語 @author/@studio/@genre/@event/@keyword で束縛する [§19.2][RWI-02]。フォーマットからは @labelgroupN ではなく予約語で参照する——番号はフィールドの身元ではないので、番号で書くと並べ替え・改名で意味が変わる。追加フィールドは 6 以降（一般コミックの「シリーズ」）。**カスタム軸は @keyword2〜@keyword5 [MF-22]** で、プリセットには置かない——用途は利用者が決める。同人誌／同人CG の旧「その他」は既定の「キーワード」へ統合した［ユーザー判断］。",
+    "2026-08-30 改訂（v3 ステージ 5 の続き）: 予約語 @librarytype を @mediatype へ改名した——値（一般コミック／同人誌…）は本の種別であって、ライブラリの種別ではない。あわせて @labelgroupN と @libraryname を撤去した。前者は番号がフィールドの身元ではなく、後者は表示名がフォルダ名へ追随する [RG3-31] ため照合値が改名で変わってしまうため。",
+    "2026-09-04 改訂: 本の種別を既定フィールドへ加えた [TY-01]。全プリセットが フィールド 7 =「本の種別」を持ち @mediatype で束縛する——照合は語彙（プリセットが持つ本の種別の和集合 ∪ そのライブラリの「本の種別」ラベル）で行い、切り出した値はラベルとして残る。ライブラリ固有の型名は撤去した。**型条件そのものは残す**——自由文字列にすると (@mediatype) … が (@event) … と同型になり、先頭の括弧を何でも吸って public ゴールデン 352 件のうち 48 件でイベントが取れなくなる［実測］。",
     "2026-09-08 改訂: (A)/(B) を統合してプリセットを 4 種にした［ユーザー判断: A/B の実差は「フォルダ名も解析対象にするか」だけで、それはテンプレートの選択軸ではない］。各プリセットは (B) の `folderLevels` を固定で持ち、ウィザードの「フォルダ名を解析対象にする」[RG3-24] が草案へ含めるかを決める。あわせて優先規則を逆転した [AL-21]——フォルダ名とファイル名は異なる情報を持ち合うのが本来で、衝突は例外だからファイル名を採る。旧 (B) だけが持っていた `@title` 単独フォーマットは含めない——何にでも当たるので、未整理として救済すべきファイルが「タイトルだけ取れた解決済み」になって埋もれる［実測: public ゴールデン 44 件中、未整理になる件数が 22 → 1 に減っていた］。`version` は 1 へリセットした（統合は改訂ではなく作り直し）。"
   ],
   "presets": [
@@ -49,12 +49,12 @@
       ],
       "semanticBindings": {
         "@author": 1,
-        "@circle": 2,
+        "@studio": 2,
         "@genre": 3,
         "@event": 4,
         "@keyword": 5,
         "@series": 6,
-        "@booktype": 7
+        "@mediatype": 7
       },
       "folderLevels": {
         "1": {
@@ -63,7 +63,7 @@
         }
       },
       "filenameFormats": [
-        "(@booktype) [@author] @title",
+        "(@mediatype) [@author] @title",
         "[@author] @title"
       ],
       "volumeSet": "VS-Full"
@@ -95,22 +95,17 @@
           "name": "キーワード"
         },
         {
-          "index": 6,
-          "name": "プレイ",
-          "autoAssign": false
-        },
-        {
           "index": 7,
           "name": "本の種別"
         }
       ],
       "semanticBindings": {
         "@author": 1,
-        "@circle": 2,
+        "@studio": 2,
         "@genre": 3,
         "@event": 4,
         "@keyword": 5,
-        "@booktype": 7
+        "@mediatype": 7
       },
       "folderLevels": {
         "1": {
@@ -119,7 +114,7 @@
         }
       },
       "filenameFormats": [
-        "(@booktype) [@author] @title",
+        "(@mediatype) [@author] @title",
         "[@author] @title"
       ],
       "volumeSet": "VS-None"
@@ -151,22 +146,17 @@
           "name": "キーワード"
         },
         {
-          "index": 6,
-          "name": "プレイ",
-          "autoAssign": false
-        },
-        {
           "index": 7,
           "name": "本の種別"
         }
       ],
       "semanticBindings": {
         "@author": 1,
-        "@circle": 2,
+        "@studio": 2,
         "@genre": 3,
         "@event": 4,
         "@keyword": 5,
-        "@booktype": 7
+        "@mediatype": 7
       },
       "folderLevels": {
         "1": {
@@ -175,26 +165,26 @@
         }
       },
       "filenameFormats": [
-        "(@booktype) [@circle (@author)] @title (@genre) [@keyword]",
-        "(@booktype) [@circle (@author)] @title (@genre)",
-        "(@booktype) [@circle (@author)] @title [@keyword]",
-        "(@booktype) [@circle (@author)] @title",
-        "(@booktype) [@circle] @title (@genre) [@keyword]",
-        "(@booktype) [@circle] @title (@genre)",
-        "(@booktype) [@circle] @title [@keyword]",
-        "(@booktype) [@circle] @title",
-        "(@event) [@circle (@author)] @title (@genre) [@keyword]",
-        "(@event) [@circle (@author)] @title (@genre)",
-        "(@event) [@circle (@author)] @title [@keyword]",
-        "(@event) [@circle (@author)] @title",
-        "(@event) [@circle] @title (@genre) [@keyword]",
-        "(@event) [@circle] @title (@genre)",
-        "(@event) [@circle] @title [@keyword]",
-        "(@event) [@circle] @title",
-        "[@circle] @title (@genre) [@keyword]",
-        "[@circle] @title (@genre)",
-        "[@circle] @title [@keyword]",
-        "[@circle] @title"
+        "(@mediatype) [@studio (@author)] @title (@genre) [@keyword]",
+        "(@mediatype) [@studio (@author)] @title (@genre)",
+        "(@mediatype) [@studio (@author)] @title [@keyword]",
+        "(@mediatype) [@studio (@author)] @title",
+        "(@mediatype) [@studio] @title (@genre) [@keyword]",
+        "(@mediatype) [@studio] @title (@genre)",
+        "(@mediatype) [@studio] @title [@keyword]",
+        "(@mediatype) [@studio] @title",
+        "(@event) [@studio (@author)] @title (@genre) [@keyword]",
+        "(@event) [@studio (@author)] @title (@genre)",
+        "(@event) [@studio (@author)] @title [@keyword]",
+        "(@event) [@studio (@author)] @title",
+        "(@event) [@studio] @title (@genre) [@keyword]",
+        "(@event) [@studio] @title (@genre)",
+        "(@event) [@studio] @title [@keyword]",
+        "(@event) [@studio] @title",
+        "[@studio] @title (@genre) [@keyword]",
+        "[@studio] @title (@genre)",
+        "[@studio] @title [@keyword]",
+        "[@studio] @title"
       ],
       "volumeSet": "VS-Doujin"
     },
@@ -225,22 +215,17 @@
           "name": "キーワード"
         },
         {
-          "index": 6,
-          "name": "プレイ",
-          "autoAssign": false
-        },
-        {
           "index": 7,
           "name": "本の種別"
         }
       ],
       "semanticBindings": {
         "@author": 1,
-        "@circle": 2,
+        "@studio": 2,
         "@genre": 3,
         "@event": 4,
         "@keyword": 5,
-        "@booktype": 7
+        "@mediatype": 7
       },
       "folderLevels": {
         "1": {
@@ -249,22 +234,22 @@
         }
       },
       "filenameFormats": [
-        "(@booktype) [@circle (@author)] @title (@genre) [@keyword]",
-        "(@booktype) [@circle (@author)] @title (@genre)",
-        "(@booktype) [@circle (@author)] @title [@keyword]",
-        "(@booktype) [@circle (@author)] @title",
-        "(@booktype) [@circle] @title (@genre) [@keyword]",
-        "(@booktype) [@circle] @title (@genre)",
-        "(@booktype) [@circle] @title [@keyword]",
-        "(@booktype) [@circle] @title",
-        "[@circle (@author)] @title (@genre) [@keyword]",
-        "[@circle (@author)] @title (@genre)",
-        "[@circle (@author)] @title [@keyword]",
-        "[@circle (@author)] @title",
-        "[@circle] @title (@genre) [@keyword]",
-        "[@circle] @title (@genre)",
-        "[@circle] @title [@keyword]",
-        "[@circle] @title"
+        "(@mediatype) [@studio (@author)] @title (@genre) [@keyword]",
+        "(@mediatype) [@studio (@author)] @title (@genre)",
+        "(@mediatype) [@studio (@author)] @title [@keyword]",
+        "(@mediatype) [@studio (@author)] @title",
+        "(@mediatype) [@studio] @title (@genre) [@keyword]",
+        "(@mediatype) [@studio] @title (@genre)",
+        "(@mediatype) [@studio] @title [@keyword]",
+        "(@mediatype) [@studio] @title",
+        "[@studio (@author)] @title (@genre) [@keyword]",
+        "[@studio (@author)] @title (@genre)",
+        "[@studio (@author)] @title [@keyword]",
+        "[@studio (@author)] @title",
+        "[@studio] @title (@genre) [@keyword]",
+        "[@studio] @title (@genre)",
+        "[@studio] @title [@keyword]",
+        "[@studio] @title"
       ],
       "volumeSet": "VS-Doujin"
     }

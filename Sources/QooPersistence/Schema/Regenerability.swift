@@ -40,6 +40,9 @@ extension ManagedFileRecord: RegenerabilityDeclaring {
         // （カバー画像を `coverImageSource` で守るのと同じ形）——`title` だけ
         // 出して他を落とすと、保護したシリーズ名が復元で失われる。
         "title", "seriesName", "volumeNumber", "volumeKind", "volumeRaw", "authorName",
+        // メディア向けの 4 値も同じ扱い [MF-10]——保護されていなければ走査が
+        // 書き直し、保護されていれば `protectedScopes` が守る。
+        "subtitle", "seasonNumber", "episodeNumber", "releaseDate",
     ]
     public static let internalColumns: Set<String> = [
         "id", "libraryId", "inode", "volumeUUID",

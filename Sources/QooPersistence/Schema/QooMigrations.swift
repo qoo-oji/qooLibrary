@@ -21,6 +21,7 @@ public enum QooMigrations {
         "v14_labelVisibility", "v15_bookTypeAsLabel", "v16_operationLog",
         "v17_registeredTemplate",
         "v18_mergedPresets",
+        "v19_mediaFields",
     ]
 
     public static var migrator: DatabaseMigrator {
@@ -44,7 +45,61 @@ public enum QooMigrations {
         m.registerMigration(identifiers[15], migrate: v16OperationLog)
         m.registerMigration(identifiers[16], migrate: v17RegisteredTemplate)
         m.registerMigration(identifiers[17], migrate: v18MergedPresets)
+        m.registerMigration(identifiers[18], migrate: v19MediaFields)
         return m
+    }
+
+    // MARK: - v19
+
+    /// メディア向けのフィールドと、予約語 2 語の改名（見直しの段 B）[MF-01〜23]。
+    ///
+    /// ## 何を足すか
+    /// - `managedFile`: `subtitle` [MF-03]・`seasonNumber` [MF-04]・
+    ///   `episodeNumber` [MF-05]・`releaseDate` [MF-19]。**4 列とも
+    ///   「再生成可能だが保護で守る」**——`title` と同じ扱い [PR-01]。
+    /// - `volumeFormat.role`: 巻数・シーズン・話数・日付の正規表現を**同じ表に
+    ///   同居**させる [MF-07]。テーブルを 4 つに分けると、編集 UI・草案・JSON・
+    ///   差分適用のすべてに同じ配線が 4 本要る。
+    ///
+    /// ## なぜ予約語を書き換えるか [MF-23]
+    /// `@circle` → `@studio`、`@booktype` → `@mediatype`。**綴りを変えただけでは
+    /// 既存の行が「不明な予約語」になり、`SQLiteLibraryRepository` が `try?` で
+    /// 落とすのでフォーマットが 1 本も無いライブラリになる**——次の走査が
+    /// タイトルもラベルも全部 nil で上書きする、最も静かな壊れ方をする（v9 と同じ）。
+    ///
+    /// **v9 と違い `settingsJSON` も書き換える。** 今回の 2 語はどちらも
+    /// `SemanticKeyword` で、`semanticBindings` の**鍵**として保存されている
+    /// ——フォーマットだけ直しても束縛が外れたままになる。
+    static func v19MediaFields(_ db: Database) throws {
+        try db.alter(table: "managedFile") { t in
+            t.add(column: "subtitle", .text)
+            t.add(column: "seasonNumber", .double)
+            t.add(column: "episodeNumber", .double)
+            t.add(column: "releaseDate", .text)      // ISO 8601 の部分形 [MF-19]
+        }
+        try db.alter(table: "volumeFormat") { t in
+            t.add(column: "role", .text).notNull().defaults(to: "volume")
+        }
+
+        // 予約語の改名。**綴りを 2 箇所に書かない**——`LegacyReservedWords` が
+        // JSON の取り込み・ユーザー定義テンプレートの読み込みでも同じ表を使う
+        // （DB の移行と文書の取り込みで変換結果が食い違わないようにする）。
+        for (old, new) in LegacyReservedWords.renames {
+            let args = StatementArguments([old, new])
+            try db.execute(sql: "UPDATE filenameFormat SET source = REPLACE(source, ?, ?)",
+                           arguments: args)
+            try db.execute(sql: "UPDATE folderLevelMapping SET formatSource = REPLACE(formatSource, ?, ?) WHERE formatSource IS NOT NULL",
+                           arguments: args)
+            try db.execute(sql: "UPDATE library SET settingsJSON = REPLACE(settingsJSON, ?, ?)",
+                           arguments: args)
+            try db.execute(sql: "UPDATE library SET registeredTemplateJSON = REPLACE(registeredTemplateJSON, ?, ?) WHERE registeredTemplateJSON IS NOT NULL",
+                           arguments: args)
+            try db.execute(sql: "UPDATE libraryType SET definitionJSON = REPLACE(definitionJSON, ?, ?) WHERE definitionJSON IS NOT NULL",
+                           arguments: args)
+        }
+
+        try db.execute(sql: "UPDATE storeMetadata SET schemaVersion = ? WHERE id = 1",
+                       arguments: [identifiers[18]])
     }
 
     // MARK: - v1
@@ -249,7 +304,7 @@ public enum QooMigrations {
 
     /// 本の種別を「ライブラリ固有の設定」から「ラベル」へ [TY-01]。
     ///
-    /// **`@booktype` は本の属性であってライブラリの属性ではない**［ユーザー判断、
+    /// **`@mediatype` は本の属性であってライブラリの属性ではない**［ユーザー判断、
     /// 2026-09-04］。照合は語彙（プリセットの本の種別 ∪ そのライブラリの
     /// 「本の種別」フィールドのラベル）で行うので、ライブラリごとに 1 つの
     /// 型名を持つ理由が無くなった。
@@ -261,7 +316,7 @@ public enum QooMigrations {
     ///
     /// ## 列を落とす前に、型名を語彙へ移す
     /// **既存ライブラリが型名を編集していた場合、そのまま落とすと
-    /// `(@booktype)` が二度と一致しなくなる**（プリセット由来の語彙にしか
+    /// `(@mediatype)` が二度と一致しなくなる**（プリセット由来の語彙にしか
     /// 当たらないため）——次の走査で全件が未整理になり、自動ラベルが消える。
     /// そこでライブラリごとに「本の種別」フィールドを用意し、それまでの型名を
     /// ラベルとして入れてから列を落とす。フィールド名は予約語の綴りを使う
@@ -269,7 +324,7 @@ public enum QooMigrations {
     /// ので利用者が後から自由に改名できる [§19.2]。
     ///
     /// - Note: **型条件そのものは残る。** 外して自由文字列にすると、プリセットの
-    ///   `(@booktype) …` が `(@event) …` と同型になって先頭の括弧を何でも吸い、
+    ///   `(@mediatype) …` が `(@event) …` と同型になって先頭の括弧を何でも吸い、
     ///   public ゴールデン 352 件のうち 48 件でイベントが取れなくなる［実測］。
     static func v15BookTypeAsLabel(_ db: Database) throws {
         try carryBookTypeNamesIntoLabels(db)
@@ -298,8 +353,14 @@ public enum QooMigrations {
                            as? [String: Any]) ?? [:]
             var bindings = (payload["semanticBindings"] as? [String: Int]) ?? [:]
 
+            // **当時の綴りをリテラルで書く。** `SemanticKeyword` の case を
+            // 参照すると、後の改名（v19 で `@booktype` → `@mediatype`）で
+            // **この移行の結果が変わる**——適用済みの環境は `booktype` という
+            // 名前のフィールドを持っているのに、これから適用する環境だけ
+            // `mediatype` になる。登録済みの移行は追記のみ [SC-02][MG-04]。
+            let legacyBookType = "@booktype"
             let index: Int
-            if let bound = bindings[SemanticKeyword.bookType.rawValue] {
+            if let bound = bindings[legacyBookType] {
                 index = bound
             } else {
                 index = (try Int.fetchOne(db, sql: """
@@ -312,10 +373,10 @@ public enum QooMigrations {
                                             displayOrder, assignsAutomatically)
                     VALUES (?, ?, ?, ?, ?, ?, 1)
                     """, arguments: [libraryID, index,
-                                     String(SemanticKeyword.bookType.rawValue.dropFirst()),
+                                     String(legacyBookType.dropFirst()),
                                      color?.hexLight ?? "#888888",
                                      color?.hexDark ?? "#888888", index])
-                bindings[SemanticKeyword.bookType.rawValue] = index
+                bindings[legacyBookType] = index
                 payload["semanticBindings"] = bindings
                 let encoded = try JSONSerialization.data(withJSONObject: payload,
                                                          options: [.sortedKeys])

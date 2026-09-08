@@ -7,7 +7,7 @@
       "expected" : {
         "fields" : {
           "@author" : "著者0",
-          "@booktype" : "一般コミック",
+          "@mediatype" : "一般コミック",
           "@title" : "作品タイトル0 第01巻"
         },
         "formatIndex" : 0,
@@ -52,7 +52,7 @@
       "expected" : {
         "fields" : {
           "@author" : "著者2",
-          "@booktype" : "一般コミック",
+          "@mediatype" : "一般コミック",
           "@title" : "作品タイトル2ー長音 上巻"
         },
         "formatIndex" : 0,
@@ -92,7 +92,7 @@
       "expected" : {
         "fields" : {
           "@author" : "著者4",
-          "@booktype" : "一般コミック",
+          "@mediatype" : "一般コミック",
           "@title" : "サブタイトル付き作品4 第05巻"
         },
         "formatIndex" : 0,
@@ -137,7 +137,7 @@
       "expected" : {
         "fields" : {
           "@author" : "著者6",
-          "@booktype" : "一般コミック",
+          "@mediatype" : "一般コミック",
           "@title" : "作品 タイトル 6 上巻"
         },
         "formatIndex" : 0,
@@ -177,7 +177,7 @@
       "expected" : {
         "fields" : {
           "@author" : "著者8",
-          "@booktype" : "一般コミック",
+          "@mediatype" : "一般コミック",
           "@title" : "作品タイトル8 第09巻"
         },
         "formatIndex" : 0,
@@ -222,7 +222,7 @@
       "expected" : {
         "fields" : {
           "@author" : "著者10",
-          "@booktype" : "一般コミック",
+          "@mediatype" : "一般コミック",
           "@title" : "作品タイトル10 上巻"
         },
         "formatIndex" : 0,
@@ -262,7 +262,7 @@
       "expected" : {
         "fields" : {
           "@author" : "著者12",
-          "@booktype" : "一般コミック",
+          "@mediatype" : "一般コミック",
           "@title" : "作品タイトル12ー長音 第13巻"
         },
         "formatIndex" : 0,
@@ -307,7 +307,7 @@
       "expected" : {
         "fields" : {
           "@author" : "著者14",
-          "@booktype" : "一般コミック",
+          "@mediatype" : "一般コミック",
           "@title" : "サブタイトル付き作品14 上巻"
         },
         "formatIndex" : 0,
@@ -347,7 +347,7 @@
       "expected" : {
         "fields" : {
           "@author" : "著者16",
-          "@booktype" : "一般コミック",
+          "@mediatype" : "一般コミック",
           "@title" : "作品 タイトル 16 第17巻"
         },
         "formatIndex" : 0,
@@ -392,7 +392,7 @@
       "expected" : {
         "fields" : {
           "@author" : "著者18",
-          "@booktype" : "一般コミック",
+          "@mediatype" : "一般コミック",
           "@title" : "作品タイトル18 上巻"
         },
         "formatIndex" : 0,
@@ -432,7 +432,7 @@
       "expected" : {
         "fields" : {
           "@author" : "著者20",
-          "@booktype" : "一般コミック",
+          "@mediatype" : "一般コミック",
           "@title" : "作品タイトル20 第21巻"
         },
         "formatIndex" : 0,

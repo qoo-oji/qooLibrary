@@ -3,14 +3,14 @@ import Foundation
 @testable import QooKit
 
 private let bindings: [SemanticKeyword: Int] = [
-    .author: 1, .circle: 2, .genre: 3, .event: 4, .keyword: 5, .series: 6, .bookType: 7,
+    .author: 1, .studio: 2, .genre: 3, .event: 4, .keyword: 5, .series: 6, .mediaType: 7,
 ]
 
 private func settings(_ formats: [String],
                       level1: FolderLevelMappingSpec.Assignment?) throws
     -> LibrarySettingsSnapshot
 {
-    let ctxt = FormatCompilationContext(bookTypeVocabulary: ["同人誌"],
+    let ctxt = FormatCompilationContext(mediaTypeVocabulary: ["同人誌"],
                                         semanticBindings: bindings)
     let compiled = try formats.enumerated().map { i, s in
         try FormatCompiler.compile(s, context: ctxt, priority: i)
@@ -24,9 +24,9 @@ private func settings(_ formats: [String],
 }
 
 private let doujin = [
-    "(@booktype) [@circle (@author)] @title (@genre)",
-    "(@booktype) [@circle (@author)] @title",
-    "[@circle] @title",
+    "(@mediatype) [@studio (@author)] @title (@genre)",
+    "(@mediatype) [@studio (@author)] @title",
+    "[@studio] @title",
 ]
 
 @Suite("フォルダ名がラベルとして妥当かの実測 [RG3-24]")
@@ -74,7 +74,7 @@ struct FolderUsageFitTests {
 
     @Test("format 型は一致率をそのまま使う")
     func formatAssignmentUsesMatchRate() throws {
-        let ctxt = FormatCompilationContext(bookTypeVocabulary: [], semanticBindings: bindings)
+        let ctxt = FormatCompilationContext(mediaTypeVocabulary: [], semanticBindings: bindings)
         let folderFormat = FolderLevelMappingSpec.Assignment.format(
             try FormatCompiler.compile("[@author] @series", context: ctxt))
         let s = try settings(["[@author] @title"], level1: folderFormat)
@@ -100,7 +100,7 @@ struct FolderUsageFitTests {
 
     @Test("全角と半角の違いは同じ値として扱う [NM-01 と揃える]")
     func widthIsNormalized() throws {
-        let s = try settings(["[@circle] @title"], level1: .singleLabelGroup(index: 2))
+        let s = try settings(["[@studio] @title"], level1: .singleLabelGroup(index: 2))
         let r = FolderUsageFit.measure(
             samples: [(folder: "ＳＴＵＤＩＯ", filename: "[STUDIO] 作品1")], settings: s)
         #expect(r.matched == 1)

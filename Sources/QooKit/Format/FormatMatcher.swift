@@ -46,7 +46,7 @@ public enum FormatMatcher {
         /// 括弧の入れ子の深さ。`furthestNode` は最上位でしか進めない。
         var depth = 0
         /// フィールド → マスク後の範囲。出現順を保つため配列で持つ。
-        var bindings: [(field: FieldRef, range: Range<Int>, volume: VolumeValue?)] = []
+        var bindings: [(field: FieldRef, range: Range<Int>, typed: TypedFieldValue?)] = []
 
         init(input: ParseInput, volumePatterns: [CompiledVolumePattern],
              stepLimit: Int) {
@@ -117,14 +117,30 @@ public enum FormatMatcher {
                 ctx.bindings.removeLast(ctx.bindings.count - saved)
             }
 
-        case .field(let ref, .volume):
-            // 型付き照合: 巻数フォーマットにマッチする候補を長い順に試す [TY-01][SE-24]。
-            for candidate in VolumeMatcher.matches(in: ctx.input.folded, at: ii,
-                                                   patterns: ctx.volumePatterns)
-            where candidate.range.upperBound <= hi {
-                ctx.bindings.append((ref, candidate.range, candidate.value))
-                if matchSeq(nodes, ni + 1, candidate.range.upperBound, hi, &memo, ctx) { return true }
-                ctx.bindings.removeLast()
+        case .field(let ref, .pattern(let role)):
+            // 型付き照合: role に対応するパターンの候補を長い順に試す
+            // [TY-01][SE-24][MF-08]。**`@date` だけは値が数値ではない**ので
+            // 別の照合器を通る（範囲の扱いは同じ）。
+            if role == .date {
+                for candidate in DateMatcher.matches(in: ctx.input.folded, at: ii,
+                                                     patterns: ctx.volumePatterns)
+                where candidate.range.upperBound <= hi {
+                    ctx.bindings.append((ref, candidate.range, .date(candidate.value)))
+                    if matchSeq(nodes, ni + 1, candidate.range.upperBound, hi, &memo, ctx) { return true }
+                    ctx.bindings.removeLast()
+                }
+            } else {
+                for candidate in VolumeMatcher.matches(in: ctx.input.folded, at: ii,
+                                                       patterns: ctx.volumePatterns,
+                                                       role: role,
+                                                       includeBareDigits: role.allowsBareDigits)
+                where candidate.range.upperBound <= hi {
+                    ctx.bindings.append((ref, candidate.range,
+                                         .number(candidate.value,
+                                                 impliedSeason: candidate.impliedSeason)))
+                    if matchSeq(nodes, ni + 1, candidate.range.upperBound, hi, &memo, ctx) { return true }
+                    ctx.bindings.removeLast()
+                }
             }
 
         case .field(let ref, .enumerated(let values)):
@@ -227,7 +243,7 @@ public enum FormatMatcher {
             fields[binding.field] = FieldValue(
                 text: trimmed,
                 normalized: TextNormalizer.normalize(trimmed),
-                volume: binding.volume)
+                typed: binding.typed)
             spans.append(FieldSpan(field: binding.field, range: originalRange))
         }
         return ParseResult(matchedFormatID: format.id, fields: fields, spans: spans)

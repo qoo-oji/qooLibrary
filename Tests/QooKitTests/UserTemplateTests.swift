@@ -31,7 +31,7 @@ import Testing
                 FieldDraft(index: 2, name: "サークル", colorHexLight: "#333333",
                            colorHexDark: "#444444", assignsAutomatically: true),
             ],
-            semanticBindings: [.author: 1, .circle: 2],
+            semanticBindings: [.author: 1, .studio: 2],
             filenameFormats: [
                 FilenameFormatDraft(source: "[@author] @title", isEnabled: true),
                 FilenameFormatDraft(source: "@title", isEnabled: false),
@@ -39,6 +39,11 @@ import Testing
             volumeFormats: [
                 VolumeFormatDraft(source: #"第(\d+)巻"#, isEnabled: true, kind: .volume),
                 VolumeFormatDraft(source: "上巻", isEnabled: false, kind: .separator),
+                // **役割まで往復すること** [MF-07]。落とすと、映像ライブラリを
+                // テンプレートにした瞬間に話数の正規表現が巻数用として復元され、
+                // `@episode` に二度と一致しない。
+                VolumeFormatDraft(source: #"第(\d+)話"#, isEnabled: true,
+                                  kind: .volume, role: .episode),
             ],
             folderLevels: [
                 FolderLevelDraft(level: 1, assignment: .singleLabelGroup(index: 2)),
@@ -49,7 +54,7 @@ import Testing
             readsEmbeddedMetadata: false,
             comicInfoVolumeSource: .number,
             opensBookFolderWithApp: true,
-            bookTypeVocabulary: ["ほかのタイプ"])
+            mediaTypeVocabulary: ["ほかのタイプ"])
     }
 
     static func settingsKeys() throws -> Set<String> {
@@ -69,7 +74,7 @@ import Testing
     @Test func documentCoversEveryDraftField() throws {
         // 意図的に持たないもの。**理由は `UserTemplateSettings` の表にある。**
         // ここへ足すときは、なぜ持たなくてよいかを併せて書くこと。
-        let intentionallyExcluded: Set<String> = ["displayName", "bookTypeVocabulary"]
+        let intentionallyExcluded: Set<String> = ["displayName", "mediaTypeVocabulary"]
         let keys = try Self.settingsKeys()
         let mirror = Mirror(reflecting: Self.fullyPopulatedDraft())
         var checked = 0
@@ -109,7 +114,7 @@ import Testing
         let original = Self.fullyPopulatedDraft()
         let restored = UserTemplateSettings(original)
             .draft(displayName: original.displayName,
-                   bookTypeVocabulary: original.bookTypeVocabulary)
+                   mediaTypeVocabulary: original.mediaTypeVocabulary)
 
         #expect(restored.thumbnailsAlwaysHidden == original.thumbnailsAlwaysHidden)
         #expect(restored.duplicateGrouping == original.duplicateGrouping)
@@ -135,6 +140,7 @@ import Testing
         #expect(restored.volumeFormats.map(\.isEnabled)
                 == original.volumeFormats.map(\.isEnabled))
         #expect(restored.volumeFormats.map(\.kind) == original.volumeFormats.map(\.kind))
+        #expect(restored.volumeFormats.map(\.role) == original.volumeFormats.map(\.role))
         #expect(restored.folderLevels.map(\.level) == original.folderLevels.map(\.level))
         #expect(restored.folderLevels.map(\.assignment)
                 == original.folderLevels.map(\.assignment))
@@ -142,7 +148,7 @@ import Testing
         #expect(restored.readsEmbeddedMetadata == original.readsEmbeddedMetadata)
         #expect(restored.comicInfoVolumeSource == original.comicInfoVolumeSource)
         #expect(restored.opensBookFolderWithApp == original.opensBookFolderWithApp)
-        #expect(restored.bookTypeVocabulary == original.bookTypeVocabulary)
+        #expect(restored.mediaTypeVocabulary == original.mediaTypeVocabulary)
     }
 
     /// **「明示的に割り当てない」[AL-03] が消えない。**

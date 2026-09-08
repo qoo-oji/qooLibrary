@@ -181,25 +181,34 @@ public enum TemplateDiffBuilder {
                                           latest: LibrarySettingsDraft,
                                           current: LibrarySettingsDraft) -> [TemplateDiff.Item]
     {
-        struct Key: Hashable { let source: String; let kind: VolumePatternKind }
-        let baseSet = Set(base.volumeFormats.map { Key(source: $0.source, kind: $0.kind) })
-        let newList = latest.volumeFormats.map { Key(source: $0.source, kind: $0.kind) }
+        // **鍵は `role` まで含む** [MF-07]。同じ綴りでも役割が違えば別の行で、
+        // 落とすと話数の正規表現が巻数として当たってしまう。
+        struct Key: Hashable {
+            let source: String
+            let kind: VolumePatternKind
+            let role: PatternRole
+        }
+        func key(_ d: VolumeFormatDraft) -> Key {
+            Key(source: d.source, kind: d.kind, role: d.role)
+        }
+        let baseSet = Set(base.volumeFormats.map(key))
+        let newList = latest.volumeFormats.map(key)
         let newSet = Set(newList)
-        let currentSet = Set(current.volumeFormats.map { Key(source: $0.source, kind: $0.kind) })
+        let currentSet = Set(current.volumeFormats.map(key))
 
         var items: [TemplateDiff.Item] = []
-        for key in newList where !baseSet.contains(key) && !currentSet.contains(key) {
+        for k in newList where !baseSet.contains(k) && !currentSet.contains(k) {
             items.append(TemplateDiff.Item(
                 category: .volumeFormat, change: .added,
-                action: .addVolumeFormat(source: key.source, kind: key.kind),
-                subject: key.source, isLocallyEdited: false))
+                action: .addVolumeFormat(source: k.source, kind: k.kind, role: k.role),
+                subject: k.source, isLocallyEdited: false))
         }
-        for key in base.volumeFormats.map({ Key(source: $0.source, kind: $0.kind) })
-        where !newSet.contains(key) && currentSet.contains(key) {
+        for k in base.volumeFormats.map(key)
+        where !newSet.contains(k) && currentSet.contains(k) {
             items.append(TemplateDiff.Item(
                 category: .volumeFormat, change: .removed,
-                action: .removeVolumeFormat(source: key.source, kind: key.kind),
-                subject: key.source, isLocallyEdited: false))
+                action: .removeVolumeFormat(source: k.source, kind: k.kind, role: k.role),
+                subject: k.source, isLocallyEdited: false))
         }
         return items
     }

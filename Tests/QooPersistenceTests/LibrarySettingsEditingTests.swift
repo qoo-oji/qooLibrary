@@ -17,7 +17,7 @@ struct LibrarySettingsEditingTests {
         let draft = try #require(try await f.libraries.settingsDraft(libraryID: f.libraryID))
 
         #expect(draft.displayName == "テスト")
-        #expect(draft.fields.count == 7)   // 既定 6 種 ＋ プリセット固有の 1 つ
+        #expect(draft.fields.count == 6)   // 既定 6 種（「プレイ」は削除した [MF-22]）
         #expect(draft.fields.allSatisfy { $0.persistentID != nil })
         #expect(draft.filenameFormats.count == 20)
         #expect(!draft.volumeFormats.isEmpty)
@@ -138,8 +138,8 @@ struct LibrarySettingsValidationTests {
             targetExtensions: ["cbz"],
             fields: [FieldDraft(index: 1, name: "サークル",
                                           colorHexLight: "#EEE", colorHexDark: "#444")],
-            semanticBindings: [.circle: 1],
-            filenameFormats: [FilenameFormatDraft(source: "[@circle] @title")])
+            semanticBindings: [.studio: 1],
+            filenameFormats: [FilenameFormatDraft(source: "[@studio] @title")])
     }
 
     @Test("素直な設定は通る")
@@ -202,7 +202,7 @@ struct LibrarySettingsValidationTests {
     @Test("壊れたフォーマットを拒否する")
     func malformedFormatIsAnError() {
         var d = base()
-        d.filenameFormats = [FilenameFormatDraft(source: "[@circle @title")]
+        d.filenameFormats = [FilenameFormatDraft(source: "[@studio @title")]
         #expect(d.validationErrors.contains { $0.section == .filenameFormats })
     }
 }

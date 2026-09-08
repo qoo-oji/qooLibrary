@@ -42,13 +42,13 @@ struct GoldenCase: Codable {
         let matched: Bool
         /// テンプレートの `filenameFormats` における添字 [FF-03]。
         let formatIndex: Int?
-        /// 予約語 → 抽出値（`@title` `@circle` 等）。
+        /// 予約語 → 抽出値（`@title` `@studio` 等）。
         let fields: [String: String]?
         let series: String?
         let volume: ExpectedVolume?
         /// ラベルグループ名 → 付与されるラベル。
         let labels: [String: [String]]?
-        /// `@booktype` の不一致が立つか [RW-01]。
+        /// `@mediatype` の不一致が立つか [RW-01]。
     }
 
     /// `positive` | `negative`。
@@ -97,7 +97,7 @@ enum GoldenRunner {
         for preset in presets {
             guard let s = try? TemplateInstantiation.snapshot(
                 from: preset, volumeSets: sets, libraryID: LibraryID(rawValue: 1),
-                bookTypeVocabulary: typeNames) else { continue }
+                mediaTypeVocabulary: typeNames) else { continue }
             out[preset.displayName] = (s, preset)
             out[preset.key] = (s, preset)
         }

@@ -35,6 +35,8 @@ struct ReservedWordMigrationTests {
         return queue
     }
 
+    /// **v9 の時点の綴りで検査する**（この移行だけを単体で当てている）。
+    /// 新しい綴りへ変わるのは v19 [MF-23] の仕事で、それは別のテストが見る。
     @Test("@librarytype を @booktype へ書き換える")
     func renamesLibraryTypeSpelling() throws {
         let queue = try v8Store()

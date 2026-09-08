@@ -32,7 +32,7 @@ struct BuiltInTemplateTests {
         for preset in presets {
             let s = try TemplateInstantiation.snapshot(
                 from: preset, volumeSets: sets, libraryID: LibraryID(rawValue: 1),
-                bookTypeVocabulary: typeNames)
+                mediaTypeVocabulary: typeNames)
             #expect(!s.filenameFormats.isEmpty, "\(preset.displayName) にフォーマットが無い")
             #expect(s.filenameFormats.map(\.priority) == Array(0..<preset.filenameFormats.count))
         }

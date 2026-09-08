@@ -8,7 +8,7 @@ private func ctx(maxGroups: Int = 10,
                  semantic: [SemanticKeyword: Int] = [:],
                  delimiters: DelimiterSet = .default) -> FormatCompilationContext {
     FormatCompilationContext(delimiters: delimiters, maxFields: maxGroups,
-                             bookTypeVocabulary: types,
+                             mediaTypeVocabulary: types,
                              semanticBindings: semantic)
 }
 
@@ -74,17 +74,17 @@ struct FormatLexerTests {
 struct FormatParseTests {
     @Test("ネストしたペア型を構文木にする [FF-11][MT2-04]")
     func nestedGroups() throws {
-        let f = try FormatCompiler.compile("[@circle (@genre)] @title", context: ctx())
+        let f = try FormatCompiler.compile("[@studio (@genre)] @title", context: ctx())
         guard case .group(_, let children) = f.nodes[0] else {
             Issue.record("先頭がグループでない: \(f.nodes)"); return
         }
         #expect(children.count == 3)                                  // field, ws, group
-        #expect(children[0] == .field(.circle, kind: .free))
+        #expect(children[0] == .field(.studio, kind: .free))
         guard case .group(_, let inner) = children[2] else {
             Issue.record("入れ子のグループがない: \(children)"); return
         }
         #expect(inner == [.field(.genre, kind: .free)])
-        #expect(f.fieldOrder == [.circle, .genre, .title])
+        #expect(f.fieldOrder == [.studio, .genre, .title])
     }
 
     @Test("括弧の不一致を位置つきで拒否する")
@@ -109,20 +109,20 @@ struct FormatParseTests {
 
     @Test("フィールドの照合方法が設定から決まる [TY-01][TY-06]")
     func fieldKinds() throws {
-        let f = try FormatCompiler.compile("(@booktype) @title (@volume)",
+        let f = try FormatCompiler.compile("(@mediatype) @title (@volume)",
                                            context: ctx(types: ["一般コミック", "同人誌"]))
         guard case .group(_, let g1) = f.nodes[0], case .group(_, let g3) = f.nodes[4] else {
             Issue.record("\(f.nodes)"); return
         }
-        #expect(g1 == [.field(.bookType, kind: .enumerated(["一般コミック", "同人誌"]))])
-        #expect(g3 == [.field(.volume, kind: .volume)])
+        #expect(g1 == [.field(.mediaType, kind: .enumerated(["一般コミック", "同人誌"]))])
+        #expect(g3 == [.field(.volume, kind: .pattern(.volume))])
     }
 
     @Test("保存時に空白が正規化される [WS-03][WS-04][WSI-02]")
     func whitespaceNormalizedOnSave() throws {
-        let a = try FormatCompiler.compile("[@circle]　@title", context: ctx())  // 全角
-        let b = try FormatCompiler.compile("[@circle]   @title", context: ctx())
-        #expect(a.source == "[@circle] @title")
+        let a = try FormatCompiler.compile("[@studio]　@title", context: ctx())  // 全角
+        let b = try FormatCompiler.compile("[@studio]   @title", context: ctx())
+        #expect(a.source == "[@studio] @title")
         #expect(a.source == b.source)
         #expect(a.nodes == b.nodes)
     }
@@ -155,34 +155,34 @@ struct FormatValidationTests {
 
     @Test("自由文字列フィールドの隣接を拒否する [FF-18][TY-05]")
     func adjacentFreeFields() {
-        #expect(throws: FormatCompileError.adjacentFreeFields(first: .circle, second: .title)) {
-            try FormatCompiler.compile("@circle@title", context: ctx())
+        #expect(throws: FormatCompileError.adjacentFreeFields(first: .studio, second: .title)) {
+            try FormatCompiler.compile("@studio@title", context: ctx())
         }
     }
 
     /// 弾力的空白は 0 個でもよいので、境目を決められない [VD-02]。
     @Test("空白だけで隔てた自由文字列も拒否する [VD-02]")
     func whitespaceIsNotABoundary() {
-        #expect(throws: FormatCompileError.adjacentFreeFields(first: .title, second: .circle)) {
-            try FormatCompiler.compile("@title @circle", context: ctx())
+        #expect(throws: FormatCompileError.adjacentFreeFields(first: .title, second: .studio)) {
+            try FormatCompiler.compile("@title @studio", context: ctx())
         }
     }
 
     @Test("型付きフィールドは境界になるので隣接してよい [VD-03][TY-02]")
     func typedFieldsAreBoundaries() throws {
         _ = try FormatCompiler.compile("@series@volume", context: ctx())
-        _ = try FormatCompiler.compile("@booktype @title", context: ctx(types: ["A"]))
+        _ = try FormatCompiler.compile("@mediatype @title", context: ctx(types: ["A"]))
     }
 
     @Test("括弧の境界を挟めば自由文字列を並べてよい")
     func groupBoundarySeparatesFreeFields() throws {
-        let f = try FormatCompiler.compile("[@circle] @title", context: ctx())
-        #expect(f.fieldOrder == [.circle, .title])
+        let f = try FormatCompiler.compile("[@studio] @title", context: ctx())
+        #expect(f.fieldOrder == [.studio, .title])
     }
 
     @Test("リテラルを挟めば自由文字列を並べてよい")
     func literalSeparatesFreeFields() throws {
-        _ = try FormatCompiler.compile("@circle - @title", context: ctx())
+        _ = try FormatCompiler.compile("@studio - @title", context: ctx())
     }
 
     @Test("空のフォーマットを拒否する")
@@ -199,10 +199,10 @@ struct FormatValidationTests {
         #expect(throws: FormatCompileError.noFieldAtAll) {
             try FormatCompiler.compile("@ignore", context: ctx())
         }
-        // **`@booktype` だけなら通る** [TY-01、2026-09-04]——照合した値は
+        // **`@mediatype` だけなら通る** [TY-01、2026-09-04]——照合した値は
         // 捨てずに「本の種別」のラベルとして残るので、抽出できている。
         #expect(throws: Never.self) {
-            try FormatCompiler.compile("(@booktype)", context: ctx(types: ["A"]))
+            try FormatCompiler.compile("(@mediatype)", context: ctx(types: ["A"]))
         }
     }
 
@@ -210,7 +210,7 @@ struct FormatValidationTests {
     @Test("@title を省略できる [FF-19][RW-09]")
     func titleMayBeOmitted() throws {
         _ = try FormatCompiler.compile("@series (@volume)", context: ctx())
-        _ = try FormatCompiler.compile("[@circle] @series", context: ctx())
+        _ = try FormatCompiler.compile("[@studio] @series", context: ctx())
     }
 
     @Test("エラーはすべて三要素の文言を持つ [ER-03]")

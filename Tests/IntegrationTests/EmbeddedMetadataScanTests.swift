@@ -54,7 +54,7 @@ final class Evicted: @unchecked Sendable {
     /// **同人誌 は巻数フォーマットを持たない**（`VS-Doujin`）ので、
     /// 「ファイル名から巻数が取れている」ことを前提にした検証はそちらでは
     /// 成立しない——一般コミック（`VS-Full`）を使う。フォーマットは
-    /// `(@booktype) [@author] @title` で、意味束縛は `@series: 2` / `@author: 1`。
+    /// `(@mediatype) [@author] @title` で、意味束縛は `@series: 2` / `@author: 1`。
     private static let comicPreset = "builtin.general-comic"
 
     /// 一般コミック のフォーマットに一致する名前。
@@ -303,7 +303,7 @@ final class Evicted: @unchecked Sendable {
                            comicInfo: comicInfo(writer: "メタの著者A, メタの著者B"))
         _ = try await w.engine.scan(.full(libraryID: w.libraryID), root: w.root)
 
-        let circle = try #require(try await w.field(.circle))
+        let circle = try #require(try await w.field(.studio))
         let author = try #require(try await w.field(.author))
         let authorNames = Set(try await w.labels.labels(fieldID: author.id)
             .map(\.name))

@@ -5,7 +5,7 @@ import Testing
 
 /// プリセット改訂の差分 [LT-10〜LT-17]。
 ///
-/// 標本は**実際のプリセットの形**にする——`(@booktype) [@author] @title` の
+/// 標本は**実際のプリセットの形**にする——`(@mediatype) [@author] @title` の
 /// ような予約語入りのフォーマットと、1〜7 の既定フィールド。きれいな例だけを
 /// 標本にすると、その分野で最も普通の入力を取りこぼす（CLAUDE.md の教訓）。
 struct TemplateDiffTests {
@@ -22,25 +22,28 @@ struct TemplateDiffTests {
                                  bindings: [String: Int],
                                  formats: [String],
                                  folderLevels: [String: LibraryTypeTemplate.FolderLevelSpec] = [:],
-                                 volumeSet: String = "VS") -> LibraryTypeTemplate
+                                 volumeSet: String = "VS",
+                                 episodeSet: String? = nil) -> LibraryTypeTemplate
     {
         LibraryTypeTemplate(
             key: "builtin.sample", displayName: "見本", libraryTypeName: "見本",
             version: version, labelGroups: fields, semanticBindings: bindings,
-            folderLevels: folderLevels, filenameFormats: formats, volumeSet: volumeSet)
+            folderLevels: folderLevels, filenameFormats: formats, volumeSet: volumeSet,
+            episodeSet: episodeSet)
     }
 
     private static let volumeSets = VolumeSetDefinition(sets: [
         "VS": [.init(source: #"第(\d+)巻"#, kind: nil)],
         "VS2": [.init(source: #"第(\d+)巻"#, kind: nil),
                 .init(source: #"(?i:vol)\.?\s*(\d+)"#, kind: nil)],
+        "ES": [.init(source: #"第(\d+)話"#, kind: nil)],
     ])
 
     /// 登録時のプリセット（v1）。既定フィールド 3 種＋フォーマット 2 本。
     private static let base = template(
         version: 1,
         fields: [field(1, "著者"), field(2, "サークル"), field(3, "ジャンル")],
-        bindings: ["@author": 1, "@circle": 2, "@genre": 3],
+        bindings: ["@author": 1, "@studio": 2, "@genre": 3],
         formats: ["[@author] @title", "@title"])
 
     /// 改訂後（v2）。**本の種別フィールドが増え**、フォーマットが 1 本増えた
@@ -49,8 +52,8 @@ struct TemplateDiffTests {
         version: 2,
         fields: [field(1, "著者"), field(2, "サークル"), field(3, "ジャンル"),
                  field(7, "本の種別")],
-        bindings: ["@author": 1, "@circle": 2, "@genre": 3, "@booktype": 7],
-        formats: ["(@booktype) [@author] @title", "[@author] @title", "@title"])
+        bindings: ["@author": 1, "@studio": 2, "@genre": 3, "@mediatype": 7],
+        formats: ["(@mediatype) [@author] @title", "[@author] @title", "@title"])
 
     private static func currentDraft(
         from template: LibraryTypeTemplate = base) -> LibrarySettingsDraft
@@ -81,7 +84,7 @@ struct TemplateDiffTests {
         let formats = d.items.filter { $0.category == .filenameFormat }
         #expect(formats.count == 1)
         #expect(formats.first?.change == .added)
-        #expect(formats.first?.subject == "(@booktype) [@author] @title")
+        #expect(formats.first?.subject == "(@mediatype) [@author] @title")
         // **並べ替えは出ない**——共通の 2 本の相対順は変わっていない。
         #expect(!d.items.contains { $0.category == .filenameFormatOrder })
     }
@@ -103,7 +106,7 @@ struct TemplateDiffTests {
     @Test func skipsWhatTheUserAlreadyAdded() {
         var current = Self.currentDraft()
         current.filenameFormats.insert(
-            FilenameFormatDraft(source: "(@booktype) [@author] @title"), at: 0)
+            FilenameFormatDraft(source: "(@mediatype) [@author] @title"), at: 0)
         let d = Self.diff(current: current)
         #expect(!d.items.contains { $0.category == .filenameFormat })
     }
@@ -122,7 +125,7 @@ struct TemplateDiffTests {
         let shrunk = Self.template(
             version: 2,
             fields: [Self.field(1, "著者"), Self.field(2, "サークル"), Self.field(3, "ジャンル")],
-            bindings: ["@author": 1, "@circle": 2, "@genre": 3],
+            bindings: ["@author": 1, "@studio": 2, "@genre": 3],
             formats: ["[@author] @title"])
         let present = Self.diff(current: Self.currentDraft(), latest: shrunk)
         #expect(present.items.contains { $0.change == .removed && $0.subject == "@title" })
@@ -139,7 +142,7 @@ struct TemplateDiffTests {
         let renamed = Self.template(
             version: 2,
             fields: [Self.field(1, "作者"), Self.field(2, "サークル"), Self.field(3, "ジャンル")],
-            bindings: ["@author": 1, "@circle": 2, "@genre": 3],
+            bindings: ["@author": 1, "@studio": 2, "@genre": 3],
             formats: ["[@author] @title", "@title"])
         var current = Self.currentDraft()
         current.fields[0].name = "わたしの著者"
@@ -165,7 +168,7 @@ struct TemplateDiffTests {
         let reordered = Self.template(
             version: 2,
             fields: [Self.field(1, "著者"), Self.field(2, "サークル"), Self.field(3, "ジャンル")],
-            bindings: ["@author": 1, "@circle": 2, "@genre": 3],
+            bindings: ["@author": 1, "@studio": 2, "@genre": 3],
             formats: ["@title", "[@author] @title"])
         let d = Self.diff(current: Self.currentDraft(), latest: reordered)
         let item = d.items.first { $0.category == .filenameFormatOrder }
@@ -181,7 +184,7 @@ struct TemplateDiffTests {
         let applied = TemplateDiff.applying(onlyField, to: Self.currentDraft())
 
         #expect(applied.fields.contains { $0.index == 7 && $0.name == "本の種別" })
-        #expect(applied.semanticBindings[.bookType] == 7)
+        #expect(applied.semanticBindings[.mediaType] == 7)
         // フォーマットは選んでいないので増えない。
         #expect(applied.filenameFormats.count == 2)
     }
@@ -191,7 +194,7 @@ struct TemplateDiffTests {
         let d = Self.diff(current: Self.currentDraft())
         let applied = TemplateDiff.applying(d.items, to: Self.currentDraft())
         #expect(applied.filenameFormats.map(\.source)
-            == ["(@booktype) [@author] @title", "[@author] @title", "@title"])
+            == ["(@mediatype) [@author] @title", "[@author] @title", "@title"])
     }
 
     /// **利用者が足したフォーマットを落とさない** [D3]。
@@ -199,7 +202,7 @@ struct TemplateDiffTests {
         let reordered = Self.template(
             version: 2,
             fields: [Self.field(1, "著者"), Self.field(2, "サークル"), Self.field(3, "ジャンル")],
-            bindings: ["@author": 1, "@circle": 2, "@genre": 3],
+            bindings: ["@author": 1, "@studio": 2, "@genre": 3],
             formats: ["@title", "[@author] @title"])
         var current = Self.currentDraft()
         current.filenameFormats.append(FilenameFormatDraft(source: "わたしの形式 @title"))
@@ -223,7 +226,7 @@ struct TemplateDiffTests {
         let added = applied.fields.first { $0.name == "本の種別" }
         #expect(added != nil)
         #expect(added?.index != 7)
-        #expect(applied.semanticBindings[.bookType] == added?.index)
+        #expect(applied.semanticBindings[.mediaType] == added?.index)
     }
 
     /// 既に同じ意味のフィールドを持っているなら、追加を出さない
@@ -232,7 +235,7 @@ struct TemplateDiffTests {
         var current = Self.currentDraft()
         current.fields.append(FieldDraft(index: 9, name: "種別",
                                          colorHexLight: "#111111", colorHexDark: "#EEEEEE"))
-        current.semanticBindings[.bookType] = 9
+        current.semanticBindings[.mediaType] = 9
         let d = Self.diff(current: current)
         #expect(!d.items.contains { $0.category == .field })
     }
@@ -287,7 +290,7 @@ struct TemplateDiffTests {
         let widened = Self.template(
             version: 2,
             fields: [Self.field(1, "著者"), Self.field(2, "サークル"), Self.field(3, "ジャンル")],
-            bindings: ["@author": 1, "@circle": 2, "@genre": 3],
+            bindings: ["@author": 1, "@studio": 2, "@genre": 3],
             formats: ["[@author] @title", "@title"],
             volumeSet: "VS2")
         let d = Self.diff(current: Self.currentDraft(), latest: widened)
@@ -298,13 +301,34 @@ struct TemplateDiffTests {
         #expect(applied.volumeFormats.count == 2)
     }
 
+    /// **役割まで運ぶこと** [MF-07][MF-09]。落とすと、改訂で足された話数の
+    /// 正規表現が巻数として適用され、`@episode` に一生一致しない
+    /// ——設定画面には行が増えて見えるので、誤りに気づけない。
+    @Test("話数セットの追加は role = episode として適用される")
+    func addedEpisodePatternKeepsItsRole() {
+        let withEpisodes = Self.template(
+            version: 2,
+            fields: [Self.field(1, "著者"), Self.field(2, "サークル"), Self.field(3, "ジャンル")],
+            bindings: ["@author": 1, "@studio": 2, "@genre": 3],
+            formats: ["[@author] @title", "@title"],
+            episodeSet: "ES")
+        let d = Self.diff(current: Self.currentDraft(), latest: withEpisodes)
+        let item = d.items.first { $0.category == .volumeFormat }
+        #expect(item?.change == .added)
+        #expect(item?.subject == #"第(\d+)話"#)
+
+        let applied = TemplateDiff.applying(d.items, to: Self.currentDraft())
+        let added = applied.volumeFormats.first { $0.source == #"第(\d+)話"# }
+        #expect(added?.role == .episode)
+    }
+
     // MARK: - フォルダ階層
 
     @Test func surfacesFolderLevelChange() {
         let foldered = Self.template(
             version: 2,
             fields: [Self.field(1, "著者"), Self.field(2, "サークル"), Self.field(3, "ジャンル")],
-            bindings: ["@author": 1, "@circle": 2, "@genre": 3],
+            bindings: ["@author": 1, "@studio": 2, "@genre": 3],
             formats: ["[@author] @title", "@title"],
             folderLevels: ["1": .init(kind: .singleLabelGroup, labelGroup: 1, format: nil)])
         let d = Self.diff(current: Self.currentDraft(), latest: foldered)
