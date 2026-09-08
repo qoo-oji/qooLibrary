@@ -18,7 +18,7 @@ struct SeriesSuggestionRepositoryTests {
         let circleField: FieldSummary
 
         static func make() async throws -> Setup {
-            let f = try await Fixture.make(preset: "builtin.doujinshi-a")
+            let f = try await Fixture.make(preset: "builtin.doujinshi")
             // 同人誌プリセットの `@circle` は 2 番のフィールド [RWI-02]。
             let circle = try #require(try await f.labels.field(libraryID: f.libraryID, index: 2))
             return Setup(f: f, circleField: circle)

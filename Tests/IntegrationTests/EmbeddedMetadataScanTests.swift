@@ -51,13 +51,13 @@ final class Evicted: @unchecked Sendable {
 
     /// 巻数を扱うテストで使うテンプレート。
     ///
-    /// **同人誌(A) は巻数フォーマットを持たない**（`VS-Doujin`）ので、
+    /// **同人誌 は巻数フォーマットを持たない**（`VS-Doujin`）ので、
     /// 「ファイル名から巻数が取れている」ことを前提にした検証はそちらでは
-    /// 成立しない——一般コミック(A)（`VS-Full`）を使う。フォーマットは
+    /// 成立しない——一般コミック（`VS-Full`）を使う。フォーマットは
     /// `(@booktype) [@author] @title` で、意味束縛は `@series: 2` / `@author: 1`。
-    private static let comicPreset = "builtin.general-comic-a"
+    private static let comicPreset = "builtin.general-comic"
 
-    /// 一般コミック(A) のフォーマットに一致する名前。
+    /// 一般コミック のフォーマットに一致する名前。
     private func comicName(_ title: String, author: String = "著者値A") -> String {
         "(一般コミック) [\(author)] \(title)"
     }
@@ -296,7 +296,7 @@ final class Evicted: @unchecked Sendable {
 
     /// 意味束縛でラベルグループへ流している著者は、ラベル側もメタデータに揃える。
     @Test func theAuthorLabelFollowsTheMetadata() async throws {
-        // 同人誌(A) のテンプレートは著者を `@author` として取り、意味束縛で
+        // 同人誌 のテンプレートは著者を `@author` として取り、意味束縛で
         // ラベルグループへ流す [RW-13]。
         let w = try await ScanWorkspace()
         try makeBookFolder(w, "(同人誌) [サークル値A (ファイル名の著者)] 作品名A",
@@ -325,7 +325,7 @@ final class Evicted: @unchecked Sendable {
 @Suite(.serialized) struct VolumeDecisionTests {
 
     private func workspace() async throws -> (ScanWorkspace, String) {
-        let w = try await ScanWorkspace(preset: "builtin.general-comic-a")
+        let w = try await ScanWorkspace(preset: "builtin.general-comic")
         let name = "(一般コミック) [著者値A] 作品名A 第09巻"
         try w.write("\(name)/001.jpg")
         try w.write("\(name)/002.jpg")

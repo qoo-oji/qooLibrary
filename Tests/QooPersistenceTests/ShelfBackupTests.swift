@@ -21,7 +21,7 @@ struct ShelfBackupTests {
         let labelB: LabelID
 
         static func make() async throws -> Setup {
-            let f = try await Fixture.make(preset: "builtin.doujinshi-a")
+            let f = try await Fixture.make(preset: "builtin.doujinshi")
             let fields = try await f.labels.fields(libraryID: f.libraryID)
             let circle = try #require(fields.first { $0.name == "サークル" })
             return Setup(f: f,

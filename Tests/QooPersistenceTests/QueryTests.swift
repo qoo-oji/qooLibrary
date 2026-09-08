@@ -15,7 +15,7 @@ struct QueryTests {
         var fileID: [String: FileID] = [:]
 
         static func make() async throws -> Setup {
-            let f = try await Fixture.make(preset: "builtin.doujinshi-a")
+            let f = try await Fixture.make(preset: "builtin.doujinshi")
             var s = Setup(f: f)
             let circle = try #require(try await f.labels.field(libraryID: f.libraryID, index: 2))
             let author = try #require(try await f.labels.field(libraryID: f.libraryID, index: 3))
@@ -59,7 +59,7 @@ struct QueryTests {
     /// フォルダ表示モードの一覧がまとめて空振りする形だった。
     @Test("濁点を含むフォルダでも「直下だけ」の照合が効く")
     func nonRecursiveFolderScopeWorksWithDecomposedNames() async throws {
-        let f = try await Fixture.make(preset: "builtin.doujinshi-a")
+        let f = try await Fixture.make(preset: "builtin.doujinshi")
         let nfd = "フォルダ".decomposedStringWithCanonicalMapping
         #expect(nfd.count == 4 && nfd.unicodeScalars.count == 5, "標本が NFD であること")
 
@@ -80,7 +80,7 @@ struct QueryTests {
     /// 同じずれは孤立の判定にも効いている（差分スキャンが使う経路）。
     @Test("濁点を含むフォルダでも unseen の「直下だけ」が効く [ID-06]")
     func unseenNonRecursiveScopeWorksWithDecomposedNames() async throws {
-        let f = try await Fixture.make(preset: "builtin.doujinshi-a")
+        let f = try await Fixture.make(preset: "builtin.doujinshi")
         let nfd = "フォルダ".decomposedStringWithCanonicalMapping
         let kept = try await f.files.upsert(f.snapshot(inode: 1, path: "\(nfd)/残る.cbz", size: 10))
         _ = try await f.files.upsert(f.snapshot(inode: 2, path: "\(nfd)/消える.cbz", size: 10))

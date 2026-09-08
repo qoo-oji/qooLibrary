@@ -28,11 +28,11 @@ struct BookFolderIndexTests {
     private func workspace() async throws -> (ServicesWorkspace, LibrarySummary) {
         let w = try ServicesWorkspace()
         await w.bootstrap()
-        // 一般コミック(A) の形。ブックフォルダは配下に画像だけを持つフォルダ [IF-01]。
+        // 一般コミック の形。ブックフォルダは配下に画像だけを持つフォルダ [IF-01]。
         try w.write("(一般コミック) [著者値A] 作品名A 第01巻.cbz")
         try w.write("(一般コミック) [著者値A] 作品名A 第02巻/001.jpg")
         try w.write("(一般コミック) [著者値A] 作品名A 第02巻/002.jpg")
-        let id = try await w.enable("builtin.general-comic-a")
+        let id = try await w.enable("builtin.general-comic")
         _ = try await w.services.scan(libraryID: id, root: w.libraryRoot)
         let library = try #require(w.services.library(registrationUUID: w.registrationUUID))
         return (w, library)

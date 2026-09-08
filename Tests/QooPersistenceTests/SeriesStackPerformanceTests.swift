@@ -19,7 +19,7 @@ struct SeriesStackPerformanceTests {
     /// `seriesFilled` はシリーズ名を持つ行の割合。
     private static func corpus(total: Int, seriesFilled: Double,
                                booksPerSeries: Int) async throws -> Fixture {
-        let f = try await Fixture.make(preset: "builtin.general-comic-a")
+        let f = try await Fixture.make(preset: "builtin.general-comic")
         var produced = 0
         let cutoff = Int(Double(total) * seriesFilled)
         while produced < total {

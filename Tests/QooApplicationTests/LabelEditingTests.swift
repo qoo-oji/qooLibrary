@@ -15,11 +15,11 @@ import Testing
 @Suite("ラベル設定 [RL-01〜RL-07][RP-02]", .serialized)
 struct LabelEditingTests {
 
-    /// 同人誌(A) はサークル・著者・イベント・ジャンルの 4 フィールドを持ち、
+    /// 同人誌 はサークル・著者・イベント・ジャンルの 4 フィールドを持ち、
     /// 走査で自動ラベルが付く——`auto` を外す経路 [RC-04] を試すには、
     /// **その主張が成り立ちうる前提**（自動で付いたラベルがあること）が要る。
     @MainActor
-    private func workspace(files: [String], preset: String = "builtin.doujinshi-a")
+    private func workspace(files: [String], preset: String = "builtin.doujinshi")
         async throws -> (ServicesWorkspace, LibrarySummary, [URL])
     {
         let w = try ServicesWorkspace()

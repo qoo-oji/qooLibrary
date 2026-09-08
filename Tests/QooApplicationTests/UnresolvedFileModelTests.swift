@@ -138,7 +138,7 @@ struct UnresolvedFileModelIntegrationTests {
         try w.write("(同人誌) [サークル値1 (著者値1)] 作品タイトル1 (ジャンル値1).cbz")
         try w.write("独自形式＿サークル値9＿作品タイトル9.cbz")
         try w.write("まったく別の形式.cbz")
-        let id = try await w.enable("builtin.doujinshi-a")
+        let id = try await w.enable("builtin.doujinshi")
         _ = try await w.services.scan(libraryID: id, root: w.libraryRoot)
 
         let commands = CommandStack()
@@ -210,14 +210,14 @@ struct UnresolvedFileModelIntegrationTests {
         let other = try await b.workspace.services.enable(
             registrationUUID: UUID(), displayName: "2 つ目", url: otherRoot,
             bookmarkData: Data(),
-            template: try b.workspace.template("builtin.general-comic-a"))
+            template: try b.workspace.template("builtin.general-comic"))
 
         await b.model.prepareAsIndex(services: b.workspace.services, libraryID: b.libraryID)
         #expect(b.model.selectedLibraryID == b.libraryID)
 
         let mine = try #require(try await b.model.settingsDraft(libraryID: b.libraryID))
         let theirs = try #require(try await b.model.settingsDraft(libraryID: other))
-        // 同人誌(A) は 20 本、一般コミック(A) は本数が違う——**渡した ID の
+        // 同人誌 は 20 本、一般コミック は本数が違う——**渡した ID の
         // ライブラリを読んでいる**ことが観測できる形にしておく。
         #expect(mine.filenameFormats.count != theirs.filenameFormats.count)
     }

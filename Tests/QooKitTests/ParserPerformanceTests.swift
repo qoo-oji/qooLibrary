@@ -68,7 +68,7 @@ struct ParserPerformanceTests {
         var sources = PresetTemplateTests.allPresetFormats
             .flatMap(\.formats)
             .filter { $0 != "@title" }
-        // 50 本になるまで、実在する形の変種で埋める（同人誌(B) / 同人CG(A) 相当）。
+        // 50 本になるまで、実在する形の変種で埋める（同人誌 / 同人CG 相当）。
         let fillers = [
             "(@circle) [@genre (@event)] @title [@keyword] (@author)",
             "(@booktype) (@circle) [@genre] @title",

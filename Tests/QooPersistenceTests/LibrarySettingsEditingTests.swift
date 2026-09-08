@@ -13,7 +13,7 @@ struct LibrarySettingsEditingTests {
 
     @Test("テンプレートで登録した内容が、そのまま編集用の草案として読み戻せる")
     func draftRoundTripsTemplateContents() async throws {
-        let f = try await Fixture.make(preset: "builtin.doujinshi-a")
+        let f = try await Fixture.make(preset: "builtin.doujinshi")
         let draft = try #require(try await f.libraries.settingsDraft(libraryID: f.libraryID))
 
         #expect(draft.displayName == "テスト")
@@ -41,7 +41,7 @@ struct LibrarySettingsEditingTests {
 
     @Test("フォーマットの追加・並べ替え・無効化が保存され、無効なものも残る [FF-03][FF-05]")
     func filenameFormatEditsPersist() async throws {
-        let f = try await Fixture.make(preset: "builtin.general-comic-a")
+        let f = try await Fixture.make(preset: "builtin.general-comic")
         var draft = try #require(try await f.libraries.settingsDraft(libraryID: f.libraryID))
 
         draft.filenameFormats[0].isEnabled = false
@@ -62,7 +62,7 @@ struct LibrarySettingsEditingTests {
 
     @Test("ラベルフィールドの名前を変えても、紐づいたラベルは消えない [LB-05]")
     func renamingAFieldKeepsItsLabels() async throws {
-        let f = try await Fixture.make(preset: "builtin.general-comic-a")
+        let f = try await Fixture.make(preset: "builtin.general-comic")
         let fields = try await f.labels.fields(libraryID: f.libraryID)
         let author = try #require(fields.first { $0.name == "著者" })
         _ = try await f.labels.ensureLabel(fieldID: author.id, name: "著者名A")
@@ -82,7 +82,7 @@ struct LibrarySettingsEditingTests {
 
     @Test("ラベルフィールドを増やせる")
     func addingAField() async throws {
-        let f = try await Fixture.make(preset: "builtin.general-comic-a")
+        let f = try await Fixture.make(preset: "builtin.general-comic")
         var draft = try #require(try await f.libraries.settingsDraft(libraryID: f.libraryID))
         // **プリセットの件数を直に書かない。** 既定フィールド 5 種の保証 [§19.2]
         // のようにテンプレート側が増減すると、この検査の主張と無関係に落ちる。
@@ -99,7 +99,7 @@ struct LibrarySettingsEditingTests {
 
     @Test("検証を通らない設定は保存しない [LS-01]")
     func invalidDraftsAreRejected() async throws {
-        let f = try await Fixture.make(preset: "builtin.general-comic-a")
+        let f = try await Fixture.make(preset: "builtin.general-comic")
         var draft = try #require(try await f.libraries.settingsDraft(libraryID: f.libraryID))
         draft.targetExtensions = []          // 空 = 全ファイル対象になる [AL-11][IF-01]
 
@@ -113,7 +113,7 @@ struct LibrarySettingsEditingTests {
 
     @Test("区切り文字・保護文字列・階層割り当ても往復する [DL-02][PT-01][AL-02]")
     func lexicalAndFolderSettingsRoundTrip() async throws {
-        let f = try await Fixture.make(preset: "builtin.general-comic-a")
+        let f = try await Fixture.make(preset: "builtin.general-comic")
         var draft = try #require(try await f.libraries.settingsDraft(libraryID: f.libraryID))
         draft.delimiters.pairs.append(PairDelimiter(open: "【", close: "】"))
         draft.protectedTokens.append(ProtectedToken(pattern: #"\(完全版\)"#, position: .suffix))

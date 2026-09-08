@@ -16,7 +16,7 @@ struct PersistencePerformanceTests {
 
     /// 5 万件は毎回作ると重いので、この suite で 1 回だけ作る。
     static func makeLibrary(files: Int, labelsPerGroup: [Int]) async throws -> QueryTests.Setup {
-        let f = try await Fixture.make(preset: "builtin.doujinshi-a")
+        let f = try await Fixture.make(preset: "builtin.doujinshi")
         var labelIDs: [[LabelID]] = []
         for (offset, cardinality) in labelsPerGroup.enumerated() {
             let field = try #require(try await f.labels.field(libraryID: f.libraryID, index: offset + 1))

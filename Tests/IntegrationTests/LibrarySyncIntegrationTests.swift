@@ -51,7 +51,7 @@ struct LibrarySyncIntegrationTests {
             database = try QooDatabase.inMemory()
             let sets = try BuiltInTemplates.volumeSets()
             let template = try #require(
-                try BuiltInTemplates.libraryTypes().first { $0.key == "builtin.doujinshi-a" })
+                try BuiltInTemplates.libraryTypes().first { $0.key == "builtin.doujinshi" })
             libraries = SQLiteLibraryRepository(database: database, volumeSets: sets)
             files = SQLiteManagedFileRepository(database: database)
             let labels = SQLiteLabelRepository(database: database)
@@ -261,7 +261,7 @@ struct ManualScanCheckpointTests {
         let services = LibraryServices()
         let storeURL = base.appendingPathComponent("store/qooLibrary.sqlite")
         await services.bootstrap(storeURL: storeURL)
-        let template = try #require(services.presetTemplates.first { $0.key == "builtin.doujinshi-a" })
+        let template = try #require(services.presetTemplates.first { $0.key == "builtin.doujinshi" })
         let id = try await services.enable(
             registrationUUID: UUID(), displayName: "手動", url: root,
             bookmarkData: Data(), template: template)

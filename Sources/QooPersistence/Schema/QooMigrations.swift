@@ -20,6 +20,7 @@ public enum QooMigrations {
         "v11_orphanedProtectedTokens", "v12_shelf", "v13_seriesSuggestionIgnore",
         "v14_labelVisibility", "v15_bookTypeAsLabel", "v16_operationLog",
         "v17_registeredTemplate",
+        "v18_mergedPresets",
     ]
 
     public static var migrator: DatabaseMigrator {
@@ -42,6 +43,7 @@ public enum QooMigrations {
         m.registerMigration(identifiers[14], migrate: v15BookTypeAsLabel)
         m.registerMigration(identifiers[15], migrate: v16OperationLog)
         m.registerMigration(identifiers[16], migrate: v17RegisteredTemplate)
+        m.registerMigration(identifiers[17], migrate: v18MergedPresets)
         return m
     }
 
@@ -893,6 +895,78 @@ public enum QooMigrations {
         }
         try db.execute(sql: "UPDATE storeMetadata SET schemaVersion = ? WHERE id = 1",
                        arguments: [identifiers[16]])
+    }
+
+    // MARK: - v18
+
+    /// プリセットの (A)/(B) 統合に追随する [2026-09-08、ユーザー判断]。
+    ///
+    /// 8 種あったプリセットを 4 種へ畳んだので、`presetKey` から `-a`/`-b` を
+    /// 落とす。**綴りを直さないと、そのライブラリは「プリセット由来ではない」
+    /// と見なされ**、改訂の差分 [LT-10〜17] に二度と乗らなくなる。
+    ///
+    /// ## 設定（`settingsJSON`）には触れない
+    /// 統合後のプリセットは `folderLevels` を固定で持つが、それを既存の
+    /// ライブラリへ勝手に足さない——旧 (A) で登録した人は「フォルダ名は
+    /// 解析しない」と決めてそうしたのであって、更新で挙動が変わってよい
+    /// ものではない。
+    ///
+    /// ## 登録時の定義（`registeredTemplateJSON`）は key と version だけ直す
+    /// 中身（当時の `folderLevels` やフォーマット）はそのまま残す。統合後の
+    /// `version` は 1 なので `latest.version > base.version` が偽になり
+    /// **差分は出ない**——統合は「改訂」ではなく作り直しだから、これでよい。
+    static func v18MergedPresets(_ db: Database) throws {
+        let renames = [("builtin.general-comic-a", "builtin.general-comic"),
+                       ("builtin.general-comic-b", "builtin.general-comic"),
+                       ("builtin.adult-comic-a", "builtin.adult-comic"),
+                       ("builtin.adult-comic-b", "builtin.adult-comic"),
+                       ("builtin.doujinshi-a", "builtin.doujinshi"),
+                       ("builtin.doujinshi-b", "builtin.doujinshi"),
+                       ("builtin.doujin-cg-a", "builtin.doujin-cg"),
+                       ("builtin.doujin-cg-b", "builtin.doujin-cg")]
+        // `libraryType` の行は複数のライブラリで共有される [LT-05 の注記] うえ
+        // `presetKey` に UNIQUE 制約があるので、畳んだ先が既にあるなら
+        // **参照を付け替えてから**重複を消す（素の UPDATE は制約で落ちる）。
+        for (old, new) in renames {
+            if let survivor = try Int64.fetchOne(
+                db, sql: "SELECT id FROM libraryType WHERE presetKey = ? LIMIT 1",
+                arguments: [new])
+            {
+                try db.execute(sql: """
+                    UPDATE library SET libraryTypeId = ?
+                     WHERE libraryTypeId IN (SELECT id FROM libraryType WHERE presetKey = ?)
+                    """, arguments: [survivor, old])
+                try db.execute(sql: "DELETE FROM libraryType WHERE presetKey = ?",
+                               arguments: [old])
+            } else {
+                try db.execute(sql: "UPDATE libraryType SET presetKey = ? WHERE presetKey = ?",
+                               arguments: [new, old])
+            }
+        }
+        // 表示名からも「(A)」「(B)」を落とす（プリセットの行だけ）。
+        try db.execute(sql: """
+            UPDATE libraryType
+               SET name = trim(replace(replace(name, '(A)', ''), '(B)', ''))
+             WHERE isPreset = 1 AND (name LIKE '%(A)%' OR name LIKE '%(B)%')
+            """)
+        // 登録時の定義。key・displayName・version だけを直す。
+        for (old, new) in renames {
+            try db.execute(sql: """
+                UPDATE library
+                   SET registeredTemplateJSON =
+                       json_set(registeredTemplateJSON,
+                                '$.key', ?,
+                                '$.displayName',
+                                trim(replace(replace(
+                                    json_extract(registeredTemplateJSON, '$.displayName'),
+                                    '(A)', ''), '(B)', '')),
+                                '$.version', 1)
+                 WHERE registeredTemplateJSON IS NOT NULL
+                   AND json_extract(registeredTemplateJSON, '$.key') = ?
+                """, arguments: [new, old])
+        }
+        try db.execute(sql: "UPDATE storeMetadata SET schemaVersion = ? WHERE id = 1",
+                       arguments: [identifiers[17]])
     }
 
 }

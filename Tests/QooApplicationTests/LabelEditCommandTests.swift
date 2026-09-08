@@ -15,7 +15,7 @@ import Testing
 @Suite("ラベルの編集コマンド [LE-07〜LE-11]", .serialized)
 struct LabelEditCommandTests {
 
-    /// 同人誌(A) で走査まで済ませ、サークルフィールドを返す。
+    /// 同人誌 で走査まで済ませ、サークルフィールドを返す。
     @MainActor
     private func workspace(files: Int = 3)
         async throws -> (ServicesWorkspace, LibrarySummary, FieldSummary)
@@ -25,7 +25,7 @@ struct LabelEditCommandTests {
         for i in 1...files {
             try w.write("(同人誌) [サークル値\(i) (著者値\(i))] 作品タイトル\(i) (ジャンル値1).cbz")
         }
-        let id = try await w.enable("builtin.doujinshi-a")
+        let id = try await w.enable("builtin.doujinshi")
         _ = try await w.services.scan(libraryID: id, root: w.libraryRoot)
         let library = try #require(w.services.library(registrationUUID: w.registrationUUID))
         let fields = try await w.services.fields(libraryID: library.id)

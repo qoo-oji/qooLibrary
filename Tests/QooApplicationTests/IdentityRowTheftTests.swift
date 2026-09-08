@@ -40,7 +40,7 @@ struct IdentityRowTheftTests {
         await w.bootstrap()
         try put(w, "旧/\(Self.name)", bytes: 16)
         try put(w, "新/\(Self.name)", bytes: 32)
-        let id = try await w.enable("builtin.doujinshi-a")
+        let id = try await w.enable("builtin.doujinshi")
         _ = try await w.services.scan(libraryID: id, root: w.libraryRoot)
 
         let before = try await w.services.filesUnder(libraryID: id, folderRelativePath: "")
@@ -64,7 +64,7 @@ struct IdentityRowTheftTests {
         let w = try ServicesWorkspace()
         await w.bootstrap()
         try put(w, "旧/\(Self.name)", bytes: 16)
-        let id = try await w.enable("builtin.doujinshi-a")
+        let id = try await w.enable("builtin.doujinshi")
         _ = try await w.services.scan(libraryID: id, root: w.libraryRoot)
 
         let before = try await w.services.filesUnder(libraryID: id, folderRelativePath: "")
@@ -92,7 +92,7 @@ struct IdentityRowTheftTests {
         await w.bootstrap()
         try put(w, "旧/\(Self.name)", bytes: 16)
         try put(w, "新/\(Self.name)", bytes: 16)
-        let id = try await w.enable("builtin.doujinshi-a")
+        let id = try await w.enable("builtin.doujinshi")
         _ = try await w.services.scan(libraryID: id, root: w.libraryRoot)
 
         let before = try await w.services.filesUnder(libraryID: id, folderRelativePath: "")

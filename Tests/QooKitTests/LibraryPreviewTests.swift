@@ -14,7 +14,7 @@ struct LibraryPreviewTests {
 
     private static func doujinDraft() throws -> LibrarySettingsDraft {
         let template = try #require(try BuiltInTemplates.libraryTypes()
-            .first { $0.key == "builtin.doujinshi-a" })
+            .first { $0.key == "builtin.doujinshi" })
         return TemplateInstantiation.draft(
             from: template, volumeSets: try BuiltInTemplates.volumeSets(),
             displayName: "テスト")
@@ -69,7 +69,7 @@ struct LibraryPreviewTests {
     @Test("巻数は原文表記で見せる [SE-02]")
     func volumeKeepsItsRawText() throws {
         let template = try #require(try BuiltInTemplates.libraryTypes()
-            .first { $0.key == "builtin.general-comic-a" })
+            .first { $0.key == "builtin.general-comic" })
         let draft = TemplateInstantiation.draft(
             from: template, volumeSets: try BuiltInTemplates.volumeSets(), displayName: "テスト")
         let outcome = LibraryPreview.run(
@@ -113,7 +113,7 @@ struct LibraryPreviewTests {
     @Test("他のライブラリの型名に当たったら警告として数える [TY-01]")
     func countsLibraryTypeMismatch() throws {
         let template = try #require(try BuiltInTemplates.libraryTypes()
-            .first { $0.key == "builtin.doujinshi-a" })
+            .first { $0.key == "builtin.doujinshi" })
         var draft = TemplateInstantiation.draft(
             from: template, volumeSets: try BuiltInTemplates.volumeSets(),
             displayName: "テスト", bookTypeVocabulary: ["同人誌", "成年コミック"])

@@ -29,7 +29,7 @@ struct DuplicatePerformanceTests {
     /// いた**のを、`COUNT(*) OVER ()` で同じ走査に畳んだため。
     @Test("5 万件のグループ化した一覧が 500ms 以内 [PF-01][DU-04]")
     func groupingAtScale() async throws {
-        let f = try await Fixture.make(preset: "builtin.doujinshi-a")
+        let f = try await Fixture.make(preset: "builtin.doujinshi")
 
         // 5 万件。タイトルは 4 万種で、**1 万件が誰かと重複する**——
         // 実蔵書に近い「ほとんどは 1 件、ときどき 2〜3 件」の形にする。

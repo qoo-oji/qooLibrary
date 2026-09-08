@@ -106,7 +106,7 @@ struct UnresolvedScanTests {
         _ = try await w.scanFull()
         #expect(try await unresolved(w).count == 1)
 
-        // 「サークル」はプリセット同人誌(A) の第 2 フィールド [11.4 節]。
+        // 「サークル」はプリセット同人誌 の第 2 フィールド [11.4 節]。
         var draft = try #require(try await w.libraries.settingsDraft(libraryID: w.libraryID))
         draft.filenameFormats.append(
             FilenameFormatDraft(source: "独自形式＿@circle＿@title"))

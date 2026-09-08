@@ -27,7 +27,7 @@ struct LabelFilterModelTests {
         return (w, model)
     }
 
-    /// 同人誌(A) のフォーマットに一致する合成名。
+    /// 同人誌 のフォーマットに一致する合成名。
     static func doujin(_ n: Int, circle: Int? = nil) -> String {
         "(同人誌) [サークル値\(circle ?? n) (著者値\(n))] 作品タイトル\(n) (ジャンル値\(n)).cbz"
     }

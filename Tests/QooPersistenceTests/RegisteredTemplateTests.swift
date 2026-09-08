@@ -29,7 +29,7 @@ struct RegisteredTemplateTests {
     func registrationStoresThePresetAsBase() async throws {
         let (repository, _) = try Self.repository()
         let template = try #require(try BuiltInTemplates.libraryTypes()
-            .first { $0.key == "builtin.doujinshi-a" })
+            .first { $0.key == "builtin.doujinshi" })
         let id = try await repository.register(Self.registration(), template: template)
 
         let stored = try #require(try await repository.registeredTemplate(libraryID: id))
@@ -55,8 +55,8 @@ struct RegisteredTemplateTests {
     func baseCanBeAdvanced() async throws {
         let (repository, _) = try Self.repository()
         let all = try BuiltInTemplates.libraryTypes()
-        let template = try #require(all.first { $0.key == "builtin.doujinshi-a" })
-        let other = try #require(all.first { $0.key == "builtin.general-comic-a" })
+        let template = try #require(all.first { $0.key == "builtin.doujinshi" })
+        let other = try #require(all.first { $0.key == "builtin.general-comic" })
         let id = try await repository.register(Self.registration(), template: template)
 
         try await repository.setRegisteredTemplate(other, libraryID: id)

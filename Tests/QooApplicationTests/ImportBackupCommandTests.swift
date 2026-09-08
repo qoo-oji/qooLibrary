@@ -29,7 +29,7 @@ struct ImportBackupCommandTests {
         await w.bootstrap()
         let name = "(一般コミック) [著者値A] 作品名A 第01巻.cbz"
         try w.write(name)
-        let id = try await w.enable("builtin.general-comic-a")
+        let id = try await w.enable("builtin.general-comic")
         _ = try await w.services.scan(libraryID: id, root: w.libraryRoot)
         let library = try #require(w.services.library(registrationUUID: w.registrationUUID))
         return (w, library, w.libraryRoot.appendingPathComponent(name))

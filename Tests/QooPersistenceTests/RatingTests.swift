@@ -143,7 +143,7 @@ struct RatingTests {
                                 resolvedPath: "/tmp/lib2", volumeUUID: "VOL2",
                                 libraryTypeID: LibraryTypeID(rawValue: 0)),
             template: try #require(try BuiltInTemplates.libraryTypes()
-                .first { $0.key == "builtin.doujinshi-a" }))
+                .first { $0.key == "builtin.doujinshi" }))
         let mine = try await f.files.upsert(f.snapshot(inode: 1, path: "1.cbz"))
         let theirs = try await f.files.upsert(
             FileSnapshot(identity: FileIdentity(volumeUUID: "VOL2", inode: 1),

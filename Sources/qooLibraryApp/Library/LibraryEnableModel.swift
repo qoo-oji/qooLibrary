@@ -66,6 +66,11 @@ final class LibraryEnableModel {
     private(set) var sampleTruncated = false
     /// サブフォルダの中にあったファイル数 [RG3-24]。
     private(set) var sampleNestedCount = 0
+    /// 1 階層目のフォルダに入っていたサンプル（フォルダ名 ＋ 拡張子なしの
+    /// ファイル名）[RG3-24]。ウィザードが「フォルダ名がラベルとして妥当か」を
+    /// 実測して、フォルダ名の解析を既定で ON にするかを決めるのに使う
+    /// （`FolderUsageFit`）。**ライブラリ直下のファイルは入らない。**
+    private(set) var sampleFirstLevelFolders: [(folder: String, filename: String)] = []
     /// 拡張子（小文字）ごとの件数。ウィザードの「本を開くアプリ」が
     /// 「このフォルダに実際に含まれる形式」だけを並べるのに使う。
     private(set) var sampleExtensionCounts: [String: Int] = [:]
@@ -170,32 +175,38 @@ final class LibraryEnableModel {
             sampleNames = collected.names
             sampleTruncated = collected.truncated
             sampleNestedCount = collected.nested
+            sampleFirstLevelFolders = collected.firstLevel
             sampleExtensionCounts = collected.extensions
             samplingFailure = nil
         } catch {
             sampleNames = []
             sampleTruncated = false
             sampleNestedCount = 0
+            sampleFirstLevelFolders = []
             sampleExtensionCounts = [:]
             samplingFailure = error.localizedDescription
         }
     }
 
     /// - Important: `FileIO.perform` の中からのみ呼ぶこと [NV6-01][NV6-02]。
-    /// - Returns: `nested` は**サブフォルダの中にあった**ファイルの数。登録
-    ///   ウィザードが「フォルダ分けされた蔵書か」を推定するのに使う [RG3-24]。
+    /// - Returns: `nested` は**サブフォルダの中にあった**ファイルの数。
+    ///   `firstLevel` は 1 階層目のフォルダに入っていたものの
+    ///   （フォルダ名, 拡張子なしのファイル名）——どちらも登録ウィザードが
+    ///   「フォルダ名を解析対象にするか」の既定を決めるのに使う [RG3-24]。
     nonisolated static func collectNames(at root: URL, limit: Int)
         throws -> (names: [String], truncated: Bool, nested: Int,
+                   firstLevel: [(folder: String, filename: String)],
                    extensions: [String: Int])
     {
         var names: [String] = []
         var nested = 0
+        var firstLevel: [(folder: String, filename: String)] = []
         var extensions: [String: Int] = [:]
         let manager = FileManager.default
         guard let enumerator = manager.enumerator(
             at: root, includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey],
             options: [.skipsHiddenFiles, .skipsPackageDescendants]) else {
-            return ([], false, 0, [:])
+            return ([], false, 0, [], [:])
         }
         for case let url as URL in enumerator {
             if Cancellation.isRequested { break }
@@ -205,10 +216,17 @@ final class LibraryEnableModel {
             let ext = url.pathExtension.lowercased()
             if !ext.isEmpty { extensions[ext, default: 0] += 1 }
             if enumerator.level >= 2 { nested += 1 }
+            // 1 階層目のフォルダ直下だけを採る（`level` は root 直下が 1）。
+            // 深い階層は 1 階層目の割り当てを測る材料にならない。
+            if enumerator.level == 2 {
+                let folder = url.deletingLastPathComponent().lastPathComponent
+                firstLevel.append((folder: folder,
+                                   filename: url.deletingPathExtension().lastPathComponent))
+            }
             if names.count >= limit {
-                return (names, true, nested, extensions)
+                return (names, true, nested, firstLevel, extensions)
             }
         }
-        return (names, false, nested, extensions)
+        return (names, false, nested, firstLevel, extensions)
     }
 }

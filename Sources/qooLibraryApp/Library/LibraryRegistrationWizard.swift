@@ -134,26 +134,7 @@ final class LibraryRegistrationWizardModel {
     private let volumeSets: VolumeSetDefinition
     private let bookTypeVocabulary: [String]
 
-    /// (A)/(B) を 1 つに畳んだテンプレート [ユーザー指摘: A/B の実差は
-    /// フォルダ階層を使うかどうかだけで、それはテンプレートの選択ではなく
-    /// 「フォルダ分けの扱い」という独立した選択にすべき]。
-    struct MergedTemplate: Identifiable {
-        /// フォルダを使わない側（旧 (A)）の key を代表 ID にする。
-        let id: String
-        /// 「(A)」「(B)」を落とした表示名。
-        let displayName: String
-        /// フォルダ階層を使わない側（folderLevels が空）。
-        let flat: LibraryTypeTemplate
-        /// フォルダ階層を使う側。無いテンプレートもあり得る。
-        let foldered: LibraryTypeTemplate?
-
-        func variant(folderUsage: Bool) -> LibraryTypeTemplate {
-            folderUsage ? (foldered ?? flat) : flat
-        }
-    }
-
-    private(set) var merged: [MergedTemplate] = []
-    /// 一覧の選択。統合テンプレートの id か、ユーザー定義の id か、白紙の番兵。
+    /// 一覧の選択。プリセットの key か、ユーザー定義の id か、白紙の番兵。
     private(set) var listSelection: String?
     static let blankSelection = "__blank__"
 
@@ -161,15 +142,23 @@ final class LibraryRegistrationWizardModel {
     /// `id` と同じ綴りにする**——2 通りの綴りがあると選択の照合が静かに外れる。
     static func selectionID(forUserTemplate id: UUID) -> String { "user.\(id.uuidString)" }
 
-    /// フォルダ名を整理の手がかりに使うか [RG3-24]。旧 (A)/(B) の実体。
+    /// フォルダ名を解析対象にするか [RG3-24]［ユーザー要望: テンプレートは
+    /// フォルダ分けの設定を固定で持ってよいが、ウィザードでは ON/OFF できること］。
+    ///
+    /// **テンプレートの選択ではなく、草案に `folderLevels` を含めるかの選択。**
+    /// 2026-09-08 の (A)/(B) 統合まではテンプレートそのものを切り替えていた。
     private(set) var folderUsageOn = false
-    /// サンプルの配置（サブフォルダ内の比率）から推定した既定値。
-    private(set) var folderUsageSuggested = false
+    /// フォルダ名がラベルとして妥当かの実測（`FolderUsageFit`）。
+    /// これが既定値を決める——配置だけを見ると、作品名やジャンルで分けている
+    /// 蔵書でも ON になり、その名前がサークル名や著者名のラベルになる。
+    private(set) var folderUsageFit: FolderUsageFit.Result?
+    /// 既定を ON にしたか（`folderUsageFit` から導く。測れなければ false）。
+    var folderUsageSuggested: Bool { folderUsageFit?.suggestsOn ?? false }
 
     /// テンプレートごとの適合結果 [RG3-23]。ステップ 3 の一覧と推奨判定に使う。
-    /// **判定は常にフォルダを使わない側で行う**——フォルダを使う側は
-    /// `@title` だけの万能フォーマットを持ち、どの種別でも全件一致になって
-    /// 種別の判別ができないため。鍵は `MergedTemplate.id`。
+    /// **判定はファイル名だけで行う**（フォルダ名は見ない）——種別を見分ける
+    /// 材料はファイル名の形であって、フォルダ分けの有無ではない。鍵は
+    /// プリセットの `key`、またはユーザー定義の一覧 id。
     private(set) var outcomes: [String: LibraryPreview.Outcome] = [:]
     /// 適合率が最も高い統合テンプレート。同率なら定義順 [RG3-23]。
     private(set) var recommendedID: String?
@@ -183,33 +172,6 @@ final class LibraryRegistrationWizardModel {
         self.volumeSets = volumeSets
         self.bookTypeVocabulary = bookTypeVocabulary
         self.minStep = minStep
-        self.merged = Self.mergeVariants(templates)
-    }
-
-    /// 「一般コミック(A)」「一般コミック(B)」を 1 行に畳む。判定は名前の
-    /// 接尾辞ではなく **folderLevels が空かどうか**で行う（実体で判定する）。
-    static func mergeVariants(_ templates: [LibraryTypeTemplate]) -> [MergedTemplate] {
-        func baseName(_ name: String) -> String {
-            name.replacingOccurrences(of: "(A)", with: "")
-                .replacingOccurrences(of: "(B)", with: "")
-                .replacingOccurrences(of: "（A）", with: "")
-                .replacingOccurrences(of: "（B）", with: "")
-                .trimmingCharacters(in: .whitespaces)
-        }
-        var order: [String] = []
-        var groups: [String: [LibraryTypeTemplate]] = [:]
-        for template in templates {
-            let base = baseName(template.displayName)
-            if groups[base] == nil { order.append(base) }
-            groups[base, default: []].append(template)
-        }
-        return order.compactMap { base in
-            guard let members = groups[base] else { return nil }
-            let flat = members.first { $0.folderLevels.isEmpty } ?? members[0]
-            let foldered = members.first { !$0.folderLevels.isEmpty }
-            return MergedTemplate(id: flat.key, displayName: base,
-                                  flat: flat, foldered: foldered)
-        }
     }
 
     /// ステップ 2: フォルダが選ばれた。サンプルを集めて全テンプレートを試す。
@@ -223,11 +185,10 @@ final class LibraryRegistrationWizardModel {
         enable = model
         isEvaluating = true
         await model.loadSamples()
-        // フォルダ分けされた蔵書か [RG3-24]。過半数がサブフォルダの中なら、
-        // フォルダ名を手がかりに使う側を既定にする。
-        folderUsageSuggested = model.sampleNestedCount * 2 > model.sampleNames.count
-            && !model.sampleNames.isEmpty
-        folderUsageOn = folderUsageSuggested
+        // 推奨テンプレートを決めてから、そのテンプレートの 1 階層目の割り当てで
+        // 「フォルダ名がラベルとして妥当か」を実測して既定を決める [RG3-24]。
+        // **順序が要る**——測り方は割り当ての種類で変わるので、どのテンプレート
+        // かが決まっていないと測れない。
         evaluateTemplates()
         isEvaluating = false
     }
@@ -239,22 +200,25 @@ final class LibraryRegistrationWizardModel {
         guard let model = enable else { return }
         var map: [String: LibraryPreview.Outcome] = [:]
         var best: (id: String, rate: Double, matched: Int)?
-        for item in merged {
-            let draft = TemplateInstantiation.draft(
-                from: item.flat, volumeSets: volumeSets,
+        for template in templates {
+            // **フォルダ名の割り当ては外して測る**——種別を見分ける材料は
+            // ファイル名の形であって、フォルダ分けの有無ではない。
+            var draft = TemplateInstantiation.draft(
+                from: template, volumeSets: volumeSets,
                 displayName: model.folderName,
                 bookTypeVocabulary: bookTypeVocabulary)
+            draft.folderLevels = []
             let outcome = LibraryPreview.run(filenames: model.sampleNames, draft: draft,
                                              truncated: model.sampleTruncated)
-            map[item.id] = outcome
+            map[template.key] = outcome
             // 「厳密に上回ったときだけ」入れ替える——同率は定義順を保つ。
             if let current = best {
                 if outcome.matchRate > current.rate
                     || (outcome.matchRate == current.rate && outcome.matched > current.matched) {
-                    best = (item.id, outcome.matchRate, outcome.matched)
+                    best = (template.key, outcome.matchRate, outcome.matched)
                 }
             } else {
-                best = (item.id, outcome.matchRate, outcome.matched)
+                best = (template.key, outcome.matchRate, outcome.matched)
             }
         }
         // ユーザー定義も同じ物差しで測る [★17]。**プリセットの後に測る**ので、
@@ -279,18 +243,38 @@ final class LibraryRegistrationWizardModel {
         outcomes = map
         recommendedID = best?.id
         if let id = recommendedID {
-            select(id)
+            select(id)   // select が既定の測り直しと草案への反映まで行う
         }
+    }
+
+    /// 選んでいるテンプレートの 1 階層目の割り当てで、フォルダ名がラベルとして
+    /// 妥当かを実測し、既定を決める [RG3-24]。**テンプレートを選び直すたびに
+    /// 測り直す**——測り方は割り当ての種類で変わる。
+    private func measureFolderUsage() {
+        guard let model = enable, !model.sampleFirstLevelFolders.isEmpty else {
+            folderUsageFit = nil
+            folderUsageOn = false
+            return
+        }
+        // **草案ではなくテンプレートの割り当てで測る**——草案は
+        // `applyFolderUsage()` が空にしていることがあり、そうすると
+        // 「測る対象が無い」と読んで永久に OFF のままになる。
+        var probe = model.draft
+        probe.folderLevels = templateFolderLevels(for: listSelection)
+        folderUsageFit = FolderUsageFit.measure(
+            samples: model.sampleFirstLevelFolders,
+            settings: probe.compiledSnapshot())
+        folderUsageOn = folderUsageSuggested
     }
 
     /// 確認ステップに出す「何を基にするか」の名前 [RG3-20]。
     ///
-    /// **`currentMerged` だけを見てはならない**——あちらはプリセットしか
+    /// **`currentTemplate` だけを見てはならない**——あちらはプリセットしか
     /// 探さないので、ユーザー定義を選んでいても「カスタム（空）」と出る
     /// ［code-review で発見］。**この画面は「これから何が確定するか」を
     /// 述べる場所**なので、起点の取り違えは最も出してはいけない誤りになる。
     func originName(blankTitle: String) -> String {
-        if let item = currentMerged { return item.displayName }
+        if let item = currentTemplate { return item.displayName }
         if let id = listSelection,
            let template = userTemplates.first(
                where: { Self.selectionID(forUserTemplate: $0.id) == id }) {
@@ -299,9 +283,10 @@ final class LibraryRegistrationWizardModel {
         return blankTitle
     }
 
-    var currentMerged: MergedTemplate? {
+    /// 選択中のプリセット（ユーザー定義や白紙のときは nil）。
+    var currentTemplate: LibraryTypeTemplate? {
         guard let id = listSelection, id != Self.blankSelection else { return nil }
-        return merged.first { $0.id == id }
+        return templates.first { $0.key == id }
     }
 
     /// ステップ 3 の選択。**起点を変えたら草案は作り直し**（編集は捨てる。
@@ -311,8 +296,8 @@ final class LibraryRegistrationWizardModel {
         guard let model = enable else { return }
         listSelection = id
         if let id, id != Self.blankSelection,
-           let item = merged.first(where: { $0.id == id }) {
-            model.origin = .template(key: item.variant(folderUsage: folderUsageOn).key)
+           let template = templates.first(where: { $0.key == id }) {
+            model.origin = .template(key: template.key)
         } else if let id,
                   let template = userTemplates.first(
                       where: { Self.selectionID(forUserTemplate: $0.id) == id }) {
@@ -320,46 +305,51 @@ final class LibraryRegistrationWizardModel {
         } else if id == Self.blankSelection {
             model.origin = .blank
         }
+        // 起点が変われば「フォルダ名がラベルとして妥当か」も変わる（測り方が
+        // 割り当ての種類で変わる）ので、測り直して草案へ反映する [RG3-24]。
+        measureFolderUsage()
+        applyFolderUsage()
     }
 
-    /// フォルダ分けの扱いを切り替える [RG3-24]。**起点の切替（＝草案の
-    /// 作り直し）にはしない**——カスタマイズ済みのフィールドや名前を捨てない
-    /// ため、差分（フォルダ階層の割り当てと、フォルダを使う側だけが持つ
-    /// 追加フォーマット）だけを草案へ足し引きする。
+    /// 一覧 id が指すテンプレートの階層割り当て（草案の形）。ユーザー定義と
+    /// 白紙は自前の割り当てを持つので、ここでは扱わない（空を返す）。
+    private func templateFolderLevels(for id: String?) -> [FolderLevelDraft] {
+        guard let id, id != Self.blankSelection,
+              let template = templates.first(where: { $0.key == id }) else { return [] }
+        return template.folderLevels
+            .sorted { (Int($0.key) ?? 0) < (Int($1.key) ?? 0) }
+            .compactMap { level, spec in
+                let assignment: FolderLevelDraft.Assignment
+                switch spec.kind {
+                case .singleLabelGroup:
+                    guard let index = spec.labelGroup else { return nil }
+                    assignment = .singleLabelGroup(index: index)
+                case .format:
+                    guard let source = spec.format else { return nil }
+                    assignment = .format(source: source)
+                case .none:
+                    assignment = FolderLevelDraft.Assignment.none
+                }
+                return FolderLevelDraft(level: Int(level) ?? 1, assignment: assignment)
+            }
+    }
+
+    /// フォルダ名を解析対象にするかを切り替える [RG3-24]。
+    ///
+    /// **起点の切替（＝草案の作り直し）にはしない**——カスタマイズ済みの
+    /// フィールドを捨てないため、階層の割り当てだけを足し引きする。
     func setFolderUsage(_ on: Bool) {
         guard folderUsageOn != on else { return }
         folderUsageOn = on
-        guard let model = enable, let item = currentMerged,
-              let foldered = item.foldered else { return }
-        // フォルダを使う側だけが持つフォーマット（例: `@title` 単独）。
-        let flatSources = Set(item.flat.filenameFormats)
-        let extraSources = foldered.filenameFormats.filter { !flatSources.contains($0) }
-        if on {
-            model.draft.folderLevels = foldered.folderLevels
-                .sorted { (Int($0.key) ?? 0) < (Int($1.key) ?? 0) }
-                .compactMap { level, spec in
-                    let assignment: FolderLevelDraft.Assignment
-                    switch spec.kind {
-                    case .singleLabelGroup:
-                        guard let index = spec.labelGroup else { return nil }
-                        assignment = .singleLabelGroup(index: index)
-                    case .format:
-                        guard let source = spec.format else { return nil }
-                        assignment = .format(source: source)
-                    case .none:
-                        assignment = FolderLevelDraft.Assignment.none
-                    }
-                    return FolderLevelDraft(level: Int(level) ?? 1, assignment: assignment)
-                }
-            let existing = Set(model.draft.filenameFormats.map(\.source))
-            for source in extraSources where !existing.contains(source) {
-                model.draft.filenameFormats.append(FilenameFormatDraft(source: source))
-            }
-        } else {
-            model.draft.folderLevels = []
-            let removable = Set(extraSources)
-            model.draft.filenameFormats.removeAll { removable.contains($0.source) }
-        }
+        applyFolderUsage()
+    }
+
+    /// いまの `folderUsageOn` を草案へ反映する。**テンプレートを選び直した
+    /// 直後にも呼ぶ**——`select` は草案を作り直し、統合後のプリセットは
+    /// `folderLevels` を必ず持つので、OFF のまま放っておくと勝手に有効になる。
+    private func applyFolderUsage() {
+        guard let model = enable else { return }
+        model.draft.folderLevels = folderUsageOn ? templateFolderLevels(for: listSelection) : []
     }
 
     // MARK: 開くアプリ [ユーザー要望: 含まれる形式ごとに既定アプリを選ぶ]
@@ -690,9 +680,9 @@ struct LibraryRegistrationWizardView: View {
             set: { model.select($0) })
         ) {
             Section("libraryWizard.template.header") {
-                ForEach(model.merged) { item in
-                    templateRow(item)
-                        .tag(item.id)
+                ForEach(model.templates) { template in
+                    templateRow(template)
+                        .tag(template.key)
                 }
             }
             // **区画を分ける** [★16]。プリセットと自分のテンプレートは
@@ -757,12 +747,12 @@ struct LibraryRegistrationWizardView: View {
         .padding(.vertical, 1)
     }
 
-    private func templateRow(_ item: LibraryRegistrationWizardModel.MergedTemplate) -> some View {
-        let outcome = model.outcomes[item.id]
+    private func templateRow(_ item: LibraryTypeTemplate) -> some View {
+        let outcome = model.outcomes[item.key]
         return VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: Tokens.spacing.xs) {
                 Text(item.displayName)
-                if item.id == model.recommendedID {
+                if item.key == model.recommendedID {
                     Text("libraryWizard.template.recommended")
                         .font(.system(size: 9, weight: .semibold))
                         .padding(.horizontal, 5)
@@ -780,7 +770,7 @@ struct LibraryRegistrationWizardView: View {
                     .font(.system(size: Tokens.fontSize.caption))
                     .foregroundStyle(outcome.matched > 0 ? Color.secondary : Color.orange)
             }
-            if let example = item.flat.filenameFormats.first {
+            if let example = item.filenameFormats.first {
                 Text(example)
                     .font(.system(size: Tokens.fontSize.caption, design: .monospaced))
                     .foregroundStyle(.tertiary)
@@ -815,7 +805,7 @@ struct LibraryRegistrationWizardView: View {
                     Divider()
                     // フォルダ名によるラベル分類 [RG3-24][ユーザー指摘: フォルダは
                     // 重要な概念。意図的に分けない人も、きっちり分けたい人もいる]。
-                    if model.currentMerged?.foldered != nil {
+                    if model.currentTemplate?.folderLevels.isEmpty == false {
                         VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
                             Text("libraryWizard.customize.folders")
                                 .font(.system(size: Tokens.fontSize.body, weight: .semibold))
@@ -828,11 +818,19 @@ struct LibraryRegistrationWizardView: View {
                             }
                             .pickerStyle(.radioGroup)
                             .labelsHidden()
-                            Text(model.folderUsageSuggested
-                                 ? "libraryWizard.folderUsage.suggestedNested"
-                                 : "libraryWizard.folderUsage.suggestedFlat")
-                                .font(.system(size: Tokens.fontSize.caption))
-                                .foregroundStyle(.secondary)
+                            // 既定の根拠を数字で示す [RG3-24]。**測れなかったとき
+                            // （フォルダ配下のサンプルが無い／ファイル名から
+                            // 同じフィールドが取れない）は何も言わない**
+                            // ——根拠の無い推奨は、判断の材料にならない。
+                            if let fit = model.folderUsageFit, fit.total > 0 {
+                                Text(String(format: AppStrings.text(
+                                    fit.suggestsOn
+                                        ? "libraryWizard.folderUsage.suggestedNested"
+                                        : "libraryWizard.folderUsage.suggestedFlat",
+                                    locale: locale), Int((fit.rate * 100).rounded())))
+                                    .font(.system(size: Tokens.fontSize.caption))
+                                    .foregroundStyle(.secondary)
+                            }
                             if model.folderUsageOn {
                                 // 階層の割り当ては設定ウインドウと同じエディタを
                                 // そのまま使う——同じ編集 UI を 2 つ作らない。
@@ -1039,12 +1037,12 @@ struct LibraryRegistrationWizardView: View {
                             .font(.system(size: Tokens.fontSize.caption))
                             .foregroundStyle(.secondary)
                     }
-                    if let item = model.currentMerged, item.foldered != nil {
+                    if let item = model.currentTemplate, !item.folderLevels.isEmpty {
                         // フォルダの扱いも確認に出す [ユーザー指摘]。
                         Label(model.folderUsageOn
                               ? String(format: AppStrings.text("libraryWizard.confirm.folderUsageOn",
                                                       locale: locale),
-                                       model.folderLevelsDescription(item.foldered!,
+                                       model.folderLevelsDescription(item,
                                                                      locale: locale))
                               : AppStrings.text("libraryWizard.confirm.folderUsageOff",
                                        locale: locale),

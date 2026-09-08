@@ -12,12 +12,14 @@ struct BuiltInTemplateTests {
         #expect(sets.sets["VS-None"]?.isEmpty == true)
     }
 
-    @Test("プリセットを 8 種すべて読める [11.4]")
+    /// **4 種**。2026-09-08 に (A)/(B) を統合した［ユーザー判断: A/B の実差は
+    /// 「フォルダ名も解析対象にするか」だけで、テンプレートの選択軸ではない］。
+    @Test("プリセットを 4 種すべて読める [11.4]")
     func libraryTypesLoad() throws {
         let presets = try BuiltInTemplates.libraryTypes()
-        #expect(presets.count == 8)
-        #expect(Set(presets.map(\.key)).count == 8)          // key は一意
-        #expect(presets.map(\.displayName).contains("同人誌(A)"))
+        #expect(presets.count == 4)
+        #expect(Set(presets.map(\.key)).count == 4)          // key は一意
+        #expect(presets.map(\.displayName).contains("同人誌"))
     }
 
     /// **すべてのプリセットが実際に使える設定へ展開できること。**
@@ -36,11 +38,11 @@ struct BuiltInTemplateTests {
         }
     }
 
-    @Test("同人誌(B) のフォルダ階層割り当てが展開される [AL-01]")
+    @Test("同人誌 のフォルダ階層割り当てが展開される [AL-01]")
     func folderLevelsInstantiate() throws {
         let sets = try BuiltInTemplates.volumeSets()
         let preset = try #require(try BuiltInTemplates.libraryTypes()
-            .first { $0.key == "builtin.doujinshi-b" })
+            .first { $0.key == "builtin.doujinshi" })
         let s = try TemplateInstantiation.snapshot(from: preset, volumeSets: sets,
                                                     libraryID: LibraryID(rawValue: 1))
         guard case .singleLabelGroup(let field) = s.folderLevelAssignments[1] else {
@@ -50,11 +52,11 @@ struct BuiltInTemplateTests {
         #expect(field == 2)      // サークル
     }
 
-    @Test("一般コミック(B) は第1階層にフォーマット割り当てを持つ [AL-02]")
+    @Test("一般コミック は第1階層にフォーマット割り当てを持つ [AL-02]")
     func generalComicBFolderFormat() throws {
         let sets = try BuiltInTemplates.volumeSets()
         let preset = try #require(try BuiltInTemplates.libraryTypes()
-            .first { $0.key == "builtin.general-comic-b" })
+            .first { $0.key == "builtin.general-comic" })
         let s = try TemplateInstantiation.snapshot(from: preset, volumeSets: sets,
                                                     libraryID: LibraryID(rawValue: 1))
         guard case .format(let f) = s.folderLevelAssignments[1] else {
@@ -74,7 +76,7 @@ struct BuiltInTemplateTests {
     func volumeSetNone() throws {
         let sets = try BuiltInTemplates.volumeSets()
         let preset = try #require(try BuiltInTemplates.libraryTypes()
-            .first { $0.key == "builtin.adult-comic-a" })
+            .first { $0.key == "builtin.adult-comic" })
         let s = try TemplateInstantiation.snapshot(from: preset, volumeSets: sets,
                                                     libraryID: LibraryID(rawValue: 1))
         #expect(s.volumeFormats.isEmpty)

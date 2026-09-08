@@ -15,7 +15,7 @@ import Testing
 @Suite("シリーズの提案の適用と無視 [SS-05][SS-06][SS-07]", .serialized)
 struct SeriesSuggestionCommandTests {
 
-    /// 同人誌(A)。**1 冊目に番号が無く 2 冊目に付く**という、この機能が
+    /// 同人誌。**1 冊目に番号が無く 2 冊目に付く**という、この機能が
     /// 救おうとしている形そのものを標本にする。
     private static let files = [
         "(同人誌) [サークル値A (著者値1)] 催眠アプリ試作 (ジャンル値1).cbz",
@@ -30,7 +30,7 @@ struct SeriesSuggestionCommandTests {
         let w = try ServicesWorkspace()
         await w.bootstrap()
         for name in files { try w.write(name) }
-        let id = try await w.enable("builtin.doujinshi-a")
+        let id = try await w.enable("builtin.doujinshi")
         _ = try await w.services.scan(libraryID: id, root: w.libraryRoot)
         let library = try #require(w.services.library(registrationUUID: w.registrationUUID))
         return (w, library)

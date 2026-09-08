@@ -19,7 +19,7 @@ struct LabelMenuModelTests {
         "(同人誌) [サークル値\(n) (著者値\(n))] 作品タイトル\(n) (ジャンル値1).cbz"
     }
 
-    /// 同人誌(A) で走査まで済ませた作業場。ラベルは自動付与で付く。
+    /// 同人誌 で走査まで済ませた作業場。ラベルは自動付与で付く。
     @MainActor
     private func workspace(files: [String]) async throws
         -> (ServicesWorkspace, LibrarySummary, [URL])
@@ -27,7 +27,7 @@ struct LabelMenuModelTests {
         let w = try ServicesWorkspace()
         await w.bootstrap()
         for name in files { try w.write(name) }
-        let id = try await w.enable("builtin.doujinshi-a")
+        let id = try await w.enable("builtin.doujinshi")
         _ = try await w.services.scan(libraryID: id, root: w.libraryRoot)
         let library = try #require(w.services.library(registrationUUID: w.registrationUUID))
         return (w, library, files.map { w.libraryRoot.appendingPathComponent($0) })

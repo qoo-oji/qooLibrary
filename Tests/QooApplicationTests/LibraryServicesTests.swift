@@ -89,7 +89,7 @@ final class ServicesWorkspace {
         FileManager.default.createFile(atPath: url.path, contents: Data(repeating: 0x41, count: 16))
     }
 
-    func template(_ key: String = "builtin.doujinshi-a") throws -> LibraryTypeTemplate {
+    func template(_ key: String = "builtin.doujinshi") throws -> LibraryTypeTemplate {
         try #require(services.presetTemplates.first { $0.key == key })
     }
 
@@ -109,7 +109,7 @@ final class ServicesWorkspace {
     }
 
     @discardableResult
-    func enable(_ key: String = "builtin.doujinshi-a") async throws -> LibraryID {
+    func enable(_ key: String = "builtin.doujinshi") async throws -> LibraryID {
         try await services.enable(
             registrationUUID: registrationUUID,
             displayName: "テストライブラリ",
@@ -131,7 +131,7 @@ struct LibraryServicesTests {
         await w.bootstrap()
         #expect(w.services.startupFailure == nil)
         #expect(w.services.isReady)
-        #expect(w.services.presetTemplates.count == 8, "プリセットは 8 種 [11.4]")
+        #expect(w.services.presetTemplates.count == 4, "プリセットは 4 種 [11.4]")
         #expect(w.services.libraries.isEmpty, "有効化するまでライブラリは 0 件")
         #expect(FileManager.default.fileExists(atPath: w.storeURL.path))
     }

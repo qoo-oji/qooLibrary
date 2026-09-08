@@ -18,7 +18,7 @@ import Testing
 @Suite("タイトルとカバー [RP-10〜RP-12][CV-02〜CV-08]", .serialized)
 struct TitleAndCoverTests {
 
-    /// 一般コミック(A) を使う——同人誌(A) は巻数フォーマットを持たないので
+    /// 一般コミック を使う——同人誌 は巻数フォーマットを持たないので
     /// **シリーズ名も巻数も取れず、再取得 [RP-12] の主張が成り立たない**
     /// （2-19 で 4 件落として学んだ形）。
     @MainActor
@@ -28,7 +28,7 @@ struct TitleAndCoverTests {
         let w = try ServicesWorkspace()
         await w.bootstrap()
         for name in files { try w.write(name) }
-        let id = try await w.enable("builtin.general-comic-a")
+        let id = try await w.enable("builtin.general-comic")
         _ = try await w.services.scan(libraryID: id, root: w.libraryRoot)
         let library = try #require(w.services.library(registrationUUID: w.registrationUUID))
         return (w, library, files.map { w.libraryRoot.appendingPathComponent($0) })

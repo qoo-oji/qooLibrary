@@ -134,7 +134,7 @@ struct FieldEditorModelTests {
         for i in 1...files {
             try w.write("(同人誌) [サークル値\(i) (著者値\(i))] 作品タイトル\(i) (ジャンル値1).cbz")
         }
-        let id = try await w.enable("builtin.doujinshi-a")
+        let id = try await w.enable("builtin.doujinshi")
         _ = try await w.services.scan(libraryID: id, root: w.libraryRoot)
         let m = FieldEditorModel(commands: CommandStack())
         await m.prepare(services: w.services)

@@ -18411,13 +18411,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Most files are in subfolders. Using folder names is recommended."
+            "value": "%1$d%% of folder names match what the filenames already say. Parsing them is recommended."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ファイルの大半がサブフォルダにあります。フォルダ名を使う設定を推奨します。"
+            "value": "フォルダ名の %1$d%% が、ファイル名から取れる情報と一致します。解析対象にすることを勧めます。"
           }
         }
       }
@@ -18428,13 +18428,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Most files are directly in the folder. Not using folder names is recommended."
+            "value": "Folder names rarely match what the filenames say (%1$d%%). Not parsing them is recommended."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ファイルの大半がフォルダ直下にあります。フォルダ名を使わない設定を推奨します。"
+            "value": "フォルダ名は、ファイル名から取れる情報とほとんど一致しません（%1$d%%）。解析対象にしないことを勧めます。"
           }
         }
       }

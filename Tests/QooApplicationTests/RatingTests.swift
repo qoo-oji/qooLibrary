@@ -15,11 +15,11 @@ import Testing
 @Suite("評価 [RA-01〜RA-08]", .serialized)
 struct RatingCommandTests {
 
-    /// 同人誌(A) はシリーズを持たないフォーマットなので、シリーズを試すには
-    /// 一般コミック(A) を使う——**主張を検証するには、その主張が成り立ちうる
+    /// 同人誌 はシリーズを持たないフォーマットなので、シリーズを試すには
+    /// 一般コミック を使う——**主張を検証するには、その主張が成り立ちうる
     /// 前提を先に用意する**（2-19 で 4 件落として学んだ形）。
     @MainActor
-    private func workspace(files: [String], preset: String = "builtin.general-comic-a")
+    private func workspace(files: [String], preset: String = "builtin.general-comic")
         async throws -> (ServicesWorkspace, LibraryID, [URL])
     {
         let w = try ServicesWorkspace()
@@ -180,7 +180,7 @@ struct RatingEditorModelTests {
         let w = try ServicesWorkspace()
         await w.bootstrap()
         try w.write("メモ.txt")
-        let id = try await w.enable("builtin.general-comic-a")
+        let id = try await w.enable("builtin.general-comic")
         _ = try await w.services.scan(libraryID: id, root: w.libraryRoot)
         let library = try #require(w.services.library(registrationUUID: w.registrationUUID))
 
@@ -196,7 +196,7 @@ struct RatingEditorModelTests {
         let w = try ServicesWorkspace()
         await w.bootstrap()
         try w.write("(一般コミック) [著者値A] 作品名A 第01巻.cbz")
-        let id = try await w.enable("builtin.general-comic-a")
+        let id = try await w.enable("builtin.general-comic")
         _ = try await w.services.scan(libraryID: id, root: w.libraryRoot)
         let library = try #require(w.services.library(registrationUUID: w.registrationUUID))
         let url = w.libraryRoot.appendingPathComponent("(一般コミック) [著者値A] 作品名A 第01巻.cbz")
@@ -233,7 +233,7 @@ struct RatingEditorModelTests {
         let names = ["(一般コミック) [著者値A] 作品名A 第01巻.cbz",
                      "(一般コミック) [著者値A] 作品名A 第02巻.cbz"]
         for name in names { try w.write(name) }
-        let id = try await w.enable("builtin.general-comic-a")
+        let id = try await w.enable("builtin.general-comic")
         _ = try await w.services.scan(libraryID: id, root: w.libraryRoot)
         let library = try #require(w.services.library(registrationUUID: w.registrationUUID))
         let urls = names.map { w.libraryRoot.appendingPathComponent($0) }
@@ -266,7 +266,7 @@ struct RatingEditorModelTests {
         let names = ["(一般コミック) [著者値A] 作品名A 第01巻.cbz",
                      "(一般コミック) [著者値A] 作品名A 第02巻.cbz"]
         for name in names { try w.write(name) }
-        let id = try await w.enable("builtin.general-comic-a")
+        let id = try await w.enable("builtin.general-comic")
         _ = try await w.services.scan(libraryID: id, root: w.libraryRoot)
         let library = try #require(w.services.library(registrationUUID: w.registrationUUID))
         let urls = names.map { w.libraryRoot.appendingPathComponent($0) }
@@ -301,7 +301,7 @@ struct RatingEditorModelTests {
         await w.bootstrap()
         let names = ["(一般コミック) [著者値A] 作品名A 第01巻.cbz", "(一般コミック) [著者値A] 作品名A 第02巻.cbz", "(一般コミック) [著者値B] 作品名B 第01巻.cbz"]
         for name in names { try w.write(name) }
-        let id = try await w.enable("builtin.general-comic-a")
+        let id = try await w.enable("builtin.general-comic")
         _ = try await w.services.scan(libraryID: id, root: w.libraryRoot)
         let library = try #require(w.services.library(registrationUUID: w.registrationUUID))
         let urls = names.map { w.libraryRoot.appendingPathComponent($0) }

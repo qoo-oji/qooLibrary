@@ -19,7 +19,7 @@ struct TemplateUpdateTests {
         let w = try ServicesWorkspace()
         await w.bootstrap()
         try w.write("(同人誌) [サークル値A (著者値1)] 作品タイトル1 (ジャンル値1).cbz")
-        let id = try await w.enable("builtin.doujinshi-a")
+        let id = try await w.enable("builtin.doujinshi")
         return (w, id)
     }
 
@@ -60,7 +60,7 @@ struct TemplateUpdateTests {
 
         let pending = await TemplateUpdateModel.pending(services: w.services)
         #expect(pending.count == 1)
-        #expect(pending.first?.presetKey == "builtin.doujinshi-a")
+        #expect(pending.first?.presetKey == "builtin.doujinshi")
         #expect(pending.first?.fromVersion == latest.version - 1)
         #expect(pending.first?.toVersion == latest.version)
     }

@@ -13,7 +13,7 @@ struct Fixture {
     let labels: SQLiteLabelRepository
     let libraryID: LibraryID
 
-    static func make(preset key: String = "builtin.doujinshi-a") async throws -> Fixture {
+    static func make(preset key: String = "builtin.doujinshi") async throws -> Fixture {
         let db = try QooDatabase.inMemory()
         let sets = try BuiltInTemplates.volumeSets()
         let template = try #require(try BuiltInTemplates.libraryTypes().first { $0.key == key })
@@ -44,7 +44,7 @@ struct Fixture {
 struct LibraryRepositoryTests {
     @Test("テンプレートの内容がライブラリ側へコピーされる [LT-03]")
     func registerCopiesTemplate() async throws {
-        let f = try await Fixture.make(preset: "builtin.doujinshi-a")
+        let f = try await Fixture.make(preset: "builtin.doujinshi")
         let summary = try #require(try await f.libraries.library(id: f.libraryID))
         #expect(summary.displayName == "テスト")
 
@@ -67,7 +67,7 @@ struct LibraryRepositoryTests {
 
     @Test("フォルダ階層割り当てもコピーされる [AL-01]")
     func registerCopiesFolderLevels() async throws {
-        let f = try await Fixture.make(preset: "builtin.doujinshi-b")
+        let f = try await Fixture.make(preset: "builtin.doujinshi")
         let settings = try #require(try await f.libraries.settingsSnapshot(libraryID: f.libraryID))
         guard case .singleLabelGroup(let field) = settings.folderLevelAssignments[1] else {
             Issue.record("第1階層の割り当てが違う"); return

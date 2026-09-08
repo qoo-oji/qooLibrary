@@ -32,7 +32,7 @@ private func format(_ src: String) throws -> FolderLevelMappingSpec.Assignment {
 
 @Suite("フォルダ名フォーマット [8.3.1〜8.3.5][AL-01〜AL-03][AL-23]")
 struct FolderLabelExtractionTests {
-    @Test("フォルダ名全体を 1 ラベルにする [成年コミック(B) 第1階層]")
+    @Test("フォルダ名全体を 1 ラベルにする [成年コミック 第1階層]")
     func singleLabelGroup() throws {
         let s = try folderSettings(fileFormats: ["@title"],
                                    levels: [1: .singleLabelGroup(index: 1)])
@@ -42,7 +42,7 @@ struct FolderLabelExtractionTests {
 
     @Test("1 つのフォルダ名から複数のラベルを取り出す [AL-01][AL-02]")
     func formatAssignment() throws {
-        // 一般コミック(B) 第1階層: `[@circle] @genre`
+        // 一般コミック 第1階層: `[@circle] @genre`
         let s = try folderSettings(fileFormats: ["@title"],
                                    levels: [1: try format("[@circle] @genre")])
         let labels = FolderLabelResolver.labelsFromPath("[佐藤秀峰] ブラックジャック/作品.cbz",
@@ -72,7 +72,7 @@ struct FolderLabelExtractionTests {
 
     @Test("同じラベルグループを複数階層に割り当てると両方付与される [FF-17][LB-02][FL-03]")
     func sameGroupAcrossLevels() throws {
-        // 一般コミック(B): 第1階層 `[@circle] @genre`、第2階層 `@genre`
+        // 一般コミック: 第1階層 `[@circle] @genre`、第2階層 `@genre`
         let s = try folderSettings(fileFormats: ["@title"],
                                    levels: [1: try format("[@circle] @genre"),
                                             2: try format("@genre")])
@@ -104,17 +104,36 @@ struct FolderLabelExtractionTests {
 
 @Suite("フォルダ名とファイル名の優先解決 [AL-20〜AL-22][FL-01]")
 struct FolderPriorityTests {
-    @Test("フォルダ名から得たグループはファイル名側を捨てる [AL-21]")
-    func folderWins() throws {
+    /// **2026-09-08 に逆転した [AL-21]**。以前はフォルダが勝っていたが、それでは
+    /// フォルダ名を検査しない `singleLabelGroup` を常時有効にできない——作業用
+    /// フォルダ（`未整理/` 等）の名前がそのままラベルになり、ファイル名から
+    /// 取れていた正しい値を捨てるため。
+    @Test("同じフィールドで衝突したらファイル名を採る [AL-21]")
+    func filenameWinsOnConflict() throws {
         let s = try folderSettings(fileFormats: ["[@circle] @title"],
                                    levels: [1: .singleLabelGroup(index: 1)])
         let r = FolderLabelResolver.resolve(relativePath: "フォルダ側著者/[ファイル側著者] 作品.cbz",
                                             nameWithoutExtension: "[ファイル側著者] 作品",
                                             settings: s)
-        #expect(r.labels[1] == ["フォルダ側著者"])         // フォルダ名優先
+        #expect(r.labels[1] == ["ファイル側著者"])
+        #expect(r.folderProvidedGroups.isEmpty)            // 採らなかったので記録しない
     }
 
-    @Test("優先の単位はラベルグループごと。フォーマット全体ではない [AL-21][FL-01]")
+    /// この機能の**本来の用途**——フォルダ名とファイル名が持ち合う情報は違い、
+    /// 組み合わせて初めて総体が揃う［ユーザー判断］。
+    @Test("ファイル名が持たないフィールドはフォルダ名が補う [AL-21]")
+    func folderFillsWhatTheFilenameLacks() throws {
+        let s = try folderSettings(fileFormats: ["@title (@keyword)"],
+                                   levels: [1: .singleLabelGroup(index: 1)])
+        let r = FolderLabelResolver.resolve(relativePath: "フォルダ側著者/作品 (タグ).cbz",
+                                            nameWithoutExtension: "作品 (タグ)",
+                                            settings: s)
+        #expect(r.labels[1] == ["フォルダ側著者"])         // ファイル名に無いので採る
+        #expect(r.labels[4] == ["タグ"])
+        #expect(r.folderProvidedGroups == [1])
+    }
+
+    @Test("優先の単位はラベルフィールドごと。フォーマット全体ではない [AL-21][FL-01]")
     func perGroupPriority() throws {
         let s = try folderSettings(fileFormats: ["[@circle] @title (@keyword)"],
                                    levels: [1: .singleLabelGroup(index: 1)])
@@ -122,8 +141,8 @@ struct FolderPriorityTests {
             relativePath: "フォルダ側著者/[ファイル側著者] 作品 (タグ).cbz",
             nameWithoutExtension: "[ファイル側著者] 作品 (タグ)",
             settings: s)
-        #expect(r.labels[1] == ["フォルダ側著者"])         // フォルダから得たので捨てる
-        #expect(r.labels[4] == ["タグ"])                   // フォルダから得ていないので採る
+        #expect(r.labels[1] == ["ファイル側著者"])         // 衝突したのでファイル名
+        #expect(r.labels[4] == ["タグ"])                   // 衝突していないのでそのまま
     }
 
     @Test("@title は常にファイル名から [AL-22]")

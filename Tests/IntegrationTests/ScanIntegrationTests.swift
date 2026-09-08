@@ -65,7 +65,7 @@ final class ScanWorkspace {
     let libraryID: LibraryID
     let volumeUUID: String
 
-    init(preset: String = "builtin.doujinshi-a", targetExtensions: Set<String> = ["cbz"],
+    init(preset: String = "builtin.doujinshi", targetExtensions: Set<String> = ["cbz"],
          metadata: (any EmbeddedMetadataReading)? = nil,
          readsEmbeddedMetadata: Bool = true,
          isDataless: (@Sendable (URL) -> Bool)? = nil) async throws {

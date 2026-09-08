@@ -16,8 +16,8 @@ import Testing
 @Suite("シリーズスタックの判定 [VM3-01〜VM3-06]", .serialized)
 struct SeriesStackModelTests {
 
-    /// 一般コミック(A) は `VS-Full` を持つのでファイル名からシリーズ名と巻数が
-    /// 取れる——同人誌(A) は巻数フォーマットを持たず、シリーズが 1 件も
+    /// 一般コミック は `VS-Full` を持つのでファイル名からシリーズ名と巻数が
+    /// 取れる——同人誌 は巻数フォーマットを持たず、シリーズが 1 件も
     /// 生まれないので、このスイートでは使えない [CLAUDE.md に既記録の罠]。
     private static func file(_ series: String, _ volume: Int) -> String {
         String(format: "(一般コミック) [著者値A] %@ 第%02d巻.cbz", series, volume)
@@ -28,7 +28,7 @@ struct SeriesStackModelTests {
         let w = try ServicesWorkspace()
         await w.bootstrap()
         for name in files { try w.write(name) }
-        let id = try await w.enable("builtin.general-comic-a")
+        let id = try await w.enable("builtin.general-comic")
         _ = try await w.services.scan(libraryID: id, root: w.libraryRoot)
         let library = try #require(w.services.library(registrationUUID: w.registrationUUID))
         return (w, library)
@@ -215,14 +215,14 @@ struct SeriesStackModelTests {
     @MainActor
     @Test("シリーズが 1 件も無いライブラリでは重複グループ化が生きる [DU-01][VM3S-04]")
     func duplicateGroupingSurvivesWhenNoBookHasASeries() async throws {
-        // 同人誌(A) は巻数フォーマットを持たないのでシリーズ名が 1 件も出ない
+        // 同人誌 は巻数フォーマットを持たないのでシリーズ名が 1 件も出ない
         // ——プリセットがシリーズを取らないライブラリ（成年コミック等）と同じ形。
         let w = try ServicesWorkspace()
         await w.bootstrap()
         for i in 1...2 {
             try w.write("(同人誌) [サークル値A (著者値1)] 同じ題 (ジャンル値1)\(i).cbz")
         }
-        let id = try await w.enable("builtin.doujinshi-a")
+        let id = try await w.enable("builtin.doujinshi")
         _ = try await w.services.scan(libraryID: id, root: w.libraryRoot)
         var draft = try #require(try await w.services.settingsDraft(libraryID: id))
         draft.duplicateGrouping = .byTitle

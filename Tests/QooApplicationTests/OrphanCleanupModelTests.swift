@@ -145,7 +145,7 @@ struct OrphanCleanupModelIntegrationTests {
         for i in 1...3 {
             try w.write("旧/(同人誌) [サークル値\(i) (著者値\(i))] 作品タイトル\(i) (ジャンル値1).cbz")
         }
-        let id = try await w.enable("builtin.doujinshi-a")
+        let id = try await w.enable("builtin.doujinshi")
         _ = try await w.services.scan(libraryID: id, root: w.libraryRoot)
 
         if removing {

@@ -16,8 +16,8 @@ import Testing
 @Suite("メタデータの保護 [PR-01〜PR-09]", .serialized)
 struct ProtectionCommandTests {
 
-    /// 一般コミック(A)。**巻数フォーマットを持つ**ので、基本情報 4 つとも
-    /// 自動抽出が効く——同人誌(A) だとシリーズも巻も取れず主張が成り立たない。
+    /// 一般コミック。**巻数フォーマットを持つ**ので、基本情報 4 つとも
+    /// 自動抽出が効く——同人誌 だとシリーズも巻も取れず主張が成り立たない。
     @MainActor
     private func workspace(files: [String] = ["(一般コミック) [著者値A] 作品名A 第01巻.cbz"])
         async throws -> (ServicesWorkspace, LibrarySummary, [URL])
@@ -25,7 +25,7 @@ struct ProtectionCommandTests {
         let w = try ServicesWorkspace()
         await w.bootstrap()
         for name in files { try w.write(name) }
-        let id = try await w.enable("builtin.general-comic-a")
+        let id = try await w.enable("builtin.general-comic")
         _ = try await w.services.scan(libraryID: id, root: w.libraryRoot)
         let library = try #require(w.services.library(registrationUUID: w.registrationUUID))
         return (w, library, files.map { w.libraryRoot.appendingPathComponent($0) })

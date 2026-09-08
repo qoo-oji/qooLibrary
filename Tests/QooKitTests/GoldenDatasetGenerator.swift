@@ -230,9 +230,9 @@ enum PrivateGoldenGenerator {
 
     /// コーパスのライブラリ名 → 使うプリセット。
     static let presetByLibrary: [String: String] = [
-        "成年コミック": "builtin.adult-comic-a",
-        "同人誌": "builtin.doujinshi-a",
-        "同人CG": "builtin.doujin-cg-b",     // サークル別サブフォルダがある
+        "成年コミック": "builtin.adult-comic",
+        "同人誌": "builtin.doujinshi",
+        "同人CG": "builtin.doujin-cg",     // サークル別サブフォルダがある
     ]
 
     static var corpusDir: URL { GoldenRunner.directory("private").appendingPathComponent("corpus") }

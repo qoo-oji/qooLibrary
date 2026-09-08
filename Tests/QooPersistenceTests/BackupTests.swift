@@ -17,7 +17,7 @@ struct BackupTests {
 
     /// 評価・手動タイトル・手動ラベルを持つライブラリを 1 つ作る。
     private static func seeded() async throws -> (Fixture, SQLiteBackupRepository) {
-        let f = try await Fixture.make(preset: "builtin.doujinshi-a")
+        let f = try await Fixture.make(preset: "builtin.doujinshi")
         let backup = SQLiteBackupRepository(database: f.database)
 
         let a = try await f.files.upsert(f.snapshot(inode: 1, path: "A/作品1.cbz"))
@@ -110,7 +110,7 @@ struct BackupTests {
         let (f, backup) = try await Self.seeded()
         let document = try await backup.export(scope: .everything, appVersion: "test")
         let exported = try #require(document.libraries.first?.registeredTemplate)
-        #expect(exported.contains("builtin.doujinshi-a"))
+        #expect(exported.contains("builtin.doujinshi"))
 
         // 破壊する: base を捨てる（＝差分の対象外になった状態）。
         try await f.database.writer.write { db in
@@ -121,7 +121,7 @@ struct BackupTests {
         _ = try await backup.import(document)
         let restored = try #require(
             try await f.libraries.registeredTemplate(libraryID: f.libraryID))
-        #expect(restored.key == "builtin.doujinshi-a")
+        #expect(restored.key == "builtin.doujinshi")
     }
 
     /// **版 4 以前の文書は base を持たない。** `NULL` で潰すと、いま有効化して
@@ -135,7 +135,7 @@ struct BackupTests {
         _ = try await backup.import(document)
         let kept = try #require(
             try await f.libraries.registeredTemplate(libraryID: f.libraryID))
-        #expect(kept.key == "builtin.doujinshi-a")
+        #expect(kept.key == "builtin.doujinshi")
     }
 
     @Test("再生成不可能な列が JSON の DTO に漏れなく現れる [MG-23][BK-05]")

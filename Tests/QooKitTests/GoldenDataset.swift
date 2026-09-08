@@ -26,7 +26,7 @@ struct GoldenDataset: Codable {
 
 struct GoldenCase: Codable {
     struct Context: Codable {
-        /// プリセットの表示名（`一般コミック(B)` 等）または `key`。
+        /// プリセットの表示名（`一般コミック` 等）または `key`。
         let template: String
         /// ライブラリ根からの相対パス（ディレクトリ部分の検証に使う）[AL-20]。
         let folderPath: String?
@@ -54,7 +54,7 @@ struct GoldenCase: Codable {
     /// `positive` | `negative`。
     ///
     /// **`negative` は「どのフォーマットにも一致しない」とは限らない** [設計判断]。
-    /// 一般コミック(B) と成年コミック(B) は `@title` 単体をフォールバックとして
+    /// 一般コミック と成年コミック は `@title` 単体をフォールバックとして
     /// 持つため、空白だけの入力を除けばほぼ何でも一致する。それらのプリセットで
     /// 意味のある負例は「**構造化されたフォーマットには当たらず、フォールバックへ
     /// 落ちる**」という主張であり、`matched: true` + `formatIndex: <末尾>` で表す。

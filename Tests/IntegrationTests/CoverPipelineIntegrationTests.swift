@@ -123,7 +123,7 @@ struct CoverPipelineIntegrationTests {
         func start() async throws -> LibrarySummary {
             await services.bootstrap(storeURL: storeURL)
             let template = try #require(
-                services.presetTemplates.first { $0.key == "builtin.general-comic-a" })
+                services.presetTemplates.first { $0.key == "builtin.general-comic" })
             let id = try await services.enable(
                 registrationUUID: registrationUUID, displayName: "カバー通し",
                 url: libraryRoot, bookmarkData: Data(), template: template)

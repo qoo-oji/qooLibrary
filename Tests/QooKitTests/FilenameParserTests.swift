@@ -63,17 +63,17 @@ struct PresetTemplateTests {
     /// 要件定義書 11.4 節に列挙されたフォーマットをそのまま書き写したもの。
     /// **ここが落ちたら検証器の解釈が実際のテンプレートと食い違っている。**
     static let allPresetFormats: [(preset: String, formats: [String])] = [
-        ("一般コミック(A)", ["(@booktype) [@circle] @title",
+        ("一般コミック", ["(@booktype) [@circle] @title",
                           "[@circle] @title"]),
-        ("一般コミック(B)", ["(@booktype) [@circle] @title",
+        ("一般コミック", ["(@booktype) [@circle] @title",
                           "[@circle] @title",
                           "@title"]),
-        ("成年コミック(A)", ["(@booktype) [@circle] @title",
+        ("成年コミック", ["(@booktype) [@circle] @title",
                           "[@circle] @title"]),
-        ("成年コミック(B)", ["(@booktype) [@circle] @title",
+        ("成年コミック", ["(@booktype) [@circle] @title",
                           "[@circle] @title",
                           "@title"]),
-        ("同人誌(A)", [
+        ("同人誌", [
             "(@circle) [@genre (@event)] @title (@keyword) [@author]",
             "(@circle) [@genre (@event)] @title (@keyword)",
             "(@circle) [@genre (@event)] @title [@author]",
@@ -86,7 +86,7 @@ struct PresetTemplateTests {
             "[@genre] @title (@keyword)",
             "[@genre] @title [@author]",
             "[@genre] @title"]),
-        ("同人CG(B)", [
+        ("同人CG", [
             "(@booktype) [@circle (@genre)] @title (@event) [@keyword]",
             "(@booktype) [@circle (@genre)] @title (@event)",
             "(@booktype) [@circle (@genre)] @title [@keyword]",
@@ -118,7 +118,7 @@ struct PresetTemplateTests {
 
     @Test("フォルダ階層割り当てのフォーマットもコンパイルできる [AL-01][AL-02]")
     func folderLevelFormatsCompile() throws {
-        // 一般コミック(B) 第1階層: `[@circle] @genre`
+        // 一般コミック 第1階層: `[@circle] @genre`
         // 括弧の境界があるので自由文字列の隣接にならない [VD-02]
         _ = try FormatCompiler.compile("[@circle] @genre", context: FormatCompilationContext())
         _ = try FormatCompiler.compile("@genre", context: FormatCompilationContext())

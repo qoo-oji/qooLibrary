@@ -47,7 +47,7 @@ struct ImportRevertTests {
 
     /// 評価・保護・手動ラベル・シェルフ・無視印を持つライブラリを 1 つ作る。
     private static func seeded() async throws -> (Fixture, SQLiteBackupRepository) {
-        let f = try await Fixture.make(preset: "builtin.doujinshi-a")
+        let f = try await Fixture.make(preset: "builtin.doujinshi")
         let backup = SQLiteBackupRepository(database: f.database)
         let a = try await f.files.upsert(f.snapshot(inode: 1, path: "A/作品1.cbz"))
         let b = try await f.files.upsert(f.snapshot(inode: 2, path: "A/作品2.cbz"))

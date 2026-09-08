@@ -85,8 +85,20 @@ public enum FolderLabelResolver {
     /// フォルダ名とファイル名の優先解決 [AL-20〜AL-22]。
     ///
     /// **優先の単位はラベルフィールドごと**。フォーマット全体ではない [AL-21][FL-01]。
-    /// フォルダから得られたフィールドはファイル名側の値を捨て、得られなかった
-    /// フィールドだけファイル名側を採る。`@title` は常にファイル名から [AL-22]。
+    ///
+    /// ## ファイル名が優先で、フォルダ名は補完する [AL-21、2026-09-08 改訂]
+    /// 以前は逆（フォルダが勝ち、ファイル名の値を捨てる）だったが、それでは
+    /// **フォルダ名を検査しない `singleLabelGroup` を常時有効にできない**
+    /// ——作業用フォルダ（`未整理/` 等）の名前がそのままラベルになり、しかも
+    /// ファイル名から取れていた正しい値を捨てるため［実測］。
+    ///
+    /// ［ユーザー判断: フォルダ名とファイル名は**異なる情報を持ち合う**のが本来で、
+    /// 組み合わせて初めて総体が揃う。同じフィールドで衝突するのは例外なので、
+    /// そのときはファイル名を採ってよい］。実蔵書での裏付け——フォルダ名が
+    /// ファイル名側の同フィールドと一致するのは 97〜99% で、食い違う 1〜3% は
+    /// ファイル名が正しく、ファイル名側に値が無い数件だけフォルダが補う。
+    ///
+    /// `@title` は常にファイル名から [AL-22]。
     public static func resolve(relativePath: String,
                                nameWithoutExtension: String,
                                settings: LibrarySettingsSnapshot,
@@ -97,9 +109,11 @@ public enum FolderLabelResolver {
         let attempt = parser.attempt(nameWithoutExtension, settings: settings)
         let parsed = attempt.result.map { FieldPostProcessor.postProcess($0, settings: settings) }
 
-        var final = folderLabels
-        for (field, values) in parsed?.labelValues ?? [:] where final[field] == nil {
+        var final = parsed?.labelValues ?? [:]
+        var takenFromFolder: Set<Int> = []
+        for (field, values) in folderLabels where final[field] == nil {
             final[field] = values                                                   // [AL-21]
+            takenFromFolder.insert(field)
         }
 
         return ResolvedLabels(labels: final,
@@ -109,7 +123,7 @@ public enum FolderLabelResolver {
                               authorName: parsed?.authorName,
                               matchedFormatID: parsed?.matchedFormatID,
                               nearestFormat: attempt.nearest,
-                              folderProvidedGroups: Set(folderLabels.keys))
+                              folderProvidedGroups: takenFromFolder)
     }
 
     public struct ResolvedLabels: Sendable {
@@ -125,7 +139,8 @@ public enum FolderLabelResolver {
         /// **ファイル名フォーマットについての推定**で、フォルダ名側は見ない
         /// ——未解決の判定 [AL-31] がファイル名フォーマットの一致で決まるため。
         public let nearestFormat: NearestFormat?
-        /// フォルダ名から得たラベルフィールド（ファイル名側を捨てた対象）。
+        /// **実際にフォルダ名から採った**ラベルフィールド。ファイル名側が
+        /// 同じフィールドを持っていたものは含まない [AL-21]。
         public let folderProvidedGroups: Set<Int>
     }
 }

@@ -41,7 +41,7 @@ struct TemplateDraftTests {
         let db = try QooDatabase.inMemory()
         let sets = try Self.sets()
         let template = try #require(try BuiltInTemplates.libraryTypes()
-            .first { $0.key == "builtin.doujinshi-a" })
+            .first { $0.key == "builtin.doujinshi" })
         let repository = SQLiteLibraryRepository(database: db, volumeSets: sets)
 
         let shown = TemplateInstantiation.draft(
@@ -77,7 +77,7 @@ struct TemplateDraftTests {
         let db = try QooDatabase.inMemory()
         let sets = try Self.sets()
         let template = try #require(try BuiltInTemplates.libraryTypes()
-            .first { $0.key == "builtin.adult-comic-a" })
+            .first { $0.key == "builtin.adult-comic" })
         let repository = SQLiteLibraryRepository(database: db, volumeSets: sets)
 
         var draft = TemplateInstantiation.draft(

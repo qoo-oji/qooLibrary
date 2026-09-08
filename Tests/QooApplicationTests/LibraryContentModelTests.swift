@@ -17,7 +17,7 @@ import Testing
 struct LibraryContentModelTests {
 
     @MainActor
-    private func workspace(files: [String], preset: String = "builtin.general-comic-a")
+    private func workspace(files: [String], preset: String = "builtin.general-comic")
         async throws -> (ServicesWorkspace, LibrarySummary)
     {
         let w = try ServicesWorkspace()

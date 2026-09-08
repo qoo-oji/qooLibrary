@@ -26,7 +26,7 @@ struct AmbiguityRegressionTests {
         let volumeSets = try BuiltInTemplates.volumeSets()
         let presets = try BuiltInTemplates.libraryTypes()
         let names = Array(Set(presets.map(\.libraryTypeName))).sorted()
-        guard let preset = presets.first(where: { $0.displayName == "同人誌(A)" }) else {
+        guard let preset = presets.first(where: { $0.displayName == "同人誌" }) else {
             throw TestSkip.missingPreset
         }
         let settings = try TemplateInstantiation.snapshot(
@@ -50,7 +50,7 @@ struct AmbiguityRegressionTests {
         let observations = try AmbiguitySweep.run().filter {
             $0.adversary == .baseline && $0.preset != "合成"
         }
-        #expect(observations.count == 82, "プリセットのフォーマット本数が変わった")
+        #expect(observations.count == 40, "プリセットのフォーマット本数が変わった")
         for o in observations {
             #expect(o.chosenFormat == o.formatIndex,
                     "\(o.preset) #\(o.formatIndex) が別のフォーマット #\(o.chosenFormat.map(String.init) ?? "なし") で読まれた: \(o.input)")
