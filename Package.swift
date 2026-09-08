@@ -98,6 +98,24 @@ targets.append(
 )
 
 targets.append(
+    // MARK: - UI layer (SwiftUI の View を含まない部分)
+    //
+    // **アプリターゲット（`qooLibraryApp`）はテストターゲットを 1 つも持てない**
+    // ——Xcode のターゲットであって SwiftPM のパッケージではないため。そこに
+    // 33,574 行の判定・状態機械が溜まり、**実機で GUI を操作しなければ
+    // 検証できない**状態が続いていた [MT-33]。View を含まない部分をここへ
+    // 移せば `swift test` から触れる（SwiftUI/AppKit に依存していても
+    // 走ることは実測済み。`ImageRenderer` で View を描くことすらできる）。
+    //
+    // **View そのものは移さない。** ここに置いてよいのは「画面が何をするか」
+    // を決める側だけで、「どう描くか」はアプリターゲットに残す。
+    .target(
+        name: "QooUI",
+        dependencies: ["QooKit", "QooPersistence", "QooInfrastructure", "QooApplication"]
+    )
+)
+
+targets.append(
     // MARK: - Tests
     .testTarget(
         name: "QooKitTests",
@@ -142,6 +160,13 @@ targets.append(
 )
 
 targets.append(
+    .testTarget(
+        name: "QooUITests",
+        dependencies: ["QooUI"]
+    )
+)
+
+targets.append(
     // MARK: - Spikes (technical verification, kept per 16章 §16.6)
     // T-13 (zip/7z half): proves libarchive can be driven from Swift via
     // the CLibarchive wrapper to list and extract an archive.
@@ -178,6 +203,7 @@ let package = Package(
         .library(name: "QooPersistence", targets: ["QooPersistence"]),
         .library(name: "QooInfrastructure", targets: ["QooInfrastructure"]),
         .library(name: "QooApplication", targets: ["QooApplication"]),
+        .library(name: "QooUI", targets: ["QooUI"]),
     ],
     dependencies: [
         // SQLite への薄いラッパー（MIT）。永続化層のみが使う [A-02]。

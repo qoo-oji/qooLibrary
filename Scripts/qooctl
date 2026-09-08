@@ -1,0 +1,157 @@
+#!/usr/bin/env python3
+"""qooLibrary のデバッグ制御口を叩く道具 [MT-33]。
+
+GUI を 1 度も操作せずに、実際に走っているアプリの状態を読み、操作を起こす。
+検証のたびに scratchpad で作り直していた道具を、ここへ恒久化したもの。
+
+    Scripts/qooctl launch            # ウインドウを 1 枚も出さずに起動する
+    Scripts/qooctl menu ライブラリ    # メニューの中身と有効/無効を読む
+    Scripts/qooctl menu:invoke '{"path":["ライブラリ","メンテナンス"]}'
+    Scripts/qooctl tree              # 開いているウインドウの中身を木で読む
+    Scripts/qooctl ax:press '{"title":"保存"}'
+    Scripts/qooctl quit
+
+**応答の文字列は既定で伏字になる** — 利用者のファイル名・登録フォルダ名は
+`⟨N 文字⟩` に置き換わる [MT-32]。使い捨てボリュームへ置いた合成名のように
+出しても差し支えないものは `{"allow":["作品名A", ...]}` で通す。
+"""
+import glob
+import json
+import os
+import socket
+import subprocess
+import sys
+import time
+
+SOCKET = os.path.expanduser(
+    "~/Library/Containers/com.qoolibrary.app/Data/qoo-control.sock")
+APP_GLOB = os.path.expanduser(
+    "~/Library/Developer/Xcode/DerivedData/qooLibrary-*/Build/Products/Debug/qooLibrary.app")
+
+
+def binary():
+    apps = sorted(glob.glob(APP_GLOB), key=os.path.getmtime, reverse=True)
+    if not apps:
+        sys.exit("ビルド済みのアプリが見つかりません。Scripts/build-app.sh を実行してください。")
+    return os.path.join(apps[0], "Contents/MacOS/qooLibrary")
+
+
+def call(cmd, args=None, timeout=30):
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client.settimeout(timeout)
+    client.connect(SOCKET)  # 繋がらなければ OSError。呼び出し側が扱う。
+    client.sendall((json.dumps({"cmd": cmd, "args": args or {}}) + "\n").encode())
+    buf = b""
+    while not buf.endswith(b"\n"):
+        chunk = client.recv(65536)
+        if not chunk:
+            break
+        buf += chunk
+    client.close()
+    return json.loads(buf.decode())
+
+
+def alive():
+    """**socket ファイルの有無で判定しない** — アプリが落ちても残るため。"""
+    try:
+        return call("ping", timeout=3)["ok"]
+    except OSError:
+        return False
+
+
+def launch(with_windows=False):
+    if alive():
+        sys.exit("すでに起動しています。先に `Scripts/qooctl quit` してください。")
+    argv = [binary(), "--qoo-control"]
+    if not with_windows:
+        argv.append("--qoo-headless")
+    subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    for _ in range(60):
+        time.sleep(0.5)
+        if alive():
+            break
+    else:
+        sys.exit("起動を待ちましたが応答しません。")
+    # **口が答えることと、DB が開いていることは別。** `bootstrap()` は起動より
+    # 後に終わるので、待たずに検証を始めると「ライブラリ 0 件」を実装の欠陥と
+    # 読み違える。
+    for _ in range(60):
+        status = call("status")["result"]
+        if status.get("storeReady") or status.get("startupFailure"):
+            return status
+        time.sleep(0.5)
+    return call("status")["result"]
+
+
+def flatten(nodes, indent=0, out=None):
+    """AX の木を 1 行 1 要素に畳む。読むためだけのもの。"""
+    if out is None:
+        out = []
+    for node in nodes:
+        bits = [node.get("role", "?")]
+        for key in ("title", "description", "value", "id"):
+            if key in node:
+                bits.append(f"{key}={node[key]!r}")
+        if node.get("enabled") is False:
+            bits.append("[無効]")
+        if node.get("selected"):
+            bits.append("[選択]")
+        out.append("  " * indent + " ".join(str(b) for b in bits))
+        flatten(node.get("children", []), indent + 1, out)
+    return out
+
+
+def main():
+    if len(sys.argv) < 2:
+        sys.exit(__doc__)
+    verb = sys.argv[1]
+    rest = sys.argv[2] if len(sys.argv) > 2 else None
+
+    if verb == "launch":
+        print(json.dumps(launch(with_windows=(rest == "--windows")),
+                         ensure_ascii=False, indent=2))
+        return
+
+    if verb == "menu":
+        args = {"depth": 3}
+        if rest:
+            args["menu"] = rest
+        reply = call("menu:dump", args)
+        if not reply["ok"]:
+            sys.exit(reply["error"])
+        def show(items, indent=0):
+            for item in items:
+                if item.get("separator"):
+                    print("  " * indent + "―")
+                    continue
+                mark = "" if item["enabled"] else "  [無効]"
+                state = f"  [{item['state']}]" if "state" in item else ""
+                key = f"  {'+'.join(item.get('modifiers', []))}{item.get('key', '')}".rstrip()
+                print("  " * indent + item["title"] + state + mark + key)
+                show(item.get("children", []), indent + 1)
+        show(reply["result"]["items"])
+        return
+
+    if verb == "tree":
+        args = {"depth": 14}
+        if rest:
+            args["window"] = rest
+        reply = call("ax:dump", args)
+        if not reply["ok"]:
+            sys.exit(reply["error"])
+        for window in reply["result"]["windows"]:
+            print(f"=== {window.get('title', '(無題)')} ({window.get('id', '-')})")
+            print("\n".join(flatten(window.get("children", []), 1)))
+        return
+
+    reply = call(verb, json.loads(rest) if rest else {})
+    print(json.dumps(reply, ensure_ascii=False, indent=2))
+    if not reply["ok"]:
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except OSError:
+        sys.exit("制御口へ繋げません。`Scripts/qooctl launch` で起動してください。")

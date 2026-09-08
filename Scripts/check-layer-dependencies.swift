@@ -7,6 +7,9 @@
 //   ② `GRDB` を import してよいのは `QooPersistence` だけ [A-02]。
 //      永続化の実装詳細（SQL・接続・行の型）が上位層へ漏れると、
 //      「Repository プロトコル越しに利用する」という抽象化が形骸化する。
+//   ③ `QooUI` に SwiftUI の View を置かない [MT-33]。ここは「画面が何をするか」
+//      を決める側で、「どう描くか」はアプリターゲットに残す。View が混ざると
+//      アプリ側との境目が溶け、**何をテストできるのかが読めなくなる**。
 //
 // Usage: swift Scripts/check-layer-dependencies.swift
 
@@ -18,6 +21,7 @@ let rules: [(target: String, forbidden: [String], reason: String)] = [
     ("QooInfrastructure", ["GRDB", "SwiftData"], "A-02"),
     ("QooApplication", ["GRDB", "SwiftData"], "A-02"),
     ("qooLibraryApp", ["GRDB", "SwiftData"], "A-02"),
+    ("QooUI", ["GRDB", "SwiftData"], "A-02"),
 ]
 
 let repoRoot = URL(fileURLWithPath: #filePath)
@@ -51,6 +55,29 @@ for rule in rules {
                     violations.append(
                         "\(fileURL.path):\(index + 1): \(rule.target) must not import \(module) [\(rule.reason)]")
                 }
+            }
+        }
+    }
+}
+
+// ③ `QooUI` に View を置かない [MT-33]。
+let uiRoot = repoRoot.appendingPathComponent("Sources/QooUI")
+if FileManager.default.fileExists(atPath: uiRoot.path),
+   let walker = FileManager.default.enumerator(
+       at: uiRoot, includingPropertiesForKeys: [.isRegularFileKey]) {
+    for case let fileURL as URL in walker {
+        guard fileURL.pathExtension == "swift" else { continue }
+        guard let contents = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
+        for (index, line) in contents.components(separatedBy: .newlines).enumerated() {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.hasPrefix("//") else { continue }
+            // `some View` を返す宣言と、`: View` への適合の 2 つだけを見る。
+            let declaresView = trimmed.contains("some View")
+                || trimmed.contains(": View {")
+                || trimmed.hasSuffix(": View")
+            if declaresView {
+                violations.append(
+                    "\(fileURL.path):\(index + 1): QooUI must not contain SwiftUI views [MT-33]")
             }
         }
     }

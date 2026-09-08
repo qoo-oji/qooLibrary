@@ -2,6 +2,7 @@ import QooApplication
 import QooInfrastructure
 import QooKit
 import QooPersistence
+import QooUI
 import SwiftUI
 
 /// アプリのエントリポイント。
@@ -183,6 +184,21 @@ struct QooLibraryApp: App {
                 BackgroundThumbnailWarmer.shared.restart()
             }
         }
+
+        #if DEBUG
+        // 起動引数 `--qoo-control` があるときだけデバッグ用の制御口を開く
+        // [MT-33]。無ければ socket を 1 つも作らず、この行は実質何もしない。
+        ControlServer.startIfRequested()
+        #endif
+    }
+
+    /// 起動時にウインドウを開くか [MT-33]。リリースビルドでは常に `.automatic`。
+    private static var launchBehavior: SceneLaunchBehavior {
+        #if DEBUG
+        ControlServer.isHeadless ? .suppressed : .automatic
+        #else
+        .automatic
+        #endif
     }
 
     var body: some Scene {
@@ -197,6 +213,10 @@ struct QooLibraryApp: App {
         }
         .windowResizability(.automatic)
         .defaultSize(width: 900, height: 560)
+        // [MT-33] 制御口から `--qoo-headless` で起動されたときだけ、起動時に
+        // ウインドウを 1 枚も開かない。**通常の起動では `.automatic` のまま**
+        // ——ウインドウが出ないのは事故なので、フラグ無しでは成立させない。
+        .defaultLaunchBehavior(QooLibraryApp.launchBehavior)
         // ゾンビウインドウ対策 [設計判断、qooViewer（姉妹プロジェクト）の実機
         // バグ報告を踏まえた予防的対応]。SwiftUI の `WindowGroup` 標準の状態
         // 復元（ウインドウが無い状態から再アクティブ化されたとき等に前回の

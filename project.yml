@@ -38,6 +38,10 @@ targets:
         product: QooInfrastructure
       - package: qooLibraryPackage
         product: QooApplication
+      # View を含まない UI 層 [MT-33]。ここに移したものは `swift test` から
+      # 検証できる——アプリターゲットはテストターゲットを持てないため。
+      - package: qooLibraryPackage
+        product: QooUI
     # `GENERATE_INFOPLIST_FILE: YES` の「ビルド設定から自動生成」方式は
     # スカラー値の `INFOPLIST_KEY_*` しか表現できず、`CFBundleDocumentTypes`
     # のようなネストした配列・辞書を持たせられない。XcodeGen の `info:`
