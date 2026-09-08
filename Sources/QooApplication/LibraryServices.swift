@@ -1582,7 +1582,12 @@ public final class LibraryServices {
         let embedded = try await repository.embeddedMetadataCache(ids: [row.id])[row.id]?.metadata
         let merged = EmbeddedMetadataMerge.apply(embedded, to: resolved, settings: settings)
         return FileFieldEdit(title: merged.title, seriesName: merged.seriesName,
-                             volume: merged.volume, authorName: merged.authorName)
+                             volume: merged.volume, authorName: merged.authorName,
+                             // [MF-03〜05][MF-19] **落とすと「再取得」が 4 列を
+                             // 消す**——`setFields` はこの 4 列も書くので、
+                             // ここで nil を渡すと手で直した値ごと消える。
+                             subtitle: merged.subtitle, season: merged.season,
+                             episode: merged.episode, releaseDate: merged.releaseDate)
     }
 
     // MARK: - カバー画像 [CV-02〜CV-08]

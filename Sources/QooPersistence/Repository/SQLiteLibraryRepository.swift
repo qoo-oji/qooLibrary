@@ -50,6 +50,11 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
     {
         var sql = """
             SELECT library.*,
+                   -- **列を増やさずに `settingsJSON` から読む** [MF-11]。
+                   -- 一覧を描くたびに要るので要約へ載せるが、二重の真実を
+                   -- 作らないよう保存先は設定 JSON 1 つのままにする。
+                   json_extract(library.settingsJSON,
+                                '$.seriesTitleCompositionFormat') AS seriesTitleFormat,
                    (SELECT COUNT(*) FROM managedFile
                      WHERE managedFile.libraryId = library.id
                        AND managedFile.state = 'active') AS fileCount
@@ -75,7 +80,10 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
                 fileCount: row["fileCount"],
                 settingsRevision: row["settingsRevision"],
                 duplicateGrouping: DuplicateGrouping(
-                    storedValue: row["duplicateGrouping"]))
+                    storedValue: row["duplicateGrouping"]),
+                // 鍵を持たない古い設定 JSON もあるので既定へ落とす。
+                seriesTitleFormat: (row["seriesTitleFormat"] as String?)
+                    ?? "@series @volume")
         }
     }
 

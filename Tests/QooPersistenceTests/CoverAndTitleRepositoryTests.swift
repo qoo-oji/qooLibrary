@@ -30,6 +30,33 @@ struct CoverAndTitleRepositoryTests {
         #expect(row.volume == .numeric(1, raw: "第01巻"))
     }
 
+    /// **メディア向けの 4 列も `setFields` が書く** [MF-03〜05][MF-19]。
+    ///
+    /// 書かないと、基本情報を保護した行では**手で直す手段が無いまま走査も
+    /// 触れない**という行き止まりになる（保護は 1 かたまり [PR-02] なので、
+    /// タイトルを 1 度直しただけで話数が凍る）。
+    @Test("メディア向けの 4 列を書ける [MF-10]")
+    func writesTheMediaColumns() async throws {
+        let f = try await Fixture.make()
+        let id = try await f.files.upsert(f.snapshot(inode: 1, path: "作品.mp4"))
+        try await f.files.setFields(FileFieldEdit(
+            title: "題", seriesName: "作品", volume: .none, authorName: nil,
+            subtitle: "副題", season: 2, episode: 5, releaseDate: "2024-01-15"),
+            id: id, protectedScopes: [.basic])
+        let row = try #require(try await f.files.row(id: id))
+        #expect(row.subtitle == "副題")
+        #expect(row.season == 2)
+        #expect(row.episode == 5)
+        #expect(row.releaseDate == "2024-01-15")
+        // サブタイトルは検索対象 [SR-03]——`refreshDerivedKeys` を通っている
+        // ことを、書き込みの側からも見る。
+        let key = try await f.database.writer.read { db in
+            try String.fetchOne(db, sql: "SELECT searchKey FROM managedFile WHERE id = ?",
+                                arguments: [id.rawValue])
+        }
+        #expect(key?.contains(TextNormalizer.searchKey("副題")) == true)
+    }
+
     /// **保護されていれば `applyParsedFields` は基本情報 4 つとも据え置く**
     /// [PR-01][PR-02]。置き換える前はタイトルだけを守っており、手で直した
     /// シリーズ名は次の走査で黙って自動値へ戻っていた。

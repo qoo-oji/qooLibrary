@@ -330,40 +330,61 @@ struct LibrarySettingsWindow: View {
             }
         }
         .padding(Tokens.spacing.m)
+        .layoutPriority(1)
     }
 
+    /// 不備の一覧。
+    ///
+    /// **上限付きのスクロール領域に閉じ込める**——`Text` の
+    /// `fixedSize(horizontal: false, vertical: true)` は「提案された幅での
+    /// 理想の高さ」を返すので、幅が決まらない段では 1 文字ずつ折り返した
+    /// 巨大な高さを親へ伝える。囲まないと**その高さが `NavigationSplitView`
+    /// 全体の高さを決めてしまい**、ウインドウ（950pt）に対して 4,613pt の
+    /// 内容が中央揃えで置かれて、3 ペインとも中身が画面の外へ出る
+    /// ［実測 2026-09-08。不備 4 件・1 件あたり約 916pt］。
+    /// **最終的な描画では幅が決まるので各行は 14pt に落ち着く**——つまり
+    /// 一覧そのものは正しく、レイアウトを決める段だけが壊れる。
+    ///
+    /// これで 4 度目の同じ形（有効化ウインドウで 3 度、ラベル編集ウインドウで
+    /// 1 度）。**固定サイズのウインドウでは可変高さの領域を 2 つ持たない。**
+    /// 上限を 72pt にしたのは、このウインドウでは不備が複数件同時に出る
+    /// （フォーマット 12 本・巻数 4 区画）ため——前例の 44/52pt では
+    /// 1 行しか見えない。
     private var issueList: some View {
-        VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
-            // **不備は全件出す**——1 件ずつしか分からないと、直すたびに保存を
-            // 試す往復になる。クリックでその設定項目へ移動できる。
-            ForEach(model.issues) { issue in
-                Button {
-                    // 高度側の不備は中央ペインに行が無いので、ダイアログを
-                    // その設定を開いた状態で出す——押しても何も起きないと
-                    // 「直せない不備」に見える。
-                    let target = LibrarySettingsSection(issue.section)
-                    if target.isAdvanced {
-                        presentAdvanced(initial: target)
-                    } else {
-                        model.reveal(issue)
+        ScrollView {
+            VStack(alignment: .leading, spacing: Tokens.spacing.xs) {
+                // **不備は全件出す**——1 件ずつしか分からないと、直すたびに保存を
+                // 試す往復になる。クリックでその設定項目へ移動できる。
+                ForEach(model.issues) { issue in
+                    Button {
+                        // 高度側の不備は中央ペインに行が無いので、ダイアログを
+                        // その設定を開いた状態で出す——押しても何も起きないと
+                        // 「直せない不備」に見える。
+                        let target = LibrarySettingsSection(issue.section)
+                        if target.isAdvanced {
+                            presentAdvanced(initial: target)
+                        } else {
+                            model.reveal(issue)
+                        }
+                    } label: {
+                        HStack(alignment: .firstTextBaseline, spacing: Tokens.spacing.xs) {
+                            Image(systemName: issue.severity == .error
+                                  ? "exclamationmark.circle.fill" : "exclamationmark.triangle.fill")
+                                .foregroundStyle(issue.severity == .error ? Color.red : Color.orange)
+                            Text(issue.message)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .multilineTextAlignment(.leading)
+                            Spacer(minLength: 0)
+                        }
+                        .font(.system(size: Tokens.fontSize.caption))
+                        .contentShape(Rectangle())
                     }
-                } label: {
-                    HStack(alignment: .firstTextBaseline, spacing: Tokens.spacing.xs) {
-                        Image(systemName: issue.severity == .error
-                              ? "exclamationmark.circle.fill" : "exclamationmark.triangle.fill")
-                            .foregroundStyle(issue.severity == .error ? Color.red : Color.orange)
-                        Text(issue.message)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .multilineTextAlignment(.leading)
-                        Spacer(minLength: 0)
-                    }
-                    .font(.system(size: Tokens.fontSize.caption))
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxHeight: 72)
     }
 
     private func performSave() {

@@ -10,29 +10,36 @@ struct DefaultFieldTests {
 
     // MARK: - 保証 [§19.2]
 
-    /// **全プリセットが既定 5 種を持ち、意味予約語で束縛されている。**
+    /// **プリセットの束縛は、実在するフィールドを 1 対 1 で指す。**
     ///
-    /// これが「全ライブラリに保証」の実体である［ユーザー判断: 保証は新規登録に
-    /// のみ及ぼす。既存ライブラリの設定は黙って書き換えない］——プリセットから
-    /// 登録すればこの 5 種が入り、白紙から登録しても入る（下の検査）。
-    @Test("すべてのプリセットが既定フィールド 5 種を持つ")
-    func everyPresetCarriesTheDefaultFields() throws {
+    /// ## 「全プリセットが既定 6 種を持つ」から変えた [MF-14、2026-09-08]
+    /// 以前はここで**全プリセットが既定 6 種すべてを束縛する**ことを要求していた。
+    /// コミックのプリセットしか無かった頃はそれが実態だったが、映像プリセットを
+    /// 足した時点で成り立たなくなった——映像に「サークル」「イベント」は無く、
+    /// 代わりに出演・シーズン・シリーズが要る。**フィールドの上限は 10**
+    /// [`AppLimits.Format.maxFields`] なので、使わない既定を 3 つ抱えると
+    /// カスタム軸 [MF-22] の余地が 1 つしか残らない。
+    ///
+    /// **「全ライブラリに保証」は白紙からの登録に残る**（下の検査）——そちらが
+    /// 保証の実体で、プリセットは自分が使う軸だけを持てばよい。使っていない
+    /// 予約語は、束縛 UI [MF-22] で後から結び付けられる。
+    ///
+    /// ただし **`@mediatype` はどのプリセットも束縛する**——本の種別の照合
+    /// [TY-01] は語彙とフィールドの両方が要るので、これだけは例外にできない。
+    @Test("プリセットの束縛は実在するフィールドを 1 対 1 で指す")
+    func everyPresetBindingPointsAtARealField() throws {
         let presets = try BuiltInTemplates.libraryTypes()
         #expect(!presets.isEmpty)
         for preset in presets {
             let bindings = preset.semanticKeywordBindings
-            for keyword in SemanticKeyword.defaultFields {
-                let index = try #require(bindings[keyword],
-                                         "\(preset.key): \(keyword.rawValue) の束縛が無い")
+            for (keyword, index) in bindings {
                 #expect(preset.fields.contains { $0.index == index },
                         "\(preset.key): \(keyword.rawValue) の束縛先 \(index) が実在しない")
             }
-            // 既定 6 種の束縛先は互いに重ならず、実在するフィールドを指す。
-            // **番号は固定しない**——プリセットは 1〜5 と 7、白紙は 1〜6 で、
-            // 番号はフィールドの身元ではない [§19.2]。
-            let defaults = SemanticKeyword.defaultFields.compactMap { bindings[$0] }
-            #expect(Set(defaults).count == SemanticKeyword.defaultFields.count,
-                    "\(preset.key): 既定フィールドの束縛先が重複している")
+            #expect(bindings[.mediaType] != nil,
+                    "\(preset.key): @mediatype の束縛が無い [TY-01]")
+            #expect(preset.fields.count <= AppLimits.Format.maxFields,
+                    "\(preset.key): フィールドが上限を超えている")
         }
     }
 
@@ -149,8 +156,11 @@ struct DefaultFieldTests {
         // 対応表にも載っていない（パレットにも出ない）。
         let words = Set(ReservedWordTable.entries.map(\.word))
         #expect(!words.contains("@libraryname"))
-        #expect(!words.contains("@librarytype"))     // → @mediatype へ改名
+        #expect(!words.contains("@librarytype"))     // → @booktype → @mediatype
+        #expect(!words.contains("@booktype"))        // [MF-23] v19 で改名
+        #expect(!words.contains("@circle"))          // [MF-23] → @studio
         #expect(words.contains("@mediatype"))
+        #expect(words.contains("@studio"))
         #expect(!words.contains { $0.hasPrefix("@labelgroup") })
     }
 

@@ -41,6 +41,10 @@
 "command.editTitle" = "「%@」のタイトルの変更";
 "command.editSeriesName" = "「%@」のシリーズ名の変更";
 "command.editVolume" = "「%@」の巻数の変更";
+"command.editSubtitle" = "「%@」のサブタイトルの変更";
+"command.editSeason" = "「%@」のシーズンの変更";
+"command.editEpisode" = "「%@」の話数の変更";
+"command.editReleaseDate" = "「%@」の公開日の変更";
 "command.rederive" = "「%@」のファイル名からの再取得";
 "command.replaceCover" = "「%@」のカバー画像の変更";
 "command.revertCover" = "「%@」のカバー画像のリセット";

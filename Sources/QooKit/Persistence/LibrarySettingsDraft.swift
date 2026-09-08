@@ -212,6 +212,69 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
         let used = definedFieldIndexes
         return (1...AppLimits.Format.maxFields).first { !used.contains($0) }
     }
+
+    // MARK: - 参照名の束縛 [MF-22]
+
+    /// このフィールドが既定フィールド 6 種のどれかか [§19.2]。
+    ///
+    /// **番号ではなく束縛で判定する**——番号はフィールドの身元ではないので、
+    /// 並べ替えると別の行を守ってしまう。
+    public func isDefaultField(at index: Int) -> Bool {
+        SemanticKeyword.defaultFields.contains { semanticBindings[$0] == index }
+    }
+
+    /// そのフィールドへ束縛できる予約語 [MF-22]。**画面のポップアップの中身**。
+    ///
+    /// ## なぜ既定 6 種を候補に出さないか [§19.7][§19.8]
+    /// あの 6 種は**意味そのものが身元**で、付け替えられると「著者フィールドへ
+    /// `@genre` が流れる」ような、後から辿れない設定が作れてしまう。ステージ 5 で
+    /// 予約語割り当てポップアップを撤去したのはそのため——ここで戻すのは
+    /// **既定 6 種以外の軸だけ**である。
+    ///
+    /// ## 何が並ぶか
+    /// - まだどのフィールドにも束縛されていない軸
+    /// - **このフィールド自身が今束縛している軸**（外さない限り選択のまま残る）
+    ///
+    /// 他のフィールドが使っている軸は出さない——1 予約語 → 複数フィールドは
+    /// 検証が拒む [RW-14] ので、選べる形にしても保存できない選択肢が並ぶだけ。
+    ///
+    /// 並びは固定（`@series` → `@season` → `@actor` → `@keyword2`〜`@keyword5`）。
+    /// 辞書の列挙順に任せると、開くたびに順序が変わる。
+    public func bindableKeywords(forFieldAt index: Int) -> [SemanticKeyword] {
+        Self.assignableKeywords.filter { keyword in
+            switch semanticBindings[keyword] {
+            case .none:        return true
+            case .some(index): return true
+            default:           return false
+            }
+        }
+    }
+
+    /// このフィールドに今ついている参照名。既定フィールドのものも返す。
+    public func boundKeyword(forFieldAt index: Int) -> SemanticKeyword? {
+        SemanticKeyword.allCases.first { semanticBindings[$0] == index }
+    }
+
+    /// 参照名を付け替える [MF-22]。`nil` で外す。
+    ///
+    /// **既定フィールドには何もしない**——ボタン側の出し分けと二重の守り
+    /// （ステージ 5 が消した「既定フィールドを付け替えられてしまう」問題を
+    /// 再現させない）。
+    public mutating func bindKeyword(_ keyword: SemanticKeyword?, toFieldAt index: Int) {
+        guard !isDefaultField(at: index) else { return }
+        for existing in Self.assignableKeywords where semanticBindings[existing] == index {
+            semanticBindings[existing] = nil
+        }
+        if let keyword, Self.assignableKeywords.contains(keyword) {
+            semanticBindings[keyword] = index
+        }
+    }
+
+    /// 画面から付け替えてよい軸（＝既定 6 種以外の意味予約語）。並び順が
+    /// そのままポップアップの並びになる。
+    public static let assignableKeywords: [SemanticKeyword] = [
+        .series, .season, .actor, .keyword2, .keyword3, .keyword4, .keyword5,
+    ]
 }
 
 // MARK: - 検証
@@ -362,6 +425,15 @@ extension LibrarySettingsDraft {
                 if severityIsError { addError(.filenameFormats, message) }
                 else { addWarning(.filenameFormats, message) }
             }
+            // **パターンを 1 件も持たない役割を参照しても、保存はできてしまう**
+            // [MF-07]——そのフォーマットは永久に一致しないのに、画面には
+            // 「未整理が多い」としか出ない。**`@volume` は除く**——素の数字を
+            // 型条件に含む [SE-24] ので、パターンが無くても `作品名 01` を拾う。
+            for role in patternRolesWithoutPatterns(in: format.source) {
+                let message = QooKitStrings.format("draft.formatUsesRoleWithoutPatterns",
+                                                   i + 1, role.displayName)
+                addWarning(.filenameFormats, message)
+            }
         }
 
         // --- フォルダ階層割り当て [AL-01〜AL-03] ---
@@ -407,29 +479,47 @@ extension LibrarySettingsDraft {
         // 記法は正規表現。読めないものはエラー、遅くなりうるものは警告にする。
         // **拒否ではなく警告で足りる**のは、実行時に `SafeRegex` のウォッチドッグが
         // 必ず時間の上限で打ち切るため [三層防御の ①]。
-        for (i, pattern) in volumeFormats.enumerated() {
+        // **番号は役割ごとに数える。** 4 つの役割が 1 つの表に同居する [MF-07]
+        // ので、通し番号で「3 番目」と言われても設定画面のどの区画の 3 番目か
+        // 分からない——画面は役割ごとに区画を分けて並べる。
+        var indexByRole: [PatternRole: Int] = [:]
+        for pattern in volumeFormats {
+            let ordinal = (indexByRole[pattern.role] ?? 0) + 1
+            indexByRole[pattern.role] = ordinal
+            let role = pattern.role.displayName
+
             if pattern.source.trimmingCharacters(in: .whitespaces).isEmpty {
-                let message = QooKitStrings.format("draft.volumeFormatEmpty", i + 1)
+                let message = QooKitStrings.format("draft.volumeFormatEmpty", ordinal, role)
                 if pattern.isEnabled { addError(.volumeFormats, message) } else { addWarning(.volumeFormats, message) }
                 continue
             }
             guard pattern.isEnabled else { continue }
 
             for finding in RegexSafety.staticFindings(pattern.source) {
-                let message = QooKitStrings.format("draft.volumeFormatFinding", i + 1, finding.message)
+                let message = QooKitStrings.format("draft.volumeFormatFinding", ordinal, role, finding.message)
                 if finding.isError { addError(.volumeFormats, message) }
                 else { addWarning(.volumeFormats, message) }
             }
 
-            // 巻数の値をどこから取るかが一意に決まらないと読めない。
+            // 値をどこから取るかが一意に決まらないと読めない。
             guard pattern.kind == .volume, let regex = try? SafeRegex(pattern.source) else { continue }
+            // 公開日は `year` が必須で、`month`／`day` が増えても曖昧にならない
+            // ——`DateMatcher` が名前で読むため [MF-19]。
+            if pattern.role == .date {
+                if !regex.namedGroups.contains("year") {
+                    addError(.volumeFormats,
+                             QooKitStrings.format("draft.dateFormatNoYearGroup", ordinal, role))
+                }
+                continue
+            }
+            let name = pattern.role.disambiguatingGroupName
             if regex.captureGroupCount == 0 {
                 addError(.volumeFormats,
-                         QooKitStrings.format("draft.volumeFormatNoCaptureGroup", i + 1))
-            } else if regex.captureGroupCount > 1, !regex.hasNamedVolumeGroup {
+                         QooKitStrings.format("draft.volumeFormatNoCaptureGroup", ordinal, role))
+            } else if regex.captureGroupCount > 1, !regex.namedGroups.contains(name) {
                 addError(.volumeFormats,
                          QooKitStrings.format("draft.volumeFormatAmbiguousCaptureGroup",
-                                              i + 1, regex.captureGroupCount, volumeCaptureGroupName))
+                                              ordinal, role, regex.captureGroupCount, name))
             }
         }
 
@@ -450,6 +540,27 @@ extension LibrarySettingsDraft {
         return issues
     }
 
+    /// そのフォーマットが参照する型付き予約語のうち、**有効なパターンを
+    /// 1 件も持たない役割**を返す [MF-07]。
+    ///
+    /// `@volume` は含めない——素の数字を型条件に含む [SE-24] ので、パターンが
+    /// 無くても働く。`@season` / `@episode` / `@date` は登録済みのパターンに
+    /// しか当たらない [MF-21] ので、無ければ**その予約語は決して一致しない。**
+    func patternRolesWithoutPatterns(in source: String) -> [PatternRole] {
+        guard let tokens = try? FormatLexer.lex(source, delimiters: delimiters) else { return [] }
+        var used: Set<PatternRole> = []
+        for case .reservedWord(let ref, _) in tokens {
+            switch ref {
+            case .season:  used.insert(.season)
+            case .episode: used.insert(.episode)
+            case .date:    used.insert(.date)
+            default:       break
+            }
+        }
+        let available = Set(volumeFormats.filter(\.isEnabled).map(\.role))
+        return PatternRole.allCases.filter { used.contains($0) && !available.contains($0) }
+    }
+
     /// 実際に正規表現を走らせて時間を測る検査 [三層防御の ③]。
     ///
     /// **`validate()` とは別にしてある。** あちらは描画のたびに何度も呼ばれるので、
@@ -462,11 +573,18 @@ extension LibrarySettingsDraft {
     /// - Parameter samples: そのライブラリの実ファイル名。敵対的な合成標本に加える。
     public func measuredIssues(samples: [String] = []) -> [LibrarySettingsIssue] {
         var issues: [LibrarySettingsIssue] = []
-        for (i, pattern) in volumeFormats.enumerated() where pattern.isEnabled {
+        // 番号は `validate()` と同じく**役割ごとに数える** [MF-07]——2 つの
+        // 一覧で同じパターンが違う番号で呼ばれると、どれの話か分からなくなる。
+        var indexByRole: [PatternRole: Int] = [:]
+        for pattern in volumeFormats {
+            let ordinal = (indexByRole[pattern.role] ?? 0) + 1
+            indexByRole[pattern.role] = ordinal
+            guard pattern.isEnabled else { continue }
             for finding in RegexSafety.measuredFindings(pattern.source, samples: samples) {
                 issues.append(.init(severity: .warning, section: .volumeFormats,
                                     message: QooKitStrings.format("draft.volumeFormatFinding",
-                                                                  i + 1, finding.message)))
+                                                                  ordinal, pattern.role.displayName,
+                                                                  finding.message)))
             }
         }
         for (i, token) in protectedTokens.enumerated() where token.isEnabled {
@@ -508,10 +626,35 @@ extension LibrarySettingsDraft {
             if keyword == .mediaType { return false }
             if keepsStructuredColumns, keyword.hasStructuredColumn { return false }
             guard semanticBindings[keyword] == nil else { return false }
-            return source.contains(keyword.rawValue)
+            return Self.references(keyword, in: source)
         }
     }
 
+    /// `source` がその予約語を**綴りとして**含むか。
+    ///
+    /// **素の `contains` では駄目** [MF-22、2026-09-08]——`@keyword2` は
+    /// `@keyword` を部分文字列として含むので、カスタム軸を書いただけで
+    /// 「`@keyword` が束縛されていません」という**存在しない不備**が出て
+    /// 保存できなくなる（実際に踏んだ）。字句解析は最長一致で読む [LX-01] ので、
+    /// ここも綴りの直後が英数字なら別の予約語とみなす。
+    static func references(_ keyword: SemanticKeyword, in source: String) -> Bool {
+        let word = keyword.rawValue
+        var searchRange = source.startIndex..<source.endIndex
+        while let found = source.range(of: word, range: searchRange) {
+            if found.upperBound == source.endIndex
+                || !source[found.upperBound].isLetterOrDigit {
+                return true
+            }
+            searchRange = found.upperBound..<source.endIndex
+        }
+        return false
+    }
+}
+
+private extension Character {
+    /// ASCII の英数字。予約語の綴りは `@` ＋ 英小文字＋数字なので、境界の
+    /// 判定はこれで足りる。
+    var isLetterOrDigit: Bool { isLetter || isNumber }
 }
 
 // MARK: - プレビュー

@@ -1,0 +1,600 @@
+{
+  "cases" : [
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "fields" : {
+          "@episode" : "第01話",
+          "@subtitle" : "副題0"
+        },
+        "formatIndex" : 0,
+        "matched" : true
+      },
+      "id" : "builtin.video-series.p1",
+      "input" : "第01話 「副題0」 (無視0).mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "fields" : {
+          "@episode" : "第02話",
+          "@subtitle" : "副題1"
+        },
+        "formatIndex" : 1,
+        "matched" : true
+      },
+      "id" : "builtin.video-series.p2",
+      "input" : "第02話 「副題1」 [無視1].mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "fields" : {
+          "@episode" : "第03話",
+          "@subtitle" : "副題2"
+        },
+        "formatIndex" : 2,
+        "matched" : true
+      },
+      "id" : "builtin.video-series.p3",
+      "input" : "第03話 「副題2」.mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "fields" : {
+          "@episode" : "第04話"
+        },
+        "formatIndex" : 3,
+        "matched" : true
+      },
+      "id" : "builtin.video-series.p4",
+      "input" : "第04話 (無視3).mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "fields" : {
+          "@episode" : "第05話"
+        },
+        "formatIndex" : 4,
+        "matched" : true
+      },
+      "id" : "builtin.video-series.p5",
+      "input" : "第05話 [無視4].mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "fields" : {
+          "@episode" : "第06話"
+        },
+        "formatIndex" : 5,
+        "matched" : true
+      },
+      "id" : "builtin.video-series.p6",
+      "input" : "第06話.mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "fields" : {
+          "@episode" : "第07話",
+          "@series" : "シリーズ6",
+          "@subtitle" : "副題6"
+        },
+        "formatIndex" : 6,
+        "matched" : true
+      },
+      "id" : "builtin.video-series.p7",
+      "input" : "シリーズ6 第07話 「副題6」 (無視6).mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "fields" : {
+          "@episode" : "第08話",
+          "@series" : "シリーズ7",
+          "@subtitle" : "副題7"
+        },
+        "formatIndex" : 7,
+        "matched" : true
+      },
+      "id" : "builtin.video-series.p8",
+      "input" : "シリーズ7 第08話 「副題7」 [無視7].mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "fields" : {
+          "@episode" : "第09話",
+          "@series" : "シリーズ8",
+          "@subtitle" : "副題8"
+        },
+        "formatIndex" : 8,
+        "matched" : true
+      },
+      "id" : "builtin.video-series.p9",
+      "input" : "シリーズ8 第09話 「副題8」.mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "fields" : {
+          "@episode" : "第10話",
+          "@series" : "シリーズ9"
+        },
+        "formatIndex" : 9,
+        "matched" : true
+      },
+      "id" : "builtin.video-series.p10",
+      "input" : "シリーズ9 第10話 (無視9).mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "fields" : {
+          "@episode" : "第11話",
+          "@series" : "シリーズ10"
+        },
+        "formatIndex" : 10,
+        "matched" : true
+      },
+      "id" : "builtin.video-series.p11",
+      "input" : "シリーズ10 第11話 [無視10].mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "fields" : {
+          "@episode" : "第12話",
+          "@series" : "シリーズ11"
+        },
+        "formatIndex" : 11,
+        "matched" : true
+      },
+      "id" : "builtin.video-series.p12",
+      "input" : "シリーズ11 第12話.mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "fields" : {
+          "@episode" : "第13話",
+          "@subtitle" : "副題12"
+        },
+        "formatIndex" : 0,
+        "matched" : true
+      },
+      "id" : "builtin.video-series.p13",
+      "input" : "第13話 「副題12」 (無視12).mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "fields" : {
+          "@episode" : "第14話",
+          "@subtitle" : "副題13"
+        },
+        "formatIndex" : 1,
+        "matched" : true
+      },
+      "id" : "builtin.video-series.p14",
+      "input" : "第14話 「副題13」 [無視13].mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "fields" : {
+          "@episode" : "第15話",
+          "@subtitle" : "副題14"
+        },
+        "formatIndex" : 2,
+        "matched" : true
+      },
+      "id" : "builtin.video-series.p15",
+      "input" : "第15話 「副題14」.mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "fields" : {
+          "@episode" : "第16話"
+        },
+        "formatIndex" : 3,
+        "matched" : true
+      },
+      "id" : "builtin.video-series.p16",
+      "input" : "第16話 (無視15).mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "fields" : {
+          "@episode" : "第17話"
+        },
+        "formatIndex" : 4,
+        "matched" : true
+      },
+      "id" : "builtin.video-series.p17",
+      "input" : "第17話 [無視16].mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "fields" : {
+          "@episode" : "第18話"
+        },
+        "formatIndex" : 5,
+        "matched" : true
+      },
+      "id" : "builtin.video-series.p18",
+      "input" : "第18話.mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "fields" : {
+          "@episode" : "第19話",
+          "@series" : "シリーズ18",
+          "@subtitle" : "副題18"
+        },
+        "formatIndex" : 6,
+        "matched" : true
+      },
+      "id" : "builtin.video-series.p19",
+      "input" : "シリーズ18 第19話 「副題18」 (無視18).mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "fields" : {
+          "@episode" : "第20話",
+          "@series" : "シリーズ19",
+          "@subtitle" : "副題19"
+        },
+        "formatIndex" : 7,
+        "matched" : true
+      },
+      "id" : "builtin.video-series.p20",
+      "input" : "シリーズ19 第20話 「副題19」 [無視19].mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "fields" : {
+          "@episode" : "第21話",
+          "@series" : "シリーズ20",
+          "@subtitle" : "副題20"
+        },
+        "formatIndex" : 8,
+        "matched" : true
+      },
+      "id" : "builtin.video-series.p21",
+      "input" : "シリーズ20 第21話 「副題20」.mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "fields" : {
+          "@episode" : "第22話",
+          "@series" : "シリーズ21"
+        },
+        "formatIndex" : 9,
+        "matched" : true
+      },
+      "id" : "builtin.video-series.p22",
+      "input" : "シリーズ21 第22話 (無視21).mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-series.n1",
+      "input" : "括弧のない名前.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-series.n2",
+      "input" : "著者名 タイトル.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-series.n3",
+      "input" : "[閉じ忘れ タイトル.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-series.n4",
+      "input" : "閉じだけ] タイトル.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-series.n5",
+      "input" : "[著者名].mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-series.n6",
+      "input" : "[] タイトル.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-series.n7",
+      "input" : "[   ] タイトル.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-series.n8",
+      "input" : "タイトル [著者名].mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-series.n9",
+      "input" : "{中括弧} タイトル.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-series.n10",
+      "input" : "〈山括弧〉 タイトル.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-series.n11",
+      "input" : "1234567890.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-series.n12",
+      "input" : "タイトルのみ.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-series.n13",
+      "input" : "－－－.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-series.n14",
+      "input" : "( ) タイトル.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-series.n15",
+      "input" : "]] [[.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-series.n16",
+      "input" : "タイトル(閉じない.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-series.n17",
+      "input" : ")))).mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-series.n18",
+      "input" : "((((.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-series.n19",
+      "input" : "・・・.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-series.n20",
+      "input" : "　.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-series.n21",
+      "input" : "a.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像作品"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-series.n22",
+      "input" : "ﾀｲﾄﾙ.mp4",
+      "kind" : "negative"
+    }
+  ],
+  "datasetName" : "builtin.video-series",
+  "visibility" : "public"
+}

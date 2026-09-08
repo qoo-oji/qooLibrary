@@ -42,15 +42,49 @@ public enum PatternRole: String, Sendable, Codable, Hashable, CaseIterable {
 
     /// 型条件に「素の数字表記」を含めるか [SE-24][MF-21]。
     ///
-    /// `@volume` は `作品名 01` を拾うために必要で [SE-24]、`@episode` も絶対通し番号
-    /// （`作品名 001`）のために同じ扱いにする。**`@season` と `@date` は含めない**
-    /// ——4 桁や 2 桁の数字が何でもシーズン・年号になると、解像度（`1080`）や
-    /// 作品名の数字を拾う。Jellyfin が話数の解析で踏んでいる形である（#3669）。
+    /// **`@volume` だけが含める** [SE-24]——`作品名 01` を拾うために要る。
+    ///
+    /// ## `@episode` を `false` へ変えた理由 [実測 2026-09-08]
+    /// MF-21 は当初「`@volume` と同じく含める（絶対通し番号 `作品名 001` のため）。
+    /// ただし Jellyfin #3669 と同じ壊れ方をしないことを実装時に測る」としていた。
+    /// **測ったら起きた**——映像プリセットで `作品名 1920x1080` が
+    /// `@series @episode` に当たり、シリーズ名が `作品名 1920x`・話数が `1080` に
+    /// なる。実蔵書の映像 79 件のうち **13 件が解像度（1920/2048/2160）を持ち、
+    /// 絶対通し番号は 0 件**なので、拾える利点より誤読の害が大きい。
+    ///
+    /// 絶対通し番号が要る利用者は `#([0-9]+)` 等を自分で足せる（`ES-Standard` に
+    /// 既にある）。**既定が黙って誤読するより、当たらないほうがよい**——
+    /// 当たらなければ未整理として画面に出る。
     public var allowsBareDigits: Bool {
         switch self {
-        case .volume, .episode: return true
-        case .season, .date:    return false
+        case .volume:                    return true
+        case .episode, .season, .date:   return false
         }
+    }
+
+    /// 画面に出す役割の名前。設定の区画名・検証の文言が共有する。
+    ///
+    /// **鍵は分岐ごとに literal で書く**——`"patternRole." + rawValue` と
+    /// 組み立てると `check-localization-keys` が鍵として認識できず、綴りを
+    /// 間違えても**生の鍵が画面に出るまで気づけない**（`ScanReviewTitle` と
+    /// 同じ理由）。
+    public var displayName: String {
+        switch self {
+        case .volume:  return QooKitStrings.text("patternRole.volume")
+        case .season:  return QooKitStrings.text("patternRole.season")
+        case .episode: return QooKitStrings.text("patternRole.episode")
+        case .date:    return QooKitStrings.text("patternRole.date")
+        }
+    }
+
+    /// キャプチャグループが複数あるときに値を決める名前付きグループ [MF-06]。
+    ///
+    /// **`VolumeMatcher.numericValue` の規則（`match.named[role.rawValue]`）と
+    /// 同じもの**——検証と照合で違う名前を見ると、「保存できるのに読めない」
+    /// （またはその逆）という食い違いになる。`@date` だけは `DateMatcher` が
+    /// `year`／`month`／`day` を読むので、必須の `year` を返す。
+    public var disambiguatingGroupName: String {
+        self == .date ? "year" : rawValue
     }
 }
 

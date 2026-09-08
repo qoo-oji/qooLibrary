@@ -455,12 +455,14 @@ enum AmbiguitySweep {
         case .mediaType: return preset.libraryTypeName
         case .volume:   return "01"
         case .ignore:   return "無視"
-        // メディア向け [MF-01〜]。掃引の標本には現れないが、網羅性のために置く。
+        // メディア向け [MF-01〜]。**型付きの 3 つは既定セットに当たる形で差し込む**
+        // ——素の数字は `@volume` しか受け付けない [MF-21] ので、`01` のままだと
+        // 映像プリセットのフォーマットが 1 本も一致せず、掃引の対照群が崩れる。
         case .actor:    return "出演"
-        case .season:   return "01"
-        case .episode:  return "01"
+        case .season:   return "S01"          // SS-Standard
+        case .episode:  return "第01話"        // ES-Standard
         case .subtitle: return "副題"
-        case .date:     return "2024"
+        case .date:     return "2024-01-15"   // DS-Standard
         case .keyword2: return "軸二"
         case .keyword3: return "軸三"
         case .keyword4: return "軸四"

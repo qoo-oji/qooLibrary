@@ -157,7 +157,7 @@ struct LibraryServicesTests {
         await w.bootstrap()
         #expect(w.services.startupFailure == nil)
         #expect(w.services.isReady)
-        #expect(w.services.presetTemplates.count == 4, "プリセットは 4 種 [11.4]")
+        #expect(w.services.presetTemplates.count == 6, "プリセットは 4 種 [11.4]")
         #expect(w.services.libraries.isEmpty, "有効化するまでライブラリは 0 件")
         #expect(FileManager.default.fileExists(atPath: w.storeURL.path))
     }

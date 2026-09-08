@@ -280,6 +280,9 @@ public final class SetFileFieldsCommand: Command {
         /// **どれを打ったかは表示にしか使わない**——保護の単位は基本情報
         /// ひとまとめ [PR-02] なので、3 つとも同じスコープを立てる。
         case editTitle, editSeriesName, editVolume
+        /// メディア向けの 4 値 [MF-03〜05][MF-19]。**同じ扱い**——保護の単位は
+        /// 基本情報ひとまとめ [PR-02] なので、これらも同じスコープを立てる。
+        case editSubtitle, editSeason, editEpisode, editReleaseDate
         /// 「ファイル名から再取得」[RP-12] ＝ 保護の解除 [PR-04]。
         case rederive
     }
@@ -309,7 +312,9 @@ public final class SetFileFieldsCommand: Command {
     /// 書き込んだ後の保護スコープ [PR-03][PR-04]。
     private var nextScopes: Set<ProtectionScope> {
         switch kind {
-        case .editTitle, .editSeriesName, .editVolume: previousScopes.union([.basic])
+        case .editTitle, .editSeriesName, .editVolume,
+             .editSubtitle, .editSeason, .editEpisode, .editReleaseDate:
+            previousScopes.union([.basic])
         case .rederive: previousScopes.subtracting([.basic])
         }
     }
@@ -319,6 +324,11 @@ public final class SetFileFieldsCommand: Command {
         case .editTitle: QooApplicationStrings.format("command.editTitle", subjectName)
         case .editSeriesName: QooApplicationStrings.format("command.editSeriesName", subjectName)
         case .editVolume: QooApplicationStrings.format("command.editVolume", subjectName)
+        case .editSubtitle: QooApplicationStrings.format("command.editSubtitle", subjectName)
+        case .editSeason: QooApplicationStrings.format("command.editSeason", subjectName)
+        case .editEpisode: QooApplicationStrings.format("command.editEpisode", subjectName)
+        case .editReleaseDate:
+            QooApplicationStrings.format("command.editReleaseDate", subjectName)
         case .rederive: QooApplicationStrings.format("command.rederive", subjectName)
         }
     }

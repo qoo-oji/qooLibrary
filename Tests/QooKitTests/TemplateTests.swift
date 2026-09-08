@@ -14,11 +14,11 @@ struct BuiltInTemplateTests {
 
     /// **4 種**。2026-09-08 に (A)/(B) を統合した［ユーザー判断: A/B の実差は
     /// 「フォルダ名も解析対象にするか」だけで、テンプレートの選択軸ではない］。
-    @Test("プリセットを 4 種すべて読める [11.4]")
+    @Test("プリセットを 6 種すべて読める [11.4]")
     func libraryTypesLoad() throws {
         let presets = try BuiltInTemplates.libraryTypes()
-        #expect(presets.count == 4)
-        #expect(Set(presets.map(\.key)).count == 4)          // key は一意
+        #expect(presets.count == 6)
+        #expect(Set(presets.map(\.key)).count == 6)          // key は一意
         #expect(presets.map(\.displayName).contains("同人誌"))
     }
 

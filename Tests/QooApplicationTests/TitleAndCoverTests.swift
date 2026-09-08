@@ -128,6 +128,110 @@ struct TitleAndCoverTests {
                 "空にしたのは「打った」——未設定へ戻す意思表示 [RP-11]")
     }
 
+    // MARK: - メディア向けの 4 欄 [MF-03〜05][MF-19]
+
+    /// **読めない入力は書かない**（`commitVolume` と同じ判断 [RP-14]）。
+    /// `nil` に落とすと、打ち間違いが「値を消す操作」として黙って通る。
+    /// **空欄だけは未設定へ戻す**——消す意思が読み取れる唯一の形。
+    @Test("数の欄は、読めない入力を書かず、空欄だけ未設定に戻す [MF-04][MF-05]")
+    func theNumberFieldsRejectUnreadableInput() {
+        #expect(TitleEditorModel.parseNumber("5") == .some(.some(5)))
+        #expect(TitleEditorModel.parseNumber(" 12 ") == .some(.some(12)))
+        // 全角で打っても通る［機械が人間に合わせる］。
+        #expect(TitleEditorModel.parseNumber("１２") == .some(.some(12)))
+        #expect(TitleEditorModel.parseNumber("5.5") == .some(.some(5.5)))
+        #expect(TitleEditorModel.parseNumber("") == .some(nil), "空欄は未設定へ戻す")
+        #expect(TitleEditorModel.parseNumber("  ") == .some(nil))
+        #expect(TitleEditorModel.parseNumber("五") == nil, "読めないので何もしない")
+        #expect(TitleEditorModel.parseNumber("1話") == nil)
+        #expect(TitleEditorModel.parseNumber("-1") == nil, "負の話数は無い")
+    }
+
+    /// **ISO 8601 の部分形しか通さない** [MF-19]。`releaseDate` は文字列のまま
+    /// 比較で並べる列なので、書式が混ざると並び順が壊れる。
+    @Test("公開日は ISO 8601 の部分形だけを受け取り、桁を揃える [MF-19]")
+    func theReleaseDateFieldNormalisesToISO8601() {
+        #expect(TitleEditorModel.parseReleaseDate("2024") == .some("2024"))
+        #expect(TitleEditorModel.parseReleaseDate("2024-01") == .some("2024-01"))
+        #expect(TitleEditorModel.parseReleaseDate("2024-01-15") == .some("2024-01-15"))
+        // **1 桁で打っても 0 詰めする**——揃えないと `2024-9` が `2024-10` より
+        // 後ろに並ぶ（文字列比較のため）。
+        #expect(TitleEditorModel.parseReleaseDate("2024-1-5") == .some("2024-01-05"))
+        #expect(TitleEditorModel.parseReleaseDate("") == .some(nil), "空欄は未設定へ戻す")
+        #expect(TitleEditorModel.parseReleaseDate("2024/01/15") == nil)
+        #expect(TitleEditorModel.parseReleaseDate("24-01-15") == nil)
+        #expect(TitleEditorModel.parseReleaseDate("2024-13") == nil)
+        #expect(TitleEditorModel.parseReleaseDate("2024-01-32") == nil)
+        #expect(TitleEditorModel.parseReleaseDate("令和6年") == nil)
+    }
+
+    /// **値が 1 つも無ければ 4 行を出さない** [設計判断]。コミックの蔵書で
+    /// 空の欄が 4 つ常駐すると、右ペインを簡潔に保つ方針に反する。
+    @Test("メディアの 4 行は、値があるときだけ出す")
+    func theMediaRowsAppearOnlyWhenThereIsSomethingToShow() {
+        func subject(subtitle: String? = nil, season: Double? = nil,
+                     episode: Double? = nil, releaseDate: String? = nil)
+        -> TitleEditorModel.Subject {
+            TitleEditorModel.Subject(
+                id: FileID(rawValue: 1), url: URL(fileURLWithPath: "/tmp/a.mp4"),
+                filename: "a.mp4", title: nil, protectedScopes: [],
+                seriesName: nil, volume: .none,
+                subtitle: subtitle, season: season, episode: episode,
+                releaseDate: releaseDate)
+        }
+        #expect(!subject().showsMediaFields)
+        #expect(subject(subtitle: "副題").showsMediaFields)
+        #expect(subject(season: 1).showsMediaFields)
+        #expect(subject(episode: 1).showsMediaFields)
+        #expect(subject(releaseDate: "2024").showsMediaFields)
+        #expect(TitleEditorModel.Subject.numberDisplay(5) == "5", "整数は小数点を出さない")
+        #expect(TitleEditorModel.Subject.numberDisplay(nil) == "")
+    }
+
+    /// **4 つとも実際に DB へ書けること。** モデルの `commit*` は右ペインの
+    /// 唯一の入口 [MF-10] だが、**実機検証の時点で View の行が 1 つも無く**、
+    /// この 4 つを呼ぶ経路がどこにも無かった（2026-09-08）。行を足したので、
+    /// ここで書き込みまで固定しておく——`parseNumber`/`parseReleaseDate` の
+    /// 入力検査だけでは「読めた値が列へ着く」ことを試せない。
+    @Test("メディアの 4 欄は DB へ書け、基本情報が保護される [MF-03〜05][MF-19][PR-03]")
+    @MainActor
+    func editingMediaFieldsWritesEveryColumnAndProtectsTheBasicScope() async throws {
+        let (w, library, urls) = try await workspace()
+        let model = TitleEditorModel(commands: CommandStack())
+        await model.load(url: urls[0], library: library, services: w.services)
+
+        try await model.commitSeason("2")
+        try await model.commitEpisode("12.5")
+        try await model.commitSubtitle("手で付けた副題")
+        try await model.commitReleaseDate("2024-1-5")
+
+        let row = try #require(try await w.services.fileRow(at: urls[0], in: library))
+        #expect(row.season == 2)
+        #expect(row.episode == 12.5)
+        #expect(row.subtitle == "手で付けた副題")
+        #expect(row.releaseDate == "2024-01-05", "0 詰めして書く")
+        #expect(row.protectedScopes.contains(.basic), "基本情報は 1 かたまり [PR-02]")
+    }
+
+    /// **⌘Z が 4 列とも戻す。** 保護スコープも一緒に戻らないと、取り消した
+    /// のに走査が触れないままになる。
+    @Test("メディアの 4 欄の編集は取り消せる [UD-01]")
+    @MainActor
+    func undoingAMediaFieldEditRestoresTheColumnAndTheProtection() async throws {
+        let (w, library, urls) = try await workspace()
+        let commands = CommandStack()
+        let model = TitleEditorModel(commands: commands)
+        await model.load(url: urls[0], library: library, services: w.services)
+
+        try await model.commitEpisode("7")
+        #expect(try await w.services.fileRow(at: urls[0], in: library)?.episode == 7)
+
+        _ = await commands.undo()
+        let row = try #require(try await w.services.fileRow(at: urls[0], in: library))
+        #expect(row.episode == nil)
+        #expect(!row.protectedScopes.contains(.basic))
+    }
+
     // MARK: - 再取得 [RP-12]
 
     @Test("ファイル名から再取得すると自動値へ戻り保護も解ける [RP-12][PR-04]")
@@ -148,6 +252,36 @@ struct TitleAndCoverTests {
         #expect(row.seriesName == auto.seriesName)
         #expect(row.volume == auto.volume)
         #expect(row.authorName == auto.authorName)
+    }
+
+    /// **再取得はメディアの 4 値も導き直す** [MF-10][RP-12]。
+    ///
+    /// `setFields` はこの 4 列も書くので、`rederivedFields` が落とすと
+    /// **「ファイル名から再取得」が話数を消す**——ファイル名にはちゃんと
+    /// 書いてあるのに、押した瞬間に空になる。
+    @Test("再取得はメディアの 4 値も戻す [MF-10]")
+    @MainActor
+    func rederiveAlsoRestoresMediaFields() async throws {
+        let w = try ServicesWorkspace()
+        await w.bootstrap()
+        let name = "作品名 S02E05「副題」.mp4"
+        try w.write(name)
+        let id = try await w.enable("builtin.video-series")
+        _ = try await w.services.scan(libraryID: id, root: w.libraryRoot)
+        let library = try #require(w.services.library(registrationUUID: w.registrationUUID))
+        let url = w.libraryRoot.appendingPathComponent(name)
+        let auto = try #require(try await w.services.fileRow(at: url, in: library))
+        #expect(auto.episode == 5, "前提: 走査が話数を入れている")
+
+        let model = TitleEditorModel(commands: CommandStack())
+        await model.load(url: url, library: library, services: w.services)
+        try await model.commitTitle("手で付けた題")
+        try await model.rederive()
+
+        let row = try #require(try await w.services.fileRow(at: url, in: library))
+        #expect(row.season == 2)
+        #expect(row.episode == 5)
+        #expect(row.subtitle == "副題")
     }
 
     @Test("再取得の ⌘Z は手動編集を戻す [RP-12][UD-01]")

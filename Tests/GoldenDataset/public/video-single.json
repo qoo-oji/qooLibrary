@@ -1,0 +1,658 @@
+{
+  "cases" : [
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "fields" : {
+          "@actor" : "出演値0",
+          "@title" : "作品タイトル0"
+        },
+        "formatIndex" : 0,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.video-single.p1",
+      "input" : "[出演値0] 作品タイトル0 (無視0).mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "fields" : {
+          "@actor" : "出演値1",
+          "@title" : "作品 タイトル 1"
+        },
+        "formatIndex" : 1,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.video-single.p2",
+      "input" : "[出演値1] 作品 タイトル 1 [無視1].mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "fields" : {
+          "@actor" : "出演値2",
+          "@title" : "作品タイトル2ー長音"
+        },
+        "formatIndex" : 2,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.video-single.p3",
+      "input" : "[出演値2] 作品タイトル2ー長音.mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "fields" : {
+          "@title" : "作品タイトル3"
+        },
+        "formatIndex" : 3,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.video-single.p4",
+      "input" : "作品タイトル3 (無視3).mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "fields" : {
+          "@title" : "サブタイトル付き作品4"
+        },
+        "formatIndex" : 4,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.video-single.p5",
+      "input" : "サブタイトル付き作品4 [無視4].mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "fields" : {
+          "@actor" : "出演値5",
+          "@title" : "作品タイトル5"
+        },
+        "formatIndex" : 0,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.video-single.p6",
+      "input" : "[出演値5] 作品タイトル5 (無視5).mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "fields" : {
+          "@actor" : "出演値6",
+          "@title" : "作品 タイトル 6"
+        },
+        "formatIndex" : 1,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.video-single.p7",
+      "input" : "[出演値6] 作品 タイトル 6 [無視6].mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "fields" : {
+          "@actor" : "出演値7",
+          "@title" : "作品タイトル7ー長音"
+        },
+        "formatIndex" : 2,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.video-single.p8",
+      "input" : "[出演値7] 作品タイトル7ー長音.mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "fields" : {
+          "@title" : "作品タイトル8"
+        },
+        "formatIndex" : 3,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.video-single.p9",
+      "input" : "作品タイトル8 (無視8).mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "fields" : {
+          "@title" : "サブタイトル付き作品9"
+        },
+        "formatIndex" : 4,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.video-single.p10",
+      "input" : "サブタイトル付き作品9 [無視9].mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "fields" : {
+          "@actor" : "出演値10",
+          "@title" : "作品タイトル10"
+        },
+        "formatIndex" : 0,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.video-single.p11",
+      "input" : "[出演値10] 作品タイトル10 (無視10).mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "fields" : {
+          "@actor" : "出演値11",
+          "@title" : "作品 タイトル 11"
+        },
+        "formatIndex" : 1,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.video-single.p12",
+      "input" : "[出演値11] 作品 タイトル 11 [無視11].mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "fields" : {
+          "@actor" : "出演値12",
+          "@title" : "作品タイトル12ー長音"
+        },
+        "formatIndex" : 2,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.video-single.p13",
+      "input" : "[出演値12] 作品タイトル12ー長音.mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "fields" : {
+          "@title" : "作品タイトル13"
+        },
+        "formatIndex" : 3,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.video-single.p14",
+      "input" : "作品タイトル13 (無視13).mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "fields" : {
+          "@title" : "サブタイトル付き作品14"
+        },
+        "formatIndex" : 4,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.video-single.p15",
+      "input" : "サブタイトル付き作品14 [無視14].mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "fields" : {
+          "@actor" : "出演値15",
+          "@title" : "作品タイトル15"
+        },
+        "formatIndex" : 0,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.video-single.p16",
+      "input" : "[出演値15] 作品タイトル15 (無視15).mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "fields" : {
+          "@actor" : "出演値16",
+          "@title" : "作品 タイトル 16"
+        },
+        "formatIndex" : 1,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.video-single.p17",
+      "input" : "[出演値16] 作品 タイトル 16 [無視16].mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "fields" : {
+          "@actor" : "出演値17",
+          "@title" : "作品タイトル17ー長音"
+        },
+        "formatIndex" : 2,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.video-single.p18",
+      "input" : "[出演値17] 作品タイトル17ー長音.mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "fields" : {
+          "@title" : "作品タイトル18"
+        },
+        "formatIndex" : 3,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.video-single.p19",
+      "input" : "作品タイトル18 (無視18).mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "fields" : {
+          "@title" : "サブタイトル付き作品19"
+        },
+        "formatIndex" : 4,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.video-single.p20",
+      "input" : "サブタイトル付き作品19 [無視19].mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "fields" : {
+          "@actor" : "出演値20",
+          "@title" : "作品タイトル20"
+        },
+        "formatIndex" : 0,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.video-single.p21",
+      "input" : "[出演値20] 作品タイトル20 (無視20).mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "fields" : {
+          "@actor" : "出演値21",
+          "@title" : "作品 タイトル 21"
+        },
+        "formatIndex" : 1,
+        "matched" : true,
+        "volume" : {
+          "kind" : "none"
+        }
+      },
+      "id" : "builtin.video-single.p22",
+      "input" : "[出演値21] 作品 タイトル 21 [無視21].mp4",
+      "kind" : "positive"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-single.n1",
+      "input" : "括弧のない名前.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-single.n2",
+      "input" : "著者名 タイトル.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-single.n3",
+      "input" : "[閉じ忘れ タイトル.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-single.n4",
+      "input" : "閉じだけ] タイトル.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-single.n5",
+      "input" : "[著者名].mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-single.n6",
+      "input" : "[] タイトル.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-single.n7",
+      "input" : "[   ] タイトル.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-single.n8",
+      "input" : "{中括弧} タイトル.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-single.n9",
+      "input" : "〈山括弧〉 タイトル.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-single.n10",
+      "input" : "1234567890.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-single.n11",
+      "input" : "タイトルのみ.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-single.n12",
+      "input" : "－－－.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-single.n13",
+      "input" : "( ) タイトル.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-single.n14",
+      "input" : "]] [[.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-single.n15",
+      "input" : "タイトル(閉じない.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-single.n16",
+      "input" : ")))).mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-single.n17",
+      "input" : "((((.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-single.n18",
+      "input" : "・・・.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-single.n19",
+      "input" : "　.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-single.n20",
+      "input" : "a.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-single.n21",
+      "input" : "ﾀｲﾄﾙ.mp4",
+      "kind" : "negative"
+    },
+    {
+      "context" : {
+        "template" : "映像（単発）"
+      },
+      "expected" : {
+        "matched" : false
+      },
+      "id" : "builtin.video-single.n22",
+      "input" : "タイトル…続き.mp4",
+      "kind" : "negative"
+    }
+  ],
+  "datasetName" : "builtin.video-single",
+  "visibility" : "public"
+}

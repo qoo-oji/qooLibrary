@@ -18,6 +18,15 @@ public struct FileQuery: Sendable, Hashable {
 
     public enum SortKey: String, Sendable, Hashable, CaseIterable, Codable {
         case filename, title, series, volume, fileSize, createdAt, modifiedAt, rating
+        /// シーズン → 話数の順 [MF-12]。**2 列を 1 つの並びとして扱う**
+        /// ——季をまたいで話数だけで並べると第 2 期の第 1 話が第 1 期の
+        /// 第 1 話の隣に来る。
+        case episode
+        /// 公開日 [MF-19]。`releaseDate` は ISO 8601 の部分形なので
+        /// **辞書順がそのまま時系列順**になる。
+        case releaseDate
+        /// サブタイトル [MF-03]。タイトル・シリーズ名と同じ素の文字列順。
+        case subtitle
     }
 
     public struct SortSpec: Sendable, Hashable, Codable {

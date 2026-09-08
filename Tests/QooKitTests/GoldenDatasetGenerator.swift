@@ -102,6 +102,12 @@ enum GoldenGenerator {
         }
     }
 
+    /// 標本のファイル名に付ける拡張子。**パースは拡張子を落としてから行う**ので
+    /// 結果には影響しないが、映像プリセットの標本が `.cbz` だと読み手を誤らせる。
+    static func sampleExtension(for template: LibraryTypeTemplate) -> String {
+        template.targetExtensions?.first.map { "." + $0 } ?? ".cbz"
+    }
+
     /// 1 プリセットぶんの正例。各フォーマットへ値を差し込む。
     static func positives(for template: LibraryTypeTemplate,
                           settings: LibrarySettingsSnapshot,
@@ -136,7 +142,7 @@ enum GoldenGenerator {
                 out.append(GoldenCase(
                     kind: "positive",
                     id: "\(template.key).p\(out.count + 1)",
-                    input: input + ".cbz",
+                    input: input + Self.sampleExtension(for: template),
                     context: .init(template: template.displayName, folderPath: nil),
                     expected: .init(matched: true, formatIndex: index, fields: fields,
                                     series: expectedSeries, volume: expectedVolume,
@@ -176,7 +182,7 @@ enum GoldenGenerator {
             out.append(GoldenCase(
                 kind: "negative",
                 id: "\(template.key).n\(out.count + 1)",
-                input: shape + ".cbz",
+                input: shape + GoldenGenerator.sampleExtension(for: template),
                 context: .init(template: template.displayName, folderPath: nil),
                 expected: .init(matched: actual != nil, formatIndex: actualIndex,
                                 fields: nil, series: nil, volume: nil, labels: nil,

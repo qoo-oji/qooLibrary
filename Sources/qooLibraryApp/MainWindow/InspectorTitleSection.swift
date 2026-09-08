@@ -97,6 +97,35 @@ struct InspectorTitleSection: View {
                 value: subject.volumeDisplay ?? "", identity: subject.url,
                 commit: { text in Task { await commitVolume(text) } })
         }
+        // メディア向けの 4 欄 [MF-03〜05][MF-19]。**1 つでも値があるときだけ
+        // 出す**——判断は `Subject.showsMediaFields` が持つ（理由と限界は
+        // そちらのコメントにある）。ラベルは一覧の列と同じ語なので、
+        // **鍵も列と共有する**——別の鍵にすると、片方だけ改名したときに
+        // 同じものが 2 つの名前で呼ばれる。
+        if subject.showsMediaFields {
+            InspectorRow("column.season") {
+                EditableMetadataField(
+                    value: TitleEditorModel.Subject.numberDisplay(subject.season),
+                    identity: subject.url,
+                    commit: { text in Task { await commitMedia(text, kind: .season) } })
+            }
+            InspectorRow("column.episode") {
+                EditableMetadataField(
+                    value: TitleEditorModel.Subject.numberDisplay(subject.episode),
+                    identity: subject.url,
+                    commit: { text in Task { await commitMedia(text, kind: .episode) } })
+            }
+            InspectorRow("column.subtitle") {
+                EditableMetadataField(
+                    value: subject.subtitle ?? "", identity: subject.url,
+                    commit: { text in Task { await commitMedia(text, kind: .subtitle) } })
+            }
+            InspectorRow("column.releaseDate") {
+                EditableMetadataField(
+                    value: subject.releaseDate ?? "", identity: subject.url,
+                    commit: { text in Task { await commitMedia(text, kind: .releaseDate) } })
+            }
+        }
         // **保護されていることを出す** [PR-03]。走査が触れないので、
         // そのことが読み取れないと「なぜ更新されないのか」が分からない。
         if subject.isBasicProtected {
@@ -183,6 +212,24 @@ struct InspectorTitleSection: View {
     private func commitVolume(_ text: String) async {
         do {
             try await model.commitVolume(text)
+        } catch {
+            await NotificationRouter.shared.presentError(
+                error, whatHappened: AppStrings.text("error.setTitleFailed", locale: locale))
+        }
+    }
+
+    /// メディア向けの 4 欄 [MF-03〜05][MF-19]。**確定の経路を 1 つにまとめる**
+    /// ——失敗の提示を 4 通り書くと、片方だけ直して取り残す。
+    private enum MediaField { case subtitle, season, episode, releaseDate }
+
+    private func commitMedia(_ text: String, kind: MediaField) async {
+        do {
+            switch kind {
+            case .subtitle:    try await model.commitSubtitle(text)
+            case .season:      try await model.commitSeason(text)
+            case .episode:     try await model.commitEpisode(text)
+            case .releaseDate: try await model.commitReleaseDate(text)
+            }
         } catch {
             await NotificationRouter.shared.presentError(
                 error, whatHappened: AppStrings.text("error.setTitleFailed", locale: locale))

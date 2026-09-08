@@ -41,6 +41,10 @@
 "command.editTitle" = "Change Title of “%@”";
 "command.editSeriesName" = "Change Series Name of “%@”";
 "command.editVolume" = "Change Volume Number of “%@”";
+"command.editSubtitle" = "Change Subtitle of “%@”";
+"command.editSeason" = "Change Season of “%@”";
+"command.editEpisode" = "Change Episode of “%@”";
+"command.editReleaseDate" = "Change Release Date of “%@”";
 "command.rederive" = "Re-read “%@” from Its File Name";
 "command.replaceCover" = "Change Cover Image of “%@”";
 "command.revertCover" = "Reset Cover Image of “%@”";

@@ -27,10 +27,17 @@ public struct LibrarySummary: Sendable, Hashable, Identifiable {
     /// 無いと、行を描く直前に設定を読み直す経路を新しく作ることになる。
     public let duplicateGrouping: DuplicateGrouping
 
+    /// タイトルを持たない行の表示名の組み立て [SE-33][MF-11]。
+    ///
+    /// `duplicateGrouping` と同じ理由で要約に載せてある——一覧の行を描く
+    /// たびに要るので、無いと描く直前に設定を読み直す経路ができる。
+    public let seriesTitleFormat: String
+
     public init(id: LibraryID, uuid: UUID, displayName: String, resolvedPath: String,
                 volumeUUID: String, libraryTypeID: LibraryTypeID,
                 isOnline: Bool, isReadOnlyDueToFS: Bool, fileCount: Int, settingsRevision: Int,
-                duplicateGrouping: DuplicateGrouping = .off) {
+                duplicateGrouping: DuplicateGrouping = .off,
+                seriesTitleFormat: String = "@series @volume") {
         self.id = id
         self.uuid = uuid
         self.displayName = displayName
@@ -42,6 +49,7 @@ public struct LibrarySummary: Sendable, Hashable, Identifiable {
         self.fileCount = fileCount
         self.settingsRevision = settingsRevision
         self.duplicateGrouping = duplicateGrouping
+        self.seriesTitleFormat = seriesTitleFormat
     }
 }
 

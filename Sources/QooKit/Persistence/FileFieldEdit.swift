@@ -19,19 +19,35 @@ public struct FileFieldEdit: Sendable, Hashable {
     public var seriesName: String?
     public var volume: VolumeValue
     public var authorName: String?
+    /// メディア向けの 4 値 [MF-03〜05][MF-19]。**基本情報スコープが 1 かたまりで
+    /// 守る** [PR-02] ので、`title` と同じ型に載せる——別の型・別の API にすると、
+    /// 片方だけ書いて保護は立つ（またはその逆）という半端な状態が作れてしまう。
+    public var subtitle: String?
+    public var season: Double?
+    public var episode: Double?
+    /// ISO 8601 の部分形（`2024` / `2024-01` / `2024-01-15`）[MF-19]。
+    public var releaseDate: String?
 
     public init(title: String?, seriesName: String?,
-                volume: VolumeValue, authorName: String?) {
+                volume: VolumeValue, authorName: String?,
+                subtitle: String? = nil, season: Double? = nil,
+                episode: Double? = nil, releaseDate: String? = nil) {
         self.title = title
         self.seriesName = seriesName
         self.volume = volume
         self.authorName = authorName
+        self.subtitle = subtitle
+        self.season = season
+        self.episode = episode
+        self.releaseDate = releaseDate
     }
 
     /// いまの行の値をそのまま写す（Undo の「変更前」と、部分的な書き換えの土台）。
     public init(_ row: FileRow) {
         self.init(title: row.title, seriesName: row.seriesName,
-                  volume: row.volume, authorName: row.authorName)
+                  volume: row.volume, authorName: row.authorName,
+                  subtitle: row.subtitle, season: row.season,
+                  episode: row.episode, releaseDate: row.releaseDate)
     }
 
     /// **手動編集であることはこの型が持たない** [PR-03]。編集したという事実は
@@ -63,6 +79,39 @@ public struct FileFieldEdit: Sendable, Hashable {
     public func settingVolume(_ newVolume: VolumeValue) -> FileFieldEdit {
         var copy = self
         copy.volume = newVolume
+        return copy
+    }
+
+    /// サブタイトルだけを差し替えた版 [MF-03]。
+    public func settingSubtitle(_ newSubtitle: String) -> FileFieldEdit {
+        var copy = self
+        copy.subtitle = Self.trimmed(newSubtitle)
+        return copy
+    }
+
+    /// シーズンだけを差し替えた版 [MF-04]。空欄で未設定に戻る。
+    ///
+    /// **数として読めない入力は受け付けない**（`nil` を返す）——`seasonNumber` は
+    /// 並べ替えとシリーズスタックの合成鍵が読む数値列なので、読めない値を
+    /// 黙って捨てると「打ったのに反映されない」ことになる。判定は呼び出し側
+    /// （`TitleEditorModel`）が行う。
+    public func settingSeason(_ newSeason: Double?) -> FileFieldEdit {
+        var copy = self
+        copy.season = newSeason
+        return copy
+    }
+
+    /// 話数だけを差し替えた版 [MF-05]。
+    public func settingEpisode(_ newEpisode: Double?) -> FileFieldEdit {
+        var copy = self
+        copy.episode = newEpisode
+        return copy
+    }
+
+    /// 公開日だけを差し替えた版 [MF-19]。**ISO 8601 の部分形**しか受け付けない。
+    public func settingReleaseDate(_ newDate: String?) -> FileFieldEdit {
+        var copy = self
+        copy.releaseDate = newDate
         return copy
     }
 

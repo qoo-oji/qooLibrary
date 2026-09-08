@@ -654,7 +654,10 @@ public actor ScanEngine {
                 title: resolved.title, seriesName: resolved.seriesName,
                 volume: resolved.volume, authorName: resolved.authorName,
                 labelValues: resolved.labels,
-                spans: []),
+                spans: [],
+                // [MF-03〜05][MF-19] **ここを落とすと 4 列は永久に空のまま**。
+                subtitle: resolved.subtitle, season: resolved.season,
+                episode: resolved.episode, releaseDate: resolved.releaseDate),
             to: id)
         try await applyLabels(resolved.labels, to: id, settings: settings)
         return Resolution(

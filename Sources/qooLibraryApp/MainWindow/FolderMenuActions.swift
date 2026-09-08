@@ -128,7 +128,10 @@ struct FolderMenuActions {
 enum FolderColumn: String, CaseIterable, Identifiable, Sendable {
     // 並び順がそのままメニューの並びになる。**「名前」の次に来てほしい**
     // ライブラリの列を先に置く（`rawValue` は永続化に使うので変えない）。
-    case title, series, volume, rating   // [LV-04] ライブラリ表示モードのみ
+    // [LV-04] ライブラリ表示モードのみ。**メディア向けの 4 つは既定で非表示**
+    // [MF-13]——コミックのライブラリでは 1 件も値が入らないので、出すと
+    // 「—」だけの列が 4 本並ぶ。
+    case title, series, volume, season, episode, subtitle, releaseDate, rating
     case modificationDate, size, kind, creationDate, addedDate
 
     var id: String { rawValue }
@@ -147,7 +150,8 @@ enum FolderColumn: String, CaseIterable, Identifiable, Sendable {
 
     var isAvailableInFolderMode: Bool {
         switch self {
-        case .title, .series, .volume, .rating: false
+        case .title, .series, .volume, .rating,
+             .season, .episode, .subtitle, .releaseDate: false
         default: true
         }
     }
@@ -157,6 +161,10 @@ enum FolderColumn: String, CaseIterable, Identifiable, Sendable {
         case .title: "qoo.libraryList.showTitleColumn"
         case .series: "qoo.libraryList.showSeriesColumn"
         case .volume: "qoo.libraryList.showVolumeColumn"
+        case .season: "qoo.libraryList.showSeasonColumn"
+        case .episode: "qoo.libraryList.showEpisodeColumn"
+        case .subtitle: "qoo.libraryList.showSubtitleColumn"
+        case .releaseDate: "qoo.libraryList.showReleaseDateColumn"
         case .rating: "qoo.libraryList.showRatingColumn"
         case .modificationDate: "qoo.folderList.showModificationDateColumn"
         case .size: "qoo.folderList.showSizeColumn"
@@ -177,6 +185,10 @@ enum FolderColumn: String, CaseIterable, Identifiable, Sendable {
         case .title: "column.title"
         case .series: "column.series"
         case .volume: "column.volume"
+        case .season: "column.season"
+        case .episode: "column.episode"
+        case .subtitle: "column.subtitle"
+        case .releaseDate: "column.releaseDate"
         case .rating: "column.rating"
         }
     }

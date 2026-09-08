@@ -31,6 +31,28 @@ import Testing
                                        semanticBindings: bindings)
     }
 
+    /// **メディア向けの 4 値は素通しする** [MF-03〜05][MF-19][MF-17]。
+    ///
+    /// `ComicInfo.xml` にも EPUB にも対応する項目が無いので、埋め込み側は
+    /// この 4 つについて何も言わない。落とすと、埋め込みメタデータを持つ
+    /// ファイルだけ**話数が消える**——しかも消えるのはメタデータのある行だけ
+    /// なので、一覧で見比べても理由が読めない。
+    @Test func mediaFieldsSurviveTheMerge() {
+        let base = FolderLabelResolver.ResolvedLabels(
+            labels: [:], title: "ファイル名の題", seriesName: "ファイル名のシリーズ",
+            volume: .none, authorName: nil,
+            subtitle: "副題", season: 2, episode: 5, releaseDate: "2024-01-15",
+            matchedFormatID: UUID(), nearestFormat: nil, folderProvidedGroups: [])
+        let out = EmbeddedMetadataMerge.apply(
+            EmbeddedMetadata(source: .comicInfo, title: "メタデータの題"),
+            to: base, settings: settings())
+        #expect(out.title == "メタデータの題", "前提: メタデータが実際に効いている")
+        #expect(out.subtitle == "副題")
+        #expect(out.season == 2)
+        #expect(out.episode == 5)
+        #expect(out.releaseDate == "2024-01-15")
+    }
+
     @Test func noMetadataChangesNothing() {
         let base = baseline()
         let out = EmbeddedMetadataMerge.apply(nil, to: base, settings: settings())

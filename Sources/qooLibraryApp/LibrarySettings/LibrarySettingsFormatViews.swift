@@ -74,14 +74,25 @@ struct LibraryFieldsSettingsView: View {
 
     private func row(_ field: Binding<FieldDraft>) -> some View {
         HStack(spacing: Tokens.spacing.s) {
-            // **フォーマットからの参照名を出す。** 既定フィールド 6 種だけが
-            // 意味予約語（`@author` 等）で参照でき [RWI-02]、追加フィールドは
-            // ファイル名から参照できない（`@labelgroupN` は撤去した）——手で
-            // 付けるための軸なので、参照名の欄は「—」になる。
-            Text(verbatim: reference(for: field.wrappedValue.index) ?? "—")
-                .font(.system(size: Tokens.fontSize.caption, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .frame(width: 110, alignment: .leading)
+            // **フォーマットからの参照名** [RWI-02][MF-22]。
+            //
+            // 既定フィールド 6 種は**意味そのものが身元**なので読むだけにする
+            // ——付け替えられると「著者フィールドへ `@genre` が流れる」ような、
+            // 後から辿れない設定が作れてしまう [§19.7][§19.8]。
+            //
+            // それ以外のフィールドはポップアップで選べる。`@keyword2`〜
+            // `@keyword5`・`@actor`・`@season`・`@series` を結び付ける唯一の
+            // 経路で、これが無いとカスタム軸をファイル名から自動抽出できない。
+            if draft.isDefaultField(at: field.wrappedValue.index) {
+                Text(verbatim: reference(for: field.wrappedValue.index) ?? "—")
+                    .font(.system(size: Tokens.fontSize.caption, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 110, alignment: .leading)
+            } else {
+                FixedWidthPopUp(items: keywordItems(for: field.wrappedValue.index),
+                                selection: keywordBinding(for: field.wrappedValue.index))
+                    .frame(width: 110)
+            }
             TextField("", text: field.name)
                 .labelsHidden()
                 .editableFieldChrome()
@@ -141,16 +152,25 @@ struct LibraryFieldsSettingsView: View {
 
     /// フォーマットからこのフィールドを指す綴り [RW-13][RWI-02]。
     ///
-    /// **予約語の割り当てはユーザーに選ばせない** [§19.7][§19.8]——既定
-    /// フィールド 5 種は意味そのものが身元なので、付け替えられると
-    /// 「著者フィールドに `@genre` が流れる」ような、後から辿れない設定が
-    /// 作れてしまう。ここは読むだけの表示にする。
-    ///
-    /// 束縛の無いフィールド（追加分）は**ファイル名から参照できない**
-    /// ——`@labelgroupN` は v3 ステージ 5 で撤去した。手で付けるための軸である。
+    /// 既定フィールドの参照名（読むだけの表示）。
     private func reference(for index: Int) -> String? {
-        SemanticKeyword.allCases
-            .first { draft.semanticBindings[$0] == index }?.rawValue
+        draft.boundKeyword(forFieldAt: index)?.rawValue
+    }
+
+    /// ポップアップの中身 [MF-22]。先頭は「—」（束縛しない）。
+    ///
+    /// 判定そのものは `LibrarySettingsDraft` が持つ——View に書くと
+    /// `swift test` から触れず、変異を当てて確かめられない。
+    private func keywordItems(for index: Int) -> [FixedWidthPopUp<String>.Item] {
+        [FixedWidthPopUp<String>.Item(title: "—", tag: "")]
+            + draft.bindableKeywords(forFieldAt: index)
+                .map { FixedWidthPopUp<String>.Item(title: $0.rawValue, tag: $0.rawValue) }
+    }
+
+    private func keywordBinding(for index: Int) -> Binding<String> {
+        Binding(
+            get: { draft.boundKeyword(forFieldAt: index)?.rawValue ?? "" },
+            set: { draft.bindKeyword(SemanticKeyword(rawValue: $0), toFieldAt: index) })
     }
 
     private func addGroup() {
@@ -163,15 +183,13 @@ struct LibraryFieldsSettingsView: View {
             colorHexLight: color.hexLight, colorHexDark: color.hexDark))
     }
 
+    private func isDefaultField(_ field: FieldDraft) -> Bool {
+        draft.isDefaultField(at: field.index)
+    }
+
     /// **ラベルごと消える**ので確認を挟む [LB-05]。保存するまで実際には
     /// 消えないが、保存の段で警告するのでは遅い（そのときには何を消したか
     /// 忘れている）。
-    /// 既定フィールド 5 種かどうか [§19.2]。**番号ではなく束縛で判定する**
-    /// ——番号はフィールドの身元ではないので、並べ替えると別の行を守ってしまう。
-    private func isDefaultField(_ field: FieldDraft) -> Bool {
-        SemanticKeyword.defaultFields.contains { draft.semanticBindings[$0] == field.index }
-    }
-
     private func removeGroup(_ field: FieldDraft) {
         guard !isDefaultField(field) else { return }        // ボタンと二重の守り
         DialogWindowPresenter.shared.present(
@@ -476,6 +494,14 @@ struct FilenameFormatEditorDialog: View {
             ("@volume", AppStrings.text("librarySettings.word.volume")),
             ("@mediatype", AppStrings.text("librarySettings.word.mediaType")),
             ("@ignore", AppStrings.text("librarySettings.word.ignore")),
+        ]
+        // メディア向けの 3 語 [MF-03][MF-05][MF-19]。**`@actor` と `@season` は
+        // ここに書かない**——意味予約語なので、下の 2 つのループが束縛の
+        // ありなしに応じて出す。
+        entries += [
+            ("@episode", AppStrings.text("librarySettings.word.episode")),
+            ("@subtitle", AppStrings.text("librarySettings.word.subtitle")),
+            ("@date", AppStrings.text("librarySettings.word.date")),
         ]
         // **ファイル名から参照できるフィールドだけを出す。** 束縛の無い
         // フィールド（追加分）は `@labelgroupN` を撤去した [v3 ステージ 5] ので
@@ -804,54 +830,101 @@ struct LibraryVolumeFormatsSettingsView: View {
             // 決めると `作品 第01巻` が `01巻` と読まれ、シリーズ名が `作品 第`
             // になる（実データの一般コミックは 94% が `第??巻`）。この規則と
             // 正規表現の書き方はマニュアルにある [HP-07]。
-
-            EditableListChrome(height: 200) {
-                List(selection: $selectedID) {
-                    ForEach($draft.volumeFormats) { $pattern in
-                        HStack(spacing: Tokens.spacing.s) {
-                            Toggle("", isOn: $pattern.isEnabled).labelsHidden()
-                            TextField("", text: $pattern.source)
-                                .labelsHidden()
-                                .font(.system(size: Tokens.fontSize.body, design: .monospaced))
-                                .editableFieldChrome()
-                            FixedWidthPopUp(items: VolumePatternKind.popUpItems,
-                                            selection: $pattern.kind)
-                                .frame(width: 100)
-                            if let warning = firstFinding(for: pattern) {
-                                Image(systemName: warning.isError
-                                      ? "exclamationmark.circle.fill" : "exclamationmark.triangle.fill")
-                                    .foregroundStyle(warning.isError ? .red : .orange)
-                                    .help(Text(verbatim: warning.message))
-                            }
-                        }
-                        .tag(pattern.id)
-                        .padding(.vertical, Tokens.spacing.xs)
-                    }
-                    .onMove { source, destination in
-                        draft.volumeFormats.move(fromOffsets: source, toOffset: destination)
-                    }
-                    .onDelete { offsets in
-                        draft.volumeFormats.remove(atOffsets: offsets)
-                    }
-                }
-            } buttons: {
-                ListEditButton(kind: .add, help: "librarySettings.volumeFormats.add") {
-                    let new = VolumeFormatDraft(source: "")
-                    draft.volumeFormats.append(new)
-                    selectedID = new.id
-                }
-                ListEditButton(kind: .remove, help: "librarySettings.volumeFormats.remove") {
-                    guard let selectedID else { return }
-                    draft.volumeFormats.removeAll { $0.id == selectedID }
-                    self.selectedID = nil
-                }
-                .disabled(selectedID == nil)
+            //
+            // **役割ごとに区画を分ける** [MF-07][MF-14]。4 つの役割が 1 つの表に
+            // 同居するので、混ぜて並べると**登録順という意味のある並び**が
+            // 役割をまたいで混ざり、どれが何のためのパターンか読めなくなる。
+            ForEach(PatternRole.allCases, id: \.self) { role in
+                roleSection(role)
             }
-            .frame(maxWidth: 620, alignment: .leading)
             // ComicInfo.xml の巻数 [EM-30]。基本から移した（A9、2026-09-07）。
             ComicInfoVolumeSourceSettingsView(draft: $draft)
                 .frame(maxWidth: 620, alignment: .leading)
         }
+    }
+
+    @ViewBuilder
+    private func roleSection(_ role: PatternRole) -> some View {
+        let ids = draft.volumeFormats.filter { $0.role == role }.map(\.id)
+        VStack(alignment: .leading, spacing: Tokens.spacing.s) {
+            Text(verbatim: role.displayName)
+                .font(.system(size: Tokens.fontSize.body, weight: .semibold))
+            // 空の区画は低くする——使わない役割が 3 つ並んでも縦を食わない。
+            EditableListChrome(height: ids.isEmpty ? 64 : 180) {
+                List(selection: $selectedID) {
+                    ForEach(ids, id: \.self) { id in
+                        row(binding(id))
+                            .tag(id)
+                            .padding(.vertical, Tokens.spacing.xs)
+                    }
+                    .onMove { source, destination in
+                        move(role: role, from: source, to: destination)
+                    }
+                    .onDelete { offsets in
+                        let doomed = Set(offsets.map { ids[$0] })
+                        draft.volumeFormats.removeAll { doomed.contains($0.id) }
+                    }
+                }
+            } buttons: {
+                ListEditButton(kind: .add, help: "librarySettings.volumeFormats.add") {
+                    let new = VolumeFormatDraft(source: "", role: role)
+                    draft.volumeFormats.append(new)
+                    selectedID = new.id
+                }
+                ListEditButton(kind: .remove, help: "librarySettings.volumeFormats.remove") {
+                    guard let selectedID, ids.contains(selectedID) else { return }
+                    draft.volumeFormats.removeAll { $0.id == selectedID }
+                    self.selectedID = nil
+                }
+                .disabled(selectedID.map { !ids.contains($0) } ?? true)
+            }
+            .frame(maxWidth: 620, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder
+    private func row(_ pattern: Binding<VolumeFormatDraft>) -> some View {
+        HStack(spacing: Tokens.spacing.s) {
+            Toggle("", isOn: pattern.isEnabled).labelsHidden()
+            TextField("", text: pattern.source)
+                .labelsHidden()
+                .font(.system(size: Tokens.fontSize.body, design: .monospaced))
+                .editableFieldChrome()
+            // **種別を選べるのは巻数だけ。** 「区切り」はシリーズ名を切るための
+            // もので、話数・シーズン・公開日には対応する概念が無い
+            // （`VolumePattern.role` の doc 参照）。
+            if pattern.wrappedValue.role == .volume {
+                FixedWidthPopUp(items: VolumePatternKind.popUpItems,
+                                selection: pattern.kind)
+                    .frame(width: 100)
+            }
+            if let warning = firstFinding(for: pattern.wrappedValue) {
+                Image(systemName: warning.isError
+                      ? "exclamationmark.circle.fill" : "exclamationmark.triangle.fill")
+                    .foregroundStyle(warning.isError ? .red : .orange)
+                    .help(Text(verbatim: warning.message))
+            }
+        }
+    }
+
+    /// id で引き直す束縛。**添字を持ち回らない**——区画は絞り込んだ一覧なので、
+    /// 添字を覚えると削除や並べ替えのあとに別の行を書き換える。
+    private func binding(_ id: UUID) -> Binding<VolumeFormatDraft> {
+        Binding(
+            get: { draft.volumeFormats.first { $0.id == id } ?? VolumeFormatDraft(source: "") },
+            set: { updated in
+                guard let i = draft.volumeFormats.firstIndex(where: { $0.id == id }) else { return }
+                draft.volumeFormats[i] = updated
+            })
+    }
+
+    /// 区画の中だけで並べ替える。**役割をまたいだ移動はできない**——
+    /// 全体の配列では役割の行が飛び飛びに並ぶので、その席だけを入れ替える。
+    private func move(role: PatternRole, from source: IndexSet, to destination: Int) {
+        let slots = draft.volumeFormats.indices.filter { draft.volumeFormats[$0].role == role }
+        var items = slots.map { draft.volumeFormats[$0] }
+        items.move(fromOffsets: source, toOffset: destination)
+        for (slot, item) in zip(slots, items) { draft.volumeFormats[slot] = item }
     }
 
     /// 行に出す 1 件。**静的検査だけ**を使う——`body` は入力のたびに評価されるので、
@@ -861,16 +934,26 @@ struct LibraryVolumeFormatsSettingsView: View {
         guard !source.isEmpty else { return nil }
         let findings = RegexSafety.staticFindings(pattern.source)
         if let error = findings.first(where: \.isError) { return error }
-        // 巻数種別はキャプチャグループが 1 つ必要。どこから値を取るか決まらないため。
-        if pattern.kind == .volume, let regex = try? SafeRegex(pattern.source) {
-            if regex.captureGroupCount == 0 {
+        // 値をどこから取るか決まらないと読めない。**規則は `validate()` と同じ**
+        // ——名前付きグループの綴りは役割ごとに違う [MF-06]。
+        guard pattern.kind == .volume, let regex = try? SafeRegex(pattern.source) else {
+            return findings.first
+        }
+        if pattern.role == .date {
+            if !regex.namedGroups.contains("year") {
                 return RegexSafetyFinding(kind: .invalidSyntax(
-                    AppStrings.text("librarySettings.volumeFormats.noCaptureGroup")))
+                    AppStrings.text("librarySettings.volumeFormats.noYearGroup")))
             }
-            if regex.captureGroupCount > 1, !regex.hasNamedVolumeGroup {
-                return RegexSafetyFinding(kind: .invalidSyntax(
-                    AppStrings.text("librarySettings.volumeFormats.ambiguousCaptureGroup")))
-            }
+            return findings.first
+        }
+        if regex.captureGroupCount == 0 {
+            return RegexSafetyFinding(kind: .invalidSyntax(
+                AppStrings.text("librarySettings.volumeFormats.noCaptureGroup")))
+        }
+        if regex.captureGroupCount > 1,
+           !regex.namedGroups.contains(pattern.role.disambiguatingGroupName) {
+            return RegexSafetyFinding(kind: .invalidSyntax(
+                AppStrings.text("librarySettings.volumeFormats.ambiguousCaptureGroup")))
         }
         return findings.first
     }

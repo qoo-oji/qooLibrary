@@ -80,6 +80,11 @@ public final class LibraryContentModel {
         public let userCoverURL: URL?
         /// この行が何を代表しているか [DU-06][VM3-02]。
         public let group: RowGroup
+        /// `title` を持たない行のために組み立てた表示名 [SE-33][MF-11]。
+        ///
+        /// **行を作るときに 1 度だけ組み立てる**——描くたびに組み立てると、
+        /// 200 行の一覧でフォーマットの字句解析が毎フレーム走る。
+        public let composedTitle: String?
         public var id: URL { url }
 
         /// 重複の組を代表しているか [DU-06][DU-12]。**シリーズのスタックは
@@ -98,11 +103,13 @@ public final class LibraryContentModel {
         }
 
         public init(file: FileRow, url: URL, userCoverURL: URL? = nil,
+                    composedTitle: String? = nil,
                     group: RowGroup = .none) {
             self.file = file
             self.url = url
             self.userCoverURL = userCoverURL
             self.group = group
+            self.composedTitle = composedTitle
         }
 
         /// 一覧に出す名前 [IV-05][IV-07][VM3-02]。**スタックはシリーズ名**
@@ -110,7 +117,7 @@ public final class LibraryContentModel {
         /// 1 冊の名前を名乗ることになる。
         public var displayName: String {
             if case .series(_, let name) = group { return name }
-            return LibraryContentModel.displayName(for: file)
+            return LibraryContentModel.displayName(for: file, composed: composedTitle)
         }
     }
 
@@ -217,7 +224,8 @@ public final class LibraryContentModel {
             rows = Self.rows(from: page.rows, libraryRootPath: library.resolvedPath,
                              userCoverURL: { services.userCoverURL(ref: $0, library: library) },
                              groupCounts: page.groupCounts,
-                             asSeriesStacks: foldsIntoSeriesStacks)
+                             asSeriesStacks: foldsIntoSeriesStacks,
+                             seriesTitleFormat: library.seriesTitleFormat)
             totalCount = page.totalCount
             state = .ready
         } catch {
@@ -255,7 +263,8 @@ public final class LibraryContentModel {
             let more = Self.rows(from: page.rows, libraryRootPath: library.resolvedPath,
                                  userCoverURL: { services.userCoverURL(ref: $0, library: library) },
                                  groupCounts: page.groupCounts,
-                                 asSeriesStacks: page.groupedBy == .series)
+                                 asSeriesStacks: page.groupedBy == .series,
+                                 seriesTitleFormat: library.seriesTitleFormat)
             // 同じ行が二度入らないようにする。ページの境目で走査が行を挿すと
             // `offset` がずれて重複し得る（`Identifiable` の id が衝突すると
             // SwiftUI が実行時に文句を言う）。
@@ -437,10 +446,31 @@ public final class LibraryContentModel {
     /// **判定はここ 1 箇所**。中央ペインの行（`FolderEntry`）もこれを呼ぶ
     /// ——同じ「タイトルかファイル名か」を 2 箇所で書くと、片方だけ直したときに
     /// 一覧とインスペクタで違う名前が出る。
-    nonisolated public static func displayName(for file: FileRow) -> String {
-        guard let title = file.title?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !title.isEmpty else { return file.filename }
-        return title
+    /// 一覧に出す名前。**手動・自動のタイトル → 組み立てた表示名 → ファイル名**
+    /// の順に落ちる [SE-33][MF-11]。
+    ///
+    /// 組み立ての結果を引数で受けるのは、**フォーマットがライブラリの設定**
+    /// だから——ここで読み直すと、行を描くたびに設定を引く経路ができる。
+    nonisolated public static func displayName(for file: FileRow,
+                                               composed: String? = nil) -> String {
+        if let title = file.title?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !title.isEmpty { return title }
+        if let composed, !composed.isEmpty { return composed }
+        return file.filename
+    }
+
+    /// `title` を持たない行の表示名を組み立てる [SE-33][MF-11]。
+    ///
+    /// **タイトルがある行では組み立てない**——費用が無駄なうえ、手で編集した
+    /// タイトル [RP-10] を差し置いて組み立て結果が出ることは決してない。
+    nonisolated static func composedTitle(for file: FileRow, format: String) -> String? {
+        guard file.title?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false
+        else { return nil }
+        return DisplayTitle.compose(
+            format: format,
+            parts: .init(series: file.seriesName, volume: file.volume.raw,
+                         season: file.season, episode: file.episode,
+                         subtitle: file.subtitle))
     }
 
     /// DB の行を一覧の行にする。
@@ -450,7 +480,8 @@ public final class LibraryContentModel {
     nonisolated static func rows(from files: [FileRow], libraryRootPath: String,
                                  userCoverURL: (String) -> URL?,
                                  groupCounts: [FileID: Int] = [:],
-                                 asSeriesStacks: Bool = false) -> [Row] {
+                                 asSeriesStacks: Bool = false,
+                                 seriesTitleFormat: String = "@series @volume") -> [Row] {
         let root = URL(fileURLWithPath: libraryRootPath, isDirectory: true)
         return files.map { file in
             Row(file: file,
@@ -459,6 +490,7 @@ public final class LibraryContentModel {
                 // [IV-02①] 参照があるときだけ場所を組み立てる。I/O は無い。
                 userCoverURL: file.coverImageSource == .userSpecified
                     ? file.coverImageRef.flatMap(userCoverURL) : nil,
+                composedTitle: Self.composedTitle(for: file, format: seriesTitleFormat),
                 group: Self.group(for: file, counts: groupCounts,
                                   asSeriesStacks: asSeriesStacks))
         }

@@ -281,6 +281,12 @@ struct FolderContentView: View {
     @AppStorage("qoo.libraryList.showTitleColumn") private var showTitleColumn = true
     @AppStorage("qoo.libraryList.showSeriesColumn") private var showSeriesColumn = true
     @AppStorage("qoo.libraryList.showVolumeColumn") private var showVolumeColumn = true
+    // メディア向けの 4 列は**既定で非表示** [MF-13]——コミックのライブラリでは
+    // 値が 1 件も入らないので、既定で出すと「—」だけの列が 4 本並ぶ。
+    @AppStorage("qoo.libraryList.showSeasonColumn") private var showSeasonColumn = false
+    @AppStorage("qoo.libraryList.showEpisodeColumn") private var showEpisodeColumn = false
+    @AppStorage("qoo.libraryList.showSubtitleColumn") private var showSubtitleColumn = false
+    @AppStorage("qoo.libraryList.showReleaseDateColumn") private var showReleaseDateColumn = false
     @AppStorage("qoo.libraryList.showRatingColumn") private var showRatingColumn = true
     @AppStorage("qoo.folderList.groupFoldersAtTop") private var groupFoldersAtTop = true
     /// 隠しファイルを表示するか [ユーザー要望、Finder の ⇧⌘. 相当]。
@@ -1307,6 +1313,10 @@ struct FolderContentView: View {
         if showTitleColumn { result.insert(.title) }
         if showSeriesColumn { result.insert(.series) }
         if showVolumeColumn { result.insert(.volume) }
+        if showSeasonColumn { result.insert(.season) }
+        if showEpisodeColumn { result.insert(.episode) }
+        if showSubtitleColumn { result.insert(.subtitle) }
+        if showReleaseDateColumn { result.insert(.releaseDate) }
         if showRatingColumn { result.insert(.rating) }
         return result
     }
@@ -1321,6 +1331,10 @@ struct FolderContentView: View {
         case .title: showTitleColumn = isVisible
         case .series: showSeriesColumn = isVisible
         case .volume: showVolumeColumn = isVisible
+        case .season: showSeasonColumn = isVisible
+        case .episode: showEpisodeColumn = isVisible
+        case .subtitle: showSubtitleColumn = isVisible
+        case .releaseDate: showReleaseDateColumn = isVisible
         case .rating: showRatingColumn = isVisible
         }
     }
@@ -1428,6 +1442,10 @@ struct FolderContentView: View {
             if showTitleColumn { total += Self.titleColumnWidth }
             if showSeriesColumn { total += Self.seriesColumnWidth }
             if showVolumeColumn { total += Self.volumeColumnWidth }
+            if showSeasonColumn { total += Self.seasonColumnWidth }
+            if showEpisodeColumn { total += Self.episodeColumnWidth }
+            if showSubtitleColumn { total += Self.subtitleColumnWidth }
+            if showReleaseDateColumn { total += Self.releaseDateColumnWidth }
             if showRatingColumn { total += Self.ratingColumnWidth }
         }
         if showModificationDateColumn { total += modificationDateColumnWidth }
@@ -1445,7 +1463,16 @@ struct FolderContentView: View {
     /// 使い、`otherColumnsWidth` もこれで数える。
     private static let titleColumnWidth: CGFloat = 220
     private static let seriesColumnWidth: CGFloat = 180
+    /// シーズン・話数の表示。整数なら小数点を出さない（`1` / `12.5`）。
+    private static func mediaNumberText(_ value: Double) -> String {
+        value == value.rounded() && abs(value) < 1e15 ? String(Int64(value)) : String(value)
+    }
+
     private static let volumeColumnWidth: CGFloat = 90
+    private static let seasonColumnWidth: CGFloat = 80
+    private static let episodeColumnWidth: CGFloat = 80
+    private static let subtitleColumnWidth: CGFloat = 200
+    private static let releaseDateColumnWidth: CGFloat = 110
     private static let ratingColumnWidth: CGFloat = 110
 
     /// `Table` の実測幅（`.onGeometryChange` から渡される）。列の表示/非表示
@@ -1821,6 +1848,55 @@ struct FolderContentView: View {
                         }
                     }
                     .width(min: 60, max: Self.volumeColumnWidth)
+                }
+
+                if displayMode == .library, showSeasonColumn {
+                    TableColumn("column.season", sortUsing: FolderSortComparator(key: .season)) { entry in
+                        // 数の列なので右詰め（巻数と同じ扱い）。
+                        rowCell(entry, isRenaming: renamingEntry?.url == entry.url, alignment: .trailing) {
+                            Text(entry.libraryRow?.season.map(Self.mediaNumberText) ?? "—")
+                                .font(.system(size: Tokens.fontSize.body))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .width(min: 60, max: Self.seasonColumnWidth)
+                }
+
+                if displayMode == .library, showEpisodeColumn {
+                    TableColumn("column.episode", sortUsing: FolderSortComparator(key: .episode)) { entry in
+                        rowCell(entry, isRenaming: renamingEntry?.url == entry.url, alignment: .trailing) {
+                            Text(entry.libraryRow?.episode.map(Self.mediaNumberText) ?? "—")
+                                .font(.system(size: Tokens.fontSize.body))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .width(min: 60, max: Self.episodeColumnWidth)
+                }
+
+                if displayMode == .library, showSubtitleColumn {
+                    TableColumn("column.subtitle", sortUsing: FolderSortComparator(key: .subtitle)) { entry in
+                        rowCell(entry, isRenaming: renamingEntry?.url == entry.url) {
+                            Text(entry.libraryRow?.subtitle ?? "—")
+                                .font(.system(size: Tokens.fontSize.body))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .width(min: 100, ideal: Self.subtitleColumnWidth)
+                }
+
+                if displayMode == .library, showReleaseDateColumn {
+                    TableColumn("column.releaseDate",
+                                sortUsing: FolderSortComparator(key: .releaseDate)) { entry in
+                        rowCell(entry, isRenaming: renamingEntry?.url == entry.url) {
+                            // **保存されている綴りをそのまま出す** [MF-19]——
+                            // `2024` しか分からない行を `2024-01-01` と補うと、
+                            // 精度を偽ることになる。
+                            Text(entry.libraryRow?.releaseDate ?? "—")
+                                .font(.system(size: Tokens.fontSize.body))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .width(min: 80, max: Self.releaseDateColumnWidth)
                 }
 
                 if displayMode == .library, showRatingColumn {
@@ -3203,6 +3279,9 @@ struct FolderEntry: Identifiable {
     /// これが非 `nil` であること自体が「この行は DB の一覧から来た」という印で、
     /// 表示名 [IV-05]・列 [LV-04]・操作の可否 [VM-13] の分岐がこれを見る。
     var libraryRow: FileRow?
+    /// `title` を持たない行のために組み立てた表示名 [SE-33][MF-11]。
+    /// **行を作るときに 1 度だけ組み立てたもの**を運ぶ。
+    var composedTitle: String?
     /// ユーザー指定カバーの複製の場所 [IV-02①][CV-06]。ライブラリ表示モードで
     /// `coverImageSource == .userSpecified` のときだけ入る。**実体があるかは
     /// 見ていない**（存在確認は描くときに `CoverResolution` がまとめて行う）。
@@ -3246,7 +3325,7 @@ struct FolderEntry: Identifiable {
         // タイトルを出すと、12 冊を束ねた行が 1 冊の名前を名乗ることになる。
         if case .series(_, let seriesName) = group { return seriesName }
         guard let libraryRow else { return name }
-        return LibraryContentModel.displayName(for: libraryRow)
+        return LibraryContentModel.displayName(for: libraryRow, composed: composedTitle)
     }
 
     /// **フォルダとして中へ入れるか** [ユーザー要望: `.app` はダブルクリックで
@@ -3320,6 +3399,7 @@ extension FolderEntry {
             libraryRow: row.file,
             userCoverURL: row.userCoverURL)     // [IV-02①]
         self.group = row.group                          // [DU-06][VM3-02]
+        self.composedTitle = row.composedTitle          // [SE-33][MF-11]
     }
 }
 
@@ -3371,6 +3451,10 @@ extension FolderSortComparator {
         case .series: .series
         case .volume: .volume
         case .rating: .rating
+        // シーズンの列も「シーズン → 話数」で並べる [MF-12]。
+        case .season, .episode: .episode
+        case .subtitle: .subtitle
+        case .releaseDate: .releaseDate
         case .kind, .addedDate: .filename
         }
         return FileQuery.SortSpec(key: mapped, ascending: order == .forward)
@@ -3394,6 +3478,11 @@ extension FolderSortComparator.Key {
         case .fileSize: .size
         case .createdAt: .creationDate
         case .modifiedAt: .modificationDate
+        // `.season` へは戻さない——保存されるのは `.episode` の側だけで、
+        // どちらの列から選んでも並びは同じ [MF-12]。
+        case .episode: .episode
+        case .subtitle: .subtitle
+        case .releaseDate: .releaseDate
         }
     }
 }
@@ -3407,6 +3496,10 @@ struct FolderSortComparator: SortComparator {
         case name
         // [LV-04] ライブラリ表示モードでだけ選べる列。値は DB が持つ。
         case title, series, volume, rating
+        // メディア向け [MF-12][MF-13]。**シーズンの列も「シーズン → 話数」で
+        // 並べる**——季をまたいで話数だけで並べると第 2 期の第 1 話が
+        // 第 1 期の第 1 話の隣に来る。
+        case season, episode, subtitle, releaseDate
         case modificationDate, size, kind, creationDate, addedDate
 
         /// フォルダ表示モードで選べるか。`title` 以降は DB の行を要するので、
@@ -3414,7 +3507,8 @@ struct FolderSortComparator: SortComparator {
         var isAvailableInFolderMode: Bool {
             switch self {
             case .name, .modificationDate, .size, .kind, .creationDate, .addedDate: true
-            case .title, .series, .volume, .rating: false
+            case .title, .series, .volume, .rating,
+                 .season, .episode, .subtitle, .releaseDate: false
             }
         }
 
@@ -3425,6 +3519,10 @@ struct FolderSortComparator: SortComparator {
             case .title: "column.title"
             case .series: "column.series"
             case .volume: "column.volume"
+            case .season: "column.season"
+            case .episode: "column.episode"
+            case .subtitle: "column.subtitle"
+            case .releaseDate: "column.releaseDate"
             case .rating: "column.rating"
             case .modificationDate: "column.modificationDate"
             case .size: "column.size"
@@ -3450,6 +3548,14 @@ struct FolderSortComparator: SortComparator {
 
     var key: Key
     var order: SortOrder = .forward
+
+    /// シーズンと話数を 1 つの数へ畳む（`seriesStackSubquery` の合成鍵と同じ規則）。
+    /// どちらも持たない行は末尾へ寄せる。
+    private static func episodeSortKey(_ entry: FolderEntry) -> Double {
+        guard let row = entry.libraryRow,
+              row.season != nil || row.episode != nil else { return .greatestFiniteMagnitude }
+        return min(max(row.season ?? 0, 0), 999) * 100_000 + min(max(row.episode ?? 0, 0), 99_999)
+    }
 
     func compare(_ lhs: FolderEntry, _ rhs: FolderEntry) -> ComparisonResult {
         let result: ComparisonResult
@@ -3494,6 +3600,20 @@ struct FolderSortComparator: SortComparator {
             let l = lhs.libraryRow?.rating ?? 0
             let r = rhs.libraryRow?.rating ?? 0
             result = l == r ? .orderedSame : (l < r ? .orderedAscending : .orderedDescending)
+        case .season, .episode:
+            // シーズン → 話数の複合順 [MF-12]。持たないものは末尾へ。
+            let l = Self.episodeSortKey(lhs)
+            let r = Self.episodeSortKey(rhs)
+            result = l == r ? .orderedSame : (l < r ? .orderedAscending : .orderedDescending)
+        case .subtitle:
+            let l = lhs.libraryRow?.subtitle ?? ""
+            let r = rhs.libraryRow?.subtitle ?? ""
+            result = l.localizedStandardCompare(r)
+        case .releaseDate:
+            // ISO 8601 の部分形なので素の文字列比較で時系列順になる [MF-19]。
+            let l = lhs.libraryRow?.releaseDate ?? "\u{10FFFF}"
+            let r = rhs.libraryRow?.releaseDate ?? "\u{10FFFF}"
+            result = l.compare(r)
         }
         guard order == .reverse else { return result }
         switch result {

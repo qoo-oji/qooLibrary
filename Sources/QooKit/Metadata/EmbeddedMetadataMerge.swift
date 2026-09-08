@@ -53,6 +53,12 @@ public enum EmbeddedMetadataMerge {
             seriesName: seriesName,
             volume: volume,
             authorName: authorName,
+            // メディア向けの 4 値は埋め込みメタデータが持たない [MF-17]
+            // ——`ComicInfo.xml` にも EPUB にも対応する項目が無いので素通しする。
+            subtitle: resolved.subtitle,
+            season: resolved.season,
+            episode: resolved.episode,
+            releaseDate: resolved.releaseDate,
             matchedFormatID: resolved.matchedFormatID,
             nearestFormat: resolved.nearestFormat,
             folderProvidedGroups: resolved.folderProvidedGroups)

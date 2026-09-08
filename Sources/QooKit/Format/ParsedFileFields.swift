@@ -86,14 +86,6 @@ public enum FieldPostProcessor {
         // 列挙は `allCases` の順で回す——辞書の列挙順は不定で、そのまま使うと
         // 同じ入力でもラベルの並びが実行ごとに変わりうる。
         let authorName = result.fields[.author]?.text
-        for keyword in SemanticKeyword.allCases {
-            guard let group = settings.semanticBindings[keyword] else { continue }
-            // `@series` だけは**導出された値**を使う——`@title` の末尾から
-            // 切り出した場合、`result.fields[.series]` には何も入っていない [SE-02]。
-            let value = keyword == .series ? seriesName : result.fields[keyword.fieldRef]?.text
-            guard let value, !value.isEmpty else { continue }
-            labels[group, default: []].append(value)
-        }
 
         // メディア向けの 4 値 [MF-03〜06][MF-19]。
         //
@@ -101,8 +93,30 @@ public enum FieldPostProcessor {
         // `@episode` のパターンが `(?<season>…)` で同時に読んだ値（`S01E01` 形）。
         // **明示が暗黙に勝つ**：利用者がフォーマットに `@season` と書いたなら、
         // それが答えである。
+        //
+        // **ラベル化より前に求める。** 束縛された `@season` のラベルは
+        // この導出値から作るため——`S01E01` 形では `result.fields[.season]` が
+        // 空なので、素直に `text` を読むと**束縛したフィールドが永久に空**になる
+        // （`@series` が導出値を使うのとまったく同じ理由 [SE-02]）。
         let episodeField = result.fields[.episode]
         let season = result.fields[.season]?.volume?.number ?? episodeField?.impliedSeason
+
+        for keyword in SemanticKeyword.allCases {
+            guard let group = settings.semanticBindings[keyword] else { continue }
+            // `@series` と `@season` だけは**導出された値**を使う。
+            //
+            // `@season` のラベルは**正規化した番号**にする（`S01` や `第1期` と
+            // いった生の綴りではなく）——同じシーズンが書き方の違いで別々の
+            // ラベルに割れると、フィールドを軸にした分類が成立しない。
+            let value: String?
+            switch keyword {
+            case .series: value = seriesName
+            case .season: value = season.map(Self.numberLabel)
+            default:      value = result.fields[keyword.fieldRef]?.text
+            }
+            guard let value, !value.isEmpty else { continue }
+            labels[group, default: []].append(value)
+        }
 
         return ParsedFileFields(
             matchedFormatID: result.matchedFormatID,
@@ -116,5 +130,15 @@ public enum FieldPostProcessor {
             season: season,
             episode: episodeField?.volume?.number,
             releaseDate: result.fields[.date]?.date)
+    }
+
+    /// 数値をラベル用の文字列にする。整数なら小数点を出さない（`1` / `1.5`）。
+    ///
+    /// **表示言語に依存させない。** これは DB へ保存されるラベルの綴りで、
+    /// 表示のたびに変わってはならない（`VolumeFormatter` の既定値と同じ扱い）。
+    static func numberLabel(_ value: Double) -> String {
+        value == value.rounded() && abs(value) < 1e15
+            ? String(Int64(value))
+            : String(value)
     }
 }

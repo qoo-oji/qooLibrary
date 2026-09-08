@@ -36,10 +36,18 @@ public final class TitleEditorModel {
         public let protectedScopes: Set<ProtectionScope>
         public let seriesName: String?
         public let volume: VolumeValue
+        /// メディア向けの 4 値 [MF-03〜05][MF-19]。**基本情報は 1 かたまり**
+        /// [PR-02] なので、どれを直しても同じスコープが保護される。
+        public let subtitle: String?
+        public let season: Double?
+        public let episode: Double?
+        public let releaseDate: String?
 
         public init(id: FileID, url: URL, filename: String, title: String?,
                     protectedScopes: Set<ProtectionScope>,
-                    seriesName: String?, volume: VolumeValue) {
+                    seriesName: String?, volume: VolumeValue,
+                    subtitle: String? = nil, season: Double? = nil,
+                    episode: Double? = nil, releaseDate: String? = nil) {
             self.id = id
             self.url = url
             self.filename = filename
@@ -47,6 +55,10 @@ public final class TitleEditorModel {
             self.protectedScopes = protectedScopes
             self.seriesName = seriesName
             self.volume = volume
+            self.subtitle = subtitle
+            self.season = season
+            self.episode = episode
+            self.releaseDate = releaseDate
         }
 
         /// 基本情報が保護されているか [PR-02]。鍵アイコンの出どころ。
@@ -76,6 +88,27 @@ public final class TitleEditorModel {
             if let raw = volume.raw, !raw.isEmpty { return raw }
             guard volume.kind == .numeric, let number = volume.number else { return nil }
             return number == number.rounded() ? String(Int(number)) : String(number)
+        }
+
+        /// メディアの 4 行を出すか [MF-03〜05][MF-19]。
+        ///
+        /// **値が 1 つでもあるときだけ出す** [設計判断]。コミックのライブラリで
+        /// 空の欄が 4 つ常駐すると、右ペインを簡潔に保つという方針
+        /// ［ユーザー指摘、2026-09-02］に正面から反する——1 冊も話数を持たない
+        /// 蔵書のほうが多い。
+        ///
+        /// **限界**: どのフォーマットにも当たらなかった映像ファイルには、
+        /// 手で話数を入れられない。その場合の経路はフォーマットを足して
+        /// 再マッチングすること [AL-34]——値が無いのは「その軸を使っていない」
+        /// か「解析に失敗した」かのどちらかで、後者は未整理として別に救う。
+        public var showsMediaFields: Bool {
+            subtitle != nil || season != nil || episode != nil || releaseDate != nil
+        }
+
+        /// シーズン・話数の表示。整数なら小数点を出さない。
+        public static func numberDisplay(_ value: Double?) -> String {
+            guard let value else { return "" }
+            return value == value.rounded() ? String(Int(value)) : String(value)
         }
     }
 
@@ -120,7 +153,9 @@ public final class TitleEditorModel {
             current = FileFieldEdit(row)
             state = .ready(Subject(id: row.id, url: url, filename: row.filename,
                                    title: row.title, protectedScopes: row.protectedScopes,
-                                   seriesName: row.seriesName, volume: row.volume))
+                                   seriesName: row.seriesName, volume: row.volume,
+                                   subtitle: row.subtitle, season: row.season,
+                                   episode: row.episode, releaseDate: row.releaseDate))
         } catch {
             // **取り消しは失敗ではない**［2-9 の実機検証でユーザーが発見］。
             // `.task(id:)` は鍵が変わると前のタスクを取り消すので、選択を
@@ -178,6 +213,66 @@ public final class TitleEditorModel {
         try await commit(kind: .editVolume) { $0.settingVolume(volume) }
     }
 
+    /// サブタイトルを手動値で確定する [MF-03]。
+    public func commitSubtitle(_ text: String) async throws {
+        try await commit(kind: .editSubtitle) { $0.settingSubtitle(text) }
+    }
+
+    /// シーズンを手動値で確定する [MF-04]。
+    ///
+    /// **数として読めない入力は書かない**（`commitVolume` と同じ判断）——
+    /// `nil` に落とすと打ち間違いが「シーズンを消す操作」として黙って通る。
+    /// **空欄だけは未設定に戻す**（消す意思が読み取れる唯一の形）。
+    public func commitSeason(_ text: String) async throws {
+        guard let value = Self.parseNumber(text) else { return }
+        try await commit(kind: .editSeason) { $0.settingSeason(value) }
+    }
+
+    /// 話数を手動値で確定する [MF-05]。
+    public func commitEpisode(_ text: String) async throws {
+        guard let value = Self.parseNumber(text) else { return }
+        try await commit(kind: .editEpisode) { $0.settingEpisode(value) }
+    }
+
+    /// 公開日を手動値で確定する [MF-19]。**ISO 8601 の部分形しか受け付けない**
+    /// ——`releaseDate` は文字列のまま比較で並べる列なので、書式が混ざると
+    /// 並び順が壊れる（`2024` と `24/1/1` が同じ列に載る）。
+    public func commitReleaseDate(_ text: String) async throws {
+        guard let value = Self.parseReleaseDate(text) else { return }
+        try await commit(kind: .editReleaseDate) { $0.settingReleaseDate(value) }
+    }
+
+    /// 数値欄の入力を読む。空欄は「未設定に戻す」（`.some(nil)`）、読めない
+    /// 入力は「何もしない」（`nil`）。**2 段の Optional なのは、この 2 つが
+    /// 別の意味だから。**
+    nonisolated public static func parseNumber(_ text: String) -> Double?? {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.isEmpty { return .some(nil) }
+        guard let value = Double(TextNormalizer.canonicalWidth(t)), value >= 0 else { return nil }
+        return .some(value)
+    }
+
+    /// 公開日欄の入力を読む。`2024` / `2024-01` / `2024-01-15` だけを通す。
+    nonisolated public static func parseReleaseDate(_ text: String) -> String?? {
+        let t = TextNormalizer.canonicalWidth(
+            text.trimmingCharacters(in: .whitespacesAndNewlines))
+        if t.isEmpty { return .some(nil) }
+        let parts = t.split(separator: "-", omittingEmptySubsequences: false).map(String.init)
+        guard (1...3).contains(parts.count) else { return nil }
+        guard parts[0].count == 4, let year = Int(parts[0]), (1000...9999).contains(year)
+        else { return nil }
+        var normalized = parts[0]
+        if parts.count >= 2 {
+            guard let month = Int(parts[1]), (1...12).contains(month) else { return nil }
+            normalized += String(format: "-%02d", month)
+        }
+        if parts.count == 3 {
+            guard let day = Int(parts[2]), (1...31).contains(day) else { return nil }
+            normalized += String(format: "-%02d", day)
+        }
+        return .some(normalized)
+    }
+
     private func commit(kind: SetFileFieldsCommand.Kind,
                         _ transform: (FileFieldEdit) -> FileFieldEdit) async throws {
         guard case .ready(let subject) = state, let services, let previous = current else { return }
@@ -219,6 +314,8 @@ public final class TitleEditorModel {
         current = edit
         state = .ready(Subject(id: subject.id, url: subject.url, filename: subject.filename,
                                title: edit.title, protectedScopes: protectedScopes,
-                               seriesName: edit.seriesName, volume: edit.volume))
+                               seriesName: edit.seriesName, volume: edit.volume,
+                               subtitle: edit.subtitle, season: edit.season,
+                               episode: edit.episode, releaseDate: edit.releaseDate))
     }
 }

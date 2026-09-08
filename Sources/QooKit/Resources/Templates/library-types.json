@@ -9,7 +9,8 @@
     "2026-08 改訂（v3 ステージ 5）: 既定フィールド 5 種（著者 1・サークル 2・ジャンル 3・イベント 4・キーワード 5）を全プリセットに持たせ、意味予約語 @author/@studio/@genre/@event/@keyword で束縛する [§19.2][RWI-02]。フォーマットからは @labelgroupN ではなく予約語で参照する——番号はフィールドの身元ではないので、番号で書くと並べ替え・改名で意味が変わる。追加フィールドは 6 以降（一般コミックの「シリーズ」）。**カスタム軸は @keyword2〜@keyword5 [MF-22]** で、プリセットには置かない——用途は利用者が決める。同人誌／同人CG の旧「その他」は既定の「キーワード」へ統合した［ユーザー判断］。",
     "2026-08-30 改訂（v3 ステージ 5 の続き）: 予約語 @librarytype を @mediatype へ改名した——値（一般コミック／同人誌…）は本の種別であって、ライブラリの種別ではない。あわせて @labelgroupN と @libraryname を撤去した。前者は番号がフィールドの身元ではなく、後者は表示名がフォルダ名へ追随する [RG3-31] ため照合値が改名で変わってしまうため。",
     "2026-09-04 改訂: 本の種別を既定フィールドへ加えた [TY-01]。全プリセットが フィールド 7 =「本の種別」を持ち @mediatype で束縛する——照合は語彙（プリセットが持つ本の種別の和集合 ∪ そのライブラリの「本の種別」ラベル）で行い、切り出した値はラベルとして残る。ライブラリ固有の型名は撤去した。**型条件そのものは残す**——自由文字列にすると (@mediatype) … が (@event) … と同型になり、先頭の括弧を何でも吸って public ゴールデン 352 件のうち 48 件でイベントが取れなくなる［実測］。",
-    "2026-09-08 改訂: (A)/(B) を統合してプリセットを 4 種にした［ユーザー判断: A/B の実差は「フォルダ名も解析対象にするか」だけで、それはテンプレートの選択軸ではない］。各プリセットは (B) の `folderLevels` を固定で持ち、ウィザードの「フォルダ名を解析対象にする」[RG3-24] が草案へ含めるかを決める。あわせて優先規則を逆転した [AL-21]——フォルダ名とファイル名は異なる情報を持ち合うのが本来で、衝突は例外だからファイル名を採る。旧 (B) だけが持っていた `@title` 単独フォーマットは含めない——何にでも当たるので、未整理として救済すべきファイルが「タイトルだけ取れた解決済み」になって埋もれる［実測: public ゴールデン 44 件中、未整理になる件数が 22 → 1 に減っていた］。`version` は 1 へリセットした（統合は改訂ではなく作り直し）。"
+    "2026-09-08 改訂: (A)/(B) を統合してプリセットを 4 種にした［ユーザー判断: A/B の実差は「フォルダ名も解析対象にするか」だけで、それはテンプレートの選択軸ではない］。各プリセットは (B) の `folderLevels` を固定で持ち、ウィザードの「フォルダ名を解析対象にする」[RG3-24] が草案へ含めるかを決める。あわせて優先規則を逆転した [AL-21]——フォルダ名とファイル名は異なる情報を持ち合うのが本来で、衝突は例外だからファイル名を採る。旧 (B) だけが持っていた `@title` 単独フォーマットは含めない——何にでも当たるので、未整理として救済すべきファイルが「タイトルだけ取れた解決済み」になって埋もれる［実測: public ゴールデン 44 件中、未整理になる件数が 22 → 1 に減っていた］。`version` は 1 へリセットした（統合は改訂ではなく作り直し）。",
+    "2026-09-08 追加（見直しの段 B）: 映像プリセットを 2 つ足した [MF-14]。実蔵書の映像 79 件を測って形を決めている——`SxxEyy` は 0%、`第N話` が 8.9%（すべて「サブタイトル」を伴う）、括弧も角括弧も持たないファイルが 56%。**`@title` 単独のフォールバックは置かない**［ユーザー判断: コミック側の統合と同じ判断に揃える。未整理が 56% 出るのは実態の正しい表示で、利用者が自分でフォーマットを足す契機になる］。対象拡張子は映像用に差し替える（`targetExtensions`）——コミックの容器で登録すると走査が 1 件も拾わず、しかも画面には「0 件」としか出ないので理由が読めない。「映像（単発）」の `folderLevels` は空——実測でフォルダ名がファイル名と 1 件も対応しなかったので、既定で分類の軸にする根拠が無い（`FolderUsageFit` が推定するのは階層 1 の割り当てがあるときだけ）。"
   ],
   "presets": [
     {
@@ -252,6 +253,81 @@
         "[@studio] @title"
       ],
       "volumeSet": "VS-Doujin"
+    },
+    {
+      "key": "builtin.video-series",
+      "displayName": "映像作品",
+      "libraryTypeName": "映像作品",
+      "version": 1,
+      "labelGroups": [
+        { "index": 1, "name": "出演" },
+        { "index": 2, "name": "ジャンル" },
+        { "index": 3, "name": "キーワード" },
+        { "index": 4, "name": "シーズン" },
+        { "index": 5, "name": "シリーズ" },
+        { "index": 6, "name": "本の種別" }
+      ],
+      "semanticBindings": {
+        "@actor": 1,
+        "@genre": 2,
+        "@keyword": 3,
+        "@season": 4,
+        "@series": 5,
+        "@mediatype": 6
+      },
+      "folderLevels": {
+        "1": {
+          "kind": "format",
+          "format": "@series"
+        }
+      },
+      "filenameFormats": [
+        "@episode 「@subtitle」 (@ignore)",
+        "@episode 「@subtitle」 [@ignore]",
+        "@episode 「@subtitle」",
+        "@episode (@ignore)",
+        "@episode [@ignore]",
+        "@episode",
+        "@series @episode 「@subtitle」 (@ignore)",
+        "@series @episode 「@subtitle」 [@ignore]",
+        "@series @episode 「@subtitle」",
+        "@series @episode (@ignore)",
+        "@series @episode [@ignore]",
+        "@series @episode"
+      ],
+      "volumeSet": "VS-None",
+      "episodeSet": "ES-Standard",
+      "seasonSet": "SS-Standard",
+      "targetExtensions": ["mp4", "mkv", "mov", "m4v", "avi", "wmv", "ts"],
+      "seriesTitleFormat": "@series @episode「@subtitle」"
+    },
+    {
+      "key": "builtin.video-single",
+      "displayName": "映像（単発）",
+      "libraryTypeName": "映像（単発）",
+      "version": 1,
+      "labelGroups": [
+        { "index": 1, "name": "出演" },
+        { "index": 2, "name": "ジャンル" },
+        { "index": 3, "name": "キーワード" },
+        { "index": 4, "name": "本の種別" }
+      ],
+      "semanticBindings": {
+        "@actor": 1,
+        "@genre": 2,
+        "@keyword": 3,
+        "@mediatype": 4
+      },
+      "folderLevels": {},
+      "filenameFormats": [
+        "[@actor] @title (@ignore)",
+        "[@actor] @title [@ignore]",
+        "[@actor] @title",
+        "@title (@ignore)",
+        "@title [@ignore]"
+      ],
+      "volumeSet": "VS-None",
+      "targetExtensions": ["mp4", "mkv", "mov", "m4v", "avi", "wmv", "ts"]
     }
   ]
 }

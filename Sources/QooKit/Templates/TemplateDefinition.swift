@@ -85,6 +85,16 @@ public struct LibraryTypeTemplate: Sendable, Codable, Hashable, Identifiable {
     public let seasonSet: String?
     /// `@date` 用の正規表現セット名 [MF-09][MF-19]。
     public let dateSet: String?
+    /// 対象拡張子 [MF-14]。**省略時は `AppDefaults.Library.targetExtensions`**
+    /// （要件定義書 11.4 節の「全テンプレート共通」）。
+    ///
+    /// 映像プリセットだけがこれを持つ——コミックの容器（`cbz` 等）で映像
+    /// ライブラリを登録すると走査が 1 件も拾わず、しかも**画面には
+    /// 「0 件」としか出ない**ので理由が読めない。
+    public let targetExtensions: [String]?
+    /// `title` を持たない行の表示名の組み立て [SE-33][MF-11]。省略時は
+    /// `@series @volume`（コミックの既定）。
+    public let seriesTitleFormat: String?
 
     public var id: String { key }
 
@@ -94,7 +104,8 @@ public struct LibraryTypeTemplate: Sendable, Codable, Hashable, Identifiable {
                 folderLevels: [String: FolderLevelSpec],
                 filenameFormats: [String], volumeSet: String,
                 episodeSet: String? = nil, seasonSet: String? = nil,
-                dateSet: String? = nil)
+                dateSet: String? = nil, targetExtensions: [String]? = nil,
+                seriesTitleFormat: String? = nil)
     {
         self.key = key
         self.displayName = displayName
@@ -108,6 +119,8 @@ public struct LibraryTypeTemplate: Sendable, Codable, Hashable, Identifiable {
         self.episodeSet = episodeSet
         self.seasonSet = seasonSet
         self.dateSet = dateSet
+        self.targetExtensions = targetExtensions
+        self.seriesTitleFormat = seriesTitleFormat
     }
 
     /// 役割ごとに引く集合名。`nil` の役割はこのテンプレートでは使わない。
@@ -362,10 +375,12 @@ extension TemplateInstantiation {
         return LibrarySettingsDraft(
             displayName: displayName,
             thumbnailsAlwaysHidden: false,
-            // **テンプレートは対象拡張子を持たない** [要件定義書 11.4 節:
+            // **持たないテンプレートには既定を入れる** [要件定義書 11.4 節:
             // 「対象拡張子は全テンプレート共通」]。空で登録すると走査が
-            // `.DS_Store` まで拾うので、ここで既定を入れるのが正しい場所。
-            targetExtensions: AppDefaults.Library.targetExtensions.sorted(),
+            // `.DS_Store` まで拾うので、ここが既定を入れる正しい場所である。
+            // 映像プリセット [MF-14] だけが自分の一覧を持つ。
+            targetExtensions: template.targetExtensions
+                ?? AppDefaults.Library.targetExtensions.sorted(),
             imageExtensions: [],
             delimiters: .default,
             // テンプレートは保護文字列を持たないので、ここで既定を入れる
@@ -380,7 +395,7 @@ extension TemplateInstantiation {
             },
             volumeFormats: volumes,
             folderLevels: levels,
-            seriesTitleCompositionFormat: "@series @volume",
+            seriesTitleCompositionFormat: template.seriesTitleFormat ?? "@series @volume",
             mediaTypeVocabulary: mediaTypeVocabulary)
     }
 

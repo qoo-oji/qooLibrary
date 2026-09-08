@@ -121,6 +121,10 @@ public enum FolderLabelResolver {
                               seriesName: parsed?.seriesName,
                               volume: parsed?.volume ?? .none,
                               authorName: parsed?.authorName,
+                              subtitle: parsed?.subtitle,                           // [MF-03]
+                              season: parsed?.season,                               // [MF-04]
+                              episode: parsed?.episode,                             // [MF-05]
+                              releaseDate: parsed?.releaseDate,                     // [MF-19]
                               matchedFormatID: parsed?.matchedFormatID,
                               nearestFormat: attempt.nearest,
                               folderProvidedGroups: takenFromFolder)
@@ -132,6 +136,14 @@ public enum FolderLabelResolver {
         public let seriesName: String?
         public let volume: VolumeValue
         public let authorName: String?
+        /// メディア向けの 4 値 [MF-03〜05][MF-19]。**フォルダ名からは採らない**
+        /// ——`@title` と同じくファイル名側から決まる [AL-22]。ここを運ばないと
+        /// 走査が `applyParsedFields` へ nil を渡し、**単体テストでは列へ入るのに
+        /// 実際の走査では 1 件も入らない**という食い違いになる。
+        public let subtitle: String?
+        public let season: Double?
+        public let episode: Double?
+        public let releaseDate: String?
         /// `nil` = どのフォーマットにも一致しなかった [AL-31]。
         public let matchedFormatID: UUID?
         /// 一致しなかったときの「最も近いフォーマット」[UR2-05]。
@@ -142,5 +154,25 @@ public enum FolderLabelResolver {
         /// **実際にフォルダ名から採った**ラベルフィールド。ファイル名側が
         /// 同じフィールドを持っていたものは含まない [AL-21]。
         public let folderProvidedGroups: Set<Int>
+
+        public init(labels: [Int: [String]], title: String?, seriesName: String?,
+                    volume: VolumeValue, authorName: String?,
+                    subtitle: String? = nil, season: Double? = nil,
+                    episode: Double? = nil, releaseDate: String? = nil,
+                    matchedFormatID: UUID?, nearestFormat: NearestFormat?,
+                    folderProvidedGroups: Set<Int>) {
+            self.labels = labels
+            self.title = title
+            self.seriesName = seriesName
+            self.volume = volume
+            self.authorName = authorName
+            self.subtitle = subtitle
+            self.season = season
+            self.episode = episode
+            self.releaseDate = releaseDate
+            self.matchedFormatID = matchedFormatID
+            self.nearestFormat = nearestFormat
+            self.folderProvidedGroups = folderProvidedGroups
+        }
     }
 }

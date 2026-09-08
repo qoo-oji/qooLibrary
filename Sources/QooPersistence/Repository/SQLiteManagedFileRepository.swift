@@ -609,7 +609,8 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
                     title = ?,
                     seriesName = ?, seriesKey = ?,
                     volumeNumber = ?, volumeKind = ?, volumeRaw = ?,
-                    authorName = ?
+                    authorName = ?,
+                    subtitle = ?, seasonNumber = ?, episodeNumber = ?, releaseDate = ?
                 WHERE id = ?
                 """, arguments: [
                     edit.title,
@@ -619,6 +620,13 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
                     edit.volume.kind.rawValue,
                     edit.volume.raw,
                     edit.authorName,
+                    // メディア向けの 4 列 [MF-03〜05][MF-19]。**`applyParsedFields`
+                    // と同じ組を書く**——片方だけ扱うと、基本情報を保護した行で
+                    // 手で直す手段が無いまま走査も触れない、という行き止まりになる。
+                    edit.subtitle,
+                    edit.season,
+                    edit.episode,
+                    edit.releaseDate,
                     id.rawValue])
             // 手で直したタイトル・シリーズ名も、その場で検索に出る [SR-03]。
             // ここを忘れると「直したのに検索で見つからない」という、
@@ -829,12 +837,23 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
     /// 画面から消える**。空文字も同じ扱いにする——`TextNormalizer.normalize`
     /// は空白だけの入力を空文字へ畳むため、手動編集でそこへ落ちうる。
     static func seriesStackSubquery(where_: String) -> (sql: String, repeatsWhereArgs: Int) {
+        // 並びの基準になる番号。**巻数が無ければシーズンと話数から作る** [MF-12]
+        // ——映像ライブラリは巻数を持たないので、そのままだとスタックの代表が
+        // id 順（＝取り込み順）で決まり、第 1 話が先頭に来ない。
+        // シーズンは 0〜999、話数は 0〜99999 に丸めてから合成する。
+        let ordinal = """
+            CASE WHEN volumeNumber IS NOT NULL
+                   THEN MIN(MAX(volumeNumber, 0), 999999999)
+                 WHEN seasonNumber IS NOT NULL OR episodeNumber IS NOT NULL
+                   THEN MIN(MAX(COALESCE(seasonNumber, 0), 0), 999) * 100000
+                      + MIN(MAX(COALESCE(episodeNumber, 0), 0), 99999)
+                 ELSE 0 END
+            """
         let representativeKey = """
             printf('%d%016d%020d',
-                   CASE volumeKind WHEN 'numeric' THEN 0 ELSE 1 END,
-                   CAST(CASE WHEN volumeNumber IS NULL OR volumeNumber < 0 THEN 0
-                             WHEN volumeNumber > 999999999 THEN 999999999
-                             ELSE volumeNumber END * 10000 AS INTEGER),
+                   CASE WHEN volumeKind = 'numeric' OR seasonNumber IS NOT NULL
+                             OR episodeNumber IS NOT NULL THEN 0 ELSE 1 END,
+                   CAST(\(ordinal) * 10000 AS INTEGER),
                    id)
             """
         return ("""
@@ -1130,6 +1149,19 @@ public struct SQLiteManagedFileRepository: ManagedFileRepository, Sendable {
         case .createdAt:  column = "createdAt"
         case .modifiedAt: column = "modifiedAt"
         case .rating:     column = "rating"
+        case .episode:
+            // シーズン → 話数 [MF-12]。**どちらも持たない行は末尾へ**
+            // ——巻数と同じ規則（`COALESCE(…, 0)` で先頭へ寄せると、
+            // 話数の無いものが第 1 話より前に並ぶ）。
+            return "CASE WHEN seasonNumber IS NULL AND episodeNumber IS NULL "
+                + "THEN 1 ELSE 0 END \(direction), "
+                + "COALESCE(seasonNumber, 0) \(direction), "
+                + "COALESCE(episodeNumber, 0) \(direction), filename ASC"
+        case .releaseDate:
+            // ISO 8601 の部分形なので素の文字列比較で時系列順になる [MF-19]。
+            return "CASE WHEN releaseDate IS NULL THEN 1 ELSE 0 END \(direction), "
+                + "COALESCE(releaseDate, '') \(direction), filename ASC"
+        case .subtitle:   column = "COALESCE(subtitle, '')"
         }
         return "\(column) \(direction), id ASC"
     }

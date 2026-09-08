@@ -50,7 +50,7 @@ struct AmbiguityRegressionTests {
         let observations = try AmbiguitySweep.run().filter {
             $0.adversary == .baseline && $0.preset != "合成"
         }
-        #expect(observations.count == 40, "プリセットのフォーマット本数が変わった")
+        #expect(observations.count == 57, "プリセットのフォーマット本数が変わった")
         for o in observations {
             #expect(o.chosenFormat == o.formatIndex,
                     "\(o.preset) #\(o.formatIndex) が別のフォーマット #\(o.chosenFormat.map(String.init) ?? "なし") で読まれた: \(o.input)")
