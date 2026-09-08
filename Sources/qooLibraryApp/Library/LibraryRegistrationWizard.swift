@@ -155,6 +155,15 @@ final class LibraryRegistrationWizardModel {
     /// 既定を ON にしたか（`folderUsageFit` から導く。測れなければ false）。
     var folderUsageSuggested: Bool { folderUsageFit?.suggestsOn ?? false }
 
+    /// 選んだフォルダに対応する切り離しライブラリ [RG4-02][RG4-03]。
+    ///
+    /// **見つかったらステップ 3〜5 を飛ばす。** 以前の設定・ラベル・評価を
+    /// そのまま引き継ぐので、テンプレートを選び直させる意味が無い
+    /// ——選ばせても `enable` は冪等分岐で既存の行を返すため、選んだものが
+    /// 効かない画面を見せることになる［ユーザー判断、2026-09-08:
+    /// 「常に引き継ぐ（選ばせない）」］。
+    private(set) var reattachTarget: LibrarySummary?
+
     /// テンプレートごとの適合結果 [RG3-23]。ステップ 3 の一覧と推奨判定に使う。
     /// **判定はファイル名だけで行う**（フォルダ名は見ない）——種別を見分ける
     /// 材料はファイル名の形であって、フォルダ分けの有無ではない。鍵は
@@ -177,6 +186,12 @@ final class LibraryRegistrationWizardModel {
     /// ステップ 2: フォルダが選ばれた。サンプルを集めて全テンプレートを試す。
     func chooseFolder(_ url: URL) async {
         folderURL = url
+        // **再開モード [§19.10 ステージ 2] では見ない。** あちらは登録が既に
+        // あるので、定義上どの切り離し行とも一致しない（切り離し＝登録が
+        // 無い行）——判定を通しても常に nil だが、意図を明示しておく。
+        if minStep == .intro {
+            reattachTarget = await LibraryServices.shared.detachedLibrary(matching: url)
+        }
         let model = LibraryEnableModel(
             folderName: url.lastPathComponent, folderURL: url,
             templates: templates, volumeSets: volumeSets,
@@ -418,19 +433,30 @@ final class LibraryRegistrationWizardModel {
         case .folder:    return folderURL != nil && !isEvaluating
         case .template:  return enable != nil && listSelection != nil
         case .customize: return enable?.canEnable ?? false
-        case .confirm:   return enable?.canEnable ?? false
+        case .confirm:   return skipsTemplateSteps ? true : (enable?.canEnable ?? false)
+        }
+    }
+
+    /// 結び直しでは飛ばすステップ [RG4-03]。
+    var skipsTemplateSteps: Bool { reattachTarget != nil }
+
+    /// 進行表示と「戻る」で使う、実際にたどるステップ列。
+    var visibleSteps: [Step] {
+        Step.allCases.filter {
+            $0.rawValue >= minStep.rawValue
+                && !(skipsTemplateSteps && ($0 == .template || $0 == .customize))
         }
     }
 
     func goNext() {
-        guard let next = Step(rawValue: step.rawValue + 1) else { return }
-        step = next
+        guard let index = visibleSteps.firstIndex(of: step),
+              index + 1 < visibleSteps.count else { return }
+        step = visibleSteps[index + 1]
     }
 
     func goBack() {
-        guard step.rawValue > minStep.rawValue,
-              let prev = Step(rawValue: step.rawValue - 1) else { return }
-        step = prev
+        guard let index = visibleSteps.firstIndex(of: step), index > 0 else { return }
+        step = visibleSteps[index - 1]
     }
 }
 
@@ -469,8 +495,7 @@ struct LibraryRegistrationWizardView: View {
         // 再開モード [§19.10 ステージ 2] では、飛ばしたステップ（説明と
         // フォルダ選択）を出さない——戻れない丸が並ぶと「戻れそうで戻れない」
         // 見た目になる。
-        let steps = LibraryRegistrationWizardModel.Step.allCases
-            .filter { $0.rawValue >= model.minStep.rawValue }
+        let steps = model.visibleSteps
         return HStack(spacing: Tokens.spacing.m) {
             ForEach(steps) { step in
                 HStack(spacing: Tokens.spacing.xs) {
@@ -495,7 +520,7 @@ struct LibraryRegistrationWizardView: View {
                                       weight: step == model.step ? .semibold : .regular))
                         .foregroundStyle(step == model.step ? .primary : .secondary)
                 }
-                if step != .confirm {
+                if step != steps.last {
                     Rectangle()
                         .fill(Color(nsColor: .separatorColor))
                         .frame(height: 1)
@@ -513,7 +538,39 @@ struct LibraryRegistrationWizardView: View {
         case .folder:    folderStep
         case .template:  templateStep
         case .customize: customizeStep
-        case .confirm:   confirmStep
+        case .confirm:   if model.skipsTemplateSteps { reattachStep } else { confirmStep }
+        }
+    }
+
+    // MARK: 確認（結び直し）[RG4-03]
+
+    /// 以前のデータをそのまま引き継ぐことだけを言う。
+    ///
+    /// **通常の確認ステップを流用しない。** あちらは「これから作る設定」を
+    /// 並べるが、結び直しでは選んだテンプレートは 1 つも効かない——並べると
+    /// 「見たものが登録される」が成り立たなくなる。
+    @ViewBuilder
+    private var reattachStep: some View {
+        if let target = model.reattachTarget {
+            VStack(alignment: .leading, spacing: Tokens.spacing.m) {
+                Label {
+                    Text("libraryWizard.reattach.title")
+                        .font(.system(size: Tokens.fontSize.title3, weight: .semibold))
+                } icon: {
+                    Image(systemName: "arrow.uturn.backward.circle.fill")
+                        .foregroundStyle(Color.accentColor)
+                }
+                Text(String(format: AppStrings.text("libraryWizard.reattach.summary", locale: locale),
+                            target.displayName, target.fileCount))
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("libraryWizard.reattach.hint")
+                    .font(.system(size: Tokens.fontSize.caption))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(Tokens.spacing.l)
         }
     }
 
@@ -1200,7 +1257,10 @@ struct LibraryRegistrationWizardView: View {
     private var footer: some View {
         VStack(alignment: .leading, spacing: Tokens.spacing.s) {
             // 草案の不備は進めない理由なので、カスタマイズ以降で見せる。
-            if model.step == .customize || model.step == .confirm,
+            // 結び直し [RG4-03] では草案が 1 つも効かないので、その不備も出さない
+            // ——直しようがないものを「進めない理由」として並べることになる。
+            if !model.skipsTemplateSteps,
+               model.step == .customize || model.step == .confirm,
                let enable = model.enable, !enable.errors.isEmpty {
                 ForEach(enable.errors) { issue in
                     Label(issue.message, systemImage: "exclamationmark.circle.fill")

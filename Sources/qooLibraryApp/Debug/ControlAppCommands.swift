@@ -130,13 +130,22 @@ enum ControlAppCommands {
             return ControlOutcome.failure("uuid か name で対象を指してください（解除は取り消せません）")
         }
         let disabling = LibraryServices.shared.isEnabled(registrationUUID: folder.id)
+        // **既定は削除**（`keepData: true` を渡したときだけ残す）[RG4-09]。
+        // GUI 側の既定は逆（残す）だが、口の既定を反転させると後始末で
+        // 「DB が全テーブル 0 件に戻る」ことを確かめている既存の検証手順が
+        // 黙って通らなくなる——破壊的な側を既定にするのは、口の呼び出しを
+        // 壊さないため。
+        let keepData = args["keepData"] as? Bool ?? false
         do {
-            try await LibraryEnableAction.unregister(folder: folder, disablingLibrary: disabling)
+            try await LibraryEnableAction.unregister(folder: folder, disablingLibrary: disabling,
+                                                     keepData: keepData)
         } catch {
             return ControlOutcome.failure("登録解除に失敗しました: \(error)")
         }
         SessionState.shared.reloadToken += 1
-        return ControlOutcome.success(["unregistered": folder.id.uuidString, "disabledLibrary": disabling])
+        return ControlOutcome.success(["unregistered": folder.id.uuidString,
+                                       "disabledLibrary": disabling,
+                                       "keptData": disabling && keepData])
     }
 
     // MARK: - 走査

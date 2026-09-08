@@ -675,9 +675,18 @@ public actor RegisteredFolderStore {
         public let warnings: [RegistrationWarning]
     }
 
+    /// - Parameter reusingID: **切り離したライブラリへ結び直すための ID**
+    ///   [RG4-03]。`library.uuid` は登録フォルダ ID そのもの [07章 §7.3] なので、
+    ///   同じ ID で登録し直さない限り旧行は永久に孤児になる（以前まさにこの形の
+    ///   欠陥を直している）。**入れ子禁止 [RG-03][RG-04] とファイルシステム
+    ///   適合 [RG-08] の検査は免除しない**——結び直しは「同じ場所を登録し直す」
+    ///   ことであって、登録の条件が緩むわけではない。
+    ///   既に同じ ID の登録があれば無視して新しい ID を振る（構造的には
+    ///   起きない——切り離しの契機は解除だけなので、その ID の登録は無い）。
     @discardableResult
     public func register(
-        url: URL, kind: RegisteredFolderKind, displayName: String?
+        url: URL, kind: RegisteredFolderKind, displayName: String?,
+        reusingID: UUID? = nil
     ) async throws -> RegistrationResult {
         await ensureLoaded()
         let resolvedURL = url.resolvingSymlinksInPath() // [SL-07]
@@ -689,7 +698,11 @@ public actor RegisteredFolderStore {
         let warnings = try await validateDestination(resolvedURL)
 
         let bookmarkData = try bookmarks.makeBookmark(for: resolvedURL) // [RG-07]
+        let reused = reusingID.flatMap { id in
+            folders.contains(where: { $0.id == id }) ? nil : id
+        }
         let folder = RegisteredFolder(
+            id: reused ?? UUID(),
             kind: kind, displayName: displayName ?? resolvedURL.lastPathComponent, bookmarkData: bookmarkData,
             // 登録した時点で場所は分かっているので、最初からここに控える [1-17]。
             // 以後は解決に成功するたび `rememberResolvedPaths` が追従させる。

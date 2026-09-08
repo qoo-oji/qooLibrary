@@ -195,7 +195,7 @@ struct ImportRevertTests {
         let (f, backup) = try await Self.seeded()
         let document = try await backup.export(scope: .everything, appVersion: nil)
         let outcome = try await backup.import(document)
-        try await f.libraries.unregister(id: f.libraryID, keepLabels: false)
+        try await f.libraries.unregister(id: f.libraryID)
 
         try await backup.revertImport(outcome.snapshot)
 

@@ -825,10 +825,9 @@ struct FolderTreePane: View {
     /// DB に取り残される——誰も片付けられず、同じフォルダを再登録すると
     /// 新しい UUID で 2 件目ができて古い行が永久に残る。
     ///
-    /// **消える前に必ず尋ねる。** `LibraryRepository.unregister` は
-    /// `keepLabels` をまだ見ずに連鎖削除するので、**手で付けた評価やラベルが
-    /// 黙って失われる**。ラベル保管庫 [RG-06][2-11] が入るまでは、せめて
-    /// 何が失われるかを伝えてから消す。
+    /// **消える前に必ず尋ねる。** 既定は「データを残す」[RG4-01] だが、
+    /// チェックを入れれば手で付けた評価・ラベル・保護スコープまで消える。
+    /// どちらになるかを言わずに実行しない。
     private func unregisterFolder(_ folder: RegisteredFolder) {
         guard LibraryServices.shared.isEnabled(registrationUUID: folder.id) else {
             performUnregister(folder)
@@ -837,9 +836,9 @@ struct FolderTreePane: View {
         DialogWindowPresenter.shared.present(
             title: AppStrings.text("folderTree.unregister", locale: locale)
         ) { dismiss in
-            LibraryUnregisterConfirmationDialog(folderName: folder.displayName) {
+            LibraryUnregisterConfirmationDialog(folderName: folder.displayName) { deletesData in
                 dismiss()
-                performUnregister(folder, disablingLibrary: true)
+                performUnregister(folder, disablingLibrary: true, keepData: !deletesData)
             }
         }
     }
@@ -861,14 +860,15 @@ struct FolderTreePane: View {
 
 
 
-    private func performUnregister(_ folder: RegisteredFolder, disablingLibrary: Bool = false) {
+    private func performUnregister(_ folder: RegisteredFolder, disablingLibrary: Bool = false,
+                                   keepData: Bool = true) {
         Task {
             do {
                 // 順序（ライブラリを先に、登録解除を後に）は
                 // `LibraryEnableAction.unregister` が持つ——制御口 [MT-33] も
                 // 同じ関数を通るので、規則が 2 か所に散らない。
                 try await LibraryEnableAction.unregister(
-                    folder: folder, disablingLibrary: disablingLibrary)
+                    folder: folder, disablingLibrary: disablingLibrary, keepData: keepData)
             } catch {
                 // 保存失敗を握りつぶさない [ER-01、2026-08 既知の不具合の一掃]。
                 await NotificationRouter.shared.presentError(

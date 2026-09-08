@@ -36,6 +36,11 @@ final class ServicesWorkspace {
     let backupDirectory: URL
 
     let registrationUUID = UUID()
+    /// 「いま登録のあるライブラリ」[RG4-06]。**`tracksRegistrations` を渡した
+    /// ときだけ効く**——既定では絞らない（`LibraryServices` の既定と同じで、
+    /// 擬似ライブラリは実の `registeredFolders.json` に無いため、絞ると
+    /// 全部が切り離しに見える）。
+    let registrations: RegisteredIDsBox
 
     /// - Parameter operationLogRecorder: 走査の記録 [OH-03] を見たいテストが
     ///   **独立した書き手**を渡す。既定（`.shared`）のままだとテスト中は
@@ -43,8 +48,12 @@ final class ServicesWorkspace {
     /// - Parameter templateStoreDirectory: テンプレートの置き場所を**書けない
     ///   場所**にできるようにしてある——取り込みが DB をコミットした後で
     ///   `userTemplates.json` を書けない、という状況を作るため [IE-13]。
+    /// - Parameter tracksRegistrations: `true` にすると
+    ///   ``registrations`` が「登録のあるライブラリ」を決める [RG4-06]。
+    ///   切り離し（登録だけ消す）を試すテストが渡す。
     init(operationLogRecorder: OperationLogRecorder = .shared,
-         blockedTemplateStore: Bool = false) throws {
+         blockedTemplateStore: Bool = false,
+         tracksRegistrations: Bool = false) throws {
         let base = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("qoo-services-\(UUID().uuidString)")
         storeDirectory = base.appendingPathComponent("store")
@@ -56,6 +65,12 @@ final class ServicesWorkspace {
             ? URL(fileURLWithPath: "/dev/null/blocked/userTemplates.json")
             : base.appendingPathComponent("templates/userTemplates.json")
         backupDirectory = base.appendingPathComponent("backups")
+        // **箱をローカルで作ってから捕まえる。** `self.registrations` を
+        // 捕捉すると、まだ初期化し終えていない `self` を触ることになる。
+        let box = RegisteredIDsBox()
+        registrations = box
+        let registered: (@Sendable () async -> Set<UUID>)? =
+            tracksRegistrations ? { @Sendable in await box.current() } : nil
         services = LibraryServices(
             userCoverStore: DefaultUserCoverStore(baseDirectory: coverDirectory),
             userTemplateStore: UserTemplateStore(storageURL: templateStoreURL),
@@ -63,7 +78,8 @@ final class ServicesWorkspace {
             backupService: BackupService(
                 store: BackupStore(directory: backupDirectory), appVersion: "test",
                 launchInterval: .daily,
-                snapshotsBeforeDestructive: true, snapshotsBeforeMigration: true))
+                snapshotsBeforeDestructive: true, snapshotsBeforeMigration: true),
+            registeredLibraryIDs: registered)
         try FileManager.default.createDirectory(at: libraryRoot, withIntermediateDirectories: true)
     }
 
@@ -119,6 +135,16 @@ final class ServicesWorkspace {
     }
 }
 
+/// 登録のあるライブラリ UUID を差し替えられる箱 [RG4-06]。
+///
+/// **`actor` なのは `LibraryServices` が `@Sendable` な口として受け取るから。**
+/// 実物（`RegisteredFolderStore`）も actor なので、境界の形は同じ。
+actor RegisteredIDsBox {
+    private var ids: Set<UUID> = []
+    func set(_ value: Set<UUID>) { ids = value }
+    func current() -> Set<UUID> { ids }
+}
+
 enum ServicesWorkspaceError: Error { case noSettings }
 
 @Suite("合成根 LibraryServices", .serialized)
@@ -170,7 +196,7 @@ struct LibraryServicesTests {
         let w = try ServicesWorkspace()
         await w.bootstrap()
         try await w.enable()
-        try await w.services.disable(registrationUUID: w.registrationUUID)
+        try await w.services.disable(registrationUUID: w.registrationUUID, keepData: false)
         #expect(w.services.libraries.isEmpty)
         #expect(!w.services.isEnabled(registrationUUID: w.registrationUUID))
     }
@@ -293,7 +319,7 @@ struct DisableDegradedLibraryTests {
         // ボリュームごと消えた状況。
         try FileManager.default.removeItem(at: w.libraryRoot)
 
-        try await w.services.disable(registrationUUID: w.registrationUUID)
+        try await w.services.disable(registrationUUID: w.registrationUUID, keepData: false)
         #expect(w.services.libraries.isEmpty, "根が無くても無効化できるべき")
         #expect(!w.services.isEnabled(registrationUUID: w.registrationUUID))
     }
@@ -310,7 +336,7 @@ struct DisableDegradedLibraryTests {
         let id = try await w.enable()
         #expect(try await w.services.scan(libraryID: id, root: w.libraryRoot).added == 2)
 
-        try await w.services.disable(registrationUUID: w.registrationUUID)
+        try await w.services.disable(registrationUUID: w.registrationUUID, keepData: false)
 
         // 同じ登録 ID で入れ直すと、前回のレコードが残っていないことが分かる。
         let again = try await w.enable()

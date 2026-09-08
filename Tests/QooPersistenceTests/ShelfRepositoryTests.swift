@@ -147,7 +147,7 @@ struct ShelfRepositoryTests {
     func cascadesWithLibrary() async throws {
         let s = try await Setup.make()
         _ = try await s.shelves.create(libraryID: s.f.libraryID, name: "A", condition: condition([1]))
-        try await s.f.libraries.unregister(id: s.f.libraryID, keepLabels: false)
+        try await s.f.libraries.unregister(id: s.f.libraryID)
 
         let remaining = try await s.f.database.writer.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM shelf") ?? -1

@@ -95,7 +95,7 @@ struct LibraryRepositoryTests {
     func unregisterCascades() async throws {
         let f = try await Fixture.make()
         _ = try await f.files.upsert(f.snapshot(inode: 1, path: "a.cbz"))
-        try await f.libraries.unregister(id: f.libraryID, keepLabels: false)
+        try await f.libraries.unregister(id: f.libraryID)
         #expect(try await f.libraries.libraries().isEmpty)
         #expect(try await f.libraries.totalFileCount() == 0)
     }
@@ -115,7 +115,7 @@ struct LibraryRepositoryTests {
         // テンプレート由来の既定が入っていること＝この検査が空振りしない前提。
         #expect(before > 0)
 
-        try await f.libraries.unregister(id: f.libraryID, keepLabels: false)
+        try await f.libraries.unregister(id: f.libraryID)
 
         let after = try await f.database.writer.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM protectedToken") ?? 0
@@ -143,7 +143,7 @@ struct LibraryRepositoryTests {
         }
         #expect(otherBefore > 0)
 
-        try await f.libraries.unregister(id: f.libraryID, keepLabels: false)
+        try await f.libraries.unregister(id: f.libraryID)
 
         let otherAfter = try await f.database.writer.read { db in
             try Int.fetchOne(db, sql: """

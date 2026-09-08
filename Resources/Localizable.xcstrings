@@ -8190,19 +8190,67 @@
         }
       }
     },
+    "library.unregister.deleteData": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Also delete this library's data"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ライブラリのデータも削除する"
+          }
+        }
+      }
+    },
     "library.unregister.explanation": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "“%@” is registered as a library. Unregistering it also removes its library data."
+            "value": "“%@” is registered as a library. Unregistering keeps its library data unless you choose to delete it."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "「%@」はライブラリとして登録されています。登録を解除すると、ライブラリのデータも一緒に削除されます。"
+            "value": "「%@」はライブラリとして登録されています。登録を解除しても、ライブラリのデータは残ります。"
+          }
+        }
+      }
+    },
+    "library.unregister.keepDataHint": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Labels, ratings and cover images are kept. Register the same folder again and they come back as they were."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ラベル・評価・カバー画像はそのまま残ります。同じフォルダを登録し直せば、元どおりに戻ります。"
+          }
+        }
+      }
+    },
+    "library.unregister.noBackupWarning": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatic backups are turned off, so no backup is created before this deletion. You can turn them on in Settings › Backup."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自動バックアップが無効なので、この削除の前にバックアップは作成されません。環境設定の「バックアップ」で有効にできます。"
           }
         }
       }
@@ -8213,13 +8261,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Labels, ratings and cover images you set by hand will be lost. The files themselves are not touched."
+            "value": "Labels, ratings and cover images you set by hand will be lost, and this cannot be undone. The files themselves are not touched."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "手動で設定したラベル・評価・カバー画像は失われます。ファイル自体には手を加えません。"
+            "value": "手動で設定したラベル・評価・カバー画像は失われ、取り消せません。ファイル自体には手を加えません。"
           }
         }
       }
@@ -10583,6 +10631,54 @@
           "stringUnit": {
             "state": "translated",
             "value": "中の画像を一覧表示"
+          }
+        }
+      }
+    },
+    "libraryWizard.reattach.hint": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Template selection is skipped because the previous settings are used. To start over instead, delete the old data in Settings › Reset first."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "以前の設定をそのまま使うため、テンプレートの選択は行いません。作り直したいときは、先に環境設定の「リセット」で古いデータを削除してください。"
+          }
+        }
+      }
+    },
+    "libraryWizard.reattach.summary": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This folder was registered as “%1$@” before, and its data is still here (%2$d files). Registering it again brings back the settings, labels, ratings and covers exactly as they were."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このフォルダは以前「%1$@」として登録されており、そのデータが残っています（%2$d 件）。登録し直すと、設定・ラベル・評価・カバー画像がそのまま戻ります。"
+          }
+        }
+      }
+    },
+    "libraryWizard.reattach.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reconnect to the existing data"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "以前のデータに結び直します"
           }
         }
       }
@@ -15208,6 +15304,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "ファイルとフォルダには触れません。フォルダの登録は残り、ライブラリとして設定し直せます。"
+          }
+        }
+      }
+    },
+    "preferences.reset.deleteKeepsFilesDetached": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Files and folders are not touched. This library is no longer registered, so deleting it here cannot be undone — register the folder again first if you want the data back."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ファイルとフォルダには触れません。このライブラリは既に登録が解除されているので、ここで削除すると元に戻せません。データを戻したいときは、先にフォルダを登録し直してください。"
           }
         }
       }

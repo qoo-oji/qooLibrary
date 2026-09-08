@@ -456,7 +456,7 @@ struct BackupServiceTests {
         _ = try await w.enable()
         #expect(try w.backupGenerations().filter { $0.reason == .libraryDelete }.isEmpty)
 
-        try await w.services.disable(registrationUUID: w.registrationUUID)
+        try await w.services.disable(registrationUUID: w.registrationUUID, keepData: false)
 
         #expect(!(try w.backupGenerations().filter { $0.reason == .libraryDelete }.isEmpty))
     }

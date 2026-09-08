@@ -60,6 +60,11 @@ struct ResetPreferencesTab: View {
         .onChange(of: LibraryServices.shared.libraries) {
             Task { await reload() }
         }
+        // 切り離し [RG4-02] は `libraries` を減らして `detachedLibraries` を
+        // 増やすので、片方だけ見ていると一覧が追随しない。
+        .onChange(of: LibraryServices.shared.detachedLibraries) {
+            Task { await reload() }
+        }
     }
 
     // MARK: - ライブラリの削除 [RG-06]
@@ -166,7 +171,11 @@ struct ResetPreferencesTab: View {
     private func reload() async {
         isLoading = true
         defer { isLoading = false }
+        // **切り離し行 [RG4-02] もここに出す。** 登録を解除してデータだけ
+        // 残したライブラリを片付けられる唯一の場所で、他の窓（設定・
+        // メンテナンス・フィールド編集）からは意図的に隠してある [RG4-06]。
         let summaries = LibraryServices.shared.libraries
+            + LibraryServices.shared.detachedLibraries
         // 登録フォルダ側は種別をまたいで見る。ライブラリとして有効化できるのは
         // 現状 `.library` グループだけだが、ここは「片付けの最後の砦」なので
         // 見落としが出ない側に倒す。
@@ -220,9 +229,9 @@ private struct LibraryRowView: View {
 
 /// 削除の確認 [RG-06]。
 ///
-/// **何が失われるかを言ってから消す。** `unregister` は `keepLabels` を
-/// まだ見ずに連鎖削除するので、「保持する」を選ばせられない——選べない
-/// 以上、せめて失うものを明示する（ラベル保管庫 2-11 が入ったら選択に変える）。
+/// **何が失われるかを言ってから消す。** ここは「消す操作だけ」の場所なので
+/// 残す選択肢は置かない——残したいなら登録解除の側で選ぶ [RG4-01]。
+/// 切り離した行 [RG4-02] を片付けられる唯一の場所でもある。
 struct LibraryDeleteConfirmationDialog: View {
     @Environment(\.locale) private var locale
     @Environment(\.dialogDismiss) private var dismiss
@@ -253,7 +262,14 @@ struct LibraryDeleteConfirmationDialog: View {
                     .font(.system(size: Tokens.fontSize.caption))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("preferences.reset.deleteKeepsFiles")
+                // **登録が残っているかで言うことが変わる** [RG4-06]。
+                // 切り離した行（登録を解除してデータだけ残したもの）に
+                // 「フォルダの登録は残ります」と言うと嘘になる——この一覧に
+                // 切り離し行が並ぶようになって初めて表に出た［制御口での
+                // 実機検証で発見］。
+                Text(row.hasRegistration
+                     ? "preferences.reset.deleteKeepsFiles"
+                     : "preferences.reset.deleteKeepsFilesDetached")
                     .font(.system(size: Tokens.fontSize.caption))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

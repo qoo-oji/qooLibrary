@@ -713,3 +713,63 @@ private struct RejectingVolumeChecker: VolumeEligibilityChecking {
         .rejected(reason: .noPersistentFileID(fileSystem: "exFAT"))
     }
 }
+
+// MARK: - 切り離したライブラリへの結び直し [RG4-03]
+
+extension RegisteredFolderStoreTests {
+
+    /// **`library.uuid` は登録フォルダ ID そのもの** [07章 §7.3]。同じ ID で
+    /// 登録し直せない限り、切り離した行は永久に孤児になる。
+    @Test func registerCanReuseTheIDOfADetachedLibrary() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let target = root.appendingPathComponent("Library1", isDirectory: true)
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        let store = makeStore(storageURL: root.appendingPathComponent("state.json"))
+
+        let first = try await store.register(url: target, kind: .library, displayName: nil).folder
+        try await store.unregister(first.id)
+        let again = try await store.register(url: target, kind: .library, displayName: nil,
+                                             reusingID: first.id).folder
+
+        #expect(again.id == first.id)
+        #expect(await store.folders(kind: .library).map(\.id) == [first.id])
+    }
+
+    /// **検査は免除しない** [RG4-03]。結び直しは「同じ場所を登録し直す」ことで
+    /// あって、登録の条件が緩むわけではない。
+    @Test func reusingAnIDDoesNotBypassTheNestingCheck() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let parent = root.appendingPathComponent("Parent", isDirectory: true)
+        let child = parent.appendingPathComponent("Child", isDirectory: true)
+        try FileManager.default.createDirectory(at: child, withIntermediateDirectories: true)
+        let store = makeStore(storageURL: root.appendingPathComponent("state.json"))
+        _ = try await store.register(url: parent, kind: .library, displayName: nil)
+
+        await #expect(throws: RegisteredFolderError.nestedRegistration) {
+            try await store.register(url: child, kind: .library, displayName: nil,
+                                     reusingID: UUID())
+        }
+    }
+
+    /// 使われている ID を渡されたら無視して新しい ID を振る（構造的には
+    /// 起きないが、ID が重複した登録を作るほうが害が大きい）。
+    @Test func reusingAnIDAlreadyInUseFallsBackToANewOne() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let a = root.appendingPathComponent("A", isDirectory: true)
+        let b = root.appendingPathComponent("B", isDirectory: true)
+        for url in [a, b] {
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        }
+        let store = makeStore(storageURL: root.appendingPathComponent("state.json"))
+        let first = try await store.register(url: a, kind: .library, displayName: nil).folder
+
+        let second = try await store.register(url: b, kind: .library, displayName: nil,
+                                              reusingID: first.id).folder
+
+        #expect(second.id != first.id)
+        #expect(await store.folders(kind: .library).count == 2)
+    }
+}

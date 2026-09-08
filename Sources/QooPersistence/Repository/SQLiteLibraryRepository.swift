@@ -328,9 +328,10 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
 
     /// 登録解除 [RG-06]。
     ///
-    /// `keepLabels` はフェーズ 2 のラベル保管庫へ回すかどうか。**現時点では
-    /// どちらでもライブラリ行を消す**（連鎖でファイル・ラベルも消える）。
-    /// 保管庫（2-11）が入ったら `keepLabels == true` の経路をそこへ繋ぐ。
+    /// **消す側だけを担う。** 「データを残して解除する」[RG4-01] はこれを
+    /// 呼ばず、``setOnline(_:libraryID:)`` で `false` にするだけ——行が残るので
+    /// ラベル・評価・保護スコープ・手動タイトルはそのまま生き、同じフォルダを
+    /// 再登録すれば結び直る [RG4-03]。
     ///
     /// **`protectedToken` は連鎖で消えないので、ここで明示的に消す** [PT-08]。
     /// `ownerKind`／`ownerID` の多相参照なので外部キー制約を張れず、
@@ -344,8 +345,7 @@ public struct SQLiteLibraryRepository: LibraryRepository, Sendable {
     /// **外部キーで守れない参照は、削除の経路を人が書くしかない。**
     /// 多相参照を持つテーブルは現状 `protectedToken` だけ（`QooMigrations`
     /// を全走査して確認済み）。新しく増やすなら、ここも同時に増やすこと。
-    public func unregister(id: LibraryID, keepLabels: Bool) async throws {
-        _ = keepLabels
+    public func unregister(id: LibraryID) async throws {
         try await database.writer.write { db in
             try db.execute(sql: "DELETE FROM protectedToken WHERE ownerKind = 'library' AND ownerID = ?",
                            arguments: [id.rawValue])

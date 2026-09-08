@@ -335,7 +335,7 @@ struct TitleAndCoverTests {
         try await model.replace(withImageData: png())
         let ref = try #require(try await w.services.fileRow(at: urls[0], in: library)?.coverImageRef)
 
-        try await w.services.disable(registrationUUID: w.registrationUUID)
+        try await w.services.disable(registrationUUID: w.registrationUUID, keepData: false)
 
         #expect(!FileManager.default.fileExists(
             atPath: w.services.userCoverURL(ref: ref, library: library).path))

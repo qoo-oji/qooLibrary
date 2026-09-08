@@ -87,8 +87,15 @@ public protocol LibraryRepository: Sendable {
     func register(_ registration: LibraryRegistration,
                   draft: LibrarySettingsDraft,
                   template: LibraryTypeTemplate?) async throws -> LibraryID
-    /// `keepLabels` はフェーズ 2 のラベル保管庫へ回すかどうか [RG-06]。
-    func unregister(id: LibraryID, keepLabels: Bool) async throws
+    /// ライブラリ行を消す [RG-06]。連鎖でファイル・ラベル・評価・保護・
+    /// シェルフ・各設定表まで消える。**残したいときはこれを呼ばない**
+    /// ——`isOnline` を落として「切り離し」にするのが RG4-01 の既定側で、
+    /// そちらは ``setOnline(_:libraryID:)`` で足りる（行は 1 つも消さない）。
+    ///
+    /// 以前は `keepLabels: Bool` を取っていたが、**v1 から誰も読んでいなかった**
+    /// （`_ = keepLabels`）。読まれない引数は「選べる」という誤った印象を
+    /// 与えるだけなので落とした [RG4-01]。
+    func unregister(id: LibraryID) async throws
     func setOnline(_ online: Bool, libraryID: LibraryID) async throws          // [VD-03][VD-05]
     /// ボリュームの改名で移動した根を書き直す [VD-06]。`volumeUUID` は不変なので
     /// ファイルの紐づけは維持される。

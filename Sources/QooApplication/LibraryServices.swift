@@ -33,10 +33,25 @@ public final class LibraryServices {
 
     // MARK: - 外から見える状態
 
-    /// DB に載っているライブラリ。**登録フォルダ（`registeredFolders.json`）とは
-    /// 別物**——登録フォルダのうち、ユーザーが明示的にライブラリとして有効化した
-    /// ものだけがここに現れる（後述の ``enable(registrationUUID:displayName:url:template:)``）。
+    /// **いま登録のある**ライブラリ [RG4-06]。
+    ///
+    /// DB に載っているライブラリのうち、`registeredFolders.json` に対応する
+    /// 登録があるものだけ。登録を解除してデータだけ残した行（＝切り離し
+    /// [RG4-02]）はここに**現れない**——設定ウインドウ・メンテナンス・
+    /// フィールド編集・通知履歴の絞り込み・テンプレート改訂の検出は、いずれも
+    /// このプロパティを読む。切り離した物がそこに残り続けると
+    /// 「解除したはずのライブラリが設定に居る」「解除した物について
+    /// 『テンプレートが更新されました』と毎起動言われる」という、
+    /// 先行実装（Jellyfin）が幽霊エントリとして報告しているのと同じ形になる。
+    ///
+    /// 切り離し行を触れるのは ``detachedLibraries`` を読む場所だけで、現状は
+    /// 環境設定「リセット」タブ（消す）と再登録の照合（結び直す）の 2 つ。
     public private(set) var libraries: [LibrarySummary] = []
+
+    /// 登録の無いライブラリ行 [RG4-02]。**新しい列は持たない**——
+    /// ``libraries`` との差分として毎回導出する（`LibrarySetupPrompt` が
+    /// 逆向きの状態〈登録はあるがライブラリ行が無い〉を同じ方法で導いている）。
+    public private(set) var detachedLibraries: [LibrarySummary] = []
 
     /// プリセットのライブラリタイプ [11.4][LT-01]。有効化の選択肢に使う。
     public private(set) var presetTemplates: [LibraryTypeTemplate] = []
@@ -147,6 +162,8 @@ public final class LibraryServices {
     /// ストアを開けなくても決まるので、`userCoverStore` と同じく常に持つ。
     private let backupService: BackupService
     private let backupServiceWasInjected: Bool
+    /// 登録のあるライブラリ UUID [RG4-06]。**`nil` は「絞らない」。**
+    private let registeredLibraryIDs: (@Sendable () async -> Set<UUID>)?
 
     /// 自動スナップショットを取ってよいか。
     ///
@@ -168,10 +185,18 @@ public final class LibraryServices {
     ///   ——既定のままだと、テストどうしが同じ置き場所を共有して互いの
     ///   世代を剪定し合う。渡さなければ `swift test` 中は自動スナップショット
     ///   自体を行わない（``takesAutomaticSnapshots``）。
+    /// - Parameter registeredLibraryIDs: いま登録のあるライブラリ UUID を返す口
+    ///   [RG4-06]。**`nil` なら絞らない**——`swift test` 中の既定がこれで、
+    ///   テストの擬似ライブラリは `RegisteredFolderStore.shared`（開発機の
+    ///   実ファイル）に無いため、絞ると全部が切り離しに見える。切り離しそのものを
+    ///   試すテストは明示的に渡すこと。
     public init(userCoverStore: any UserCoverStoring = DefaultUserCoverStore.shared,
                 userTemplateStore: UserTemplateStore = .shared,
                 operationLogRecorder: OperationLogRecorder = .shared,
-                backupService: BackupService? = nil) {
+                backupService: BackupService? = nil,
+                registeredLibraryIDs: (@Sendable () async -> Set<UUID>)? =
+                    LibraryServices.defaultRegisteredLibraryIDs()) {
+        self.registeredLibraryIDs = registeredLibraryIDs
         self.userCoverStore = userCoverStore
         self.userTemplateStore = userTemplateStore
         self.operationLogRecorder = operationLogRecorder
@@ -179,6 +204,19 @@ public final class LibraryServices {
         self.backupService = backupService
             ?? BackupService(store: BackupStore(), appVersion: Self.appVersion(),
                              appDataLocation: Self.defaultAppDataLocation(userCoverStore))
+    }
+
+    /// 登録のあるライブラリ UUID を数える既定の口 [RG4-06]。
+    ///
+    /// **`swift test` 中は `nil`**——`defaultAppDataLocation` と同じ理由で、
+    /// テストの擬似ライブラリは実の `registeredFolders.json` に無い。絞ると
+    /// `libraries` が常に空になり、テストが一斉に落ちる（そして落ちる理由は
+    /// 「切り離しの実装が壊れている」ようにしか見えない）。
+    /// **`public` なのは `init` の既定引数から参照するため**（Swift は既定引数の
+    /// 式から internal のメンバを参照できない）。呼ぶ必要があるのはここだけ。
+    public static func defaultRegisteredLibraryIDs() -> (@Sendable () async -> Set<UUID>)? {
+        guard !RuntimeEnvironment.isRunningTests else { return nil }
+        return { Set(await RegisteredFolderStore.shared.folders(kind: .library).map(\.id)) }
     }
 
     /// DB の外にあるデータの場所 [BK-06]。
@@ -709,10 +747,79 @@ public final class LibraryServices {
     public func refreshLibraries() async {
         guard let repository = libraryRepository else { return }
         do {
-            libraries = try await repository.libraries()
+            let all = try await repository.libraries()
+            guard let registeredLibraryIDs else {
+                libraries = all
+                detachedLibraries = []
+                return
+            }
+            // **登録の一覧を先に取る** [RG4-06]。`folders(kind:)` は
+            // `ensureLoaded()` を通るので、起動直後に呼ばれても読み込み前の
+            // 空の一覧を見ることはない——見てしまうと**全ライブラリが一瞬
+            // 切り離しに見えて画面から消える**（`LibrarySetupPrompt` が
+            // 逆向きで実際に踏んだ形）。
+            let registered = await registeredLibraryIDs()
+            libraries = all.filter { registered.contains($0.uuid) }
+            detachedLibraries = all.filter { !registered.contains($0.uuid) }
         } catch {
             Log.app.error("ライブラリ一覧を読めない: \(String(describing: error))")
         }
+    }
+
+    /// 登録が増減したことを DB 側の一覧へ反映する [RG4-06]。
+    ///
+    /// **登録解除は「ライブラリを先に、登録を後に」の順**なので、`disable` の
+    /// 中で数え直しても登録はまだ残っている——切り離し行としての分類は
+    /// このあと呼び直して初めて確定する。`LibraryEnableAction.unregister` が
+    /// 唯一の呼び出し元で、規則を 2 か所に散らさないためそこ 1 箇所に置く。
+    public func noteRegistrationsChanged() async {
+        await refreshLibraries()
+        await sync?.resync()
+    }
+
+    /// この場所に対応する切り離し行 [RG4-02][RG4-04]。
+    ///
+    /// **照合は `(volumeUUID, resolvedPath)` の完全一致。** パスだけ・名前だけで
+    /// 突き合わせない——同名フォルダを別のボリュームに持つ蔵書は普通にあり、
+    /// 取り違えると**別のライブラリのラベルと評価が丸ごと乗り移る**。
+    /// ボリューム識別子は登録時とまったく同じ関数（`VolumeIdentity`）を通す。
+    ///
+    /// **切り離し中にフォルダを移動・改名すると一致しなくなる**（＝結び直せず、
+    /// 新規登録になる）。これは既知の限界で、そのときは環境設定「リセット」
+    /// タブから古い行を消す［ユーザー判断、2026-09-08］。
+    public func detachedLibrary(matching url: URL) async -> LibrarySummary? {
+        guard !detachedLibraries.isEmpty else { return nil }
+        let candidates = detachedLibraries
+        return await FileIO.perform { () -> LibrarySummary? in
+            guard let volumeUUID = VolumeIdentity.identifier(for: url) else { return nil }
+            return Self.firstMatch(
+                in: candidates, volumeUUID: volumeUUID,
+                normalizedPath: Self.normalizePath(url.path))
+        }
+    }
+
+    /// 照合の規則そのもの [RG4-04]。**両方が一致したときだけ返す。**
+    ///
+    /// 純粋関数として切り出してあるのは、**ボリューム識別子を落としても
+    /// パスだけで当たってしまう**という壊れ方をテストで固定するため
+    /// ——実機では別ボリュームの同名フォルダを用意しないと再現できない。
+    nonisolated static func firstMatch(in candidates: [LibrarySummary],
+                           volumeUUID: String,
+                           normalizedPath: String,
+                           normalize: (String) -> String = LibraryServices.normalizePath)
+        -> LibrarySummary?
+    {
+        candidates.first {
+            $0.volumeUUID == volumeUUID && normalize($0.resolvedPath) == normalizedPath
+        }
+    }
+
+    /// パスの綴りを揃える。`resolvedPath` は登録の経路によって
+    /// シンボリックリンク解決の前後どちらの形も取り得る
+    /// （`enable` は利用者が選んだ URL を、`LibrarySyncCoordinator` は
+    /// ブックマークが返す解決済みの URL を書く）ので、**両側を同じ関数へ通す**。
+    nonisolated static func normalizePath(_ path: String) -> String {
+        URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path
     }
 
     /// フォルダ名＝表示名 [RG3-31] を DB 側にも揃える。
@@ -800,7 +907,13 @@ public final class LibraryServices {
     ) async throws -> LibraryID {
         guard let repository = libraryRepository else { throw ServiceError.notReady }
         if let existing = try await repository.library(uuid: uuid) {
-            return existing.id                                   // 冪等
+            // 冪等。**切り離し行への結び直し [RG4-03] もここを通る**——
+            // `RegisteredFolderStore.register(reusingID:)` で同じ UUID を
+            // 取り戻したあとにこれを呼ぶと、行は作らず既存の設定のまま返る。
+            // 一覧と監視は数え直す（切り離しの間は登録が無く外れていた）。
+            await refreshLibraries()
+            await sync?.resync()
+            return existing.id
         }
         // ボリューム識別子は I/O を伴うので逃がす [NV6-02]。
         //
@@ -835,19 +948,38 @@ public final class LibraryServices {
 
     /// ライブラリとしての登録を解除する。**登録フォルダ自体は消さない**
     /// ——フォルダツリーからは従来どおり辿れる状態に戻るだけ。
-    public func disable(registrationUUID uuid: UUID, keepLabels: Bool = false) async throws {
+    ///
+    /// - Parameter keepData: **既定は `true`＝データを残す** [RG4-01]。
+    ///   ライブラリ行を消さず `isOnline` を落とすだけで、ラベル・評価・
+    ///   保護スコープ・手動タイトル・カバーはそのまま生きる（＝切り離し
+    ///   [RG4-02]）。同じフォルダを登録し直せば `uuid` ごと結び直る [RG4-03]。
+    ///   `false` を渡したときだけ、従来どおり連鎖削除する。
+    ///
+    ///   **既定を反転させたのは、消す側が取り返しのつかない操作だから。**
+    ///   BK-07 の自動バックアップは既定 3 つとも OFF なので、既定の利用者は
+    ///   控えの無いまま手で付けたラベルと評価を失っていた。
+    public func disable(registrationUUID uuid: UUID, keepData: Bool = true) async throws {
         guard let repository = libraryRepository else { throw ServiceError.notReady }
         guard let summary = try await repository.library(uuid: uuid) else { return }
-        // [BK-02] **`deleteLibrary` と消す範囲は同じ**（違うのは入口だけ）。
-        // しかも日常的に使われるのはこちら——フォルダツリーの「ライブラリ機能を
-        // 無効にする」と、完全削除に伴う強制解除がここを通る［code-review で発見］。
-        await snapshotBeforeDestructive(.libraryDelete)
-        try await repository.unregister(id: summary.id, keepLabels: keepLabels)
-        // ユーザー指定カバーの複製を片付ける [CV-06]。行が連鎖削除された時点で
-        // 誰も参照していないので、起動時の掃除を待たずにここで捨ててよい
-        // ——無効化は Undo できないため、「取り消した先に実体が無い」は起きない。
-        await userCoverStore.removeAll(libraryUUID: summary.uuid)
-        Log.app.info("ライブラリを無効化: \(Log.redactable(summary.displayName))")
+        if keepData {
+            // [RG4-08] 監視対象から外す。**`resync` も登録が無いことを見て
+            // 同じ結論へ収束する**ので二重だが、ここで落としておくと
+            // 次の突き合わせを待たずに一覧が正しくなる。
+            //
+            // **控えは取らない** [RG4-07]——行を 1 つも消さないので破壊的でない。
+            try await repository.setOnline(false, libraryID: summary.id)
+            Log.app.info("ライブラリを切り離した（データは残す）: \(Log.redactable(summary.displayName))")
+        } else {
+            // [BK-02] **`deleteLibrary` と消す範囲は同じ**（違うのは入口だけ）。
+            await snapshotBeforeDestructive(.libraryDelete)
+            try await repository.unregister(id: summary.id)
+            // ユーザー指定カバーの複製を片付ける [CV-06]。行が連鎖削除された時点で
+            // 誰も参照していないので、起動時の掃除を待たずにここで捨ててよい
+            // ——無効化は Undo できないため、「取り消した先に実体が無い」は起きない。
+            // **切り離し側では消さない** [RG4-10]——行が残る＝参照が生きている。
+            await userCoverStore.removeAll(libraryUUID: summary.uuid)
+            Log.app.info("ライブラリを無効化: \(Log.redactable(summary.displayName))")
+        }
         await refreshLibraries()
         await sync?.resync()          // 監視対象から外す
     }
@@ -1713,14 +1845,16 @@ public final class LibraryServices {
     /// **縮退状態こそ片付けたい場面**で手段が消えてはならない
     /// ——実際に一度、無効化をオンライン条件で囲って「外付けを失うと
     /// 二度と片付けられない」欠陥を作った前例がある [LibraryMenuVisibility]。
-    public func deleteLibrary(id: LibraryID, keepLabels: Bool = false) async throws {
+    public func deleteLibrary(id: LibraryID) async throws {
         guard let repository = libraryRepository else { throw ServiceError.notReady }
         // [BK-02、ユーザー判断で対象に追加、2026-09-05] **要件の一覧には無いが
         // 実際にはこれが最も破壊的**——連鎖でラベル・評価・手動タイトルが
-        // すべて消え、`keepLabels` を選べる退避先もまだ無い [RG-06]。
+        // すべて消える。**切り離し行 [RG4-02] を片付ける唯一の場所**でもあり、
+        // 「ライブラリのデータも削除する」を選ばずに解除した人は、後から
+        // ここで消す（リセットタブは「消す操作だけ」の場所として整理済み）。
         await snapshotBeforeDestructive(.libraryDelete)
         let summary = try await repository.library(id: id)
-        try await repository.unregister(id: id, keepLabels: keepLabels)
+        try await repository.unregister(id: id)
         if let summary {
             await userCoverStore.removeAll(libraryUUID: summary.uuid)   // [CV-06]
         }

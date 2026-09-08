@@ -88,7 +88,7 @@ final class FakeLibraryRepository: LibraryRepository, @unchecked Sendable {
                   template: LibraryTypeTemplate) async throws -> LibraryID { .init(rawValue: 0) }
     func register(_ registration: LibraryRegistration, draft: LibrarySettingsDraft,
                   template: LibraryTypeTemplate?) async throws -> LibraryID { .init(rawValue: 0) }
-    func unregister(id: LibraryID, keepLabels: Bool) async throws {}
+    func unregister(id: LibraryID) async throws {}
     func totalFileCount() async throws -> Int { 0 }
 }
 

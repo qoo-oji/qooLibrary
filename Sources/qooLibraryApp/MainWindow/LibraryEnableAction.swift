@@ -53,10 +53,18 @@ enum LibraryEnableAction {
                                   template: LibraryTypeTemplate?,
                                   locale: Locale, openWindow: OpenWindowAction) {
         Task {
+            // **切り離した行があれば同じ UUID で登録し直す** [RG4-03]。
+            // `library.uuid` は登録フォルダ ID そのもの [07章 §7.3] なので、
+            // ここで取り戻さない限り旧行は永久に孤児になる。判断は
+            // `LibraryServices.detachedLibrary(matching:)` の 1 箇所にあり、
+            // ウィザードは同じ関数を「引き継ぐと予告する」ためにも読む
+            // ——規則は 1 つ、用途が 2 つ（表示と挙動）。
+            let detached = await LibraryServices.shared.detachedLibrary(matching: url)
             let result: RegisteredFolderStore.RegistrationResult
             do {
                 result = try await RegisteredFolderStore.shared.register(
-                    url: url, kind: .library, displayName: displayName)
+                    url: url, kind: .library, displayName: displayName,
+                    reusingID: detached?.uuid)
             } catch {
                 await NotificationRouter.shared.presentError(
                     error,
@@ -78,6 +86,11 @@ enum LibraryEnableAction {
                         .joined(separator: "\n")
                 ))
             }
+            if let detached {
+                Log.app.info("切り離したライブラリへ結び直す [RG4-03]: \(Log.redactable(detached.displayName)) / ファイル \(detached.fileCount) 件 → \(Log.path(url))")
+            }
+            // 結び直しでは `enable` が冪等分岐で既存の行を返す——草案は使われず、
+            // 以前の設定・ラベル・評価がそのまま生きる。
             await enable(folder: result.folder, url: url, draft: draft,
                          template: template, locale: locale, openWindow: openWindow)
         }
@@ -120,11 +133,20 @@ enum LibraryEnableAction {
     /// 制御口 [MT-33] の両方がここを通る——同じ規則を 2 か所に書かない。
     ///
     /// 確認ダイアログは**呼び出し側の責務**。ツリーは尋ねてからここへ来る。
-    static func unregister(folder: RegisteredFolder, disablingLibrary: Bool) async throws {
+    ///
+    /// - Parameter keepData: **既定はデータを残す** [RG4-01]。残すと
+    ///   ライブラリ行は生きたまま登録だけが消え（＝切り離し [RG4-02]）、
+    ///   同じフォルダを登録し直せば結び直る [RG4-03]。
+    static func unregister(folder: RegisteredFolder, disablingLibrary: Bool,
+                           keepData: Bool = true) async throws {
         if disablingLibrary {
-            try await LibraryServices.shared.disable(registrationUUID: folder.id)
+            try await LibraryServices.shared.disable(registrationUUID: folder.id,
+                                                     keepData: keepData)
         }
         try await RegisteredFolderStore.shared.unregister(folder.id)
+        // **登録が消えた後でなければ切り離しとして数えられない** [RG4-06]。
+        // `disable` の中で数え直しても、そのときはまだ登録が残っている。
+        await LibraryServices.shared.noteRegistrationsChanged()
     }
 
     /// 既存の登録を有効化する（起動時の再開ウィザード [§19.10 ステージ 2] の
@@ -532,25 +554,33 @@ struct LibraryRootUnavailableError: Error, UserPresentableError {
     var severity: NotificationSeverity { .sheet }
 }
 
-/// 登録解除でライブラリのデータも消えることを伝える確認 [RG-06]。
+/// 登録解除の確認 [RG-06][RG4-01]。
 ///
-/// **ラベル保管庫（2-11）が入るまでの暫定。** `LibraryRepository.unregister` は
-/// `keepLabels` をまだ見ずに連鎖削除するため、ここで「保持する」を選ばせられない。
-/// 選べない以上、せめて**何が失われるかを言ってから**消す。
+/// **既定はデータを残す。** チェックを入れたときだけ、ラベル・評価・保護
+/// スコープ・手動タイトルまで連鎖削除する。残した場合は「切り離し」[RG4-02]
+/// になり、同じフォルダを登録し直せばそのまま結び直る [RG4-03]。
+///
+/// 削除側を選んだときだけ、**自動バックアップの設定状態**を添える [RG4-07]
+/// ——BK-07 の既定は 3 つとも OFF なので、既定の利用者は控えの無いまま
+/// 取り返しのつかない削除をすることになる。ここから設定は変えさせない
+/// （ダイアログの目的は「いま何が起きるか」を伝えることに絞る）。
 struct LibraryUnregisterConfirmationDialog: View {
     @Environment(\.locale) private var locale
     @Environment(\.dialogDismiss) private var dismiss
 
     let folderName: String
-    let onConfirm: () -> Void
+    /// `true` ならライブラリのデータも消す。
+    let onConfirm: (Bool) -> Void
+
+    @State private var deletesData = false
 
     var body: some View {
         DialogScaffold(
             width: 420,
             confirm: DialogButton(
                 title: AppStrings.text("folderTree.unregister", locale: locale),
-                role: .destructive
-            ) { onConfirm() },
+                role: deletesData ? .destructive : nil
+            ) { onConfirm(deletesData) },
             cancel: DialogButton(
                 title: AppStrings.text("common.cancel", locale: locale), role: .cancel
             ) { dismiss() }
@@ -560,10 +590,21 @@ struct LibraryUnregisterConfirmationDialog: View {
                     format: AppStrings.text("library.unregister.explanation", locale: locale),
                     folderName))
                     .fixedSize(horizontal: false, vertical: true)
-                Text("library.unregister.warning")
+                Toggle(isOn: $deletesData) {
+                    Text("library.unregister.deleteData")
+                }
+                Text(deletesData
+                     ? AppStrings.text("library.unregister.warning", locale: locale)
+                     : AppStrings.text("library.unregister.keepDataHint", locale: locale))
                     .font(.system(size: Tokens.fontSize.caption))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                if deletesData, !BackupService.configuredSnapshotsBeforeDestructive() {
+                    Text("library.unregister.noBackupWarning")
+                        .font(.system(size: Tokens.fontSize.caption))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }
