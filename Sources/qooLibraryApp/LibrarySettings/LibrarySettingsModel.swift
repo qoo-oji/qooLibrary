@@ -7,6 +7,7 @@
 import Observation
 import QooApplication
 import QooKit
+import QooUI
 import SwiftUI
 
 /// 設定項目グループ [15.1 節][§19.7]。
@@ -105,7 +106,14 @@ final class LibrarySettingsModel {
     }
     var section: LibrarySettingsSection = .basics
     /// 編集中の草案。読み込み前・ライブラリ未選択なら `nil`。
-    var draft: LibrarySettingsDraft?
+    var draft: LibrarySettingsDraft? {
+        didSet { measurement.update(for: draft) }
+    }
+
+    /// 正規表現の実測 [SE-25 の層 ③]。**草案が落ち着いてから 1 度だけ走る**
+    /// ——`validate()` に混ぜると、危険な正規表現を直している最中にこそ
+    /// 画面が重くなる [05章 §5.6]。
+    let measurement = RegexMeasurementMonitor()
     /// 最後に保存された状態。`draft` との差が「未保存の変更」。
     private(set) var savedDraft: LibrarySettingsDraft?
     private(set) var isBusy = false
@@ -130,7 +138,12 @@ final class LibrarySettingsModel {
         return draft != savedDraft
     }
 
-    var issues: [LibrarySettingsIssue] { draft?.validate() ?? [] }
+    /// 画面に出す不備。**静的検査（常に最新）＋ 実測（落ち着いてから）** の和
+    /// [SE-25 の層 ②③]。実測のぶんだけ遅れて増えるが、`validate()` に混ぜない
+    /// ための代償で、これが無いと層 ③ が誰にも届かない。
+    var issues: [LibrarySettingsIssue] {
+        measurement.merged(with: draft?.validate() ?? [])
+    }
     var errors: [LibrarySettingsIssue] { issues.filter { $0.severity == .error } }
     var warnings: [LibrarySettingsIssue] { issues.filter { $0.severity == .warning } }
     var canSave: Bool { isDirty && errors.isEmpty && !isBusy }

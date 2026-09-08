@@ -15,6 +15,7 @@
 import Observation
 import QooApplication
 import QooKit
+import QooUI
 import SwiftUI
 
 @MainActor
@@ -32,7 +33,12 @@ final class TemplateManagerModel {
     private(set) var selection: Selection?
 
     /// 編集中の草案。**選択したものの写し**で、保存するまで元へは戻さない。
-    var draft = LibrarySettingsDraft()
+    var draft = LibrarySettingsDraft() {
+        didSet { measurement.update(for: draft) }
+    }
+
+    /// 正規表現の実測 [SE-25 の層 ③]。設定ウインドウ・登録ウィザードと同じ仕組み。
+    let measurement = RegexMeasurementMonitor()
     /// 編集中の名前。プリセットでは元の表示名から始まる。
     var name = ""
 
@@ -67,7 +73,7 @@ final class TemplateManagerModel {
     /// テンプレートは持たない（`ValidationContext` の解説）——`.library` の
     /// まま検証すると「表示名を入力してください。」が消せず、保存が永久に
     /// 無効になる［code-review で発見］。
-    var issues: [LibrarySettingsIssue] { draft.validate(as: .template) }
+    var issues: [LibrarySettingsIssue] { measurement.merged(with: draft.validate(as: .template)) }
     var errors: [LibrarySettingsIssue] { issues.filter { $0.severity == .error } }
 
     /// **不備があるテンプレートは保存させない** [H1]。

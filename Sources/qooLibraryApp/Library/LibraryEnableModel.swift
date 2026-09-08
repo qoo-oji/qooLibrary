@@ -13,6 +13,7 @@ import Observation
 import QooApplication
 import QooInfrastructure
 import QooKit
+import QooUI
 import SwiftUI
 
 @MainActor
@@ -53,7 +54,13 @@ final class LibraryEnableModel {
             rebuildDraft()
         }
     }
-    var draft: LibrarySettingsDraft
+    var draft: LibrarySettingsDraft {
+        didSet { measurement.update(for: draft, samples: sampleNames) }
+    }
+
+    /// 正規表現の実測 [SE-25 の層 ③]。設定ウインドウ・テンプレート管理と
+    /// **同じ仕組みを共有する**（3 つが別々に測ると片方だけ直して取り残す）。
+    let measurement = RegexMeasurementMonitor()
     var section: LibrarySettingsSection = .basics
 
     /// フォーマット一覧で選択中の行。
@@ -82,7 +89,7 @@ final class LibraryEnableModel {
         LibraryPreview.run(filenames: sampleNames, draft: draft, truncated: sampleTruncated)
     }
 
-    var issues: [LibrarySettingsIssue] { draft.validate() }
+    var issues: [LibrarySettingsIssue] { measurement.merged(with: draft.validate()) }
     var errors: [LibrarySettingsIssue] { issues.filter { $0.severity == .error } }
     var canEnable: Bool { errors.isEmpty && !folderName.isEmpty }
 

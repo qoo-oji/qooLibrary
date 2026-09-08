@@ -50,12 +50,29 @@ enum ControlAXBridge {
         guard !targets.isEmpty else {
             return ControlResponse.failure("ウインドウが見つかりません: \(wanted ?? "")")
         }
-        return ControlResponse.success([
-            "windows": targets.map { node($0, depth: depth) },
-        ])
+        let budget = Budget()
+        let windowsOut = targets.map { node($0, depth: depth, budget: budget, isRoot: true) }
+        var payload: [String: Any] = ["windows": windowsOut]
+        if budget.truncated { payload["truncated"] = true }
+        return ControlResponse.success(payload)
     }
 
-    private static func node(_ element: AXUIElement, depth: Int) -> [String: Any] {
+    /// 走査したノードの上限。**深さだけでは止められない** ——枝の数が
+    /// 掛け算で効くので、病的な木では深さ 8 でも数十万ノードになる。
+    /// 打ち切ったことは `truncated` として応答に出す（黙って途中で止めると、
+    /// 「要素が無い」と読まれる）。
+    private final class Budget {
+        var remaining = 20_000
+        var truncated = false
+    }
+
+    private static func node(_ element: AXUIElement, depth: Int, budget: Budget,
+                            isRoot: Bool = false) -> [String: Any] {
+        guard budget.remaining > 0 else {
+            budget.truncated = true
+            return ["truncated": true]
+        }
+        budget.remaining -= 1
         var result: [String: Any] = [:]
         if let role = value(element, kAXRoleAttribute) as? String {
             result["role"] = role.replacingOccurrences(of: "AX", with: "")
@@ -81,9 +98,23 @@ enum ControlAXBridge {
         if let selected = value(element, kAXSelectedAttribute) as? Bool, selected {
             result["selected"] = true
         }
-        if depth > 1, let children = value(element, kAXChildrenAttribute) as? [AXUIElement],
+        // **アプリ要素の下へは降りない** ［2026-09-08、実測で 2 度アプリを固めた］。
+        // `kAXWindowsAttribute` は役割が `AXApplication` の疑似ウインドウを
+        // 返すことがあり、それは**自分自身を子として持つ**。素直に降りると
+        // `Application → Application → …` がメニューバーごと枝分かれしながら
+        // 深さぶん増え、メインスレッドが数十秒返らない——**読むだけの口が
+        // アプリを止める**という、いちばん困る壊れ方になる。
+        // 一覧から外すのではなく降りないだけにするのは、**AX のウインドウ一覧が
+        // 当てにならない**ため（モーダルを取りこぼす、順序が変わる）——
+        // 絞ると本物のウインドウまで消える状態が実際にあった。
+        // **根だけは 1 段降りる。** `kAXWindowsAttribute` がアプリ要素そのものを
+        // 返すことがあり、本物のウインドウはその子として下がっている——
+        // 根まで切ると何も読めなくなる。
+        let blocked = !isRoot && (result["role"] as? String) == "Application"
+        if depth > 1, !blocked,
+           let children = value(element, kAXChildrenAttribute) as? [AXUIElement],
            !children.isEmpty {
-            result["children"] = children.map { node($0, depth: depth - 1) }
+            result["children"] = children.map { node($0, depth: depth - 1, budget: budget) }
         }
         return result
     }

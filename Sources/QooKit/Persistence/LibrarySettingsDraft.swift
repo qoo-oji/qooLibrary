@@ -277,6 +277,22 @@ public struct LibrarySettingsDraft: Sendable, Equatable {
     ]
 }
 
+// MARK: - 実測の入力
+
+/// 実測 [SE-25 の層 ③] が読む入力。**結果を使い回してよいかの判定に使う。**
+///
+/// 順序も含めて比べる——並べ替えは優先順を変える [FF-03] ので、同じ綴りの
+/// 集合でも別の設定である。
+public struct RegexMeasurementKey: Sendable, Hashable {
+    public let volumePatterns: [String]
+    public let protectedPatterns: [String]
+
+    public init(volumePatterns: [String], protectedPatterns: [String]) {
+        self.volumePatterns = volumePatterns
+        self.protectedPatterns = protectedPatterns
+    }
+}
+
 // MARK: - 検証
 
 /// 設定の不備 1 件。**最初の 1 件で打ち切らず全部返す**——保存できない理由が
@@ -559,6 +575,21 @@ extension LibrarySettingsDraft {
         }
         let available = Set(volumeFormats.filter(\.isEnabled).map(\.role))
         return PatternRole.allCases.filter { used.contains($0) && !available.contains($0) }
+    }
+
+    /// 実測が実際に読む入力だけを取り出した鍵 [SE-25、三層防御の ③]。
+    ///
+    /// **これが変わらない限り、前回の実測結果をそのまま使ってよい。**
+    /// 草案は 1 打鍵ごとに書き換わるので、素朴に「草案が変われば測り直す」と
+    /// すると、フィールド名を打っているだけで巻数フォーマットの警告が
+    /// 消えたり出たりする——**利用者から見れば警告が勝手に消える**。
+    ///
+    /// `measuredIssues` が見るのは**有効なパターンの綴りだけ**なので、
+    /// 鍵もそこに揃える（ここを増やしたら `measuredIssues` も見直すこと）。
+    public var regexMeasurementKey: RegexMeasurementKey {
+        RegexMeasurementKey(
+            volumePatterns: volumeFormats.filter(\.isEnabled).map(\.source),
+            protectedPatterns: protectedTokens.filter(\.isEnabled).map(\.pattern))
     }
 
     /// 実際に正規表現を走らせて時間を測る検査 [三層防御の ③]。
