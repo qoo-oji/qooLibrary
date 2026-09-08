@@ -422,6 +422,26 @@ public final class LibraryServices {
     ///
     /// **非排他** [LK-01]——読むだけなので他の処理と並行してよい。
     /// **走査がやることはやらない**（`IntegrityReport` の doc）。
+#if DEBUG
+    // MARK: - 制御口のための読み取り [MT-33]
+
+    /// 制御口 [§16.8] がストアを読み取り専用で覗くための口。
+    ///
+    /// **`#if DEBUG` でリリースから丸ごと消える。** 外から
+    /// `sqlite3 -readonly` でコンテナを読めないことがある［実記録］ため、
+    /// 検証がアプリ自身に尋ねられる必要がある。**書き込みの口は作らない**
+    /// ——状態を変える検証は本物の操作を通すこと。
+    public func debugQuery(sql: String, limit: Int) throws -> [[String: DebugSQLValue]] {
+        guard let database else { throw ServiceError.notReady }
+        return try database.debugQuery(sql: sql, limit: limit)
+    }
+
+    public func debugTableCounts(includeEmpty: Bool) throws -> [String: Int] {
+        guard let database else { throw ServiceError.notReady }
+        return try database.debugTableCounts(includeEmpty: includeEmpty)
+    }
+#endif
+
     public func checkIntegrity() async throws -> IntegrityReport {
         guard let database else { throw ServiceError.notReady }
         // 複製の実体があるかは `UserCoverStore` にしか分からない——

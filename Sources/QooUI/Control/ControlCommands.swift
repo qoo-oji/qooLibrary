@@ -15,23 +15,53 @@ import QooKit
 ///   検証しない（そこは実機に残る）。
 @MainActor
 enum ControlCommands {
-    static func run(_ line: Data) -> Data {
+    /// 1 行をどう実行するか。**同期で済むものと、`await` が要るものを
+    /// 型で分ける** ——後者は `Task` を挟むので、AppKit が入れ子の
+    /// イベントループを回している間は走らない [CT-16]。混ぜると、その
+    /// 差が読めなくなる。
+    enum Plan {
+        case immediate(Data)
+        case deferred(@MainActor () async -> Data)
+    }
+
+    static func plan(_ line: Data) -> Plan {
         guard let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any] else {
-            return ControlResponse.failure("JSON として読めませんでした")
+            return .immediate(ControlResponse.failure("JSON として読めませんでした"))
         }
         guard let command = object["cmd"] as? String else {
-            return ControlResponse.failure("cmd がありません")
+            return .immediate(ControlResponse.failure("cmd がありません"))
         }
         let args = object["args"] as? [String: Any] ?? [:]
+        ControlRedaction.isEnabled = args["redact"] as? Bool ?? true
+        ControlRedaction.extraAllowed = args["allow"] as? [String] ?? []
+        if let handler = ControlExtensions.handler(for: command) {
+            return .deferred {
+                // **後始末はしない。** `plan` の入口で毎回上書きされるので
+                // 要らないうえ、上限時間 [CT-16] を超えた `deferred` が
+                // 後から空にすると、**次のコマンドの実行中に `allow` が
+                // 消える**（その応答だけ伏字になる）。
+                switch await handler(args) {
+                case .success(let result): return ControlResponse.success(result)
+                case .failure(let message): return ControlResponse.failure(message)
+                }
+            }
+        }
+        return .immediate(run(command, args))
+    }
+
+    private static func run(_ command: String, _ args: [String: Any]) -> Data {
         switch command {
         case "ping": return ControlResponse.success(["pong": true])
-        case "help": return ControlResponse.success(["commands": names])
+        case "help": return ControlResponse.success(["commands": names + ControlExtensions.names])
         case "status": return status()
         case "menu:dump": return menuDump(args)
         case "menu:invoke": return menuInvoke(args)
         case "window:list": return windowList()
+        case "window:focus": return windowFocus(args)
         case "quit": return quit(args)
         case let ax where ax.hasPrefix("ax:"): return ControlAXBridge.run(ax, args)
+        case let ctx where ctx.hasPrefix("ctx:"): return ControlContextMenu.run(ctx, args)
+        case let db where db.hasPrefix("db:"): return ControlDatabase.run(db, args)
         default: return ControlResponse.failure("知らないコマンドです: \(command)")
         }
     }
@@ -44,8 +74,10 @@ enum ControlCommands {
     static let names = [
         "ping", "help", "status",
         "menu:dump", "menu:invoke",
-        "window:list",
-        "ax:dump", "ax:press", "ax:setValue",
+        "window:list", "window:focus",
+        "ax:dump", "ax:press", "ax:setValue", "ax:select", "ax:attributes",
+        "ctx:dump", "ctx:invoke",
+        "db:query", "db:counts",
         "quit",
     ]
 
@@ -60,7 +92,9 @@ enum ControlCommands {
             "build": bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?",
             "headless": ControlServer.isHeadless,
             "sandboxed": NSHomeDirectory().contains("/Containers/"),
-            "home": NSHomeDirectory(),
+            // **ホームパスは利用者名を含む** [MT-32 の層 1]。サンドボックス下で
+            // 要るのは「コンテナの中に居るか」だけなので、パスそのものは伏せる。
+            "home": ControlRedaction.apply(NSHomeDirectory()),
             "activationPolicy": String(describing: NSApp.activationPolicy()),
             "windows": NSApp.windows.count,
             "visibleWindows": NSApp.windows.filter(\.isVisible).count,
@@ -87,112 +121,34 @@ enum ControlCommands {
         }
         let depth = args["depth"] as? Int ?? 3
         if let wanted = args["menu"] as? String {
-            guard let item = root.items.first(where: { matches($0.title, wanted) }),
+            guard let item = root.items.first(where: { ControlMenuTree.matches($0.title, wanted) }),
                   let submenu = item.submenu else {
                 return ControlResponse.failure("「\(wanted)」というメニューがありません")
             }
             return ControlResponse.success([
-                "menu": item.title,
-                "items": dump(submenu, path: [item.title], depth: depth),
+                "menu": ControlRedaction.apply(item.title),
+                "items": ControlMenuTree.dump(submenu, path: [item.title], depth: depth),
             ])
         }
-        return ControlResponse.success(["items": dump(root, path: [], depth: depth)])
-    }
-
-    private static func dump(_ menu: NSMenu, path: [String], depth: Int) -> [[String: Any]] {
-        menu.update()
-        return menu.items.enumerated().map { index, item in
-            var node: [String: Any] = [
-                "index": index,
-                "title": item.title,
-                "enabled": item.isEnabled,
-                "path": (path + [item.title]).joined(separator: " > "),
-            ]
-            if item.isSeparatorItem { node["separator"] = true }
-            if item.state == .on { node["state"] = "on" }
-            if item.state == .mixed { node["state"] = "mixed" }
-            if item.isAlternate { node["alternate"] = true }
-            if item.isHidden { node["hidden"] = true }
-            if !item.keyEquivalent.isEmpty {
-                node["key"] = item.keyEquivalent
-                node["modifiers"] = modifierNames(item.keyEquivalentModifierMask)
-            }
-            if let submenu = item.submenu {
-                if depth > 1 {
-                    node["children"] = dump(submenu, path: path + [item.title], depth: depth - 1)
-                } else {
-                    node["hasChildren"] = true
-                }
-            }
-            return node
-        }
-    }
-
-    private static func modifierNames(_ mask: NSEvent.ModifierFlags) -> [String] {
-        var names: [String] = []
-        if mask.contains(.command) { names.append("command") }
-        if mask.contains(.shift) { names.append("shift") }
-        if mask.contains(.option) { names.append("option") }
-        if mask.contains(.control) { names.append("control") }
-        return names
+        return ControlResponse.success(["items": ControlMenuTree.dump(root, path: [], depth: depth)])
     }
 
     /// メニュー項目を実際に押す。**`performActionForItem(at:)` は target/action を
     /// 送るので、利用者がクリックしたのと同じ経路を通る。**
     private static func menuInvoke(_ args: [String: Any]) -> Data {
-        guard let components = pathComponents(args["path"]) else {
+        guard let components = ControlMenuTree.pathComponents(args["path"]) else {
             return ControlResponse.failure("path がありません（配列か \" > \" 区切りの文字列）")
         }
         guard let root = NSApp.mainMenu else {
             return ControlResponse.failure("メニューバーがありません")
         }
-        guard let item = resolve(components, in: root) else {
+        // 押す前に実体化する [CT-18]。温めずに押すと、項目は見つかるのに
+        // 何も起きないことがある［実測］。
+        ControlMenuTree.warm(root, depth: components.count)
+        guard let item = ControlMenuTree.resolve(components, in: root) else {
             return ControlResponse.failure("項目が見つかりません: \(components.joined(separator: " > "))")
         }
-        guard let owner = item.menu else {
-            return ControlResponse.failure("項目が親メニューを持ちません")
-        }
-        owner.update()
-        guard item.isEnabled else {
-            return ControlResponse.failure("項目が無効です: \(item.title)")
-        }
-        let index = owner.index(of: item)
-        owner.performActionForItem(at: index)
-        return ControlResponse.success(["invoked": item.title, "index": index])
-    }
-
-    private static func pathComponents(_ raw: Any?) -> [String]? {
-        if let array = raw as? [String], !array.isEmpty { return array }
-        if let text = raw as? String, !text.isEmpty {
-            return text.components(separatedBy: ">").map {
-                $0.trimmingCharacters(in: .whitespaces)
-            }
-        }
-        return nil
-    }
-
-    /// 完全一致 → 前方一致 → 部分一致 の順に探す。**メニューの題は状態で
-    /// 変わる**（「シリーズごとにまとめる」↔「巻ごとに表示」、「〜を表示」↔
-    /// 「〜を隠す」）ので、呼ぶ側が完全な題を知らなくても届くようにしてある。
-    private static func resolve(_ components: [String], in root: NSMenu) -> NSMenuItem? {
-        var menu: NSMenu? = root
-        var found: NSMenuItem?
-        for component in components {
-            guard let current = menu else { return nil }
-            current.update()
-            guard let item = current.items.first(where: { matches($0.title, component) }) else {
-                return nil
-            }
-            found = item
-            menu = item.submenu
-        }
-        return found
-    }
-
-    private static func matches(_ title: String, _ wanted: String) -> Bool {
-        if title == wanted { return true }
-        if title.hasPrefix(wanted) { return true }
-        return title.localizedCaseInsensitiveContains(wanted)
+        return ControlMenuTree.invoke(item)
     }
 
     // MARK: - ウインドウ
@@ -200,7 +156,9 @@ enum ControlCommands {
     private static func windowList() -> Data {
         let windows = NSApp.windows.map { window -> [String: Any] in
             var node: [String: Any] = [
-                "title": window.title,
+                // **メインウインドウの題は現在のフォルダ名**——利用者のデータ
+                // そのものなので、ここも伏字を通す [CT-06]。
+                "title": ControlRedaction.apply(window.title),
                 "visible": window.isVisible,
                 "key": window.isKeyWindow,
                 "main": window.isMainWindow,
@@ -215,6 +173,61 @@ enum ControlCommands {
             return node
         }
         return ControlResponse.success(["windows": windows])
+    }
+
+    /// ウインドウをキーにする。
+    ///
+    /// **これが無いとメニューの半分が読めない** ——「移動」「表示」「編集」の
+    /// 多くは `@FocusedValue` 越しに状態を受け取るので、キーウインドウが
+    /// 無いと**実装が正しくても全項目が無効**として返る。ヘッドレスでは
+    /// ウインドウを開いてもキーにならないため、口から明示する必要がある。
+    ///
+    /// **`makeKey()` だけではキーにならない** ［実測］——ウインドウがキューに
+    /// なれるのはアプリがアクティブなときだけ、という AppKit の決まりによる。
+    /// そのため `{"activate": true}` で**前面化を明示的に選べる**ようにして
+    /// ある [CT-17]。既定は前面化しない——口の存在理由は利用者の画面を
+    /// 奪わないことなので、奪うなら呼ぶ側が承知して呼ぶ形にする。
+    ///
+    /// 前面化せずに済ませたいなら、メニューの有効/無効を読む代わりに
+    /// `ctx:*` と `ax:press` を使う——**そちらはキーウインドウが無くても
+    /// 通る**［実測］。
+    private static func windowFocus(_ args: [String: Any]) -> Data {
+        let windows = NSApp.windows.filter(\.isVisible)
+        let target: NSWindow?
+        if let wanted = args["window"] as? String {
+            target = windows.first { ControlMenuTree.matches($0.title, wanted) }
+        } else {
+            // **進捗パネルのような補助ウインドウをキーにしない。**
+            // それをキーにすると `@FocusedValue` が届かず、メニューが
+            // 無効のままになる。本体のウインドウだけを選び、無ければ
+            // 最後に開いたものへ落とす。
+            target = windows.last { !($0 is NSPanel) && $0.identifier != nil }
+                ?? windows.last { !($0 is NSPanel) }
+                ?? windows.last
+        }
+        guard let window = target else {
+            return ControlResponse.failure("ウインドウが見つかりません")
+        }
+        if args["activate"] as? Bool ?? false {
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        window.makeKeyAndOrderFront(nil)
+        window.makeMain()
+        // **ウインドウの中に focus を持つビューが要る** ［文献＋実測］。
+        // SwiftUI の `focusedSceneValue` は「シーンのどこかに focus がある」
+        // ことを条件に配られるので、ウインドウをキーにしただけでは
+        // `@FocusedValue` が nil のままになり、**実装が正しくても
+        // メニューが全部無効**として読める。アプリを切り替えて戻ると同じ
+        // 状態になるのは SwiftUI 側の既知の不具合として報告されている。
+        if window.firstResponder == nil || window.firstResponder === window {
+            _ = window.contentView.map { window.makeFirstResponder($0) }
+        }
+        return ControlResponse.success([
+            "focused": ControlRedaction.apply(window.title),
+            "isKey": window.isKeyWindow,
+            "appActive": NSApp.isActive,
+            "firstResponder": String(describing: type(of: window.firstResponder ?? window)),
+        ])
     }
 
     // MARK: - 終了

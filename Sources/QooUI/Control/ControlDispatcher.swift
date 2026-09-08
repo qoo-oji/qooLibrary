@@ -21,9 +21,22 @@ enum ControlDispatcher {
         let box = ResponseBox()
         let semaphore = DispatchSemaphore(value: 0)
         RunLoop.main.perform(inModes: [.common]) {
-            let response = MainActor.assumeIsolated { ControlCommands.run(line) }
-            box.store(response)
-            semaphore.signal()
+            MainActor.assumeIsolated {
+                switch ControlCommands.plan(line) {
+                case .immediate(let response):
+                    box.store(response)
+                    semaphore.signal()
+                case .deferred(let work):
+                    // **ここだけ `Task` を挟む** ——アプリ層が足したコマンドは
+                    // `actor` をまたぐので `await` が避けられない。そのぶん
+                    // 入れ子のイベントループの間は走らず、下の上限時間で
+                    // 「応答しませんでした」として返る [CT-16]。
+                    Task { @MainActor in
+                        box.store(await work())
+                        semaphore.signal()
+                    }
+                }
+            }
         }
         guard semaphore.wait(timeout: .now() + mainHopTimeout) == .success else {
             return ControlResponse.failure(

@@ -864,14 +864,11 @@ struct FolderTreePane: View {
     private func performUnregister(_ folder: RegisteredFolder, disablingLibrary: Bool = false) {
         Task {
             do {
-                // **ライブラリを先に、登録解除を後に。** 逆にすると、
-                // 解除でセキュリティスコープが閉じたあとに DB を触ることになり、
-                // 失敗したときに「登録は消えたがライブラリ行は残る」という
-                // 一番片付けにくい状態を作る。
-                if disablingLibrary {
-                    try await LibraryServices.shared.disable(registrationUUID: folder.id)
-                }
-                try await RegisteredFolderStore.shared.unregister(folder.id)
+                // 順序（ライブラリを先に、登録解除を後に）は
+                // `LibraryEnableAction.unregister` が持つ——制御口 [MT-33] も
+                // 同じ関数を通るので、規則が 2 か所に散らない。
+                try await LibraryEnableAction.unregister(
+                    folder: folder, disablingLibrary: disablingLibrary)
             } catch {
                 // 保存失敗を握りつぶさない [ER-01、2026-08 既知の不具合の一掃]。
                 await NotificationRouter.shared.presentError(

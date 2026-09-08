@@ -19,6 +19,19 @@ struct ControlRedactionTests {
         ControlRedaction.extraAllowed = previous
     }
 
+    /// **組み込みの許可語が、追加の許可語の一部を先に消してしまわないこと。**
+    /// 2 段に分けて消していたときは `allow: ["著者値A"]` を渡しても、
+    /// 組み込みの「著者」が先に抜けて「値A」だけが残り、伏字のままだった
+    /// ［実測］。呼ぶ側から見ると「`allow` が効かない」という形で現れる。
+    @Test func 追加の許可語は組み込みの語に食われない() {
+        withAllowed(["著者", "著者値A"]) {  // 短い語を先に置いても
+            #expect(ControlRedaction.apply("著者値A") == "著者値A")
+        }
+        withAllowed(["著者値A", "著者"]) {  // 並びを変えても同じ
+            #expect(ControlRedaction.apply("著者値A") == "著者値A")
+        }
+    }
+
     @Test func 許可語で覆い切れる文字列はそのまま通る() {
         withAllowed(["ライブラリの設定"]) {
             #expect(ControlRedaction.apply("ライブラリの設定") == "ライブラリの設定")

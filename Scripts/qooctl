@@ -9,6 +9,13 @@ GUI を 1 度も操作せずに、実際に走っているアプリの状態を�
     Scripts/qooctl menu:invoke '{"path":["ライブラリ","メンテナンス"]}'
     Scripts/qooctl tree              # 開いているウインドウの中身を木で読む
     Scripts/qooctl ax:press '{"title":"保存"}'
+    Scripts/qooctl focus             # 前面化してメニューの有効/無効を読めるようにする
+    Scripts/qooctl ctx 作品名A        # 右クリックのメニューを読む
+    Scripts/qooctl ctx:invoke '{"title":"作品名A","path":["ラベル"]}'
+    Scripts/qooctl counts            # DB の全テーブルの行数
+    Scripts/qooctl db:query '{"sql":"SELECT * FROM library"}'
+    Scripts/qooctl library:register '{"path":"/Volumes/X/蔵書","template":"builtin.doujinshi"}'
+    Scripts/qooctl wait              # 走っている処理が終わるまで待つ
     Scripts/qooctl quit
 
 **応答の文字列は既定で伏字になる** — 利用者のファイル名・登録フォルダ名は
@@ -132,6 +139,115 @@ def main():
         show(reply["result"]["items"])
         return
 
+    if verb == "focus":
+        # **メニューの有効/無効を読むには前面化が要る** ［実測］——
+        # `@FocusedValue` はキーウインドウ越しに届き、ウインドウがキーに
+        # なれるのはアプリがアクティブなときだけ（AppKit の決まり）。
+        # 前面化は**利用者の画面を奪う**ので、必要な検証でだけ呼ぶこと。
+        # 右クリック・ボタン・入力欄はこれ無しで通る。
+        args = json.loads(rest) if rest and rest.startswith("{") else {}
+        if rest and not rest.startswith("{"):
+            args["window"] = rest
+        args.setdefault("activate", True)
+        reply = call("window:focus", args)
+        if not reply["ok"]:
+            sys.exit(reply["error"])
+        # **キーになっただけでは足りない** ［実測］。SwiftUI の
+        # `focusedSceneValue` はシーンに focus が行き渡ってから配られ、
+        # それまでは `@FocusedValue` を見るメニューが**実装が正しくても
+        # 全部無効**として読める（アプリを切り替えて戻ると同じ状態になる
+        # のは SwiftUI 側の既知の不具合として報告されている）。
+        # **時間ではなく状態で待つ** ——メニューが実際に有効になるまで
+        # 前面化を打ち直す。
+        # 前面化する前の有効件数を控え、**増えたこと**で判断する
+        # （何件が有効かは画面の状態で変わるので、絶対数では測れない）。
+        baseline = 0
+        bar = call("menu:dump", {"depth": 2})
+        if bar["ok"]:
+            for top in bar["result"]["items"]:
+                for item in top.get("children", []):
+                    if item.get("enabled") and not item.get("separator"):
+                        baseline += 1
+        for attempt in range(24):
+            windows = call("window:list")["result"]["windows"]
+            if any(w["key"] for w in windows):
+                # **メニュー名を決め打ちにしない** ——表示言語で変わる。
+                # メニューバー全体を 1 段だけ読み、`@FocusedValue` を見る
+                # メニューのどれかが有効になったかで判断する。
+                bar = call("menu:dump", {"depth": 2})
+                if bar["ok"]:
+                    enabled = 0
+                    for top in bar["result"]["items"]:
+                        for item in top.get("children", []):
+                            if item.get("enabled") and not item.get("separator"):
+                                enabled += 1
+                    if enabled >= baseline + 3:
+                        print("メニューが有効になりました")
+                        return
+            if attempt % 4 == 3:
+                call("window:focus", args)  # 前面化を打ち直す
+            time.sleep(0.25)
+        print("警告: 前面化しましたがメニューが有効になりません"
+              "（`ctx:*` と `ax:press` はこれ無しで通ります）")
+        return
+
+    if verb == "ctx":
+        args = json.loads(rest) if rest and rest.startswith("{") else {"title": rest}
+        args.setdefault("depth", 2)
+        reply = call("ctx:dump", args)
+        if not reply["ok"]:
+            sys.exit(reply["error"])
+        result = reply["result"]
+        print(f"# {result['view']} {result['point']}")
+        def show(items, indent=0):
+            for item in items:
+                if item.get("separator"):
+                    print("  " * indent + "―")
+                    continue
+                mark = "" if item["enabled"] else "  [無効]"
+                print("  " * indent + item["title"] + mark)
+                show(item.get("children", []), indent + 1)
+        show(result["items"])
+        return
+
+    if verb == "counts":
+        reply = call("db:counts", json.loads(rest) if rest else {})
+        if not reply["ok"]:
+            sys.exit(reply["error"])
+        counts = reply["result"]["counts"]
+        if not counts:
+            print("すべての表が 0 件")
+        for name in sorted(counts):
+            print(f"{counts[name]:>8}  {name}")
+        return
+
+    if verb == "wait":
+        # **口は時間のかかる操作を待たずに返す** [CT-15]。走査や転送が
+        # 終わったかは進捗の受け皿を見て判断する。
+        limit = float(rest) if rest else 300.0
+        # **始まるのを待つ猶予**。`library:register` は走査を投げて即座に
+        # 返るので、進捗が出るまでに間がある——短く切ると「走っている処理は
+        # ありません」と言って**半端な DB のまま検証が進む**。
+        grace = 10.0
+        started = time.time()
+        deadline = started + limit
+        seen_busy = False
+        while time.time() < deadline:
+            reply = call("progress:list")
+            if not reply["ok"]:
+                sys.exit(reply["error"])
+            busy = reply["result"]["busy"]
+            if busy:
+                seen_busy = True
+            elif seen_busy:
+                print("完了しました")
+                return
+            elif time.time() - started > grace:
+                print(f"走っている処理はありません（{grace:.0f} 秒待ちました）")
+                return
+            time.sleep(0.3)
+        sys.exit(f"{limit:.0f} 秒待ちましたが終わりません")
+
     if verb == "tree":
         args = {"depth": 14}
         if rest:
@@ -144,7 +260,22 @@ def main():
             print("\n".join(flatten(window.get("children", []), 1)))
         return
 
-    reply = call(verb, json.loads(rest) if rest else {})
+    args = json.loads(rest) if rest else {}
+
+    if verb == "menu:invoke":
+        # **押す前にメニューを実体化する** [CT-18]。SwiftUI が組む
+        # サブメニューは項目が見えていても動作が結び付いておらず、押しても
+        # 何も起きないことがある——`menu:dump` を先に走らせると通る、と
+        # いう食い違いを実測で踏んだ。アプリ側でも温めているが、**ランループを
+        # 1 周挟まないと効かない**ので、呼び出しを 2 つに分ける。
+        path = args.get("path")
+        root = path[0] if isinstance(path, list) and path else None
+        warm = {"depth": len(path) if isinstance(path, list) else 3}
+        if root:
+            warm["menu"] = root
+        call("menu:dump", warm)
+
+    reply = call(verb, args)
     print(json.dumps(reply, ensure_ascii=False, indent=2))
     if not reply["ok"]:
         sys.exit(1)

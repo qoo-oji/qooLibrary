@@ -112,6 +112,21 @@ enum LibraryEnableAction {
         }
     }
 
+    /// 登録を解除する。ライブラリとして有効なら**先に**無効化する。
+    ///
+    /// **順序が規則の本体。** 逆にすると、解除でセキュリティスコープが閉じた
+    /// あとに DB を触ることになり、失敗したときに「登録は消えたがライブラリ行は
+    /// 残る」という一番片付けにくい状態を作る。フォルダツリーの「登録解除」と
+    /// 制御口 [MT-33] の両方がここを通る——同じ規則を 2 か所に書かない。
+    ///
+    /// 確認ダイアログは**呼び出し側の責務**。ツリーは尋ねてからここへ来る。
+    static func unregister(folder: RegisteredFolder, disablingLibrary: Bool) async throws {
+        if disablingLibrary {
+            try await LibraryServices.shared.disable(registrationUUID: folder.id)
+        }
+        try await RegisteredFolderStore.shared.unregister(folder.id)
+    }
+
     /// 既存の登録を有効化する（起動時の再開ウィザード [§19.10 ステージ 2] の
     /// 確定）。**登録はし直さない**——`registerAndEnable` と違い、フォルダは
     /// もう `RegisteredFolderStore` にある。

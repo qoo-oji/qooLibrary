@@ -16,22 +16,25 @@ import QooApplication
 /// 本の種別）を含むだけで、未知のファイル名が丸ごと素通りする
 /// ［過去に実際に起きた事故］。
 @MainActor
-enum ControlRedaction {
+public enum ControlRedaction {
     /// 既定で有効。`{"redact": false}` を渡した呼び出しでだけ外れる
     /// ——外すのは、その応答に利用者のデータが出ないと分かっているとき。
-    static var isEnabled = true
+    public static var isEnabled = true
 
     /// 呼び出しごとに追加で通す語（使い捨てボリュームへ置いた合成名など）。
-    static var extraAllowed: [String] = []
+    public static var extraAllowed: [String] = []
 
-    static func apply(_ text: String) -> String {
+    public static func apply(_ text: String) -> String {
         guard isEnabled, !text.isEmpty else { return text }
         var remainder = text
-        for word in allowedWords where !word.isEmpty {
+        // **組み込みと追加を 1 つの列にしてから長い順に消す。** 2 段に分けて
+        // 組み込みを先に消すと、それを部分に含む追加の語がもう一致しなく
+        // なる——`allow: ["著者値A"]` を渡しても、組み込みの「著者」が先に
+        // 抜けて「値A」だけが残り、伏字のままになる［実測］。このファイルの
+        // 「長い語から順に取り除く」という注意は、**両方をまたいで**
+        // 成り立たなければ意味を持たない。
+        for word in wordsToStrip where !word.isEmpty {
             if remainder.count < word.count { continue }
-            remainder = remainder.replacingOccurrences(of: word, with: "")
-        }
-        for word in extraAllowed where !word.isEmpty {
             remainder = remainder.replacingOccurrences(of: word, with: "")
         }
         let leftover = remainder.unicodeScalars.filter {
@@ -42,6 +45,23 @@ enum ControlRedaction {
         }
         return leftover.isEmpty ? text : "⟨\(text.count) 文字⟩"
     }
+
+    /// 取り除く語を長い順に 1 列で返す。**追加の語（`allow`）も混ぜる**
+    /// ——分けると上の不具合が戻る。
+    ///
+    /// **作り直すのは `allow` が変わったときだけ。** 語は 3,000 近くあり、
+    /// `apply` は木のノードごとに何度も呼ばれる——毎回連結して並べ直すと
+    /// `allowedWords` を控えている意味が消える。
+    private static var wordsToStrip: [String] {
+        if let cached = cachedStrip, cachedStripKey == extraAllowed { return cached }
+        let words = (allowedWords + extraAllowed).sorted { $0.count > $1.count }
+        cachedStrip = words
+        cachedStripKey = extraAllowed
+        return words
+    }
+
+    private nonisolated(unsafe) static var cachedStrip: [String]?
+    private nonisolated(unsafe) static var cachedStripKey: [String]?
 
     // MARK: - 許可語
 

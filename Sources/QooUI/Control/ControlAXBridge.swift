@@ -24,17 +24,14 @@ enum ControlAXBridge {
     private static let messagingTimeout: Float = 5
 
     static func run(_ command: String, _ args: [String: Any]) -> Data {
-        // 応答に載る文字列は既定で伏せる [MT-33][MT-32]。使い捨てボリュームへ
-        // 置いた合成名のように、出しても差し支えないものは `allow` で通す。
-        ControlRedaction.isEnabled = args["redact"] as? Bool ?? true
-        ControlRedaction.extraAllowed = args["allow"] as? [String] ?? []
-        defer { ControlRedaction.extraAllowed = [] }
         let app = AXUIElementCreateApplication(ProcessInfo.processInfo.processIdentifier)
         AXUIElementSetMessagingTimeout(app, messagingTimeout)
         switch command {
         case "ax:dump": return dump(app, args)
         case "ax:press": return press(app, args)
         case "ax:setValue": return setValue(app, args)
+        case "ax:select": return select(app, args)
+        case "ax:attributes": return attributes(app, args)
         default: return ControlResponse.failure("知らないコマンドです: \(command)")
         }
     }
@@ -130,12 +127,109 @@ enum ControlAXBridge {
         return ControlResponse.success(["set": text])
     }
 
+    /// その要素が何を支えているか（属性と動作）を返す。
+    ///
+    /// **「押せない」「選べない」の切り分けに要る。** SwiftUI の要素は
+    /// 役割から想像できる動作を持たないことがあり、`AXError -25200`
+    /// （属性が無い）を見ても**どう指せば動くのか**が分からない。祖先も
+    /// 併せて返すので、実際に選べる／押せる階層をその場で見つけられる。
+    private static func attributes(_ app: AXUIElement, _ args: [String: Any]) -> Data {
+        guard let element = locate(app, args) else {
+            return ControlResponse.failure("要素が見つかりません: \(describe(args))")
+        }
+        var chain: [[String: Any]] = []
+        var current: AXUIElement? = element
+        var depth = 0
+        while let node = current, depth < 6 {
+            chain.append(describeElement(node))
+            current = parent(of: node)
+            depth += 1
+        }
+        return ControlResponse.success(["chain": chain])
+    }
+
+    private static func describeElement(_ element: AXUIElement) -> [String: Any] {
+        var names: CFArray?
+        var actions: CFArray?
+        _ = AXUIElementCopyAttributeNames(element, &names)
+        _ = AXUIElementCopyActionNames(element, &actions)
+        var node: [String: Any] = [
+            "role": (value(element, kAXRoleAttribute) as? String) ?? "?",
+            "attributes": (names as? [String] ?? []).sorted(),
+            "actions": (actions as? [String] ?? []).sorted(),
+        ]
+        if let title = title(of: element), !title.isEmpty {
+            node["title"] = ControlRedaction.apply(title)
+        }
+        return node
+    }
+
+    /// 一覧の行を選ぶ。
+    ///
+    /// **`AXPress` では選べない** ——`AXRow`／`AXCell` は押す動作を持たない
+    /// ので、選択は選択状態を書くしかない。対象を決められないとその先の
+    /// 操作（メニューバー経由の評価・ラベル・削除）が 1 つも起こせないため、
+    /// 一覧を扱う検証ではここが入口になる。
+    ///
+    /// **書く先は行の親の `AXSelectedRows`** ［実測］。セル・行の
+    /// `AXSelected` は属性としては在るのに書くと `kAXErrorFailure(-25200)`
+    /// で失敗する——SwiftUI は設定を実装していない。親へまとめて渡す道だけが
+    /// 通り、そちらは複数選択にもそのまま使える。
+    private static func select(_ app: AXUIElement, _ args: [String: Any]) -> Data {
+        let titles = (args["titles"] as? [String]) ?? [args["title"] as? String].compactMap { $0 }
+        guard !titles.isEmpty else {
+            return ControlResponse.failure("title か titles が要ります")
+        }
+        var rows: [AXUIElement] = []
+        for wanted in titles {
+            var probe = args
+            probe["title"] = wanted
+            probe["titles"] = nil
+            guard let element = locate(app, probe) else {
+                return ControlResponse.failure("要素が見つかりません: \(wanted)")
+            }
+            guard let row = ancestor(of: element, role: "AXRow") else {
+                return ControlResponse.failure("行を辿れませんでした: \(wanted)")
+            }
+            rows.append(row)
+        }
+        guard let container = parent(of: rows[0]) else {
+            return ControlResponse.failure("一覧を辿れませんでした")
+        }
+        let code = AXUIElementSetAttributeValue(
+            container, kAXSelectedRowsAttribute as CFString, rows as CFTypeRef)
+        guard code == .success else {
+            return ControlResponse.failure("選択できませんでした（AXError \(code.rawValue)）")
+        }
+        return ControlResponse.success(["selected": rows.count])
+    }
+
+    /// 指定の役割を持つ最初の祖先（自分自身を含む）。
+    private static func ancestor(of element: AXUIElement, role: String) -> AXUIElement? {
+        var current: AXUIElement? = element
+        var depth = 0
+        while let node = current, depth < 8 {
+            if (value(node, kAXRoleAttribute) as? String) == role { return node }
+            current = parent(of: node)
+            depth += 1
+        }
+        return nil
+    }
+
+    private static func parent(of element: AXUIElement) -> AXUIElement? {
+        // **型を確かめてから落とす。** `kCFNull` が返ることがあり、素の `as!`
+        // だとアプリごと落ちる（同じファイルの `axValue` は確かめている）。
+        guard let raw = value(element, kAXParentAttribute),
+              CFGetTypeID(raw as CFTypeRef) == AXUIElementGetTypeID() else { return nil }
+        return (raw as! AXUIElement)
+    }
+
     // MARK: - 探索
 
     /// 要素を 1 つ選ぶ。**題は省略でき、役割だけでも引ける** — SwiftUI の
     /// 入力欄は題も説明も持たず値しか持たないことがあるため。同じ役割の
     /// ものが複数あるときは `nth`（0 始まり）で選ぶ。
-    private static func locate(_ app: AXUIElement, _ args: [String: Any]) -> AXUIElement? {
+    static func locate(_ app: AXUIElement, _ args: [String: Any]) -> AXUIElement? {
         let root: AXUIElement
         if let wanted = args["window"] as? String {
             guard let windows = value(app, kAXWindowsAttribute) as? [AXUIElement],
@@ -170,10 +264,15 @@ enum ControlAXBridge {
             let roleOK = role.map { $0 == childRole } ?? true
             let nameOK: Bool
             if let wanted, !wanted.isEmpty {
+                // **`AXValue` も見る。** SwiftUI の `Text` は一覧のセルでも
+                // 題を持たず**値に文字を置く**ことがあり、`ax:dump` には出るのに
+                // 引けない、という食い違いになる［実測。一覧の行を title で
+                // 探して 1 件も当たらなかった］。
                 let names = [
                     title(of: child),
                     value(child, kAXDescriptionAttribute) as? String,
                     value(child, kAXIdentifierAttribute) as? String,
+                    value(child, kAXValueAttribute) as? String,
                 ].compactMap { $0 }
                 nameOK = names.contains { matches($0, wanted) }
             } else {

@@ -188,6 +188,9 @@ struct QooLibraryApp: App {
         #if DEBUG
         // 起動引数 `--qoo-control` があるときだけデバッグ用の制御口を開く
         // [MT-33]。無ければ socket を 1 つも作らず、この行は実質何もしない。
+        // **アプリ層のコマンドを先に登録する** ——口が開いてから足すと、
+        // 起動直後に来た要求が「知らないコマンド」で落ちる。
+        ControlAppCommands.register()
         ControlServer.startIfRequested()
         #endif
     }
